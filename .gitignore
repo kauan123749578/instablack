@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+
+# Banco de dev / sess\u00f5es / uploads
+*.db
+*.sqlite*
+session.json
+storage/
+tmp/
+
+# Editor / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.lnk
+
+# M\u00eddia local
+*.jpg
+*.jpeg
+*.png
+*.mp4
+*.mov

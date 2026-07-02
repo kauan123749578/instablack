@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Criar conta · Reels Scheduler</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body class="login-body">
+  <div class="ambient-grid"></div>
+  <canvas class="login-rays" id="login-rays"></canvas>
+
+  <div class="login-card">
+    <h1>Criar conta</h1>
+    <p class="subtitle">Escolha um usuário e senha</p>
+
+    {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
+
+    <form method="post" action="/register">
+      <label>Usuário
+        <input type="text" name="username" required autofocus minlength="3" autocomplete="username">
+      </label>
+      <label>Senha
+        <input type="password" name="password" required minlength="8" autocomplete="new-password">
+      </label>
+      <label>Confirmar senha
+        <input type="password" name="password_confirm" required minlength="8" autocomplete="new-password">
+      </label>
+      <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:4px">Criar conta</button>
+    </form>
+
+    <p class="login-footer">Já tem conta? <a href="/login">Entrar</a></p>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

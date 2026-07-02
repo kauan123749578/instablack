@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Minha conta{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Minha conta</h2>
+</div>
+
+{% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
+{% if ok %}<div class="alert alert-ok">{{ ok }}</div>{% endif %}
+
+<div class="dash-grid-2">
+  <form method="post" action="/perfil" enctype="multipart/form-data" class="form-card form-grid">
+    <label>Nome de exibição
+      <input type="text" name="display_name" value="{{ user.display_name or '' }}" placeholder="{{ user.username }}">
+    </label>
+    <label>Foto de perfil (.jpg/.png)
+      <input type="file" name="avatar" accept="image/jpeg,image/png,image/webp">
+    </label>
+    <p class="muted" style="font-size:12px;margin:0">Aparece no canto superior direito do painel.</p>
+
+    <hr style="border:none;border-top:1px solid var(--border);margin:8px 0">
+
+    <label>Nova senha (opcional)
+      <input type="password" name="new_password" autocomplete="new-password" minlength="8">
+    </label>
+    <label>Confirmar nova senha
+      <input type="password" name="new_password_confirm" autocomplete="new-password">
+    </label>
+
+    <button type="submit" class="btn btn-primary">Salvar</button>
+  </form>
+
+  <div class="panel profile-preview-panel">
+    <h3 style="margin-top:0">Preview</h3>
+    <div class="profile-topbar-preview">
+      {% if user_avatar_url(user) %}
+      <img src="{{ user_avatar_url(user) }}" alt="avatar" class="user-avatar user-avatar-img">
+      {% else %}
+      <span class="user-avatar">{{ user.username[0]|upper }}</span>
+      {% endif %}
+      <div>
+        <strong>{{ user.display_name or user.username }}</strong>
+        <div class="muted">@{{ user.username }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

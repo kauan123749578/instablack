@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Agendar por calendário{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2><i data-lucide="calendar-days" class="inline-icon"></i> Agendar por calendário</h2>
+  <p class="muted page-header-sub">Escolha os dias do mês e o horário — publica automaticamente nesses dias.</p>
+</div>
+
+{% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
+
+<form method="post" action="/automations/new/calendar" enctype="multipart/form-data" class="form-card form-grid">
+  <label>Nome
+    <input type="text" name="name" required placeholder="Ex.: Reels dias 1, 15 e 30">
+  </label>
+
+  <label>Tipo de conteúdo
+    <select name="content_type" id="content-type-cal">
+      <option value="reel">Reels (vídeo)</option>
+      <option value="story">Story (foto ou vídeo)</option>
+      <option value="photo">Foto no feed</option>
+    </select>
+  </label>
+
+  <label id="media-label-cal">Mídia
+    <input type="file" name="video" accept="video/mp4,video/quicktime,image/jpeg,image/png,image/webp" required>
+  </label>
+
+  <div id="thumb-wrap-cal">
+    <label>Capa do Reel (.jpg — 9:16)
+      <input type="file" name="thumb" accept="image/jpeg,image/png,image/webp">
+    </label>
+  </div>
+
+  <div id="caption-wrap-cal">
+    <label>Legenda
+      <textarea name="caption" rows="3" placeholder="Legenda (opcional para Story)"></textarea>
+    </label>
+  </div>
+
+  <fieldset class="calendar-fieldset">
+    <legend>Dias do mês</legend>
+    <div class="calendar-toolbar">
+      <button type="button" class="btn btn-sm" id="cal-select-all">Selecionar todos</button>
+      <button type="button" class="btn btn-sm" id="cal-clear">Limpar</button>
+      <span class="muted" id="cal-count">0 dias selecionados</span>
+    </div>
+    <div class="calendar-weekdays">
+      <span>Dom</span><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span>
+    </div>
+    <div class="calendar-grid" id="calendar-grid"></div>
+    <input type="hidden" name="calendar_days" id="calendar-days-input" value="[]">
+  </fieldset>
+
+  <label>Horário de publicação (BRT)
+    <input type="time" name="calendar_time" required value="10:00">
+  </label>
+
+  <fieldset>
+    <legend>Contas</legend>
+    {% if accounts %}
+    <div class="checkbox-row">
+      {% for ac in accounts %}
+      <label>
+        <input type="checkbox" name="account_ids" value="{{ ac.id }}">
+        @{{ ac.username }} <span class="muted">({{ ac.status }})</span>
+      </label>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted">Nenhuma conta. <a href="/accounts" data-nav="/accounts">Conectar</a>.</p>
+    {% endif %}
+  </fieldset>
+
+  <button type="submit" class="btn btn-primary" {% if not accounts %}disabled{% endif %}>
+    <i data-lucide="calendar-check"></i> Criar agendamento
+  </button>
+</form>
+{% endblock %}

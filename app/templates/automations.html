@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Automações{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Automações</h2>
+  <div class="page-header-actions">
+    <a href="/automations/new/calendar" class="btn btn-calendar-outline" data-nav="/automations/new/calendar">
+      <i data-lucide="calendar-days"></i> Calendário
+    </a>
+    <a href="/automations/new/story" class="btn btn-story-outline" data-nav="/automations/new/story">
+      <i data-lucide="circle-dot"></i> Agendar Story
+    </a>
+    <a href="/automations/new" class="btn btn-primary" data-nav="/automations/new">
+      <i data-lucide="plus"></i> Nova automação
+    </a>
+  </div>
+</div>
+
+{% if request.query_params.get('ok') == 'calendar' %}
+<div class="alert alert-ok">Agendamento por calendário criado!</div>
+{% endif %}
+
+{% if request.query_params.get('posted') %}
+<div class="alert alert-ok">Publicação enviada para a fila! Acompanhe no log de atividades.</div>
+{% endif %}
+
+{% if automations %}
+<div class="auto-grid">
+  {% for a in automations %}
+  <article class="auto-card">
+    <div class="auto-card-header">
+      <h3>{{ a.name }}
+        <span class="type-badge">{{ a.content_type|default('reel') }}</span>
+        {% if a.schedule_type == 'calendar' %}<span class="type-badge type-badge--cal">calendário</span>{% endif %}
+      </h3>
+      <span class="badge {{ a.status }}">{{ a.status }}</span>
+    </div>
+    <ul class="auto-meta">
+      <li>A cada <strong>{% if a.schedule_type == 'calendar' %}dias {{ a.calendar_days }} às {{ a.calendar_time }}{% else %}{{ a.interval_minutes }} min{% endif %}</strong></li>
+      <li>{{ a.accounts|length }} conta(s):
+        {% for ac in a.accounts %}@{{ ac.username }}{% if not loop.last %}, {% endif %}{% endfor %}
+      </li>
+      <li>Próxima: <strong>{{ a.next_run_at | localtime('%d/%m %H:%M') }}</strong></li>
+      <li>Última: {{ a.last_run_at | localtime('%d/%m %H:%M') }}</li>
+      <li>Total publicado: <strong>{{ a.total_runs }}</strong></li>
+      {% if a.thumb_original_name %}<li>Capa: {{ a.thumb_original_name }}</li>{% endif %}
+    </ul>
+    {% if a.caption %}
+    <p class="auto-caption">"{{ a.caption[:160] }}{% if a.caption|length > 160 %}…{% endif %}"</p>
+    {% endif %}
+    <div class="auto-actions">
+      {% if a.status == 'active' %}
+      <form method="post" action="/automations/{{ a.id }}/pause" class="inline">
+        <button type="submit" class="btn btn-sm">Pausar</button>
+      </form>
+      {% else %}
+      <form method="post" action="/automations/{{ a.id }}/resume" class="inline">
+        <button type="submit" class="btn btn-sm btn-primary">Retomar</button>
+      </form>
+      {% endif %}
+      <a href="/automations/{{ a.id }}/logs" class="btn btn-sm" data-nav="/automations/{{ a.id }}/logs">Logs</a>
+      <details class="edit-panel">
+        <summary>Editar</summary>
+        <form method="post" action="/automations/{{ a.id }}/edit" enctype="multipart/form-data" class="form-grid">
+          <label>Tipo
+            <select name="content_type">
+              <option value="reel" {% if a.content_type == 'reel' %}selected{% endif %}>Reels</option>
+              <option value="story" {% if a.content_type == 'story' %}selected{% endif %}>Story</option>
+              <option value="photo" {% if a.content_type == 'photo' %}selected{% endif %}>Foto feed</option>
+            </select>
+          </label>
+          <label>Intervalo
+            <select name="interval_minutes">
+              {% for m in intervals %}
+              <option value="{{ m }}" {% if m == a.interval_minutes %}selected{% endif %}>{{ m }} min</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>Legenda
+            <textarea name="caption" rows="3">{{ a.caption }}</textarea>
+          </label>
+          <label>Trocar capa (.jpg/.png)
+            <input type="file" name="thumb" accept="image/jpeg,image/png,image/webp">
+          </label>
+          {% if a.thumb_key %}
+          <label class="checkbox-row">
+            <input type="checkbox" name="remove_thumb" value="true"> Remover capa atual
+          </label>
+          {% endif %}
+          <fieldset>
+            <legend>Contas</legend>
+            <div class="checkbox-row">
+              {% set selected_ids = a.accounts|map(attribute='id')|list %}
+              {% for ac in all_accounts %}
+              <label>
+                <input type="checkbox" name="account_ids" value="{{ ac.id }}"
+                       {% if ac.id in selected_ids %}checked{% endif %}>
+                @{{ ac.username }}
+              </label>
+              {% endfor %}
+            </div>
+          </fieldset>
+          <button type="submit" class="btn btn-primary btn-sm">Salvar</button>
+        </form>
+      </details>
+      <form method="post" action="/automations/{{ a.id }}/delete"
+            onsubmit="return confirm('Excluir definitivamente esta automação?');">
+        <button type="submit" class="btn btn-sm btn-danger">Excluir</button>
+      </form>
+    </div>
+  </article>
+  {% endfor %}
+</div>
+{% else %}
+<div class="panel">
+  <p class="muted">Nenhuma automação criada.
+    <a href="/automations/new" data-nav="/automations/new">Criar Reels</a> ou
+    <a href="/automations/new/story" data-nav="/automations/new/story">Agendar Story</a>.
+  </p>
+</div>
+{% endif %}
+{% endblock %}

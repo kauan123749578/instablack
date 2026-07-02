@@ -1,0 +1,49 @@
+"""Instância + configuração do Celery (broker Redis, beat tick por segundos)."""
+from __future__ import annotations
+
+import ssl
+
+from celery import Celery
+from celery.schedules import schedule
+
+from app.config import settings
+
+celery_app = Celery(
+    "reels_scheduler",
+    broker=settings.redis_url,
+    backend=settings.redis_url,
+    include=[
+        "celery_app.tasks.publish",
+        "celery_app.beat",
+    ],
+)
+
+celery_conf: dict = {
+    "timezone": "UTC",
+    "task_acks_late": True,
+    "worker_prefetch_multiplier": 1,
+    "task_default_queue": "default",
+    "task_routes": {
+        "celery_app.tasks.publish.publish_to_account": {"queue": "publish"},
+        "celery_app.tasks.publish.publish_once": {"queue": "publish"},
+        "celery_app.tasks.publish.execute_automation": {"queue": "publish"},
+        "celery_app.beat.tick": {"queue": "beat"},
+    },
+    "broker_connection_retry_on_startup": True,
+    "result_expires": 60 * 60,
+}
+
+if settings.redis_url.startswith("rediss://"):
+    ssl_opts = {"ssl_cert_reqs": ssl.CERT_NONE}
+    celery_conf["broker_use_ssl"] = ssl_opts
+    celery_conf["redis_backend_use_ssl"] = ssl_opts
+
+celery_app.conf.update(**celery_conf)
+
+
+celery_app.conf.beat_schedule = {
+    "tick-every-N-seconds": {
+        "task": "celery_app.beat.tick",
+        "schedule": schedule(run_every=settings.beat_tick_seconds),
+    },
+}

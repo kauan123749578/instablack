@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}OnlyGram{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bricolage+Grotesque:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css?v=8" />
+  <link rel="stylesheet" href="/static/dashboard.css?v=5" />
+  {% block head %}{% endblock %}
+</head>
+<body class="app-body premium-app">
+  <div class="ambient-grid"></div>
+
+  <div class="app" id="app">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-top">
+        <div class="sidebar-brand">
+          <div class="brand-mark">
+            <span class="brand-icon"><i data-lucide="aperture"></i></span>
+            <span class="brand-text">Only<span class="brand-accent">Gram</span></span>
+          </div>
+        </div>
+
+        <a href="/automations/new" class="btn-new" data-nav="/automations/new">
+          <span class="btn-new-icon"><i data-lucide="plus"></i></span>
+          <span class="btn-new-label">Nova automação</span>
+        </a>
+
+        <a href="/automations/new/story" class="btn-story" data-nav="/automations/new/story">
+          <span class="btn-new-icon"><i data-lucide="circle-dot"></i></span>
+          <span class="btn-new-label">Agendar Story</span>
+        </a>
+
+        <a href="/automations/new/calendar" class="btn-calendar" data-nav="/automations/new/calendar">
+          <span class="btn-new-icon"><i data-lucide="calendar-days"></i></span>
+          <span class="btn-new-label">Calendário</span>
+        </a>
+      </div>
+
+      <div class="sidebar-scroll">
+        <nav class="nav">
+          <div class="nav-section-label">Principal</div>
+          <a href="/" class="nav-link" data-nav="/">
+            <i data-lucide="layout-dashboard" class="nav-icon"></i>
+            <span class="nav-text">Dashboard</span>
+          </a>
+          <a href="/accounts" class="nav-link" data-nav="/accounts">
+            <i data-lucide="instagram" class="nav-icon"></i>
+            <span class="nav-text">Contas Instagram</span>
+          </a>
+          <a href="/automations" class="nav-link" data-nav="/automations">
+            <i data-lucide="refresh-cw" class="nav-icon"></i>
+            <span class="nav-text">Automações</span>
+          </a>
+          <a href="/automations/new/calendar" class="nav-link" data-nav="/automations/new/calendar">
+            <i data-lucide="calendar-days" class="nav-icon"></i>
+            <span class="nav-text">Calendário</span>
+          </a>
+          <a href="/automations/new" class="nav-link" data-nav="/automations/new">
+            <i data-lucide="image" class="nav-icon"></i>
+            <span class="nav-text">Biblioteca de Mídia</span>
+          </a>
+
+          <div class="nav-section-label">Relatórios</div>
+          <a href="/" class="nav-link" data-nav="/">
+            <i data-lucide="chart-no-axes-combined" class="nav-icon"></i>
+            <span class="nav-text">Analytics</span>
+          </a>
+          <a href="/automations" class="nav-link" data-nav="/automations">
+            <i data-lucide="scroll-text" class="nav-icon"></i>
+            <span class="nav-text">Logs</span>
+          </a>
+
+          <div class="nav-section-label">Configurações</div>
+          <a href="/perfil" class="nav-link" data-nav="/perfil">
+            <i data-lucide="settings" class="nav-icon"></i>
+            <span class="nav-text">Configurações</span>
+          </a>
+          {% if user.is_admin %}
+          <a href="/admin" class="nav-link" data-nav="/admin">
+            <i data-lucide="shield" class="nav-icon"></i>
+            <span class="nav-text">Admin</span>
+          </a>
+          {% endif %}
+        </nav>
+      </div>
+
+      <div class="sidebar-bottom">
+        <div class="sidebar-plan">
+          <strong>{{ user_display_name(user) }}</strong>
+          <span>Plano Pro · multi-conta</span>
+          <div class="plan-bar"><div class="plan-bar-fill" style="width:72%"></div></div>
+        </div>
+
+        <form action="/logout" method="post" class="sidebar-logout">
+          <button type="submit" class="nav-link nav-btn">
+            <i data-lucide="log-out" class="nav-icon"></i>
+            <span class="nav-text">Sair</span>
+          </button>
+        </form>
+      </div>
+    </aside>
+
+    <div class="main-wrap">
+      <header class="topbar topbar--dash">
+        <div class="topbar-slot topbar-left">
+          {% block topbar_left %}
+          <div class="og-search-wrap">
+            <i data-lucide="search" class="og-search-icon"></i>
+            <input type="search" class="og-search" placeholder="Buscar…" aria-label="Buscar">
+          </div>
+          {% endblock %}
+        </div>
+        <div class="topbar-slot topbar-center">
+          {% block topbar_center %}{% endblock %}
+        </div>
+        <div class="topbar-slot topbar-right">
+          <button type="button" class="icon-btn" title="Tema" id="theme-toggle">
+            <i data-lucide="sun"></i>
+          </button>
+          <button type="button" class="icon-btn notif-btn" title="Notificações">
+            <i data-lucide="bell"></i>
+            <span class="notif-dot"></span>
+          </button>
+          <a href="/perfil" class="user-avatar-link" data-nav="/perfil" title="Minha conta">
+            {% if user_avatar_url(user) %}
+            <img src="{{ user_avatar_url(user) }}" alt="" class="user-avatar user-avatar-img">
+            {% else %}
+            <span class="user-avatar">{{ user.username[0]|upper }}</span>
+            {% endif %}
+          </a>
+        </div>
+      </header>
+
+      <main class="content shark-content" id="app-content">
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+  </div>
+
+  <nav class="bottom-tabs" id="bottom-tabs">
+    <a href="/" class="bottom-tab" data-nav="/"><i data-lucide="layout-dashboard"></i><span>Home</span></a>
+    <a href="/accounts" class="bottom-tab" data-nav="/accounts"><i data-lucide="instagram"></i><span>Contas</span></a>
+    <a href="/automations" class="bottom-tab" data-nav="/automations"><i data-lucide="refresh-cw"></i><span>Fluxos</span></a>
+    <button type="button" class="bottom-tab" id="drawer-open"><i data-lucide="menu"></i><span>Menu</span></button>
+  </nav>
+
+  <div class="mobile-drawer" id="mobile-drawer">
+    <div class="drawer-backdrop" id="drawer-backdrop"></div>
+    <div class="drawer-panel">
+      <h3>Menu</h3>
+      <a href="/" data-nav="/">Dashboard</a>
+      <a href="/accounts" data-nav="/accounts">Contas</a>
+      <a href="/automations" data-nav="/automations">Automações</a>
+      <a href="/automations/new/calendar" data-nav="/automations/new/calendar">Calendário</a>
+      <a href="/automations/new" data-nav="/automations/new">+ Nova automação</a>
+      <a href="/automations/new/story" data-nav="/automations/new/story">Agendar Story</a>
+      {% if user.is_admin %}<a href="/admin" data-nav="/admin">Admin</a>{% endif %}
+      <a href="/perfil" data-nav="/perfil">Configurações</a>
+      <form action="/logout" method="post"><button type="submit">Sair</button></form>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.475.0/dist/umd/lucide.min.js" crossorigin="anonymous"></script>
+  <script src="/static/app.js?v=8"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

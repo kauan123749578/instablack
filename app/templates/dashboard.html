@@ -1,0 +1,261 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — OnlyGram{% endblock %}
+
+{% block topbar_left %}
+<div class="og-search-wrap">
+  <i data-lucide="search" class="og-search-icon"></i>
+  <input type="search" class="og-search" placeholder="Buscar automações, contas…" aria-label="Buscar">
+</div>
+{% endblock %}
+
+{% block topbar_center %}{% endblock %}
+
+{% block content %}
+<div class="og-dash">
+
+  <header class="og-page-header">
+    <div class="og-page-titles">
+      <h1 class="og-page-title">Dashboard</h1>
+      <p class="og-page-sub">Visão geral da sua conta</p>
+    </div>
+    <a href="/automations/new" class="og-btn-primary" data-nav="/automations/new">
+      <i data-lucide="plus"></i>
+      Nova automação
+    </a>
+  </header>
+
+  <div class="og-kpi-row">
+    <article class="og-glass-card og-kpi-card">
+      <div class="og-kpi-top">
+        <div class="og-kpi-icon og-kpi-icon--purple">
+          <i data-lucide="users"></i>
+        </div>
+        {% if new_accounts_month > 0 %}
+        <span class="og-kpi-trend og-kpi-trend--up">+{{ new_accounts_month }} este mês</span>
+        {% endif %}
+      </div>
+      <div class="og-kpi-value">{{ accounts_count }}</div>
+      <div class="og-kpi-label">Contas conectadas</div>
+    </article>
+
+    <article class="og-glass-card og-kpi-card">
+      <div class="og-kpi-top">
+        <div class="og-kpi-icon og-kpi-icon--pink">
+          <i data-lucide="refresh-cw"></i>
+        </div>
+        {% if new_automations_month > 0 %}
+        <span class="og-kpi-trend og-kpi-trend--up">+{{ new_automations_month }} este mês</span>
+        {% endif %}
+      </div>
+      <div class="og-kpi-value">{{ active_automations }}</div>
+      <div class="og-kpi-label">Automações ativas</div>
+    </article>
+
+    <article class="og-glass-card og-kpi-card">
+      <div class="og-kpi-top">
+        <div class="og-kpi-icon og-kpi-icon--orange">
+          <i data-lucide="video"></i>
+        </div>
+        {% if pubs_growth is not none %}
+        <span class="og-kpi-trend {% if pubs_growth >= 0 %}og-kpi-trend--up{% else %}og-kpi-trend--down{% endif %}">
+          {% if pubs_growth >= 0 %}↑{% else %}↓{% endif %} {{ pubs_growth|abs }}% vs ontem
+        </span>
+        {% endif %}
+      </div>
+      <div class="og-kpi-value">{{ pubs_today }}</div>
+      <div class="og-kpi-label">Publicações hoje</div>
+    </article>
+
+    <article class="og-glass-card og-kpi-card">
+      <div class="og-kpi-top">
+        <div class="og-kpi-icon og-kpi-icon--green">
+          <i data-lucide="activity"></i>
+        </div>
+        {% if rate_delta is not none %}
+        <span class="og-kpi-trend {% if rate_delta >= 0 %}og-kpi-trend--up{% else %}og-kpi-trend--down{% endif %}">
+          {% if rate_delta >= 0 %}↑{% else %}↓{% endif %} {{ rate_delta|abs }}% vs ontem
+        </span>
+        {% endif %}
+      </div>
+      <div class="og-kpi-value">{{ success_rate }}%</div>
+      <div class="og-kpi-label">Taxa de sucesso</div>
+    </article>
+  </div>
+
+  <div class="og-main-grid">
+
+    <section class="og-glass-card og-chart-panel">
+      <div class="og-card-head">
+        <div>
+          <h2 class="og-card-title">Desempenho Geral</h2>
+          <p class="og-card-sub">Publicações, sucesso e falhas</p>
+        </div>
+        <select class="og-select" aria-label="Período">
+          <option>7 dias</option>
+        </select>
+      </div>
+      <div class="og-chart-legend">
+        <span><i class="og-dot og-dot--purple"></i> Publicações</span>
+        <span><i class="og-dot og-dot--green"></i> Sucesso</span>
+        <span><i class="og-dot og-dot--red"></i> Falhas</span>
+      </div>
+      <div class="og-line-chart-wrap" id="og-line-chart">
+        <div class="og-chart-tooltip" id="og-chart-tooltip"></div>
+        <svg class="og-line-svg" viewBox="0 0 700 220" preserveAspectRatio="none">
+          {% set n = chart_performance|length %}
+          {% set step = 700 / (n - 1) if n > 1 else 700 %}
+          {% set max_h = 170 %}
+          {% set base_y = 200 %}
+
+          <polyline class="og-line og-line--purple og-line-anim" fill="none" stroke="#833AB4" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+            points="{% for pt in chart_performance %}{% set x = loop.index0 * step %}{% set y = base_y - (pt.pubs_pct / 100 * max_h) %}{{ x }},{{ y }}{% if not loop.last %} {% endif %}{% endfor %}"/>
+          <polyline class="og-line og-line--green og-line-anim" fill="none" stroke="#22c55e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="animation-delay:.15s"
+            points="{% for pt in chart_performance %}{% set x = loop.index0 * step %}{% set y = base_y - (pt.success_pct / 100 * max_h) %}{{ x }},{{ y }}{% if not loop.last %} {% endif %}{% endfor %}"/>
+          <polyline class="og-line og-line--red og-line-anim" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="animation-delay:.3s"
+            points="{% for pt in chart_performance %}{% set x = loop.index0 * step %}{% set y = base_y - (pt.failed_pct / 100 * max_h) %}{{ x }},{{ y }}{% if not loop.last %} {% endif %}{% endfor %}"/>
+
+          {% for pt in chart_performance %}
+          {% set x = loop.index0 * step %}
+          {% set y = base_y - (pt.pubs_pct / 100 * max_h) %}
+          <circle class="og-chart-dot" cx="{{ x }}" cy="{{ y }}" r="4" fill="#E1306C"
+            data-tip="{{ pt.label }} {{ pt.date }}: {{ pt.pubs }} pub · {{ pt.success }} ok · {{ pt.failed }} falhas"/>
+          {% endfor %}
+
+          {% for pt in chart_performance %}
+          <text class="og-chart-xlabel" x="{{ loop.index0 * step }}" y="216" text-anchor="middle">{{ pt.label }}</text>
+          {% endfor %}
+        </svg>
+      </div>
+    </section>
+
+    <section class="og-glass-card og-auto-panel">
+      <div class="og-card-head">
+        <h2 class="og-card-title">Automações ativas</h2>
+        <a href="/automations" class="og-link" data-nav="/automations">Ver todas</a>
+      </div>
+      {% if automations %}
+      <ul class="og-auto-list">
+        {% for a in automations[:5] %}
+        <li class="og-auto-item">
+          <div class="og-auto-thumb">
+            {% if a.thumb_key %}
+            <img src="/media/{{ a.thumb_key }}" alt="">
+            {% else %}
+            <div class="og-auto-thumb-ph og-auto-thumb-ph--{{ a.content_type|default('reel') }}">
+              {% if a.content_type == 'story' %}<i data-lucide="circle-dot"></i>{% elif a.content_type == 'photo' %}<i data-lucide="image"></i>{% else %}<i data-lucide="play"></i>{% endif %}
+            </div>
+            {% endif %}
+          </div>
+          <div class="og-auto-info">
+            <strong>{{ a.name }}</strong>
+            <span>{{ format_interval(a.interval_minutes) }} · {{ a.accounts|length }} contas</span>
+          </div>
+          <span class="og-badge {{ status_badge_class(a.status) }}">{{ status_label(a.status) }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="og-empty">Nenhuma automação cadastrada</p>
+      {% endif %}
+    </section>
+
+    <section class="og-glass-card og-next-panel">
+      <div class="og-card-head">
+        <h2 class="og-card-title">Próximas publicações</h2>
+      </div>
+      {% if next_publications %}
+      <ul class="og-next-list">
+        {% for a in next_publications %}
+        <li class="og-next-item">
+          <span class="og-next-time">{{ a.next_run_at | localtime('%H:%M') }}</span>
+          <div class="og-auto-thumb og-auto-thumb--sm">
+            {% if a.thumb_key %}
+            <img src="/media/{{ a.thumb_key }}" alt="">
+            {% else %}
+            <div class="og-auto-thumb-ph"><i data-lucide="play"></i></div>
+            {% endif %}
+          </div>
+          <div class="og-next-info">
+            <strong>{{ a.name }}</strong>
+            <span>{{ a.accounts|length }} contas</span>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="og-empty">Nenhuma publicação agendada</p>
+      {% endif %}
+    </section>
+  </div>
+
+  <div class="og-bottom-grid">
+
+    <section class="og-glass-card og-panel-accounts">
+      <div class="og-card-head">
+        <h2 class="og-card-title"><i data-lucide="instagram" class="inline-icon"></i> Contas conectadas</h2>
+        <a href="/accounts" class="og-link" data-nav="/accounts">Gerenciar</a>
+      </div>
+      {% if accounts_data %}
+      <div class="og-accounts-gallery">
+        {% for item in accounts_data[:12] %}
+        {% set acc = item.account %}
+        <div class="og-acc-item" title="@{{ acc.username }} · {{ item.publish_count }} publicações">
+          <div class="og-acc-ring og-acc-ring--{{ acc.status }}">
+            <div class="og-acc-avatar">{{ acc.username[0]|upper }}</div>
+          </div>
+          <span class="og-acc-name">@{{ acc.username[:9] }}{% if acc.username|length > 9 %}…{% endif %}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="og-empty">Nenhuma conta conectada.<br><a href="/accounts" data-nav="/accounts" class="og-link">Conectar agora</a></div>
+      {% endif %}
+    </section>
+
+    <section class="og-glass-card og-bar-panel">
+      <div class="og-card-head">
+        <h2 class="og-card-title"><i data-lucide="bar-chart-3" class="inline-icon"></i> Publicações por dia</h2>
+      </div>
+      <div class="og-bar-chart">
+        {% for pt in chart_weekly %}
+        <div class="og-bar-col" title="{{ pt.pubs }} publicações em {{ pt.label }}">
+          <span class="og-bar-value">{% if pt.pubs > 0 %}{{ pt.pubs }}{% endif %}</span>
+          <div class="og-bar-track">
+            <div class="og-bar-fill" style="height:{{ pt.bar_pct if pt.bar_pct > 3 else 4 }}%"></div>
+          </div>
+          <span class="og-bar-label">{{ pt.label }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="og-glass-card og-panel-activity">
+      <div class="og-card-head">
+        <h2 class="og-card-title"><i data-lucide="activity" class="inline-icon"></i> Atividade recente</h2>
+        <span class="og-live-badge">AO VIVO</span>
+      </div>
+      {% if recent_logs %}
+      <ul class="og-timeline">
+        {% for log in recent_logs %}
+        <li class="og-timeline-item">
+          <span class="og-timeline-icon og-timeline-icon--{{ log.status }}">
+            {% if log.status == 'success' %}<i data-lucide="check"></i>
+            {% elif log.status == 'failed' %}<i data-lucide="x"></i>
+            {% else %}<i data-lucide="minus"></i>{% endif %}
+          </span>
+          <div class="og-timeline-body">
+            <strong>@{{ log.account.username }}{% if log.automation %} · {{ log.automation.name }}{% endif %}</strong>
+            <span>{{ log.created_at | localtime('%d/%m %H:%M') }}</span>
+          </div>
+          <span class="og-badge og-timeline-badge {{ status_badge_class(log.status) }}">{{ status_label(log.status) }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="og-empty">Nenhuma atividade ainda</div>
+      {% endif %}
+    </section>
+  </div>
+
+</div>
+{% endblock %}

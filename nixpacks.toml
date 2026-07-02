@@ -1,0 +1,4 @@
+# Pacotes nativos exigidos pelo projeto (ffmpeg para limpeza de metadados).
+# Usado tanto pelos services web/worker/beat no Railway.
+[phases.setup]
+aptPkgs = ["ffmpeg"]

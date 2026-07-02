@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Logs · {{ automation.name }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Logs · {{ automation.name }}</h2>
+  <a href="/automations" class="btn btn-sm" data-nav="/automations">Voltar</a>
+</div>
+
+<p class="muted">
+  Status: <span class="badge {{ automation.status }}">{{ automation.status }}</span> ·
+  Intervalo: {{ automation.interval_minutes }} min ·
+  Total: {{ automation.total_runs }}
+</p>
+
+<div class="panel">
+  {% if logs %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr><th>Quando</th><th>Conta</th><th>Status</th><th>Link / erro</th></tr>
+      </thead>
+      <tbody>
+        {% for log in logs %}
+        <tr>
+          <td>{{ log.created_at | localtime('%d/%m/%Y %H:%M:%S') }}</td>
+          <td>@{{ log.account.username }}</td>
+          <td><span class="badge {{ log.status }}">{{ log.status }}</span></td>
+          <td>
+            {% if log.media_url %}<a href="{{ log.media_url }}" target="_blank">abrir reel</a>
+            {% elif log.error %}<span class="muted">{{ log.error }}</span>
+            {% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">Nenhuma publicação registrada ainda.</p>
+  {% endif %}
+</div>
+{% endblock %}

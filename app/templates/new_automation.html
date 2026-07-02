@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}{% if default_content_type == 'story' %}Agendar Story{% else %}Nova automação{% endif %}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>{% if default_content_type == 'story' %}Agendar Story{% else %}Nova automação{% endif %}</h2>
+  {% if default_content_type == 'story' %}
+  <p class="muted page-header-sub">Publique foto ou vídeo nos Stories — agora ou em intervalo recorrente.</p>
+  {% endif %}
+</div>
+
+{% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
+
+<form method="post" action="/automations/new" enctype="multipart/form-data" class="form-card form-grid">
+  <label>Nome da automação
+    <input type="text" name="name" required placeholder="{% if default_content_type == 'story' %}Ex.: Story diário 1h{% else %}Ex.: Reels diário 30min{% endif %}">
+  </label>
+
+  <label>Tipo de conteúdo
+    <select name="content_type" id="content-type" required>
+      <option value="reel" {% if default_content_type == 'reel' %}selected{% endif %}>Reels (vídeo)</option>
+      <option value="story" {% if default_content_type == 'story' %}selected{% endif %}>Story (foto ou vídeo)</option>
+      <option value="photo" {% if default_content_type == 'photo' %}selected{% endif %}>Foto no feed</option>
+    </select>
+  </label>
+
+  <label id="media-label">Vídeo Reels (.mp4)
+    <input type="file" name="video" accept="video/mp4,video/quicktime,image/jpeg,image/png,image/webp" required>
+  </label>
+
+  <div id="thumb-wrap">
+    <label>Capa do Reel (.jpg/.png — 9:16)
+      <input type="file" id="thumb-input" name="thumb" accept="image/jpeg,image/png,image/webp">
+      <img id="thumb-preview" style="display:none;margin-top:8px;max-width:120px;border-radius:8px" alt="Preview">
+    </label>
+  </div>
+
+  <div id="caption-wrap">
+    <label>Legenda
+      <textarea name="caption" rows="4" placeholder="Escreva a legenda…"></textarea>
+    </label>
+  </div>
+
+  <fieldset class="schedule-mode-field">
+    <legend>Quando publicar?</legend>
+    <div class="radio-row">
+      <label class="radio-pill">
+        <input type="radio" name="schedule_mode" value="now" id="mode-now">
+        <span>Postar agora</span>
+      </label>
+      <label class="radio-pill">
+        <input type="radio" name="schedule_mode" value="recurring" id="mode-recurring" checked>
+        <span>Agendar recorrente</span>
+      </label>
+    </div>
+  </fieldset>
+
+  <div id="interval-wrap">
+  <label>Publicar a cada
+    <select name="interval_minutes">
+      {% for m in intervals %}
+      <option value="{{ m }}">
+        {% if m < 60 %}{{ m }} minutos
+        {% elif m == 60 %}1 hora
+        {% elif m < 1440 %}{{ (m / 60)|int }} horas
+        {% else %}24 horas{% endif %}
+      </option>
+      {% endfor %}
+    </select>
+  </label>
+  </div>
+
+  <fieldset>
+    <legend>Contas que vão receber</legend>
+    {% if accounts %}
+    <div class="checkbox-row">
+      {% for ac in accounts %}
+      <label>
+        <input type="checkbox" name="account_ids" value="{{ ac.id }}">
+        @{{ ac.username }} <span class="muted">({{ ac.status }})</span>
+      </label>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted">Nenhuma conta conectada. <a href="/accounts" data-nav="/accounts">Conectar agora</a>.</p>
+    {% endif %}
+  </fieldset>
+
+  <button type="submit" class="btn btn-primary" id="submit-btn" {% if not accounts %}disabled{% endif %}>
+    {% if default_content_type == 'story' %}Agendar Story{% else %}Criar automação{% endif %}
+  </button>
+</form>
+{% endblock %}
