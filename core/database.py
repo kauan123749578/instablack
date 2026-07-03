@@ -1,13 +1,22 @@
-"""Conex\u00e3o com o banco (SQLAlchemy 2.x) compartilhada entre FastAPI e Celery."""
+"""Conexão com o banco (SQLAlchemy 2.x) compartilhada entre FastAPI e Celery."""
 from __future__ import annotations
 
+import logging
 from contextlib import contextmanager
 from typing import Iterator
 
 from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import settings
+
+log = logging.getLogger(__name__)
+
+
+def _is_already_exists(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return "already exists" in msg or "duplicate" in msg
 
 
 def _engine_kwargs() -> dict:
@@ -111,11 +120,32 @@ def _postgres_migrate() -> None:
 
 
 def init_db() -> None:
-    """Cria todas as tabelas (uso simples, sem Alembic)."""
+    """Cria todas as tabelas (uso simples, sem Alembic).
+
+    Idempotente e tolerante a corrida entre múltiplos workers/services que
+    sobem ao mesmo tempo (ex.: gunicorn --workers 2, web + worker + beat).
+    """
     from models import models  # noqa: F401
     from core.bootstrap import bootstrap_admin
 
-    Base.metadata.create_all(bind=engine)
-    _sqlite_migrate()
-    _postgres_migrate()
-    bootstrap_admin()
+    try:
+        Base.metadata.create_all(bind=engine, checkfirst=True)
+    except (OperationalError, ProgrammingError) as exc:
+        if _is_already_exists(exc):
+            log.info("Tabelas já existem (corrida entre workers); seguindo.")
+        else:
+            raise
+
+    try:
+        _sqlite_migrate()
+        _postgres_migrate()
+    except (OperationalError, ProgrammingError) as exc:
+        if _is_already_exists(exc):
+            log.info("Migração já aplicada por outro worker; seguindo.")
+        else:
+            raise
+
+    try:
+        bootstrap_admin()
+    except Exception:
+        log.exception("bootstrap_admin falhou; seguindo sem criar admin inicial.")
