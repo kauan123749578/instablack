@@ -1,6 +1,7 @@
 """Entrypoint do FastAPI."""
 from __future__ import annotations
 
+import logging
 import shutil
 import tempfile
 from contextlib import asynccontextmanager
@@ -19,10 +20,15 @@ from core.database import init_db
 from core.health import check_database, check_redis
 from core.storage import get_storage
 
+log = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db()
+    try:
+        init_db()
+    except Exception:  # não derruba o processo se o banco estiver indisponível no boot
+        log.exception("init_db falhou no startup; a aplicação seguirá e tentará novamente ao usar o banco.")
     yield
 
 
@@ -90,6 +96,12 @@ def create_app() -> FastAPI:
 
     @app.get("/healthz", include_in_schema=False)
     def healthz():
+        # Liveness: o processo web está de pé. Não depende de banco/redis
+        # para não bloquear o deploy caso os plugins ainda não estejam prontos.
+        return {"status": "ok", "env": settings.app_env}
+
+    @app.get("/readyz", include_in_schema=False)
+    def readyz():
         db_ok, db_msg = check_database()
         redis_ok, redis_msg = check_redis()
         healthy = db_ok and redis_ok

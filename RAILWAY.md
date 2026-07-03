@@ -110,7 +110,8 @@ S3_REGION=us-east-1
 
 ## 5. Verificar deploy
 
-1. `https://seu-dominio.railway.app/healthz` → `{"status":"ok","database":"ok","redis":"ok"}`
+1. `https://seu-dominio.railway.app/healthz` → `{"status":"ok"}` (liveness — não depende de DB/Redis)
+2. `https://seu-dominio.railway.app/readyz` → `{"status":"ok","database":"ok","redis":"ok"}` (checa Postgres + Redis)
 2. Login com usuário bootstrap
 3. Conecte conta IG em `/accounts`
 4. Crie automação em `/automations/new`
