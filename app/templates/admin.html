@@ -3,9 +3,21 @@
 {% block content %}
 <div class="page-header">
   <h2><i data-lucide="shield" class="inline-icon"></i> Painel Admin</h2>
-  <p class="muted page-header-sub">Gerencie usuários e limites de contas Instagram</p>
+  <p class="muted page-header-sub">Gerencie usuários, convites e limites de contas</p>
 </div>
 
+{% if ok == 'invite' %}
+<div class="alert alert-ok">
+  Código(s) de convite criado(s):
+  {% for c in new_codes %}<strong>{{ c }}</strong>{% if not loop.last %}, {% endif %}{% endfor %}
+</div>
+{% endif %}
+{% if ok == 'invite_deleted' %}
+<div class="alert alert-ok">Convite removido.</div>
+{% endif %}
+{% if error == 'invite_failed' %}
+<div class="alert alert-error">Não foi possível gerar o convite. Tente novamente.</div>
+{% endif %}
 {% if ok == 'deleted' %}
 <div class="alert alert-ok">Usuário removido com sucesso.</div>
 {% endif %}
@@ -18,6 +30,65 @@
 {% if error == 'limit_invalid' %}
 <div class="alert alert-error">Informe um número válido para o limite de contas.</div>
 {% endif %}
+
+<div class="og-glass-card" style="margin-bottom:20px;padding:18px 20px">
+  <h3 style="margin:0 0 12px;font-size:15px"><i data-lucide="ticket" class="inline-icon"></i> Códigos de convite</h3>
+  <p class="muted" style="margin:0 0 14px;font-size:13px">Novos usuários precisam de um convite para se cadastrar.</p>
+  <form method="post" action="/admin/invites/create" class="admin-invite-form">
+    <label>Quantidade
+      <input type="number" name="quantity" min="1" max="20" value="1" class="admin-limit-input" style="width:80px">
+    </label>
+    <label>Usos por código
+      <input type="number" name="max_uses" min="1" max="100" value="1" class="admin-limit-input" style="width:80px">
+    </label>
+    <label>Nota (opcional)
+      <input type="text" name="note" placeholder="Ex.: cliente João" style="min-width:160px">
+    </label>
+    <button type="submit" class="btn btn-sm btn-primary">Gerar convite(s)</button>
+  </form>
+
+  {% if invites %}
+  <div class="og-table-wrap" style="margin-top:16px">
+    <table class="og-table">
+      <thead>
+        <tr>
+          <th>Código</th>
+          <th>Usos</th>
+          <th>Status</th>
+          <th>Usado por</th>
+          <th>Criado</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for inv in invites %}
+        <tr>
+          <td><code class="invite-code-tag">{{ inv.code }}</code>{% if inv.note %} <span class="og-muted">· {{ inv.note }}</span>{% endif %}</td>
+          <td>{{ inv.use_count }} / {{ inv.max_uses }}</td>
+          <td>
+            {% if inv.is_active and inv.use_count < inv.max_uses %}
+            <span class="og-badge badge-green">Disponível</span>
+            {% else %}
+            <span class="og-badge badge-yellow">Esgotado</span>
+            {% endif %}
+          </td>
+          <td class="og-muted">{% if inv.used_by %}@{{ inv.used_by.username }}{% else %}—{% endif %}</td>
+          <td class="og-muted">{{ inv.created_at | localtime('%d/%m/%Y') }}</td>
+          <td>
+            <form method="post" action="/admin/invites/{{ inv.id }}/delete"
+                  onsubmit="return confirm('Remover convite {{ inv.code }}?');">
+              <button type="submit" class="btn btn-sm btn-danger">Remover</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="og-muted" style="margin:14px 0 0;font-size:13px">Nenhum convite gerado ainda.</p>
+  {% endif %}
+</div>
 
 <div class="og-glass-card og-table-panel">
   <div class="og-table-wrap">

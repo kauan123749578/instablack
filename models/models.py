@@ -53,6 +53,32 @@ class User(Base):
     )
 
 
+class InviteCode(Base):
+    __tablename__ = "invite_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    created_by_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    used_by_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    max_uses: Mapped[int] = mapped_column(Integer, default=1)
+    use_count: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    note: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    used_at: Mapped[Optional[dt.datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    created_by: Mapped[Optional["User"]] = relationship(foreign_keys=[created_by_id])
+    used_by: Mapped[Optional["User"]] = relationship(foreign_keys=[used_by_id])
+
+
 class InstagramAccount(Base):
     __tablename__ = "instagram_accounts"
     __table_args__ = (UniqueConstraint("user_id", "username", name="uq_user_ig_username"),)

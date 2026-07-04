@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.security import hash_password, verify_password
 from app.templating import templates
+from app.utils.invite_codes import consume_invite, get_valid_invite
 from core.database import get_db
 from models.models import User
 
@@ -61,6 +62,7 @@ def register(
     username: str = Form(...),
     password: str = Form(...),
     password_confirm: str = Form(...),
+    invite_code: str = Form(...),
     db: Session = Depends(get_db),
 ):
     if not settings.allow_registration:
@@ -68,14 +70,20 @@ def register(
 
     username_norm = username.strip().lower()
     error: str | None = None
-    if not username_norm or len(username_norm) < 3:
-        error = "Informe um usuário com pelo menos 3 caracteres."
-    elif len(password) < 8:
-        error = "A senha precisa ter pelo menos 8 caracteres."
-    elif password != password_confirm:
-        error = "As senhas não conferem."
-    elif db.scalar(select(User).where(User.username == username_norm)) is not None:
-        error = "Já existe um usuário com esse nome."
+
+    invite = get_valid_invite(db, invite_code)
+    if invite is None:
+        error = "Código de convite inválido, expirado ou já utilizado."
+
+    if not error:
+        if not username_norm or len(username_norm) < 3:
+            error = "Informe um usuário com pelo menos 3 caracteres."
+        elif len(password) < 8:
+            error = "A senha precisa ter pelo menos 8 caracteres."
+        elif password != password_confirm:
+            error = "As senhas não conferem."
+        elif db.scalar(select(User).where(User.username == username_norm)) is not None:
+            error = "Já existe um usuário com esse nome."
 
     if error:
         return templates.TemplateResponse(
@@ -90,6 +98,8 @@ def register(
         account_limit=settings.default_account_limit,
     )
     db.add(user)
+    db.flush()
+    consume_invite(db, invite, user.id)
     db.commit()
     request.session["user_id"] = user.id
     return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
