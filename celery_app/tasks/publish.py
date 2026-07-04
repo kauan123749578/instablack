@@ -70,6 +70,7 @@ def publish_once(
     thumb_key: str | None,
     caption: str,
     content_type: str,
+    story_link: str | None = None,
 ) -> dict:
     """Publicação única imediata (sem automação recorrente)."""
     return _execute_publish(
@@ -79,6 +80,7 @@ def publish_once(
         thumb_key=thumb_key,
         caption=caption or "",
         content_type=content_type or "reel",
+        story_link=story_link,
     )
 
 
@@ -114,6 +116,7 @@ def publish_to_account(self, automation_id: int, account_id: int) -> dict:
             thumb_key=automation.thumb_key,
             caption=automation.caption or "",
             content_type=automation.content_type or "reel",
+            story_link=automation.story_link,
         )
 
 
@@ -124,6 +127,7 @@ def _execute_publish(
     thumb_key: str | None,
     caption: str,
     content_type: str,
+    story_link: str | None = None,
 ) -> dict:
     storage = get_storage()
 
@@ -199,7 +203,7 @@ def _execute_publish(
 
         try:
             if content_type == "story":
-                result = publish_story(cl, clean_path)
+                result = publish_story(cl, clean_path, link_url=story_link)
             elif content_type == "photo":
                 result = publish_photo_feed(cl, clean_path, caption)
             else:

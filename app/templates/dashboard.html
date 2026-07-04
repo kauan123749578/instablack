@@ -1,28 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Dashboard — instablack{% endblock %}
 
-{% block topbar_left %}
-<div class="og-search-wrap">
-  <i data-lucide="search" class="og-search-icon"></i>
-  <input type="search" class="og-search" placeholder="Buscar automações, contas…" aria-label="Buscar">
-</div>
-{% endblock %}
-
-{% block topbar_center %}{% endblock %}
-
 {% block content %}
 <div class="og-dash">
 
-  <header class="og-page-header">
-    <div class="og-page-titles">
-      <h1 class="og-page-title">Dashboard</h1>
-      <p class="og-page-sub">Visão geral da sua conta</p>
-    </div>
+  <div class="og-dash-actions">
     <a href="/automations/new" class="og-btn-primary" data-nav="/automations/new">
       <i data-lucide="plus"></i>
       Nova automação
     </a>
-  </header>
+  </div>
 
   <div class="og-kpi-row">
     <article class="og-glass-card og-kpi-card">

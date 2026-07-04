@@ -23,6 +23,13 @@ ALLOWED_INTERVALS = [30, 60, 120, 240, 360, 720, 1440]
 CONTENT_TYPES = ["reel", "story", "photo"]
 
 
+def _story_link_value(content_type: str, story_link: str) -> str | None:
+    if content_type != "story":
+        return None
+    link = story_link.strip()
+    return link or None
+
+
 @router.get("")
 def list_automations(
     request: Request,
@@ -133,6 +140,7 @@ async def create_calendar_automation(
     name: str = Form(...),
     content_type: str = Form("reel"),
     caption: str = Form(""),
+    story_link: str = Form(""),
     calendar_days: str = Form(""),
     calendar_time: str = Form(...),
     account_ids: list[int] = Form(default=[]),
@@ -203,6 +211,7 @@ async def create_calendar_automation(
         video_original_name=video.filename,
         thumb_key=thumb_key,
         thumb_original_name=thumb_original_name,
+        story_link=_story_link_value(content_type, story_link),
         schedule_type="calendar",
         calendar_days=days_to_json(days),
         calendar_time=calendar_time,
@@ -222,6 +231,7 @@ async def create_automation(
     name: str = Form(...),
     content_type: str = Form("reel"),
     caption: str = Form(""),
+    story_link: str = Form(""),
     schedule_mode: str = Form("recurring"),
     interval_minutes: int = Form(60),
     calendar_days: str = Form(""),
@@ -294,7 +304,14 @@ async def create_automation(
     if schedule_mode == "now":
         for idx, acc in enumerate(accounts):
             publish_once.apply_async(
-                args=[acc.id, video_key, thumb_key, caption, content_type],
+                args=[
+                    acc.id,
+                    video_key,
+                    thumb_key,
+                    caption,
+                    content_type,
+                    _story_link_value(content_type, story_link),
+                ],
                 countdown=idx * 5,
             )
         return RedirectResponse(
@@ -316,6 +333,7 @@ async def create_automation(
             video_original_name=video.filename,
             thumb_key=thumb_key,
             thumb_original_name=thumb_original_name,
+            story_link=_story_link_value(content_type, story_link),
             schedule_type="calendar",
             calendar_days=days_to_json(days),
             calendar_time=calendar_time.strip(),
@@ -340,6 +358,7 @@ async def create_automation(
         video_original_name=video.filename,
         thumb_key=thumb_key,
         thumb_original_name=thumb_original_name,
+        story_link=_story_link_value(content_type, story_link),
         schedule_type="interval",
         interval_minutes=interval_minutes,
         status="active",

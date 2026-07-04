@@ -14,9 +14,20 @@ MONTHS_PT = [
 
 
 def format_date_header() -> str:
-    """Ex.: '29 de junho de 2026' em BRT."""
+    """Ex.: '4 DE JULHO DE 2026' em BRT (uppercase)."""
     now = brt_now()
-    return f"{now.day} de {MONTHS_PT[now.month - 1]} de {now.year}"
+    month = MONTHS_PT[now.month - 1].upper()
+    return f"{now.day} DE {month} DE {now.year}"
+
+
+def _greeting_from_hour(hour: int) -> str:
+    if hour < 6:
+        return "Boa madrugada"
+    if hour < 12:
+        return "Bom dia"
+    if hour < 18:
+        return "Boa tarde"
+    return "Boa noite"
 
 
 def to_brt(value: dt.datetime | None, fmt: str = DEFAULT_FMT) -> str:
@@ -35,23 +46,11 @@ def brt_now() -> dt.datetime:
 
 
 def greeting_period() -> str:
-    """Retorna 'Bom dia', 'Boa tarde' ou 'Boa noite'."""
-    hour = brt_now().hour
-    if hour < 12:
-        return "Bom dia"
-    if hour < 18:
-        return "Boa tarde"
-    return "Boa noite"
+    """Retorna saudação conforme horário BRT."""
+    return _greeting_from_hour(brt_now().hour)
 
 
 def greeting_for_user(username: str, display_name: str | None = None) -> str:
-    """Retorna 'Bom dia/tarde/noite, {nome}'."""
+    """Retorna 'Bom dia/tarde/noite/madrugada, {nome}'."""
     name = (display_name or username).strip()
-    hour = brt_now().hour
-    if hour < 12:
-        period = "Bom dia"
-    elif hour < 18:
-        period = "Boa tarde"
-    else:
-        period = "Boa noite"
-    return f"{period}, {name}"
+    return f"{_greeting_from_hour(brt_now().hour)}, {name}"

@@ -80,6 +80,8 @@ def _sqlite_migrate() -> None:
             conn.execute(text("ALTER TABLE automations ADD COLUMN calendar_days TEXT"))
         if "calendar_time" not in cols:
             conn.execute(text("ALTER TABLE automations ADD COLUMN calendar_time VARCHAR(8)"))
+        if "story_link" not in cols:
+            conn.execute(text("ALTER TABLE automations ADD COLUMN story_link VARCHAR(512)"))
         if "users" in insp.get_table_names():
             ucols = {c["name"] for c in insp.get_columns("users")}
             if "display_name" not in ucols:
@@ -110,6 +112,8 @@ def _postgres_migrate() -> None:
                 conn.execute(text("ALTER TABLE automations ADD COLUMN calendar_days TEXT"))
             if "calendar_time" not in cols:
                 conn.execute(text("ALTER TABLE automations ADD COLUMN calendar_time VARCHAR(8)"))
+            if "story_link" not in cols:
+                conn.execute(text("ALTER TABLE automations ADD COLUMN story_link VARCHAR(512)"))
         if "users" in tables:
             ucols = {c["name"] for c in insp.get_columns("users")}
             if "display_name" not in ucols:

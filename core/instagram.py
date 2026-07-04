@@ -10,6 +10,7 @@ from typing import Optional
 import requests
 from instagrapi import Client
 from instagrapi.exceptions import LoginRequired, TwoFactorRequired
+from instagrapi.types import StoryLink
 
 log = logging.getLogger(__name__)
 
@@ -155,15 +156,42 @@ def publish_reel(
     return {"id": str(media.pk), "code": media.code, "url": url}
 
 
-def publish_story(cl: Client, media_path: Path) -> dict:
-    """Publica story (foto ou vídeo)."""
+def _normalize_url(url: str) -> str:
+    u = url.strip()
+    if not u:
+        return ""
+    if not u.startswith(("http://", "https://")):
+        u = f"https://{u}"
+    return u
+
+
+def _story_links(link_url: str | None) -> list[StoryLink]:
+    url = _normalize_url(link_url or "")
+    if not url:
+        return []
+    return [
+        StoryLink(
+            webUri=url,
+            x=0.5,
+            y=0.85,
+            z=1,
+            width=0.45,
+            height=0.08,
+            rotation=0.0,
+        )
+    ]
+
+
+def publish_story(cl: Client, media_path: Path, link_url: str | None = None) -> dict:
+    """Publica story (foto ou vídeo), opcionalmente com link sticker."""
     if not media_path.exists():
         raise FileNotFoundError(f"Mídia não encontrada: {media_path}")
+    links = _story_links(link_url)
     ext = media_path.suffix.lower()
     if ext in (".mp4", ".mov", ".webm"):
-        media = cl.video_upload_to_story(media_path)
+        media = cl.video_upload_to_story(media_path, links=links)
     else:
-        media = cl.photo_upload_to_story(media_path)
+        media = cl.photo_upload_to_story(media_path, links=links)
     return {"id": str(media.pk), "code": getattr(media, "code", None), "url": None}
 
 

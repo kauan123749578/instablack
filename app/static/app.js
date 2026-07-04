@@ -105,6 +105,7 @@
     const mediaLabel = document.getElementById("media-label");
     const captionWrap = document.getElementById("caption-wrap");
     const thumbWrap = document.getElementById("thumb-wrap");
+    const storyLinkWrap = document.getElementById("story-link-wrap");
     if (!sel) return;
 
     const params = new URLSearchParams(window.location.search);
@@ -117,14 +118,17 @@
         if (mediaLabel) mediaLabel.textContent = "Mídia do Story (foto ou vídeo)";
         if (captionWrap) captionWrap.style.display = "none";
         if (thumbWrap) thumbWrap.style.display = "none";
+        if (storyLinkWrap) storyLinkWrap.style.display = "";
       } else if (t === "photo") {
         if (mediaLabel) mediaLabel.textContent = "Foto para o feed (.jpg/.png)";
         if (captionWrap) captionWrap.style.display = "";
         if (thumbWrap) thumbWrap.style.display = "none";
+        if (storyLinkWrap) storyLinkWrap.style.display = "none";
       } else {
         if (mediaLabel) mediaLabel.textContent = "Vídeo Reels (.mp4)";
         if (captionWrap) captionWrap.style.display = "";
         if (thumbWrap) thumbWrap.style.display = "";
+        if (storyLinkWrap) storyLinkWrap.style.display = "none";
       }
     }
     sel.addEventListener("change", update);
@@ -316,6 +320,7 @@
     const mediaLabel = document.getElementById("media-label-cal");
     const captionWrap = document.getElementById("caption-wrap-cal");
     const thumbWrap = document.getElementById("thumb-wrap-cal");
+    const storyLinkWrap = document.getElementById("story-link-wrap-cal");
     if (sel) {
       function updateType() {
         const t = sel.value;
@@ -323,14 +328,17 @@
           if (mediaLabel) mediaLabel.textContent = "Mídia do Story";
           if (captionWrap) captionWrap.style.display = "none";
           if (thumbWrap) thumbWrap.style.display = "none";
+          if (storyLinkWrap) storyLinkWrap.style.display = "";
         } else if (t === "photo") {
           if (mediaLabel) mediaLabel.textContent = "Foto do feed";
           if (captionWrap) captionWrap.style.display = "";
           if (thumbWrap) thumbWrap.style.display = "none";
+          if (storyLinkWrap) storyLinkWrap.style.display = "none";
         } else {
           if (mediaLabel) mediaLabel.textContent = "Vídeo Reels";
           if (captionWrap) captionWrap.style.display = "";
           if (thumbWrap) thumbWrap.style.display = "";
+          if (storyLinkWrap) storyLinkWrap.style.display = "none";
         }
       }
       sel.addEventListener("change", updateType);

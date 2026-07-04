@@ -7,8 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bricolage+Grotesque:wght@600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=11" />
-  <link rel="stylesheet" href="/static/dashboard.css?v=9" />
+  <link rel="stylesheet" href="/static/style.css?v=12" />
+  <link rel="stylesheet" href="/static/dashboard.css?v=10" />
   {% block head %}{% endblock %}
 </head>
 <body class="app-body premium-app">
@@ -107,15 +107,15 @@
     <div class="main-wrap">
       <header class="topbar topbar--dash">
         <div class="topbar-slot topbar-left">
-          {% block topbar_left %}
-          <div class="og-search-wrap">
-            <i data-lucide="search" class="og-search-icon"></i>
-            <input type="search" class="og-search" placeholder="Buscar…" aria-label="Buscar">
-          </div>
-          {% endblock %}
+          {% block topbar_left %}{% endblock %}
         </div>
         <div class="topbar-slot topbar-center">
-          {% block topbar_center %}{% endblock %}
+          {% block topbar_center %}
+          <div class="topbar-greeting">
+            <p class="greeting">{{ greeting_period() }}, <span class="greeting-name">{{ user_display_name(user) }}</span></p>
+            <p class="greeting-date">{{ format_date_header() }}</p>
+          </div>
+          {% endblock %}
         </div>
         <div class="topbar-slot topbar-right">
           <button type="button" class="icon-btn" title="Tema" id="theme-toggle">
@@ -167,7 +167,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/lucide@0.475.0/dist/umd/lucide.min.js" crossorigin="anonymous"></script>
-  <script src="/static/app.js?v=9"></script>
+  <script src="/static/app.js?v=10"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

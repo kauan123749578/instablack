@@ -27,6 +27,10 @@ body.premium-app .topbar {
   background: #050505;
   border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
+.topbar-greeting { line-height: 1.2; }
+.og-dash-actions {
+  display: flex; justify-content: flex-end; margin-bottom: 18px;
+}
 body.premium-app .icon-btn { border-radius: 0; border: 1px solid var(--og-card-border); }
 body.premium-app .shark-content { padding: 24px 32px 80px; }
 
