@@ -20,6 +20,9 @@ tmp/
 Thumbs.db
 *.lnk
 
+# Arquivo solto não relacionado ao projeto
+/index.html
+
 # M\u00eddia local
 *.jpg
 *.jpeg
