@@ -88,6 +88,8 @@ def _sqlite_migrate() -> None:
                 conn.execute(text("ALTER TABLE users ADD COLUMN avatar_key VARCHAR(512)"))
             if "is_admin" not in ucols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT 0"))
+            if "account_limit" not in ucols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN account_limit INTEGER"))
             conn.execute(text("UPDATE users SET is_admin = 1 WHERE username = 'admin'"))
 
 
@@ -116,6 +118,8 @@ def _postgres_migrate() -> None:
                 conn.execute(text("ALTER TABLE users ADD COLUMN avatar_key VARCHAR(512)"))
             if "is_admin" not in ucols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT FALSE"))
+            if "account_limit" not in ucols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN account_limit INTEGER"))
             conn.execute(text("UPDATE users SET is_admin = TRUE WHERE username = 'admin' AND is_admin IS NOT TRUE"))
 
 

@@ -38,6 +38,7 @@ def bootstrap_admin() -> None:
                 password_hash=hash_password(password),
                 display_name=username,
                 is_admin=settings.bootstrap_admin_is_admin,
+                account_limit=None,
             )
         )
         try:

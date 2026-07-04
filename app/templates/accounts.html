@@ -3,6 +3,11 @@
 {% block content %}
 <div class="page-header">
   <h2>Contas Instagram</h2>
+  {% if account_limit_label == 'Ilimitado' %}
+  <p class="muted page-header-sub">{{ accounts|length }} conectada(s) · limite ilimitado</p>
+  {% else %}
+  <p class="muted page-header-sub">{{ accounts|length }} / {{ account_limit_label }} conta(s) · {% if accounts_remaining == 0 %}sem vagas{% else %}{{ accounts_remaining }} vaga(s) restante(s){% endif %}</p>
+  {% endif %}
 </div>
 
 {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
@@ -10,7 +15,12 @@
 
 <div class="form-card" style="margin-bottom:24px">
   <h3 style="margin-top:0">Adicionar nova conta</h3>
-  <form method="post" action="/accounts/add" class="form-grid">
+  {% if not can_add_account %}
+  <div class="alert alert-error" style="margin-bottom:12px">
+    Limite de contas atingido ({{ account_limit_label }}). Peça ao administrador para liberar mais vagas.
+  </div>
+  {% endif %}
+  <form method="post" action="/accounts/add" class="form-grid"{% if not can_add_account %} style="opacity:0.45;pointer-events:none"{% endif %}>
     <fieldset>
       <legend>Método de autenticação</legend>
       <div class="checkbox-row">

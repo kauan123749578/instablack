@@ -3,14 +3,20 @@
 {% block content %}
 <div class="page-header">
   <h2><i data-lucide="shield" class="inline-icon"></i> Painel Admin</h2>
-  <p class="muted page-header-sub">Gerencie usuários do sistema</p>
+  <p class="muted page-header-sub">Gerencie usuários e limites de contas Instagram</p>
 </div>
 
 {% if ok == 'deleted' %}
 <div class="alert alert-ok">Usuário removido com sucesso.</div>
 {% endif %}
+{% if ok == 'limit' %}
+<div class="alert alert-ok">Limite de contas atualizado.</div>
+{% endif %}
 {% if error == 'self' %}
 <div class="alert alert-error">Você não pode excluir sua própria conta.</div>
+{% endif %}
+{% if error == 'limit_invalid' %}
+<div class="alert alert-error">Informe um número válido para o limite de contas.</div>
 {% endif %}
 
 <div class="og-glass-card og-table-panel">
@@ -21,6 +27,7 @@
           <th>Usuário</th>
           <th>Nome</th>
           <th>Contas IG</th>
+          <th>Limite</th>
           <th>Automações</th>
           <th>Status</th>
           <th>Cadastro</th>
@@ -33,7 +40,20 @@
         <tr>
           <td><strong>@{{ u.username }}</strong>{% if u.is_admin %} <span class="og-badge badge-yellow">Admin</span>{% endif %}</td>
           <td class="og-muted">{{ u.display_name or '—' }}</td>
-          <td>{{ row.ig_count }}</td>
+          <td>{{ row.ig_count }}{% if u.account_limit is not none %} / {{ u.account_limit }}{% endif %}</td>
+          <td>
+            <form method="post" action="/admin/users/{{ u.id }}/limit" class="admin-limit-form">
+              <label class="admin-limit-unlimited">
+                <input type="checkbox" name="unlimited" value="1" {% if u.account_limit is none %}checked{% endif %}
+                       onchange="this.form.querySelector('[name=account_limit]').disabled = this.checked;">
+                ∞
+              </label>
+              <input type="number" name="account_limit" min="0" step="1" class="admin-limit-input"
+                     value="{{ u.account_limit if u.account_limit is not none else 0 }}"
+                     {% if u.account_limit is none %}disabled{% endif %}>
+              <button type="submit" class="btn btn-sm btn-primary">Salvar</button>
+            </form>
+          </td>
           <td>{{ row.auto_count }}</td>
           <td>
             {% if u.is_active %}

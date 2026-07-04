@@ -5,12 +5,17 @@ import datetime as dt
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.deps import get_current_user
 from app.security import decrypt_secret, encrypt_secret
 from app.templating import templates
+from app.utils.account_limits import (
+    account_limit_label,
+    accounts_remaining,
+    can_add_instagram_account,
+)
 from core.database import get_db
 from core.instagram import (
     InstagramAuthError,
@@ -30,20 +35,47 @@ from models.models import InstagramAccount, User
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
 
+def _accounts_page_context(
+    request: Request,
+    user: User,
+    accounts: list[InstagramAccount],
+    *,
+    error: str | None = None,
+    ok: str | None = None,
+) -> dict:
+    count = len(accounts)
+    remaining = accounts_remaining(user, count)
+    can_add = remaining is None or remaining > 0
+    return {
+        "request": request,
+        "user": user,
+        "accounts": accounts,
+        "error": error,
+        "ok": ok,
+        "account_limit_label": account_limit_label(user.account_limit),
+        "accounts_remaining": remaining,
+        "can_add_account": can_add,
+    }
+
+
+def _load_user_accounts(db: Session, user: User) -> list[InstagramAccount]:
+    return db.scalars(
+        select(InstagramAccount)
+        .where(InstagramAccount.user_id == user.id)
+        .order_by(InstagramAccount.username.asc())
+    ).all()
+
+
 @router.get("")
 def list_accounts(
     request: Request,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    accounts = db.scalars(
-        select(InstagramAccount)
-        .where(InstagramAccount.user_id == user.id)
-        .order_by(InstagramAccount.username.asc())
-    ).all()
+    accounts = _load_user_accounts(db, user)
     return templates.TemplateResponse(
         "accounts.html",
-        {"request": request, "user": user, "accounts": accounts, "error": None, "ok": None},
+        _accounts_page_context(request, user, accounts),
     )
 
 
@@ -63,34 +95,28 @@ def add_account(
     proxy = proxy.strip()
 
     if not proxy:
-        accounts = db.scalars(
-            select(InstagramAccount).where(InstagramAccount.user_id == user.id)
-        ).all()
+        accounts = _load_user_accounts(db, user)
         return templates.TemplateResponse(
             "accounts.html",
-            {
-                "request": request,
-                "user": user,
-                "accounts": accounts,
-                "error": "Proxy é obrigatório. Informe um proxy válido antes de conectar a conta.",
-                "ok": None,
-            },
+            _accounts_page_context(
+                request,
+                user,
+                accounts,
+                error="Proxy é obrigatório. Informe um proxy válido antes de conectar a conta.",
+            ),
             status_code=status.HTTP_400_BAD_REQUEST,
         )
 
     if not check_proxy(proxy):
-        accounts = db.scalars(
-            select(InstagramAccount).where(InstagramAccount.user_id == user.id)
-        ).all()
+        accounts = _load_user_accounts(db, user)
         return templates.TemplateResponse(
             "accounts.html",
-            {
-                "request": request,
-                "user": user,
-                "accounts": accounts,
-                "error": "Proxy inválido ou fora do ar. A conexão foi bloqueada para evitar vazamento do banimento.",
-                "ok": None,
-            },
+            _accounts_page_context(
+                request,
+                user,
+                accounts,
+                error="Proxy inválido ou fora do ar. A conexão foi bloqueada para evitar vazamento do banimento.",
+            ),
             status_code=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -113,20 +139,15 @@ def add_account(
             encrypted_pw = encrypt_secret(password)
 
     except InstagramAuthError as exc:
-        accounts = db.scalars(
-            select(InstagramAccount)
-            .where(InstagramAccount.user_id == user.id)
-            .order_by(InstagramAccount.username.asc())
-        ).all()
+        accounts = _load_user_accounts(db, user)
         return templates.TemplateResponse(
             "accounts.html",
-            {
-                "request": request,
-                "user": user,
-                "accounts": accounts,
-                "error": f"Falha no login: {exc}",
-                "ok": None,
-            },
+            _accounts_page_context(
+                request,
+                user,
+                accounts,
+                error=f"Falha no login: {exc}",
+            ),
             status_code=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -136,6 +157,19 @@ def add_account(
             InstagramAccount.username == username,
         )
     )
+    if not existing:
+        current_count = db.scalar(
+            select(func.count(InstagramAccount.id)).where(InstagramAccount.user_id == user.id)
+        ) or 0
+        allowed, limit_msg = can_add_instagram_account(user, current_count)
+        if not allowed:
+            accounts = _load_user_accounts(db, user)
+            return templates.TemplateResponse(
+                "accounts.html",
+                _accounts_page_context(request, user, accounts, error=limit_msg),
+                status_code=status.HTTP_403_FORBIDDEN,
+            )
+
     if existing:
         existing.session_json = serialize_settings(settings_dict)
         if encrypted_pw:

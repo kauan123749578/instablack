@@ -84,7 +84,11 @@ def register(
             status_code=status.HTTP_400_BAD_REQUEST,
         )
 
-    user = User(username=username_norm, password_hash=hash_password(password))
+    user = User(
+        username=username_norm,
+        password_hash=hash_password(password),
+        account_limit=settings.default_account_limit,
+    )
     db.add(user)
     db.commit()
     request.session["user_id"] = user.id
