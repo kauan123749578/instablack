@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bricolage+Grotesque:wght@600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=12" />
+  <link rel="stylesheet" href="/static/style.css?v=13" />
   <link rel="stylesheet" href="/static/dashboard.css?v=10" />
   {% block head %}{% endblock %}
 </head>
@@ -118,13 +118,6 @@
           {% endblock %}
         </div>
         <div class="topbar-slot topbar-right">
-          <button type="button" class="icon-btn" title="Tema" id="theme-toggle">
-            <i data-lucide="sun"></i>
-          </button>
-          <button type="button" class="icon-btn notif-btn" title="Notificações">
-            <i data-lucide="bell"></i>
-            <span class="notif-dot"></span>
-          </button>
           <a href="/perfil" class="user-avatar-link" data-nav="/perfil" title="Minha conta">
             {% if user_avatar_url(user) %}
             <img src="{{ user_avatar_url(user) }}" alt="" class="user-avatar user-avatar-img">
