@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.config import settings
 from app.security import hash_password
@@ -14,7 +15,11 @@ log = logging.getLogger(__name__)
 
 
 def bootstrap_admin() -> None:
-    """Cria usuário admin se BOOTSTRAP_ADMIN_* estiver definido e não existir ninguém."""
+    """Cria usuário admin se BOOTSTRAP_ADMIN_* estiver definido e não existir ninguém.
+
+    Tolera corrida entre múltiplos workers (o segundo que tentar inserir apenas
+    encontra o admin já criado).
+    """
     username = (settings.bootstrap_admin_username or "").strip().lower()
     password = settings.bootstrap_admin_password or ""
     if not username or not password:
@@ -27,11 +32,6 @@ def bootstrap_admin() -> None:
                 existing.is_admin = True
             return
 
-        any_user = db.scalar(select(User.id).limit(1))
-        if any_user is not None:
-            log.info("Bootstrap admin ignorado: já existem usuários no banco.")
-            return
-
         db.add(
             User(
                 username=username,
@@ -40,4 +40,10 @@ def bootstrap_admin() -> None:
                 is_admin=settings.bootstrap_admin_is_admin,
             )
         )
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            log.info("Admin já criado por outro worker; seguindo.")
+            return
         log.info("Usuário bootstrap criado: %s", username)
