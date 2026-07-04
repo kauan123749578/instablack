@@ -1,6 +1,6 @@
-# Deploy no Railway — OnlyGram
+# Deploy no Railway — instablack
 
-Guia para subir o OnlyGram em produção **sem Cloudflare**.
+Guia para subir o instablack em produção.
 
 ## Arquitetura
 

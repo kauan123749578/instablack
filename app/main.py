@@ -34,7 +34,7 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="OnlyGram",
+        title="instablack",
         version="1.0.0",
         lifespan=lifespan,
         docs_url="/docs" if settings.app_env == "development" else None,

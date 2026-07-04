@@ -1,4 +1,4 @@
-/* OnlyGram Dashboard — #050505, cantos pontudos, glow rosa Instagram */
+/* instablack Dashboard — #050505, cantos pontudos, glow rosa Instagram */
 :root {
   --og-bg: #050505;
   --og-card-bg: #080808;
@@ -65,6 +65,49 @@ body.premium-app .shark-content { padding: 24px 32px 80px; }
     0 4px 24px rgba(0, 0, 0, 0.6);
 }
 .og-glass-card > * { position: relative; z-index: 1; }
+
+/* Feixe de luz suave girando na borda dos cards (aleatório por card) */
+@property --og-beam-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+.og-glass-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1.5px;
+  background: conic-gradient(
+    from var(--og-beam-angle),
+    transparent 0deg,
+    transparent 288deg,
+    rgba(225, 48, 108, 0.0) 300deg,
+    rgba(225, 48, 108, 0.85) 332deg,
+    rgba(247, 119, 55, 0.95) 346deg,
+    rgba(131, 58, 180, 0.6) 356deg,
+    transparent 360deg
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0.5;
+  z-index: 0;
+  animation: og-beam-rotate 7s linear infinite;
+}
+@keyframes og-beam-rotate {
+  to { --og-beam-angle: 360deg; }
+}
+/* Tempos/atrasos variados = sensação aleatória e dessincronizada */
+.og-glass-card:nth-child(2n)::after { animation-duration: 9s; animation-delay: -2.4s; }
+.og-glass-card:nth-child(3n)::after { animation-duration: 6s; animation-delay: -4.1s; }
+.og-glass-card:nth-child(4n)::after { animation-duration: 11s; animation-delay: -1.2s; }
+.og-glass-card:nth-child(5n)::after { animation-duration: 8s; animation-delay: -5.6s; }
+.og-glass-card:hover::after { opacity: 0.9; }
+
+@media (prefers-reduced-motion: reduce) {
+  .og-glass-card::after { animation: none; opacity: 0; }
+}
 
 .og-dash { padding: 8px 0 48px; }
 .og-page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; flex-wrap: wrap; gap: 16px; }

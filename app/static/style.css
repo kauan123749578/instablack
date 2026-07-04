@@ -1,4 +1,4 @@
-/* OnlyGram — tema preto + rosa Instagram */
+/* instablack — tema preto + rosa Instagram */
 :root {
   --bg: #050505;
   --sidebar: #0a0a0a;
@@ -89,13 +89,14 @@ a:hover { color: var(--primary-hover); }
 }
 .sidebar-bottom { flex-shrink: 0; margin-top: auto; }
 .sidebar::before {
-  content: ""; position: absolute; right: 0; width: 2px; height: 72px;
-  background: linear-gradient(180deg, transparent, rgba(225,48,108,0.15) 20%, #E1306C 45%, #833AB4 55%, #E1306C 75%, rgba(225,48,108,0.15) 90%, transparent);
-  pointer-events: none; z-index: 4;
-  animation: sidebar-beam 3.2s linear infinite;
+  content: ""; position: absolute; right: -1px; width: 3px; height: 190px;
+  background: linear-gradient(180deg, transparent, rgba(225,48,108,0.1) 12%, #E1306C 38%, #F77737 50%, #833AB4 62%, #E1306C 82%, transparent);
+  box-shadow: 0 0 14px rgba(225,48,108,0.6), 0 0 28px rgba(131,58,180,0.35);
+  pointer-events: none; z-index: 4; border-radius: 2px;
+  animation: sidebar-beam 4.2s linear infinite;
 }
 @keyframes sidebar-beam {
-  0% { top: -72px; opacity: 0; } 8% { opacity: 1; } 92% { opacity: 1; } 100% { top: 100%; opacity: 0; }
+  0% { top: -190px; opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { top: 100%; opacity: 0; }
 }
 .sidebar:hover { width: var(--sidebar-w-open); }
 

@@ -1,4 +1,4 @@
-"""Dashboard premium OnlyGram."""
+"""Dashboard premium instablack."""
 from __future__ import annotations
 
 import datetime as dt
