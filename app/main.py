@@ -104,11 +104,14 @@ def create_app() -> FastAPI:
     def readyz():
         db_ok, db_msg = check_database()
         redis_ok, redis_msg = check_redis()
-        healthy = db_ok and redis_ok
+        issues = settings.production_issues
+        healthy = db_ok and redis_ok and not issues
         body = {
             "status": "ok" if healthy else "degraded",
             "database": db_msg,
             "redis": redis_msg,
+            "storage": settings.storage_backend,
+            "config_issues": issues,
             "env": settings.app_env,
         }
         return JSONResponse(body, status_code=200 if healthy else 503)

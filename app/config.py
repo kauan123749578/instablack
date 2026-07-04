@@ -1,12 +1,15 @@
 """Configurações da aplicação (carregadas de variáveis de ambiente / .env)."""
 from __future__ import annotations
 
+import logging
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal, Self
 
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+log = logging.getLogger("app.config")
 
 _INSECURE_SECRET_KEYS = frozenset({
     "change-me",
@@ -60,13 +63,14 @@ class Settings(BaseSettings):
         return value
 
     @model_validator(mode="after")
-    def validate_production(self) -> Self:
+    def warn_production(self) -> Self:
+        """Avisa (sem derrubar o app) sobre configs frágeis em produção."""
         if self.app_env != "production":
             return self
 
         if self.secret_key.strip().lower() in _INSECURE_SECRET_KEYS or len(self.secret_key) < 32:
-            raise ValueError(
-                "SECRET_KEY inválida para produção: use uma chave aleatória com pelo menos 32 caracteres."
+            log.warning(
+                "SECRET_KEY fraca em produção: use uma chave aleatória com 32+ caracteres."
             )
 
         if self.storage_backend == "s3":
@@ -80,17 +84,29 @@ class Settings(BaseSettings):
                 if not val
             ]
             if missing:
-                raise ValueError(f"Variáveis S3 obrigatórias: {', '.join(missing)}")
-        elif self.storage_backend == "local":
-            if not self.local_storage_path.startswith("/"):
-                raise ValueError(
-                    "Em produção com storage local, monte um Railway Volume nos services web e worker "
-                    "e defina LOCAL_STORAGE_PATH com caminho absoluto (ex: /data/storage)."
-                )
-        else:
-            raise ValueError("STORAGE_BACKEND inválido.")
+                log.warning("Variáveis S3 faltando: %s", ", ".join(missing))
+        elif self.storage_backend == "local" and not self.local_storage_path.startswith("/"):
+            log.warning(
+                "LOCAL_STORAGE_PATH relativo (%s): em produção use um Railway Volume "
+                "com caminho absoluto (ex: /data/storage) para não perder as mídias.",
+                self.local_storage_path,
+            )
 
         return self
+
+    @property
+    def production_issues(self) -> list[str]:
+        """Lista de problemas de config para exibir em /readyz."""
+        issues: list[str] = []
+        if not self.is_production:
+            return issues
+        if self.secret_key.strip().lower() in _INSECURE_SECRET_KEYS or len(self.secret_key) < 32:
+            issues.append("SECRET_KEY fraca (use 32+ caracteres aleatórios)")
+        if self.is_sqlite:
+            issues.append("Usando SQLite (efêmero no Railway) — configure DATABASE_URL do Postgres")
+        if self.storage_backend == "local" and not self.local_storage_path.startswith("/"):
+            issues.append("LOCAL_STORAGE_PATH não é absoluto (use /data/storage com Volume)")
+        return issues
 
     @property
     def base_dir(self) -> Path:
@@ -110,4 +126,9 @@ def get_settings() -> Settings:
     return Settings()
 
 
-settings = get_settings()
+try:
+    settings = get_settings()
+except Exception:  # nunca deixa a config derrubar o boot do processo
+    log.exception("Falha ao carregar Settings; usando defaults.")
+    get_settings.cache_clear()
+    settings = Settings.model_construct()
