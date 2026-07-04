@@ -7,8 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bricolage+Grotesque:wght@600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=10" />
-  <link rel="stylesheet" href="/static/dashboard.css?v=8" />
+  <link rel="stylesheet" href="/static/style.css?v=11" />
+  <link rel="stylesheet" href="/static/dashboard.css?v=9" />
   {% block head %}{% endblock %}
 </head>
 <body class="app-body premium-app">
@@ -19,7 +19,7 @@
       <div class="sidebar-top">
         <div class="sidebar-brand">
           <div class="brand-mark">
-            <span class="brand-icon"><i data-lucide="aperture"></i></span>
+            <span class="brand-icon brand-icon--ig"><i data-lucide="instagram"></i></span>
             <span class="brand-text">insta<span class="brand-accent">black</span></span>
           </div>
         </div>
@@ -65,11 +65,11 @@
           </a>
 
           <div class="nav-section-label">Relatórios</div>
-          <a href="/" class="nav-link" data-nav="/">
+          <a href="/analytics" class="nav-link" data-nav="/analytics">
             <i data-lucide="chart-no-axes-combined" class="nav-icon"></i>
             <span class="nav-text">Analytics</span>
           </a>
-          <a href="/automations" class="nav-link" data-nav="/automations">
+          <a href="/logs" class="nav-link" data-nav="/logs">
             <i data-lucide="scroll-text" class="nav-icon"></i>
             <span class="nav-text">Logs</span>
           </a>
@@ -157,6 +157,8 @@
       <a href="/automations" data-nav="/automations">Automações</a>
       <a href="/automations/new/calendar" data-nav="/automations/new/calendar">Calendário</a>
       <a href="/automations/new" data-nav="/automations/new">+ Nova automação</a>
+      <a href="/analytics" data-nav="/analytics">Analytics</a>
+      <a href="/logs" data-nav="/logs">Logs</a>
       <a href="/automations/new/story" data-nav="/automations/new/story">Agendar Story</a>
       {% if user.is_admin %}<a href="/admin" data-nav="/admin">Admin</a>{% endif %}
       <a href="/perfil" data-nav="/perfil">Configurações</a>
@@ -165,7 +167,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/lucide@0.475.0/dist/umd/lucide.min.js" crossorigin="anonymous"></script>
-  <script src="/static/app.js?v=8"></script>
+  <script src="/static/app.js?v=9"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

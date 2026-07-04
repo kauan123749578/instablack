@@ -9,7 +9,7 @@ from typing import Optional
 
 import requests
 from instagrapi import Client
-from instagrapi.exceptions import LoginRequired
+from instagrapi.exceptions import LoginRequired, TwoFactorRequired
 
 log = logging.getLogger(__name__)
 
@@ -19,6 +19,10 @@ IP_CHECK_TIMEOUT = 8
 
 class InstagramAuthError(RuntimeError):
     pass
+
+
+class InstagramTwoFactorRequired(InstagramAuthError):
+    """Conta exige código 2FA — o cliente deve solicitar ao usuário."""
 
 
 def _build_client(proxy: Optional[str], settings_dict: Optional[dict]) -> Client:
@@ -85,7 +89,11 @@ def login_with_credentials(
             cl.login(username, password, verification_code=verification_code)
         else:
             cl.login(username, password)
-    except Exception as exc:  # instagrapi tem v\u00e1rias subclasses; tratamos genericamente
+    except TwoFactorRequired as exc:
+        raise InstagramTwoFactorRequired(
+            "Autenticação de dois fatores necessária. Informe o código do autenticador."
+        ) from exc
+    except Exception as exc:  # instagrapi tem várias subclasses; tratamos genericamente
         raise InstagramAuthError(str(exc)) from exc
 
     return cl.get_settings()

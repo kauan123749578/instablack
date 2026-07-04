@@ -20,7 +20,7 @@
     Limite de contas atingido ({{ account_limit_label }}). Peça ao administrador para liberar mais vagas.
   </div>
   {% endif %}
-  <form method="post" action="/accounts/add" class="form-grid"{% if not can_add_account %} style="opacity:0.45;pointer-events:none"{% endif %}>
+  <form method="post" action="/accounts/add" class="form-grid" id="account-add-form"{% if not can_add_account %} style="opacity:0.45;pointer-events:none"{% endif %}>
     <fieldset>
       <legend>Método de autenticação</legend>
       <div class="checkbox-row">
@@ -34,9 +34,7 @@
     <label>Senha
       <input type="password" name="password" autocomplete="new-password">
     </label>
-    <label>Código 2FA (se pedir)
-      <input type="text" name="verification_code">
-    </label>
+    <input type="hidden" name="verification_code" id="verification-code-hidden" value="">
     <label>Session ID (alternativa)
       <input type="text" name="sessionid" placeholder="cole aqui se escolheu Session ID">
     </label>
@@ -46,7 +44,7 @@
     <p class="muted" style="margin:0;font-size:12px">
       Proxy residencial obrigatório. Sem proxy válido, nenhuma requisição será feita — evita vazamento do IP do servidor.
     </p>
-    <button type="submit" class="btn btn-primary">Conectar conta</button>
+    <button type="submit" class="btn btn-primary" id="account-connect-btn">Conectar conta</button>
   </form>
 </div>
 
@@ -64,11 +62,21 @@
         {% for acc in accounts %}
         <tr>
           <td>@{{ acc.username }}</td>
-          <td><span class="badge {{ acc.status }}">{{ acc.status }}</span></td>
+          <td><span class="og-badge {{ status_badge_class(acc.status) }}">{{ status_label(acc.status) }}</span></td>
           <td class="muted" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ acc.proxy or '—' }}</td>
           <td>{{ acc.last_login_at | localtime }}</td>
-          <td>
-            <a href="/accounts/{{ acc.id }}/edit" class="btn btn-sm" data-nav="/accounts/{{ acc.id }}/edit">Editar perfil</a>
+          <td class="account-actions">
+            {% if acc.status == 'paused' %}
+            <form method="post" action="/accounts/{{ acc.id }}/resume">
+              <button type="submit" class="btn btn-sm btn-primary">Retomar</button>
+            </form>
+            {% else %}
+            <form method="post" action="/accounts/{{ acc.id }}/pause"
+                  onsubmit="return confirm('Pausar @{{ acc.username }}? Automações não publicarão nesta conta.');">
+              <button type="submit" class="btn btn-sm">Pausar</button>
+            </form>
+            {% endif %}
+            <a href="/accounts/{{ acc.id }}/edit" class="btn btn-sm" data-nav="/accounts/{{ acc.id }}/edit">Editar</a>
             <form method="post" action="/accounts/{{ acc.id }}/delete"
                   onsubmit="return confirm('Remover @{{ acc.username }}?');">
               <button type="submit" class="btn btn-sm btn-danger">Remover</button>
@@ -82,5 +90,19 @@
   {% else %}
   <p class="muted">Nenhuma conta conectada ainda.</p>
   {% endif %}
+</div>
+
+<div class="modal-overlay{% if needs_2fa %} modal-overlay--open{% endif %}" id="twofa-modal" aria-hidden="{% if needs_2fa %}false{% else %}true{% endif %}">
+  <div class="modal-card" role="dialog" aria-labelledby="twofa-title">
+    <h3 id="twofa-title">Autenticação de dois fatores</h3>
+    <p class="muted">Esta conta exige o código do autenticador. Digite abaixo para concluir o login.</p>
+    <label>Código 2FA
+      <input type="text" id="twofa-code-input" inputmode="numeric" autocomplete="one-time-code" placeholder="000000" maxlength="8">
+    </label>
+    <div class="modal-actions">
+      <button type="button" class="btn" id="twofa-cancel">Cancelar</button>
+      <button type="button" class="btn btn-primary" id="twofa-submit">Confirmar</button>
+    </div>
+  </div>
 </div>
 {% endblock %}

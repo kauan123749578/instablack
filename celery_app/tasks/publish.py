@@ -41,7 +41,7 @@ def execute_automation(self, automation_id: int) -> dict:
 
         account_ids = [
             acc.id for acc in automation.accounts
-            if acc.status not in ("banned", "proxy_down")
+            if acc.status not in ("banned", "proxy_down", "paused", "needs_login")
         ]
 
     for idx, account_id in enumerate(account_ids):
@@ -131,6 +131,14 @@ def _execute_publish(
         account = db.get(InstagramAccount, account_id)
         if account is None:
             return {"error": "account_not_found"}
+        if account.status == "paused":
+            db.add(PublishLog(
+                automation_id=automation_id,
+                account_id=account_id,
+                status="skipped",
+                error="conta pausada",
+            ))
+            return {"skipped": True, "reason": "account_paused"}
         settings_dict = deserialize_settings(account.session_json)
         proxy = account.proxy
         password = decrypt_secret(account.encrypted_password)

@@ -17,8 +17,8 @@ def status_label(status: str) -> str:
     return {
         "active": "Ativa",
         "paused": "Pausada",
-        "needs_login": "Sessão expirando",
-        "proxy_down": "Desconectada",
+        "needs_login": "Sessão expirada",
+        "proxy_down": "Proxy offline",
         "banned": "Banida",
         "success": "Sucesso",
         "failed": "Erro",

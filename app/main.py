@@ -15,7 +15,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app.config import settings
-from app.routes import accounts, admin, auth, automations, dashboard, profile
+from app.routes import accounts, admin, auth, automations, dashboard, logs, profile
 from core.database import init_db
 from core.health import check_database, check_redis
 from core.storage import get_storage
@@ -58,6 +58,7 @@ def create_app() -> FastAPI:
 
     app.include_router(auth.router)
     app.include_router(dashboard.router)
+    app.include_router(logs.router)
     app.include_router(accounts.router)
     app.include_router(automations.router)
     app.include_router(profile.router)

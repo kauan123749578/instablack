@@ -224,6 +224,8 @@ async def create_automation(
     caption: str = Form(""),
     schedule_mode: str = Form("recurring"),
     interval_minutes: int = Form(60),
+    calendar_days: str = Form(""),
+    calendar_time: str = Form("10:00"),
     account_ids: list[int] = Form(default=[]),
     video: UploadFile = File(...),
     thumb: UploadFile | None = File(None),
@@ -233,13 +235,20 @@ async def create_automation(
     error: str | None = None
     if content_type not in CONTENT_TYPES:
         error = "Tipo de conteúdo inválido."
-    elif schedule_mode not in ("now", "recurring"):
+    elif schedule_mode not in ("now", "recurring", "calendar"):
         error = "Modo de publicação inválido."
     elif schedule_mode == "recurring" and interval_minutes not in ALLOWED_INTERVALS:
         error = "Intervalo inválido."
-    elif not account_ids:
+    elif schedule_mode == "calendar":
+        days = parse_calendar_days(calendar_days)
+        if not days:
+            error = "Selecione pelo menos um dia do mês."
+        elif not calendar_time.strip():
+            error = "Informe o horário de publicação."
+
+    if not error and not account_ids:
         error = "Selecione pelo menos uma conta."
-    elif not video or not video.filename:
+    if not error and (not video or not video.filename):
         error = "Envie o arquivo de mídia."
 
     accounts: list[InstagramAccount] = []
@@ -294,6 +303,34 @@ async def create_automation(
         )
 
     now = dt.datetime.utcnow()
+
+    if schedule_mode == "calendar":
+        days = parse_calendar_days(calendar_days)
+        nxt = next_calendar_run(days, calendar_time.strip()) or now
+        automation = Automation(
+            user_id=user.id,
+            name=name.strip(),
+            content_type=content_type,
+            caption=caption,
+            video_key=video_key,
+            video_original_name=video.filename,
+            thumb_key=thumb_key,
+            thumb_original_name=thumb_original_name,
+            schedule_type="calendar",
+            calendar_days=days_to_json(days),
+            calendar_time=calendar_time.strip(),
+            interval_minutes=1440,
+            status="active",
+            next_run_at=nxt,
+        )
+        automation.accounts = accounts
+        db.add(automation)
+        db.commit()
+        return RedirectResponse(
+            "/automations?ok=calendar",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
     automation = Automation(
         user_id=user.id,
         name=name.strip(),

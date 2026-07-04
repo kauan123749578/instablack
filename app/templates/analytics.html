@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}Analytics — instablack{% endblock %}
+{% block content %}
+<div class="og-dash">
+  <header class="og-page-header">
+    <div class="og-page-titles">
+      <h1 class="og-page-title">Analytics</h1>
+      <p class="og-page-sub">Desempenho das publicações nos últimos 7 dias</p>
+    </div>
+    <a href="/logs" class="og-btn-primary" data-nav="/logs" style="background:transparent;border:1px solid rgba(255,255,255,0.1);box-shadow:none">
+      <i data-lucide="scroll-text"></i> Ver logs
+    </a>
+  </header>
+
+  <div class="og-kpi-row">
+    <article class="og-glass-card og-kpi-card">
+      <div class="og-kpi-top"><div class="og-kpi-icon og-kpi-icon--orange"><i data-lucide="video"></i></div>
+        {% if pubs_growth is not none %}
+        <span class="og-kpi-trend {% if pubs_growth >= 0 %}og-kpi-trend--up{% else %}og-kpi-trend--down{% endif %}">
+          {% if pubs_growth >= 0 %}↑{% else %}↓{% endif %} {{ pubs_growth|abs }}% vs ontem
+        </span>
+        {% endif %}
+      </div>
+      <div class="og-kpi-value">{{ pubs_today }}</div>
+      <div class="og-kpi-label">Publicações hoje</div>
+    </article>
+    <article class="og-glass-card og-kpi-card">
+      <div class="og-kpi-top"><div class="og-kpi-icon og-kpi-icon--green"><i data-lucide="check-circle"></i></div></div>
+      <div class="og-kpi-value">{{ success_rate }}%</div>
+      <div class="og-kpi-label">Taxa de sucesso hoje</div>
+    </article>
+    <article class="og-glass-card og-kpi-card">
+      <div class="og-kpi-top"><div class="og-kpi-icon og-kpi-icon--purple"><i data-lucide="users"></i></div></div>
+      <div class="og-kpi-value">{{ accounts_count }}</div>
+      <div class="og-kpi-label">Contas conectadas</div>
+    </article>
+    <article class="og-glass-card og-kpi-card">
+      <div class="og-kpi-top"><div class="og-kpi-icon og-kpi-icon--pink"><i data-lucide="bar-chart-2"></i></div></div>
+      <div class="og-kpi-value">{{ success_total }}</div>
+      <div class="og-kpi-label">Total publicado (histórico)</div>
+    </article>
+  </div>
+
+  <div class="og-main-grid">
+    <section class="og-glass-card og-chart-panel">
+      <div class="og-card-head">
+        <div>
+          <h2 class="og-card-title">Desempenho — 7 dias</h2>
+          <p class="og-card-sub">Publicações, sucesso e falhas</p>
+        </div>
+      </div>
+      <div class="og-chart-legend">
+        <span><i class="og-dot og-dot--purple"></i> Publicações</span>
+        <span><i class="og-dot og-dot--green"></i> Sucesso</span>
+        <span><i class="og-dot og-dot--red"></i> Falhas</span>
+      </div>
+      <div class="og-line-chart-wrap" id="og-line-chart">
+        <div class="og-chart-tooltip" id="og-chart-tooltip"></div>
+        <svg class="og-line-svg" viewBox="0 0 700 220" preserveAspectRatio="none">
+          {% set n = chart_performance|length %}
+          {% set step = 700 / (n - 1) if n > 1 else 700 %}
+          {% set max_h = 170 %}
+          {% set base_y = 200 %}
+          <polyline class="og-line og-line--purple og-line-anim" fill="none" stroke="#833AB4" stroke-width="2.5"
+            points="{% for pt in chart_performance %}{% set x = loop.index0 * step %}{% set y = base_y - (pt.pubs_pct / 100 * max_h) %}{{ x }},{{ y }}{% if not loop.last %} {% endif %}{% endfor %}"/>
+          <polyline class="og-line og-line--green og-line-anim" fill="none" stroke="#22c55e" stroke-width="2.5" style="animation-delay:.15s"
+            points="{% for pt in chart_performance %}{% set x = loop.index0 * step %}{% set y = base_y - (pt.success_pct / 100 * max_h) %}{{ x }},{{ y }}{% if not loop.last %} {% endif %}{% endfor %}"/>
+          <polyline class="og-line og-line--red og-line-anim" fill="none" stroke="#ef4444" stroke-width="2.5" style="animation-delay:.3s"
+            points="{% for pt in chart_performance %}{% set x = loop.index0 * step %}{% set y = base_y - (pt.failed_pct / 100 * max_h) %}{{ x }},{{ y }}{% if not loop.last %} {% endif %}{% endfor %}"/>
+          {% for pt in chart_performance %}
+          {% set x = loop.index0 * step %}
+          {% set y = base_y - (pt.pubs_pct / 100 * max_h) %}
+          <circle class="og-chart-dot" cx="{{ x }}" cy="{{ y }}" r="4" fill="#E1306C"
+            data-tip="{{ pt.label }} {{ pt.date }}: {{ pt.pubs }} pub · {{ pt.success }} ok · {{ pt.failed }} falhas"/>
+          {% endfor %}
+          {% for pt in chart_performance %}
+          <text class="og-chart-xlabel" x="{{ loop.index0 * step }}" y="216" text-anchor="middle">{{ pt.label }}</text>
+          {% endfor %}
+        </svg>
+      </div>
+    </section>
+
+    <section class="og-glass-card og-bar-panel">
+      <div class="og-card-head"><h2 class="og-card-title">Publicações por dia</h2></div>
+      <div class="og-bar-chart">
+        {% for pt in chart_weekly %}
+        <div class="og-bar-col">
+          <span class="og-bar-value">{% if pt.pubs > 0 %}{{ pt.pubs }}{% endif %}</span>
+          <div class="og-bar-track"><div class="og-bar-fill" style="height:{{ pt.bar_pct if pt.bar_pct > 3 else 4 }}%"></div></div>
+          <span class="og-bar-label">{{ pt.label }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+  </div>
+
+  <section class="og-glass-card" style="margin-top:14px">
+    <div class="og-card-head"><h2 class="og-card-title">Por conta Instagram</h2></div>
+    {% if account_stats %}
+    <div class="og-table-wrap">
+      <table class="og-table">
+        <thead><tr><th>Conta</th><th>Status</th><th>Sucesso</th><th>Erros</th><th>Taxa</th></tr></thead>
+        <tbody>
+          {% for row in account_stats %}
+          {% set acc = row.account %}
+          {% set total = row.success + row.failed %}
+          <tr>
+            <td><strong>@{{ acc.username }}</strong></td>
+            <td><span class="og-badge {{ status_badge_class(acc.status) }}">{{ status_label(acc.status) }}</span></td>
+            <td>{{ row.success }}</td>
+            <td>{{ row.failed }}</td>
+            <td>{% if total > 0 %}{{ (row.success / total * 100)|round(1) }}%{% else %}—{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="og-empty">Nenhuma conta conectada.</p>
+    {% endif %}
+  </section>
+
+  <div class="analytics-summary-row">
+    <div class="og-glass-card analytics-pill-card">
+      <span class="og-muted">Hoje</span>
+      <strong>{{ success_today }} ok · {{ failed_today }} erro · {{ skipped_today }} ignorada</strong>
+    </div>
+    <div class="og-glass-card analytics-pill-card">
+      <span class="og-muted">Histórico total</span>
+      <strong>{{ success_total }} ok · {{ failed_total }} erro · {{ skipped_total }} ignorada</strong>
+    </div>
+  </div>
+</div>
+{% endblock %}

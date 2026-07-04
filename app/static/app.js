@@ -144,27 +144,114 @@
   function initScheduleMode() {
     const modeNow = document.getElementById("mode-now");
     const modeRecurring = document.getElementById("mode-recurring");
+    const modeCalendar = document.getElementById("mode-calendar");
     const intervalWrap = document.getElementById("interval-wrap");
+    const calendarWrap = document.getElementById("calendar-wrap");
     const submitBtn = document.getElementById("submit-btn");
     const contentType = document.getElementById("content-type");
-    if (!modeNow || !modeRecurring) return;
+    if (!modeNow && !modeCalendar) return;
 
     function update() {
-      const isNow = modeNow.checked;
+      const isNow = modeNow?.checked;
+      const isCalendar = modeCalendar?.checked;
       const isStory = contentType?.value === "story";
-      if (intervalWrap) intervalWrap.style.display = isNow ? "none" : "";
+      if (intervalWrap) intervalWrap.style.display = (!isNow && !isCalendar) ? "" : "none";
+      if (calendarWrap) calendarWrap.style.display = isCalendar ? "" : "none";
       if (submitBtn) {
         if (isNow) {
           submitBtn.textContent = isStory ? "Postar Story agora" : "Publicar agora";
+        } else if (isCalendar) {
+          submitBtn.textContent = isStory ? "Agendar Story" : "Criar agendamento";
         } else {
           submitBtn.textContent = isStory ? "Agendar Story" : "Criar automação";
         }
       }
     }
-    modeNow.addEventListener("change", update);
-    modeRecurring.addEventListener("change", update);
+    modeNow?.addEventListener("change", update);
+    modeRecurring?.addEventListener("change", update);
+    modeCalendar?.addEventListener("change", update);
     contentType?.addEventListener("change", update);
     update();
+  }
+
+  function initAccountsConnect() {
+    const form = document.getElementById("account-add-form");
+    const modal = document.getElementById("twofa-modal");
+    const codeInput = document.getElementById("twofa-code-input");
+    const hiddenCode = document.getElementById("verification-code-hidden");
+    const submitBtn = document.getElementById("twofa-submit");
+    const cancelBtn = document.getElementById("twofa-cancel");
+    const connectBtn = document.getElementById("account-connect-btn");
+    if (!form) return;
+
+    function openModal() {
+      modal?.classList.add("modal-overlay--open");
+      if (modal) modal.setAttribute("aria-hidden", "false");
+      if (codeInput) { codeInput.value = ""; codeInput.focus(); }
+    }
+    function closeModal() {
+      modal?.classList.remove("modal-overlay--open");
+      if (modal) modal.setAttribute("aria-hidden", "true");
+      if (hiddenCode) hiddenCode.value = "";
+    }
+
+    cancelBtn?.addEventListener("click", closeModal);
+    modal?.addEventListener("click", (e) => {
+      if (e.target === modal) closeModal();
+    });
+
+    async function submitForm(with2fa) {
+      const fd = new FormData(form);
+      if (with2fa && codeInput) fd.set("verification_code", codeInput.value.trim());
+      if (connectBtn) { connectBtn.disabled = true; connectBtn.textContent = "Conectando…"; }
+      try {
+        const resp = await fetch(form.action, {
+          method: "POST",
+          body: fd,
+          headers: { "X-Requested-With": "fetch" },
+          redirect: "manual",
+        });
+        if (resp.status === 303 || resp.status === 302) {
+          window.location.href = resp.headers.get("Location") || "/accounts";
+          return;
+        }
+        const ct = resp.headers.get("content-type") || "";
+        if (ct.includes("application/json")) {
+          const data = await resp.json();
+          if (data.needs_2fa) {
+            openModal();
+            return;
+          }
+        }
+        if (resp.ok || resp.status === 400) {
+          const html = await resp.text();
+          const doc = new DOMParser().parseFromString(html, "text/html");
+          const newContent = doc.getElementById("app-content");
+          if (newContent && appContent) {
+            appContent.innerHTML = newContent.innerHTML;
+            history.pushState({ url: "/accounts" }, "", "/accounts");
+            initPage();
+            return;
+          }
+        }
+        window.location.href = "/accounts";
+      } catch {
+        form.submit();
+      } finally {
+        if (connectBtn) { connectBtn.disabled = false; connectBtn.textContent = "Conectar conta"; }
+      }
+    }
+
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      submitForm(false);
+    });
+    submitBtn?.addEventListener("click", () => submitForm(true));
+    codeInput?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); submitForm(true); }
+    });
+
+    if (modal?.classList.contains("modal-overlay--open")) openModal();
   }
 
   function initCalendarPicker() {
@@ -291,6 +378,7 @@
     initScheduleMode();
     initOgDashboard();
     initCalendarPicker();
+    initAccountsConnect();
   }
 
   initPage();

@@ -4,7 +4,7 @@ from __future__ import annotations
 import datetime as dt
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -19,6 +19,7 @@ from app.utils.account_limits import (
 from core.database import get_db
 from core.instagram import (
     InstagramAuthError,
+    InstagramTwoFactorRequired,
     check_proxy,
     deserialize_settings,
     get_account_profile,
@@ -73,9 +74,11 @@ def list_accounts(
     user: User = Depends(get_current_user),
 ):
     accounts = _load_user_accounts(db, user)
+    ok_key = request.query_params.get("ok")
+    ok_msg = {"paused": "Conta pausada.", "resumed": "Conta retomada."}.get(ok_key or "")
     return templates.TemplateResponse(
         "accounts.html",
-        _accounts_page_context(request, user, accounts),
+        _accounts_page_context(request, user, accounts, ok=ok_msg),
     )
 
 
@@ -138,6 +141,18 @@ def add_account(
             )
             encrypted_pw = encrypt_secret(password)
 
+    except InstagramTwoFactorRequired as exc:
+        if request.headers.get("X-Requested-With") == "fetch":
+            return JSONResponse(
+                {"needs_2fa": True, "message": str(exc)},
+                status_code=status.HTTP_403_FORBIDDEN,
+            )
+        accounts = _load_user_accounts(db, user)
+        return templates.TemplateResponse(
+            "accounts.html",
+            {**_accounts_page_context(request, user, accounts, error=str(exc)), "needs_2fa": True},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
     except InstagramAuthError as exc:
         accounts = _load_user_accounts(db, user)
         return templates.TemplateResponse(
@@ -313,6 +328,33 @@ async def edit_account_submit(
                 tmp_pic.unlink()
             except OSError:
                 pass
+
+
+@router.post("/{account_id}/pause")
+def pause_account(
+    account_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    acc = _get_owned_account(db, account_id, user)
+    acc.status = "paused"
+    acc.last_error = None
+    db.commit()
+    return RedirectResponse("/accounts?ok=paused", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/{account_id}/resume")
+def resume_account(
+    account_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    acc = _get_owned_account(db, account_id, user)
+    if acc.status == "paused":
+        acc.status = "active"
+        acc.last_error = None
+    db.commit()
+    return RedirectResponse("/accounts?ok=resumed", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/{account_id}/delete")

@@ -541,6 +541,52 @@ a:hover { color: var(--primary-hover); }
 
 .content-loading { opacity: 0.5; pointer-events: none; transition: opacity 0.2s; }
 
+/* Modal 2FA */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 500;
+  background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px; opacity: 0; pointer-events: none; transition: opacity 0.2s;
+}
+.modal-overlay--open { opacity: 1; pointer-events: auto; }
+.modal-card {
+  width: 100%; max-width: 400px;
+  background: #050505; border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 24px; display: flex; flex-direction: column; gap: 14px;
+}
+.modal-card h3 { margin: 0; font-size: 18px; }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px; }
+
+/* Calendário de agendamento */
+.calendar-fieldset { border: 1px solid var(--border); padding: 14px; margin: 0; }
+.calendar-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.calendar-weekdays {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;
+  margin-bottom: 6px; font-size: 11px; color: var(--muted); text-align: center;
+}
+.calendar-grid {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;
+}
+.cal-day {
+  aspect-ratio: 1; border: 1px solid rgba(255, 255, 255, 0.06);
+  background: #050505; color: var(--text); font-size: 13px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; transition: background 0.15s;
+}
+.cal-day:hover { border-color: rgba(225, 48, 108, 0.35); }
+.cal-day--today { border-color: rgba(225, 48, 108, 0.5); font-weight: 700; }
+.cal-day--selected { background: rgba(225, 48, 108, 0.25); border-color: #E1306C; color: #fff; }
+.cal-day--empty { pointer-events: none; border: none; background: transparent; }
+
+.account-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.account-actions form { display: inline; }
+
+.logs-stats { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.logs-filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+.logs-filters label { flex: 1; min-width: 140px; }
+.log-error-cell { font-size: 12px; max-width: 320px; display: inline-block; word-break: break-word; }
+
+.brand-icon--ig .lucide { width: 20px; height: 20px; }
+
 /* Responsive */
 @media (max-width: 1200px) {
   .dash-main-grid { grid-template-columns: 1fr; }

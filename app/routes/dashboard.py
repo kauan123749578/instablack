@@ -246,3 +246,76 @@ def home(
             "now_brt": brt_now(),
         },
     )
+
+
+@router.get("/analytics")
+def analytics_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User | None = Depends(maybe_current_user),
+):
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+
+    today = brt_now().date()
+    yesterday = today - dt.timedelta(days=1)
+
+    accounts = db.scalars(
+        select(InstagramAccount)
+        .where(InstagramAccount.user_id == user.id)
+        .order_by(InstagramAccount.username.asc())
+    ).all()
+
+    pubs_today = _count_logs(db, user.id, day=today)
+    pubs_yesterday = _count_logs(db, user.id, day=yesterday)
+    pubs_growth = _growth_pct(pubs_today, pubs_yesterday)
+
+    success_today = _count_logs(db, user.id, status="success", day=today)
+    failed_today = _count_logs(db, user.id, status="failed", day=today)
+    skipped_today = _count_logs(db, user.id, status="skipped", day=today)
+    total_today = success_today + failed_today + skipped_today
+    success_rate = round(success_today / total_today * 100, 1) if total_today else 0.0
+
+    success_total = _count_logs(db, user.id, status="success")
+    failed_total = _count_logs(db, user.id, status="failed")
+    skipped_total = _count_logs(db, user.id, status="skipped")
+
+    account_stats = []
+    for acc in accounts:
+        ok = db.scalar(
+            select(func.count(PublishLog.id)).where(
+                PublishLog.account_id == acc.id,
+                PublishLog.status == "success",
+            )
+        ) or 0
+        fail = db.scalar(
+            select(func.count(PublishLog.id)).where(
+                PublishLog.account_id == acc.id,
+                PublishLog.status == "failed",
+            )
+        ) or 0
+        account_stats.append({"account": acc, "success": ok, "failed": fail})
+
+    chart_performance = _chart_performance_7d(db, user.id)
+    chart_weekly = _chart_weekly_bars(db, user.id)
+
+    return templates.TemplateResponse(
+        "analytics.html",
+        {
+            "request": request,
+            "user": user,
+            "accounts_count": len(accounts),
+            "pubs_today": pubs_today,
+            "pubs_growth": pubs_growth,
+            "success_rate": success_rate,
+            "success_today": success_today,
+            "failed_today": failed_today,
+            "skipped_today": skipped_today,
+            "success_total": success_total,
+            "failed_total": failed_total,
+            "skipped_total": skipped_total,
+            "account_stats": account_stats,
+            "chart_performance": chart_performance,
+            "chart_weekly": chart_weekly,
+        },
+    )

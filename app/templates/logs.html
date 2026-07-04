@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Logs — instablack{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2><i data-lucide="scroll-text" class="inline-icon"></i> Logs de publicação</h2>
+  <p class="muted page-header-sub">Histórico completo — sucessos, erros e publicações ignoradas</p>
+</div>
+
+<div class="logs-stats">
+  <span class="og-badge badge-green">{{ counts.get('success', 0) }} sucesso</span>
+  <span class="og-badge badge-red">{{ counts.get('failed', 0) }} erro</span>
+  <span class="og-badge badge-yellow">{{ counts.get('skipped', 0) }} ignorada</span>
+</div>
+
+<form method="get" action="/logs" class="logs-filters form-card">
+  <label>Status
+    <select name="status">
+      <option value="">Todos</option>
+      <option value="success" {% if status_filter == 'success' %}selected{% endif %}>Sucesso</option>
+      <option value="failed" {% if status_filter == 'failed' %}selected{% endif %}>Erro</option>
+      <option value="skipped" {% if status_filter == 'skipped' %}selected{% endif %}>Ignorada</option>
+    </select>
+  </label>
+  <label>Conta
+    <select name="account_id">
+      <option value="">Todas</option>
+      {% for acc in accounts %}
+      <option value="{{ acc.id }}" {% if account_filter == acc.id %}selected{% endif %}>@{{ acc.username }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <button type="submit" class="btn btn-primary btn-sm">Filtrar</button>
+  <a href="/logs" class="btn btn-sm" data-nav="/logs">Limpar</a>
+</form>
+
+<div class="og-glass-card og-table-panel" style="margin-top:16px">
+  <div class="og-table-wrap">
+    {% if logs %}
+    <table class="og-table">
+      <thead>
+        <tr>
+          <th>Quando</th>
+          <th>Conta</th>
+          <th>Automação</th>
+          <th>Status</th>
+          <th>Detalhe</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in logs %}
+        <tr>
+          <td class="og-muted">{{ log.created_at | localtime('%d/%m/%Y %H:%M:%S') }}</td>
+          <td><strong>@{{ log.account.username }}</strong></td>
+          <td class="og-muted">
+            {% if log.automation %}{{ log.automation.name }}{% else %}Post imediato{% endif %}
+          </td>
+          <td><span class="og-badge {{ status_badge_class(log.status) }}">{{ status_label(log.status) }}</span></td>
+          <td>
+            {% if log.media_url %}
+            <a href="{{ log.media_url }}" target="_blank" rel="noopener">Abrir post</a>
+            {% elif log.error %}
+            <span class="og-muted log-error-cell">{{ log.error }}</span>
+            {% else %}—{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="og-empty" style="padding:24px">Nenhum log encontrado.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
