@@ -1,8 +1,8 @@
 /* instablack Dashboard — #050505, cantos pontudos, glow rosa Instagram */
 :root {
   --og-bg: #050505;
-  --og-card-bg: #080808;
-  --og-card-border: rgba(255, 255, 255, 0.06);
+  --og-card-bg: #050505;
+  --og-card-border: rgba(255, 255, 255, 0.04);
   --og-glow-pink: rgba(225, 48, 108, 0.14);
   --og-glow-purple: rgba(131, 58, 180, 0.12);
   --og-pink: #E1306C;
@@ -20,49 +20,38 @@
 body.premium-app { background: var(--og-bg); --bg: var(--og-bg); }
 
 body.premium-app .ambient-grid {
-  background-image:
-    radial-gradient(ellipse 60% 40% at 70% -5%, rgba(225, 48, 108, 0.05), transparent),
-    linear-gradient(rgba(255,255,255,0.012) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,0.012) 1px, transparent 1px);
-  background-size: 100% 100%, 56px 56px, 56px 56px;
+  background: #050505;
 }
 
 body.premium-app .topbar {
-  background: rgba(5, 5, 5, 0.92);
-  border-bottom: 1px solid var(--og-card-border);
+  background: #050505;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
 body.premium-app .icon-btn { border-radius: 0; border: 1px solid var(--og-card-border); }
 body.premium-app .shark-content { padding: 24px 32px 80px; }
 
-/* Cards — estilo OnlyChat: fundo escuro + linha degradê no topo + glow rosa */
+/* Cards — preto sólido + feixe na borda */
 .og-glass-card {
   position: relative;
-  background: linear-gradient(155deg, rgba(225,48,108,0.07) 0%, rgba(131,58,180,0.05) 35%, #080808 70%);
-  border: 1px solid var(--og-card-border);
+  background: #050505;
+  border: 1px solid rgba(255, 255, 255, 0.04);
   border-radius: 0;
   padding: 20px 22px;
   overflow: hidden;
-  box-shadow:
-    0 0 0 1px rgba(225, 48, 108, 0.06),
-    0 8px 40px rgba(225, 48, 108, 0.08),
-    0 4px 24px rgba(0, 0, 0, 0.5);
-  transition: box-shadow 0.25s, border-color 0.25s;
+  box-shadow: none;
+  transition: border-color 0.25s;
 }
 .og-glass-card::before {
   content: "";
   position: absolute;
   top: 0; left: 0; right: 0;
-  height: 2px;
+  height: 1px;
   background: var(--og-ig-gradient);
-  opacity: 0.65;
+  opacity: 0.35;
   pointer-events: none;
 }
 .og-glass-card:hover {
-  border-color: rgba(225, 48, 108, 0.22);
-  box-shadow:
-    0 0 0 1px rgba(225, 48, 108, 0.12),
-    0 12px 48px rgba(225, 48, 108, 0.12),
-    0 4px 24px rgba(0, 0, 0, 0.6);
+  border-color: rgba(225, 48, 108, 0.18);
 }
 .og-glass-card > * { position: relative; z-index: 1; }
 
@@ -148,7 +137,7 @@ body.premium-app .shark-content { padding: 24px 32px 80px; }
 .og-card-title { margin: 0; font-size: 14px; font-weight: 600; }
 .og-card-sub { margin: 2px 0 0; font-size: 11px; color: var(--og-muted); }
 .og-link { font-size: 11px; color: var(--og-pink); font-weight: 500; }
-.og-select { border-radius: 0; background: #0a0a0a; border: 1px solid var(--og-card-border); color: var(--og-text-sec); font-size: 11px; padding: 5px 10px; }
+.og-select { border-radius: 0; background: #050505; border: 1px solid rgba(255, 255, 255, 0.06); color: var(--og-text-sec); font-size: 11px; padding: 5px 10px; }
 
 .og-chart-legend { display: flex; gap: 14px; font-size: 11px; color: var(--og-text-sec); margin-bottom: 10px; }
 .og-dot { display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 0; }
@@ -215,7 +204,7 @@ body.premium-app .shark-content { padding: 24px 32px 80px; }
 .og-acc-ring--proxy_down, .og-acc-ring--banned { background: linear-gradient(135deg, #ef4444, #dc2626); box-shadow: 0 0 12px rgba(239,68,68,0.2); }
 .og-acc-avatar {
   width: 100%; height: 100%; border-radius: 50%;
-  background: linear-gradient(145deg, #141414, #0a0a0a);
+  background: #050505;
   display: flex; align-items: center; justify-content: center;
   font-weight: 700; font-size: 17px; color: var(--og-text-sec);
   border: 2px solid #050505;
@@ -309,14 +298,14 @@ body.premium-app .shark-content { padding: 24px 32px 80px; }
 }
 .og-search {
   width: 100%; padding: 10px 14px 10px 38px;
-  background: #0a0a0a; border: 1px solid var(--og-card-border);
+  background: #050505; border: 1px solid rgba(255, 255, 255, 0.06);
   color: var(--text); font-size: 13px; border-radius: 0;
 }
 .og-search:focus { outline: none; border-color: rgba(225,48,108,0.4); box-shadow: 0 0 0 2px rgba(225,48,108,0.1); }
 .og-search::placeholder { color: var(--og-muted); }
 
 .og-chart-tooltip {
-  position: absolute; background: #0a0a0a; border: 1px solid rgba(225,48,108,0.3);
+  position: absolute; background: #050505; border: 1px solid rgba(225,48,108,0.3);
   border-radius: 0; padding: 6px 10px; font-size: 11px; pointer-events: none;
   opacity: 0; transition: opacity 0.15s; z-index: 10; white-space: nowrap;
   transform: translateX(-50%);

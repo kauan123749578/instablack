@@ -1,9 +1,9 @@
 /* instablack — tema preto + rosa Instagram */
 :root {
   --bg: #050505;
-  --sidebar: #0a0a0a;
-  --card: #0c0c0c;
-  --card-hover: rgba(12, 8, 16, 0.95);
+  --sidebar: #050505;
+  --card: #050505;
+  --card-hover: #050505;
   --border: rgba(255, 255, 255, 0.06);
   --border-pink: rgba(225, 48, 108, 0.28);
   --primary: #E1306C;
@@ -11,7 +11,7 @@
   --primary-dim: rgba(225, 48, 108, 0.14);
   --accent-purple: #833AB4;
   --ig-gradient: linear-gradient(135deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888);
-  --card-gradient: linear-gradient(145deg, rgba(225,48,108,0.12) 0%, rgba(131,58,180,0.08) 50%, rgba(5,5,5,0.4) 100%);
+  --card-gradient: #050505;
   --text: #f4f8ff;
   --muted: #6b7280;
   --text-sec: #9ca3af;
@@ -51,14 +51,10 @@ svg { display: block; flex-shrink: 0; overflow: visible; }
 a { color: var(--primary-hover); text-decoration: none; }
 a:hover { color: var(--primary-hover); }
 
-/* Ambient grid 56x56 */
+/* Fundo preto sólido — sem grid */
 .ambient-grid {
   position: fixed; inset: 0; pointer-events: none; z-index: 0;
-  background-image:
-    radial-gradient(ellipse 70% 40% at 80% -10%, rgba(225, 48, 108, 0.06), transparent),
-    linear-gradient(rgba(225, 48, 108, 0.015) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(225, 48, 108, 0.015) 1px, transparent 1px);
-  background-size: 100% 100%, 48px 48px, 48px 48px;
+  background: #050505;
 }
 
 .app { position: relative; z-index: 1; display: flex; min-height: 100vh; }
@@ -384,7 +380,7 @@ a:hover { color: var(--primary-hover); }
 .chart-line { fill: none; stroke: var(--primary-hover); stroke-width: 2; stroke-linecap: round; }
 .chart-label { fill: var(--muted); font-size: 11px; }
 .chart-tooltip {
-  position: absolute; background: #0a0a0a; border: 1px solid var(--border-pink);
+  position: absolute; background: #050505; border: 1px solid var(--border-pink);
   border-radius: 0; padding: 6px 10px; font-size: 12px; pointer-events: none;
   opacity: 0; transition: opacity 0.15s; z-index: 10; white-space: nowrap;
 }
@@ -433,7 +429,7 @@ a:hover { color: var(--primary-hover); }
 .form-grid label { display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-size: 13px; }
 .form-grid input, .form-grid select, .form-grid textarea {
   padding: 10px 14px; border-radius: 10px;
-  border: 1px solid var(--border); background: #0b0b0b; color: var(--text); font: inherit;
+  border: 1px solid var(--border); background: #050505; color: var(--text); font: inherit;
 }
 .form-grid fieldset { border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
 .checkbox-row { display: flex; flex-wrap: wrap; gap: 10px; }
@@ -511,7 +507,7 @@ a:hover { color: var(--primary-hover); }
 .login-card label { display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-size: 13px; }
 .login-card input {
   padding: 12px 14px; border-radius: 10px;
-  border: 1px solid var(--border); background: #0b0b0b; color: var(--text); font: inherit;
+  border: 1px solid var(--border); background: #050505; color: var(--text); font: inherit;
 }
 .login-footer { margin-top: 16px; text-align: center; font-size: 13px; color: var(--muted); }
 
@@ -533,7 +529,7 @@ a:hover { color: var(--primary-hover); }
 .drawer-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 300; opacity: 0; pointer-events: none; transition: opacity 0.25s; }
 .drawer-panel {
   position: fixed; right: -280px; top: 0; bottom: 0; width: 280px;
-  background: #0b0b0b; border-left: 1px solid var(--border); z-index: 301;
+  background: #050505; border-left: 1px solid var(--border); z-index: 301;
   padding: 24px; transition: right 0.25s; display: flex; flex-direction: column; gap: 10px;
 }
 .mobile-drawer.open .drawer-backdrop { opacity: 1; pointer-events: auto; }
