@@ -38,28 +38,28 @@
     <fieldset>
       <legend>Método de autenticação</legend>
       <div class="checkbox-row">
-        <label><input type="radio" name="auth_method" value="password" checked> Usuário & senha</label>
-        <label><input type="radio" name="auth_method" value="sessionid"> Session ID</label>
+        <label><input type="radio" name="auth_method" value="password" {% if form.get('auth_method', 'password') != 'sessionid' %}checked{% endif %}> Usuário & senha</label>
+        <label><input type="radio" name="auth_method" value="sessionid" {% if form.get('auth_method') == 'sessionid' %}checked{% endif %}> Session ID</label>
       </div>
     </fieldset>
     <label>Usuário Instagram (@)
-      <input type="text" name="username" placeholder="meu_perfil">
+      <input type="text" name="username" placeholder="meu_perfil" value="{{ form.get('username', '') }}">
     </label>
     <label>Senha
       <input type="password" name="password" autocomplete="new-password">
     </label>
     <input type="hidden" name="verification_code" id="verification-code-hidden" value="">
     <label>Session ID (alternativa)
-      <input type="text" name="sessionid" placeholder="cole aqui se escolheu Session ID">
+      <input type="text" name="sessionid" id="sessionid-input" placeholder="Cole o sessionid aqui"
+             value="{{ form.get('sessionid', '') }}">
     </label>
     <label>Proxy <strong style="color:var(--red)">*</strong> (obrigatório)
       <input type="text" name="proxy" id="account-proxy-input" required
-             value="{{ default_proxy }}"
-             placeholder="host:porta:user:senha ou http://user:pass@host:port">
+             value="{{ form.get('proxy') or default_proxy }}"
+             placeholder="host:porta:user:senha">
     </label>
     <p class="muted" style="margin:0;font-size:12px">
-      Aceita <code>104.252.92.230:6164:user:senha</code> ou URL completa.
-      Proxy residencial obrigatório — sem proxy válido nenhuma requisição é feita.
+      Cole proxy e Session ID, clique Conectar. Formato: <code>ip:porta:user:senha</code>
     </p>
     <button type="submit" class="btn btn-primary" id="account-connect-btn">Conectar conta</button>
   </form>

@@ -12,7 +12,7 @@ from app.deps import get_current_user
 from app.security import decrypt_secret, encrypt_secret
 from app.templating import templates
 from app.config import get_settings
-from app.utils.proxy import normalize_proxy
+from app.utils.proxy import clean_sessionid, normalize_proxy
 from app.utils.account_limits import (
     account_limit_label,
     accounts_remaining,
@@ -45,6 +45,7 @@ def _accounts_page_context(
     *,
     error: str | None = None,
     ok: str | None = None,
+    form: dict | None = None,
 ) -> dict:
     count = len(accounts)
     remaining = accounts_remaining(user, count)
@@ -59,6 +60,7 @@ def _accounts_page_context(
         "accounts_remaining": remaining,
         "can_add_account": can_add,
         "default_proxy": normalize_proxy(get_settings().default_proxy),
+        "form": form or {},
     }
 
 
@@ -99,7 +101,16 @@ def add_account(
     user: User = Depends(get_current_user),
 ):
     username = username.strip().lstrip("@")
+    proxy_raw = proxy
     proxy = normalize_proxy(proxy)
+    sid = clean_sessionid(sessionid)
+    use_sessionid = bool(sid) or auth_method == "sessionid"
+    form_state = {
+        "auth_method": "sessionid" if use_sessionid else auth_method,
+        "username": username,
+        "sessionid": sessionid.strip(),
+        "proxy": proxy_raw.strip() or proxy,
+    }
 
     if not proxy:
         accounts = _load_user_accounts(db, user)
@@ -110,6 +121,7 @@ def add_account(
                 user,
                 accounts,
                 error="Proxy é obrigatório. Informe um proxy válido antes de conectar a conta.",
+                form=form_state,
             ),
             status_code=status.HTTP_400_BAD_REQUEST,
         )
@@ -122,16 +134,16 @@ def add_account(
                 request,
                 user,
                 accounts,
-                error="Proxy inválido ou fora do ar. A conexão foi bloqueada para evitar vazamento do banimento.",
+                error="Proxy inválido ou fora do ar. Confira host:porta:user:senha e tente de novo.",
+                form=form_state,
             ),
             status_code=status.HTTP_400_BAD_REQUEST,
         )
 
     try:
-        if auth_method == "sessionid":
-            sid = sessionid.strip()
+        if use_sessionid:
             if not sid:
-                raise InstagramAuthError("Cole o sessionid do navegador.")
+                raise InstagramAuthError("Cole o Session ID do navegador.")
             settings_dict, username = login_with_sessionid(sid, proxy=proxy)
             encrypted_pw = None
         else:
@@ -154,7 +166,7 @@ def add_account(
         accounts = _load_user_accounts(db, user)
         return templates.TemplateResponse(
             "accounts.html",
-            {**_accounts_page_context(request, user, accounts, error=str(exc)), "needs_2fa": True},
+            {**_accounts_page_context(request, user, accounts, error=str(exc), form=form_state), "needs_2fa": True},
             status_code=status.HTTP_403_FORBIDDEN,
         )
     except InstagramAuthError as exc:
@@ -166,6 +178,7 @@ def add_account(
                 user,
                 accounts,
                 error=f"Falha no login: {exc}",
+                form=form_state,
             ),
             status_code=status.HTTP_400_BAD_REQUEST,
         )

@@ -187,23 +187,36 @@
     update();
   }
 
+  function normalizeProxyValue(raw) {
+    const value = raw.trim();
+    if (!value || value.includes("://")) return value;
+    const parts = value.split(":");
+    if (parts.length === 4) {
+      const [host, port, user, pass] = parts;
+      return `http://${user}:${pass}@${host}:${port}`;
+    }
+    if (parts.length === 2) return `http://${parts[0]}:${parts[1]}`;
+    return value;
+  }
+
   function initProxyInput() {
     const input = document.getElementById("account-proxy-input");
     if (!input) return;
-    function normalize(raw) {
-      const value = raw.trim();
-      if (!value || value.includes("://")) return value;
-      const parts = value.split(":");
-      if (parts.length === 4) {
-        const [host, port, user, pass] = parts;
-        return `http://${user}:${pass}@${host}:${port}`;
-      }
-      if (parts.length === 2) return `http://${parts[0]}:${parts[1]}`;
-      return value;
-    }
     input.addEventListener("blur", () => {
-      input.value = normalize(input.value);
+      input.value = normalizeProxyValue(input.value);
     });
+  }
+
+  function initSessionIdAuto() {
+    const sidInput = document.getElementById("sessionid-input");
+    const sessionRadio = document.querySelector('input[name="auth_method"][value="sessionid"]');
+    if (!sidInput || !sessionRadio) return;
+    function sync() {
+      if (sidInput.value.trim()) sessionRadio.checked = true;
+    }
+    sidInput.addEventListener("input", sync);
+    sidInput.addEventListener("paste", () => setTimeout(sync, 0));
+    sync();
   }
 
   function initAccountsConnect() {
@@ -234,6 +247,10 @@
 
     async function submitForm(with2fa) {
       const fd = new FormData(form);
+      const proxyInput = form.querySelector('[name="proxy"]');
+      if (proxyInput) fd.set("proxy", normalizeProxyValue(proxyInput.value));
+      const sidInput = form.querySelector('[name="sessionid"]');
+      if (sidInput?.value.trim()) fd.set("auth_method", "sessionid");
       if (with2fa && codeInput) fd.set("verification_code", codeInput.value.trim());
       if (connectBtn) { connectBtn.disabled = true; connectBtn.textContent = "Conectando…"; }
       try {
@@ -394,6 +411,7 @@
     initCalendarPicker();
     initAccountsConnect();
     initProxyInput();
+    initSessionIdAuto();
   }
 
   initPage();

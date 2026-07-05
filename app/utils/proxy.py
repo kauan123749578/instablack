@@ -1,6 +1,8 @@
 """Normalização de strings de proxy para o formato aceito pelo instagrapi."""
 from __future__ import annotations
 
+from urllib.parse import unquote
+
 
 def normalize_proxy(raw: str) -> str:
     """Converte host:porta:user:senha ou host:porta para http://user:pass@host:port."""
@@ -20,3 +22,12 @@ def normalize_proxy(raw: str) -> str:
         return f"http://{host}:{port}"
 
     return value
+
+
+def clean_sessionid(raw: str) -> str:
+    """Limpa sessionid colado do navegador (URL-encoded ou cookie completo)."""
+    sid = unquote(raw.strip())
+    lower = sid.lower()
+    if lower.startswith("sessionid="):
+        sid = sid.split("=", 1)[1].strip()
+    return sid
