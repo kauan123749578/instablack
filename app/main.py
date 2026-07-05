@@ -17,7 +17,7 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from app.config import settings
 from app.routes import accounts, admin, auth, automations, dashboard, logs, profile
 from core.database import init_db
-from core.health import check_database, check_redis
+from core.health import check_database, check_redis, check_storage
 from core.storage import get_storage
 
 log = logging.getLogger(__name__)
@@ -105,13 +105,15 @@ def create_app() -> FastAPI:
     def readyz():
         db_ok, db_msg = check_database()
         redis_ok, redis_msg = check_redis()
+        storage_ok, storage_msg = check_storage()
         issues = settings.production_issues
-        healthy = db_ok and redis_ok and not issues
+        healthy = db_ok and redis_ok and storage_ok and not issues
         body = {
             "status": "ok" if healthy else "degraded",
             "database": db_msg,
             "redis": redis_msg,
-            "storage": settings.storage_backend,
+            "storage": storage_msg,
+            "storage_backend": settings.storage_backend,
             "config_issues": issues,
             "env": settings.app_env,
         }

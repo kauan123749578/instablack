@@ -64,36 +64,78 @@ class S3Storage:
         secret_access_key: str,
         region: str = "auto",
     ) -> None:
-        import boto3  # import tardio: evita pagar o custo se s\u00f3 usa local
+        import boto3
+        from botocore.config import Config
 
         if not bucket:
-            raise ValueError("S3_BUCKET n\u00e3o configurado")
+            raise ValueError("S3_BUCKET não configurado")
+        if not access_key_id or not secret_access_key:
+            raise ValueError("S3_ACCESS_KEY_ID e S3_SECRET_ACCESS_KEY são obrigatórios")
 
         self.bucket = bucket
         self.client = boto3.client(
             "s3",
             endpoint_url=endpoint_url or None,
-            aws_access_key_id=access_key_id or None,
-            aws_secret_access_key=secret_access_key or None,
+            aws_access_key_id=access_key_id,
+            aws_secret_access_key=secret_access_key,
             region_name=region or "auto",
+            config=Config(
+                signature_version="s3v4",
+                s3={"addressing_style": "path"},
+                retries={"max_attempts": 3, "mode": "standard"},
+            ),
         )
+
+    def _guess_content_type(self, ext: str) -> str:
+        ext = ext.lower()
+        return {
+            ".mp4": "video/mp4",
+            ".mov": "video/quicktime",
+            ".webm": "video/webm",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".png": "image/png",
+            ".webp": "image/webp",
+        }.get(ext, "application/octet-stream")
 
     def save(self, src_stream: BinaryIO, suggested_ext: str = ".mp4") -> str:
         ext = suggested_ext if suggested_ext.startswith(".") else f".{suggested_ext}"
         key = f"videos/{uuid.uuid4().hex}{ext}"
-        self.client.upload_fileobj(src_stream, self.bucket, key)
+        extra = {"ContentType": self._guess_content_type(ext)}
+        try:
+            src_stream.seek(0)
+        except Exception:
+            pass
+        self.client.upload_fileobj(
+            src_stream,
+            self.bucket,
+            key,
+            ExtraArgs=extra,
+        )
         return key
 
     def download_to(self, key: str, dest_path: Path) -> None:
+        from botocore.exceptions import ClientError
+
         dest_path.parent.mkdir(parents=True, exist_ok=True)
-        with dest_path.open("wb") as fh:
-            self.client.download_fileobj(self.bucket, key, fh)
+        try:
+            with dest_path.open("wb") as fh:
+                self.client.download_fileobj(self.bucket, key, fh)
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code", "")
+            if code in ("404", "NoSuchKey", "NotFound"):
+                raise FileNotFoundError(f"Arquivo não encontrado no R2/S3: {key}") from exc
+            raise
 
     def delete(self, key: str) -> None:
         try:
             self.client.delete_object(Bucket=self.bucket, Key=key)
         except Exception:
             pass
+
+    def ping(self) -> None:
+        """Verifica credenciais e acesso ao bucket."""
+        self.client.head_bucket(Bucket=self.bucket)
 
 
 _storage_singleton: StorageBackend | None = None

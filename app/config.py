@@ -80,13 +80,14 @@ class Settings(BaseSettings):
                 name
                 for name, val in (
                     ("S3_BUCKET", self.s3_bucket),
+                    ("S3_ENDPOINT_URL", self.s3_endpoint_url),
                     ("S3_ACCESS_KEY_ID", self.s3_access_key_id),
                     ("S3_SECRET_ACCESS_KEY", self.s3_secret_access_key),
                 )
                 if not val
             ]
             if missing:
-                log.warning("Variáveis S3 faltando: %s", ", ".join(missing))
+                log.warning("Variáveis R2/S3 faltando: %s", ", ".join(missing))
         elif self.storage_backend == "local" and not self.local_storage_path.startswith("/"):
             log.warning(
                 "LOCAL_STORAGE_PATH relativo (%s): em produção use um Railway Volume "
@@ -107,7 +108,16 @@ class Settings(BaseSettings):
         if self.is_sqlite:
             issues.append("Usando SQLite (efêmero no Railway) — configure DATABASE_URL do Postgres")
         if self.storage_backend == "local" and not self.local_storage_path.startswith("/"):
-            issues.append("LOCAL_STORAGE_PATH não é absoluto (use /data/storage com Volume)")
+            issues.append("LOCAL_STORAGE_PATH não é absoluto (use /data/storage com Volume ou STORAGE_BACKEND=s3 com R2)")
+        elif self.storage_backend == "s3":
+            for name, val in (
+                ("S3_BUCKET", self.s3_bucket),
+                ("S3_ENDPOINT_URL", self.s3_endpoint_url),
+                ("S3_ACCESS_KEY_ID", self.s3_access_key_id),
+                ("S3_SECRET_ACCESS_KEY", self.s3_secret_access_key),
+            ):
+                if not val:
+                    issues.append(f"{name} não configurado (obrigatório para R2)")
         return issues
 
     @property
