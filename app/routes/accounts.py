@@ -12,6 +12,7 @@ from app.deps import get_current_user
 from app.security import decrypt_secret, encrypt_secret
 from app.templating import templates
 from app.config import get_settings
+from app.utils.account_health import offline_accounts
 from app.utils.proxy import clean_sessionid, normalize_proxy
 from app.utils.account_limits import (
     account_limit_label,
