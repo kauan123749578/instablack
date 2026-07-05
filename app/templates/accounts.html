@@ -53,10 +53,13 @@
       <input type="text" name="sessionid" placeholder="cole aqui se escolheu Session ID">
     </label>
     <label>Proxy <strong style="color:var(--red)">*</strong> (obrigatório)
-      <input type="text" name="proxy" required placeholder="http://user:pass@host:port">
+      <input type="text" name="proxy" id="account-proxy-input" required
+             value="{{ default_proxy }}"
+             placeholder="host:porta:user:senha ou http://user:pass@host:port">
     </label>
     <p class="muted" style="margin:0;font-size:12px">
-      Proxy residencial obrigatório. Sem proxy válido, nenhuma requisição será feita — evita vazamento do IP do servidor.
+      Aceita <code>104.252.92.230:6164:user:senha</code> ou URL completa.
+      Proxy residencial obrigatório — sem proxy válido nenhuma requisição é feita.
     </p>
     <button type="submit" class="btn btn-primary" id="account-connect-btn">Conectar conta</button>
   </form>

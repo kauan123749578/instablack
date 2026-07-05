@@ -187,6 +187,25 @@
     update();
   }
 
+  function initProxyInput() {
+    const input = document.getElementById("account-proxy-input");
+    if (!input) return;
+    function normalize(raw) {
+      const value = raw.trim();
+      if (!value || value.includes("://")) return value;
+      const parts = value.split(":");
+      if (parts.length === 4) {
+        const [host, port, user, pass] = parts;
+        return `http://${user}:${pass}@${host}:${port}`;
+      }
+      if (parts.length === 2) return `http://${parts[0]}:${parts[1]}`;
+      return value;
+    }
+    input.addEventListener("blur", () => {
+      input.value = normalize(input.value);
+    });
+  }
+
   function initAccountsConnect() {
     const form = document.getElementById("account-add-form");
     const modal = document.getElementById("twofa-modal");
@@ -374,6 +393,7 @@
     initOgDashboard();
     initCalendarPicker();
     initAccountsConnect();
+    initProxyInput();
   }
 
   initPage();

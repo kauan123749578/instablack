@@ -86,6 +86,9 @@ FFMPEG_BIN=ffmpeg
 BEAT_TICK_SECONDS=60
 TRUST_PROXY=true
 
+# Pré-preenche o campo Proxy ao conectar contas (host:porta:user:senha)
+DEFAULT_PROXY=host:porta:user:senha
+
 BOOTSTRAP_ADMIN_USERNAME=admin
 BOOTSTRAP_ADMIN_PASSWORD=<senha-forte>
 BOOTSTRAP_ADMIN_IS_ADMIN=true

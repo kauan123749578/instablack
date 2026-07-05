@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     bootstrap_admin_password: str = ""
     bootstrap_admin_is_admin: bool = True
     default_account_limit: int = 0
+    default_proxy: str = ""
 
     @field_validator("database_url", mode="before")
     @classmethod
