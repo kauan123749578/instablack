@@ -110,8 +110,9 @@ def add_account(
     sid = clean_sessionid(sessionid)
     use_sessionid = auth_method == "sessionid"
     use_import = auth_method == "import"
+    sessionid_only = bool(sid) and not password.strip()
     form_state = {
-        "auth_method": auth_method,
+        "auth_method": "sessionid" if (use_sessionid or sessionid_only) else auth_method,
         "username": username,
         "sessionid": sid or sessionid.strip(),
         "session_json": session_json.strip(),
@@ -166,24 +167,14 @@ def add_account(
                 password=password or None,
             )
             encrypted_pw = encrypt_secret(password) if password else None
-        elif use_sessionid:
+        elif use_sessionid or sessionid_only:
             if not sid:
-                raise InstagramAuthError("Cole o Session ID ou mude para Usuário & senha.")
-            try:
-                settings_dict, username = login_with_sessionid(
-                    sid, proxy=proxy, username_hint=username or None
-                )
-            except InstagramAuthError:
-                if username and password:
-                    settings_dict = login_with_credentials(
-                        username=username,
-                        password=password,
-                        verification_code=verification_code.strip() or None,
-                        proxy=proxy,
-                    )
-                    encrypted_pw = encrypt_secret(password)
-                else:
-                    raise
+                raise InstagramAuthError("Cole o Session ID do Multilogin/navegador.")
+            settings_dict, resolved_user = login_with_sessionid(
+                sid, proxy=proxy, username_hint=username or None
+            )
+            username = resolved_user
+            encrypted_pw = encrypt_secret(password) if password else None
         else:
             if not username or not password:
                 raise InstagramAuthError("Usuário e senha são obrigatórios.")

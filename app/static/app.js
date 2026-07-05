@@ -215,13 +215,11 @@
     const importWrap = document.getElementById("import-wrap");
     const radios = form.querySelectorAll('input[name="auth_method"]');
 
-    const passwordHint = document.getElementById("password-hint");
-
     function update() {
-      const method = form.querySelector('input[name="auth_method"]:checked')?.value || "password";
+      const method = form.querySelector('input[name="auth_method"]:checked')?.value || "sessionid";
       if (sessionWrap) sessionWrap.style.display = method === "sessionid" ? "" : "none";
       if (importWrap) importWrap.style.display = method === "import" ? "" : "none";
-      if (passwordHint) passwordHint.style.display = method === "sessionid" ? "" : "none";
+      if (passwordWrap) passwordWrap.style.display = method === "password" || method === "import" ? "" : "none";
     }
     radios.forEach((r) => r.addEventListener("change", update));
     update();

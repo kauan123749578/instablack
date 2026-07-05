@@ -1,4 +1,4 @@
-"""Wrapper do instagrapi com sess\u00e3o persistida no banco e proxy obrigat\u00f3rio."""
+"""Wrapper do instagrapi com sessão persistida no banco e proxy obrigatório."""
 from __future__ import annotations
 
 import json
@@ -11,6 +11,8 @@ import requests
 from instagrapi import Client
 from instagrapi.exceptions import BadPassword, LoginRequired, TwoFactorRequired
 from instagrapi.types import StoryLink
+
+from app.utils.proxy import normalize_proxy
 
 log = logging.getLogger(__name__)
 
@@ -30,18 +32,17 @@ def _friendly_auth_error(raw: str, proxy: str | None = None) -> str:
     low = raw.lower()
     if "blacklist" in low or ("password" in low and "incorrect" in low):
         msg = (
-            "Instagram bloqueou o login neste IP/proxy — ou a senha está errada. "
-            "Confira a senha no Multilogin, use a proxy exata do perfil e, se o IP estiver queimado, troque a proxy."
+            "Instagram bloqueou login por senha neste IP (comum no Railway). "
+            "Tente Session ID do Multilogin — mesma proxy — como no PostagemIG local."
         )
-    elif "467" in raw or "login_required" in low:
-        msg = (
-            "Session ID do navegador (Multilogin/Chrome) não funciona na API mobile do Instagram. "
-            "Use Usuário & senha com a mesma proxy — o instablack salva a sessão automaticamente."
-        )
+    elif "login_required" in low or "467" in raw:
+        msg = "Sessão expirada ou recusada. Cole um sessionid novo do navegador (Multilogin)."
     elif "403" in raw:
-        msg = "Sessão recusada pelo Instagram. Conecte com usuário e senha."
+        msg = "Sessão recusada pelo Instagram. Gere um sessionid novo."
     elif "challenge" in low:
-        msg = "Instagram pediu verificação. Abra o app, confirme o login e tente de novo."
+        msg = "Instagram pediu verificação. Confirme no app e tente de novo."
+    elif "redirect" in low and "exceeded" in low:
+        msg = "Proxy inválido ou instável. Tente socks5:// ou revise host:porta:user:senha."
     else:
         msg = raw
 
@@ -54,44 +55,54 @@ def _friendly_auth_error(raw: str, proxy: str | None = None) -> str:
 
 def _build_client(proxy: Optional[str], settings_dict: Optional[dict]) -> Client:
     if not proxy:
-        raise InstagramAuthError("Proxy \u00e9 obrigat\u00f3rio. Nenhuma requisi\u00e7\u00e3o ser\u00e1 feita sem proxy.")
+        raise InstagramAuthError("Proxy é obrigatório. Nenhuma requisição será feita sem proxy.")
     cl = Client()
-    cl.delay_range = [1, 3]
-    cl.set_proxy(proxy)
+    cl.delay_range = [2, 5]
     if settings_dict:
         cl.set_settings(settings_dict)
+    normalized = normalize_proxy(proxy)
+    try:
+        cl.set_proxy(normalized)
+    except Exception as exc:
+        raise InstagramAuthError(f"Proxy inválido: {exc}") from exc
     return cl
+
+
+def _after_login(cl: Client) -> None:
+    if hasattr(cl, "inject_sessionid_to_public"):
+        try:
+            cl.inject_sessionid_to_public()
+        except Exception:
+            pass
 
 
 @lru_cache(maxsize=1)
 def _server_public_ip() -> str | None:
-    """IP p\u00fablico do servidor (sem proxy), cacheado."""
     try:
         resp = requests.get(IPIFY_URL, timeout=IP_CHECK_TIMEOUT)
         resp.raise_for_status()
         return resp.text.strip()
     except Exception as exc:
-        log.warning("N\u00e3o foi poss\u00edvel obter IP do servidor: %s", exc)
+        log.warning("Não foi possível obter IP do servidor: %s", exc)
         return None
 
 
 def get_public_ip(proxy: str | None = None) -> str | None:
-    """Retorna o IP p\u00fablico de sa\u00edda. Com proxy=None usa IP direto do servidor."""
     proxies = {"http": proxy, "https": proxy} if proxy else None
     try:
         resp = requests.get(IPIFY_URL, proxies=proxies, timeout=IP_CHECK_TIMEOUT)
         resp.raise_for_status()
         return resp.text.strip()
     except Exception as exc:
-        log.warning("Falha ao obter IP p\u00fablico (proxy=%s): %s", bool(proxy), exc)
+        log.warning("Falha ao obter IP público (proxy=%s): %s", bool(proxy), exc)
         return None
 
 
 def check_proxy(proxy: str) -> bool:
-    """Valida proxy: deve responder e o IP de sa\u00edda N\u00c3O pode ser o do servidor."""
     if not proxy or not proxy.strip():
         return False
-    proxy_ip = get_public_ip(proxy)
+    normalized = normalize_proxy(proxy)
+    proxy_ip = get_public_ip(normalized)
     if not proxy_ip:
         return False
     server_ip = _server_public_ip()
@@ -107,10 +118,6 @@ def login_with_credentials(
     verification_code: str | None = None,
     proxy: str | None = None,
 ) -> dict:
-    """Faz login e retorna o dicion\u00e1rio de settings (sess\u00e3o) para persistir.
-
-    Levanta InstagramAuthError em caso de falha.
-    """
     cl = _build_client(proxy=proxy, settings_dict=None)
     try:
         if verification_code:
@@ -126,6 +133,11 @@ def login_with_credentials(
     except Exception as exc:
         raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
 
+    _after_login(cl)
+    try:
+        cl.account_info()
+    except Exception as exc:
+        raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
     return cl.get_settings()
 
 
@@ -134,18 +146,20 @@ def login_with_sessionid(
     proxy: str | None = None,
     username_hint: str | None = None,
 ) -> tuple[dict, str]:
-    """Tentativa via sessionid do navegador (compatibilidade limitada — prefira login_with_credentials)."""
+    """Login via sessionid do navegador (fluxo PostagemIG)."""
     cl = _build_client(proxy=proxy, settings_dict=None)
     try:
-        cl.login_by_sessionid(sessionid)
+        cl.login_by_sessionid(sessionid.strip())
     except Exception as exc:
         raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
 
-    username = (cl.username or (username_hint or "")).strip().lstrip("@")
-    if not username:
-        try:
-            username = cl.account_info().username
-        except Exception as exc:
+    _after_login(cl)
+    try:
+        info = cl.account_info()
+        username = info.username
+    except Exception as exc:
+        username = (cl.username or (username_hint or "")).strip().lstrip("@")
+        if not username:
             raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
 
     return cl.get_settings(), username
@@ -157,11 +171,11 @@ def login_with_imported_settings(
     username: str,
     password: str | None = None,
 ) -> dict:
-    """Carrega sessão exportada do instagrapi (session.json) e valida com login()."""
     username = username.strip().lstrip("@")
     cl = _build_client(proxy=proxy, settings_dict=settings_dict)
     try:
         cl.account_info()
+        _after_login(cl)
         return cl.get_settings()
     except LoginRequired:
         if not password:
@@ -176,6 +190,7 @@ def login_with_imported_settings(
             ) from exc
         except Exception as exc:
             raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
+        _after_login(cl)
         return cl.get_settings()
     except Exception as exc:
         raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
@@ -187,12 +202,8 @@ def get_ready_client(
     username: str | None = None,
     password: str | None = None,
 ) -> Client:
-    """Retorna um Client j\u00e1 logado e validado.
-
-    Se a sess\u00e3o expirou e tivermos user/pass, tenta relogar silenciosamente.
-    Levanta InstagramAuthError se n\u00e3o conseguir.
-    """
     cl = _build_client(proxy=proxy, settings_dict=settings_dict)
+    _after_login(cl)
     try:
         cl.account_info()
         return cl
@@ -200,6 +211,7 @@ def get_ready_client(
         if username and password:
             try:
                 cl.login(username, password)
+                _after_login(cl)
                 return cl
             except TwoFactorRequired as exc:
                 raise InstagramTwoFactorRequired(
@@ -208,7 +220,7 @@ def get_ready_client(
             except Exception as exc:
                 raise InstagramAuthError(f"Re-login falhou: {exc}") from exc
         raise InstagramAuthError(
-            "Sessão expirada. Reconecte a conta com usuário e senha no painel."
+            "Sessão expirada. Reconecte com sessionid novo ou usuário/senha."
         )
     except Exception as exc:
         raise InstagramAuthError(str(exc)) from exc
@@ -220,7 +232,6 @@ def publish_reel(
     caption: str,
     thumbnail_path: Path | None = None,
 ) -> dict:
-    """Publica o reel e retorna informações básicas (id, code, url)."""
     if not video_path.exists():
         raise FileNotFoundError(f"Vídeo não encontrado: {video_path}")
 
@@ -256,7 +267,6 @@ def _story_links(link_url: str | None) -> list[StoryLink]:
 
 
 def publish_story(cl: Client, media_path: Path, link_url: str | None = None) -> dict:
-    """Publica story (foto ou vídeo), opcionalmente com link sticker."""
     if not media_path.exists():
         raise FileNotFoundError(f"Mídia não encontrada: {media_path}")
     links = _story_links(link_url)
@@ -269,7 +279,6 @@ def publish_story(cl: Client, media_path: Path, link_url: str | None = None) -> 
 
 
 def publish_photo_feed(cl: Client, image_path: Path, caption: str) -> dict:
-    """Publica foto no feed do perfil."""
     if not image_path.exists():
         raise FileNotFoundError(f"Imagem não encontrada: {image_path}")
     media = cl.photo_upload(image_path, caption)
@@ -278,7 +287,6 @@ def publish_photo_feed(cl: Client, image_path: Path, caption: str) -> dict:
 
 
 def get_account_profile(cl: Client) -> dict:
-    """Retorna bio, link e URL da foto de perfil."""
     info = cl.account_info()
     return {
         "username": info.username,
@@ -295,7 +303,6 @@ def update_account_profile(
     external_url: str | None = None,
     profile_picture_path: Path | None = None,
 ) -> dict:
-    """Atualiza bio, link e/ou foto de perfil."""
     if biography is not None:
         cl.account_set_biography(biography)
     if external_url is not None:

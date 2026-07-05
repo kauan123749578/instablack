@@ -29,9 +29,9 @@
 
 <div class="form-card" style="margin-bottom:24px">
   <h3 style="margin-top:0">Adicionar nova conta</h3>
-    <p class="muted" style="margin:0 0 16px;font-size:13px">
-    <strong>Recomendado:</strong> @ + senha com a <strong>mesma proxy</strong> do perfil no Multilogin.
-    Se der erro de senha/IP, confira o login no Multilogin primeiro — o Instagram pode ter bloqueado o IP da proxy.
+  <p class="muted" style="margin:0 0 16px;font-size:13px">
+    <strong>Igual ao PostagemIG:</strong> cole o <strong>Session ID</strong> do Multilogin + proxy do perfil.
+    Login por senha no Railway costuma ser bloqueado pelo Instagram — sessionid funciona melhor.
   </p>
   {% if not can_add_account %}
   <div class="alert alert-error" style="margin-bottom:12px">
@@ -42,13 +42,26 @@
     <fieldset>
       <legend>Método de autenticação</legend>
       <div class="checkbox-row">
-        <label><input type="radio" name="auth_method" value="password" {% if form.get('auth_method', 'password') == 'password' %}checked{% endif %}> Usuário & senha (recomendado)</label>
+        <label><input type="radio" name="auth_method" value="sessionid" {% if form.get('auth_method', 'sessionid') == 'sessionid' %}checked{% endif %}> Session ID (recomendado)</label>
+        <label><input type="radio" name="auth_method" value="password" {% if form.get('auth_method') == 'password' %}checked{% endif %}> Usuário & senha</label>
         <label><input type="radio" name="auth_method" value="import" {% if form.get('auth_method') == 'import' %}checked{% endif %}> Importar session.json</label>
-        <label><input type="radio" name="auth_method" value="sessionid" {% if form.get('auth_method') == 'sessionid' %}checked{% endif %}> Session ID (avançado)</label>
       </div>
     </fieldset>
 
-    <label>Usuário Instagram (@)
+    <label>Proxy <strong style="color:var(--red)">*</strong>
+      <input type="text" name="proxy" id="account-proxy-input" required
+             value="{{ form.get('proxy') or default_proxy }}"
+             placeholder="ip:porta:usuario:senha">
+    </label>
+    <p class="muted" style="margin:0;font-size:12px">Mesma proxy do perfil no Multilogin. Aceita http, socks5 e <code>ip:porta:user:senha</code>.</p>
+
+    <div id="sessionid-wrap">
+      <label>Session ID do navegador
+        <textarea name="sessionid" id="sessionid-input" rows="2" placeholder="Cole o sessionid (F12 → Application → Cookies → instagram.com)">{{ form.get('sessionid', '') }}</textarea>
+      </label>
+    </div>
+
+    <label>Usuário Instagram (@) <span class="muted">(opcional com sessionid)</span>
       <input type="text" name="username" placeholder="meu_perfil" value="{{ form.get('username', '') }}">
     </label>
 
@@ -56,36 +69,16 @@
       <label>Senha
         <input type="password" name="password" autocomplete="new-password">
       </label>
-      <p id="password-hint" class="muted" style="margin:4px 0 0;font-size:12px;display:none">
-        Opcional no Session ID — se o cookie falhar, usamos usuário + senha automaticamente.
-      </p>
     </div>
 
     <input type="hidden" name="verification_code" id="verification-code-hidden" value="">
 
-    <div id="sessionid-wrap">
-      <label>Session ID do navegador
-        <input type="text" name="sessionid" id="sessionid-input" placeholder="Só se o Instagram aceitar na API mobile"
-               value="{{ form.get('sessionid', '') }}">
-      </label>
-      <p class="muted" style="margin:4px 0 0;font-size:12px">Cookie do Chrome/Multilogin — frequentemente recusado (erro 467). Prefira usuário & senha.</p>
-    </div>
-
     <div id="import-wrap">
       <label>session.json (instagrapi)
-        <textarea name="session_json" rows="5" placeholder='Cole o JSON de cl.dump_settings("session.json")'>{{ form.get('session_json', '') }}</textarea>
+        <textarea name="session_json" rows="5" placeholder='JSON de cl.dump_settings("session.json")'>{{ form.get('session_json', '') }}</textarea>
       </label>
-      <p class="muted" style="margin:4px 0 0;font-size:12px">Fluxo: login() → dump_settings(). Se expirou, informe @ e senha para renovar.</p>
     </div>
 
-    <label>Proxy <strong style="color:var(--red)">*</strong> (obrigatório)
-      <input type="text" name="proxy" id="account-proxy-input" required
-             value="{{ form.get('proxy') or default_proxy }}"
-             placeholder="host:porta:user:senha">
-    </label>
-    <p class="muted" style="margin:0;font-size:12px">
-      Mesma proxy do perfil no Multilogin. Formato: <code>ip:porta:user:senha</code>
-    </p>
     <button type="submit" class="btn btn-primary" id="account-connect-btn">Conectar conta</button>
   </form>
 </div>
