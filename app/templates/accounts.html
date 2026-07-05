@@ -29,10 +29,9 @@
 
 <div class="form-card" style="margin-bottom:24px">
   <h3 style="margin-top:0">Adicionar nova conta</h3>
-  <p class="muted" style="margin:0 0 16px;font-size:13px">
-    <strong>Recomendado:</strong> usuário + senha com a mesma proxy do Multilogin.
-    O instablack salva a sessão no banco (como <code>dump_settings</code> do instagrapi).
-    Session ID do navegador costuma falhar na API mobile.
+    <p class="muted" style="margin:0 0 16px;font-size:13px">
+    <strong>Recomendado:</strong> @ + senha com a <strong>mesma proxy</strong> do perfil no Multilogin.
+    Se der erro de senha/IP, confira o login no Multilogin primeiro — o Instagram pode ter bloqueado o IP da proxy.
   </p>
   {% if not can_add_account %}
   <div class="alert alert-error" style="margin-bottom:12px">

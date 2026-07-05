@@ -9,7 +9,7 @@ from typing import Optional
 
 import requests
 from instagrapi import Client
-from instagrapi.exceptions import LoginRequired, TwoFactorRequired
+from instagrapi.exceptions import BadPassword, LoginRequired, TwoFactorRequired
 from instagrapi.types import StoryLink
 
 log = logging.getLogger(__name__)
@@ -26,19 +26,30 @@ class InstagramTwoFactorRequired(InstagramAuthError):
     """Conta exige código 2FA — o cliente deve solicitar ao usuário."""
 
 
-def _friendly_auth_error(raw: str) -> str:
+def _friendly_auth_error(raw: str, proxy: str | None = None) -> str:
     low = raw.lower()
-    if "467" in raw or "login_required" in low:
-        return (
-            "Session ID do navegador (Multilogin/Chrome) não funciona na API mobile do Instagram. "
-            "Use Usuário & senha com a mesma proxy — o instablack salva a sessão automaticamente "
-            "(equivalente ao dump_settings do instagrapi)."
+    if "blacklist" in low or ("password" in low and "incorrect" in low):
+        msg = (
+            "Instagram bloqueou o login neste IP/proxy — ou a senha está errada. "
+            "Confira a senha no Multilogin, use a proxy exata do perfil e, se o IP estiver queimado, troque a proxy."
         )
-    if "403" in raw:
-        return "Sessão recusada pelo Instagram. Conecte com usuário e senha."
-    if "challenge" in low:
-        return "Instagram pediu verificação. Abra o app, confirme o login e tente de novo."
-    return raw
+    elif "467" in raw or "login_required" in low:
+        msg = (
+            "Session ID do navegador (Multilogin/Chrome) não funciona na API mobile do Instagram. "
+            "Use Usuário & senha com a mesma proxy — o instablack salva a sessão automaticamente."
+        )
+    elif "403" in raw:
+        msg = "Sessão recusada pelo Instagram. Conecte com usuário e senha."
+    elif "challenge" in low:
+        msg = "Instagram pediu verificação. Abra o app, confirme o login e tente de novo."
+    else:
+        msg = raw
+
+    if proxy:
+        proxy_ip = get_public_ip(proxy)
+        if proxy_ip:
+            msg = f"{msg} (IP da proxy: {proxy_ip})"
+    return msg
 
 
 def _build_client(proxy: Optional[str], settings_dict: Optional[dict]) -> Client:
@@ -110,8 +121,10 @@ def login_with_credentials(
         raise InstagramTwoFactorRequired(
             "Autenticação de dois fatores necessária. Informe o código do autenticador."
         ) from exc
-    except Exception as exc:  # instagrapi tem várias subclasses; tratamos genericamente
-        raise InstagramAuthError(_friendly_auth_error(str(exc))) from exc
+    except BadPassword as exc:
+        raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
+    except Exception as exc:
+        raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
 
     return cl.get_settings()
 
@@ -126,14 +139,14 @@ def login_with_sessionid(
     try:
         cl.login_by_sessionid(sessionid)
     except Exception as exc:
-        raise InstagramAuthError(_friendly_auth_error(str(exc))) from exc
+        raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
 
     username = (cl.username or (username_hint or "")).strip().lstrip("@")
     if not username:
         try:
             username = cl.account_info().username
         except Exception as exc:
-            raise InstagramAuthError(_friendly_auth_error(str(exc))) from exc
+            raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
 
     return cl.get_settings(), username
 
@@ -162,10 +175,10 @@ def login_with_imported_settings(
                 "Autenticação de dois fatores necessária. Informe o código do autenticador."
             ) from exc
         except Exception as exc:
-            raise InstagramAuthError(_friendly_auth_error(str(exc))) from exc
+            raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
         return cl.get_settings()
     except Exception as exc:
-        raise InstagramAuthError(_friendly_auth_error(str(exc))) from exc
+        raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
 
 
 def get_ready_client(
