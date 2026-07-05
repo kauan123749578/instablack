@@ -14,6 +14,7 @@ celery_app = Celery(
     backend=settings.redis_url,
     include=[
         "celery_app.tasks.publish",
+        "celery_app.tasks.health",
         "celery_app.beat",
     ],
 )
@@ -28,6 +29,8 @@ celery_conf: dict = {
         "celery_app.tasks.publish.publish_once": {"queue": "publish"},
         "celery_app.tasks.publish.execute_automation": {"queue": "publish"},
         "celery_app.beat.tick": {"queue": "beat"},
+        "celery_app.tasks.health.check_all_accounts": {"queue": "beat"},
+        "celery_app.tasks.health.check_account_health": {"queue": "default"},
     },
     "broker_connection_retry_on_startup": True,
     "result_expires": 60 * 60,
@@ -45,5 +48,9 @@ celery_app.conf.beat_schedule = {
     "tick-every-N-seconds": {
         "task": "celery_app.beat.tick",
         "schedule": schedule(run_every=settings.beat_tick_seconds),
+    },
+    "account-health-every-15-min": {
+        "task": "celery_app.tasks.health.check_all_accounts",
+        "schedule": schedule(run_every=900),
     },
 }

@@ -13,6 +13,20 @@
 {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
 {% if ok %}<div class="alert alert-ok">{{ ok }}</div>{% endif %}
 
+{% if offline_accounts %}
+<div class="alert alert-error offline-alert">
+  <strong>{{ offline_accounts|length }} perfil(is) fora do ar</strong> — verificação automática a cada 15 min.
+  <ul class="offline-list">
+    {% for acc in offline_accounts %}
+    <li>
+      <strong>@{{ acc.username }}</strong> · {{ status_label(acc.status) }}
+      {% if acc.last_error %}<span class="muted">— {{ acc.last_error[:120] }}</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
 <div class="form-card" style="margin-bottom:24px">
   <h3 style="margin-top:0">Adicionar nova conta</h3>
   {% if not can_add_account %}

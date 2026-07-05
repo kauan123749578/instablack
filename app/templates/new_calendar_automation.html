@@ -1,28 +1,22 @@
 {% extends "base.html" %}
-{% block title %}Agendar por calendário{% endblock %}
+{% block title %}Calendário Reels{% endblock %}
 {% block content %}
 <div class="page-header">
-  <h2><i data-lucide="calendar-days" class="inline-icon"></i> Agendar por calendário</h2>
-  <p class="muted page-header-sub">Escolha os dias do mês e o horário — publica automaticamente nesses dias.</p>
+  <h2><i data-lucide="calendar-days" class="inline-icon"></i> Calendário Reels</h2>
+  <p class="muted page-header-sub">Escolha os dias do mês e o horário — só para Reels. Stories usam Agendar Story.</p>
 </div>
 
 {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
 
 <form method="post" action="/automations/new/calendar" enctype="multipart/form-data" class="form-card form-grid">
+  <input type="hidden" name="content_type" value="reel">
+
   <label>Nome
     <input type="text" name="name" required placeholder="Ex.: Reels dias 1, 15 e 30">
   </label>
 
-  <label>Tipo de conteúdo
-    <select name="content_type" id="content-type-cal">
-      <option value="reel">Reels (vídeo)</option>
-      <option value="story">Story (foto ou vídeo)</option>
-      <option value="photo">Foto no feed</option>
-    </select>
-  </label>
-
-  <label id="media-label-cal">Mídia
-    <input type="file" name="video" accept="video/mp4,video/quicktime,image/jpeg,image/png,image/webp" required>
+  <label id="media-label-cal">Vídeo Reels (.mp4)
+    <input type="file" name="video" accept="video/mp4,video/quicktime" required>
   </label>
 
   <div id="thumb-wrap-cal">
@@ -33,15 +27,8 @@
 
   <div id="caption-wrap-cal">
     <label>Legenda
-      <textarea name="caption" rows="3" placeholder="Legenda (opcional para Story)"></textarea>
+      <textarea name="caption" rows="3" placeholder="Legenda do Reel"></textarea>
     </label>
-  </div>
-
-  <div id="story-link-wrap-cal">
-    <label>Link do Story (opcional)
-      <input type="url" name="story_link" placeholder="https://seusite.com/pagina">
-    </label>
-    <p class="muted" style="margin:4px 0 0;font-size:12px">Sticker de link no story (contas elegíveis).</p>
   </div>
 
   <fieldset class="calendar-fieldset">
@@ -69,7 +56,7 @@
       {% for ac in accounts %}
       <label>
         <input type="checkbox" name="account_ids" value="{{ ac.id }}">
-        @{{ ac.username }} <span class="muted">({{ ac.status }})</span>
+        @{{ ac.username }} <span class="muted">({{ status_label(ac.status) }})</span>
       </label>
       {% endfor %}
     </div>
@@ -79,7 +66,7 @@
   </fieldset>
 
   <button type="submit" class="btn btn-primary" {% if not accounts %}disabled{% endif %}>
-    <i data-lucide="calendar-check"></i> Criar agendamento
+    <i data-lucide="calendar-check"></i> Criar agendamento Reels
   </button>
 </form>
 {% endblock %}

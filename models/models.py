@@ -94,8 +94,11 @@ class InstagramAccount(Base):
     proxy: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     session_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    status: Mapped[str] = mapped_column(String(32), default="active")  # active | needs_login | banned | proxy_down
+    status: Mapped[str] = mapped_column(String(32), default="active")  # active | paused | needs_login | proxy_down | banned
     last_login_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_health_check_at: Mapped[Optional[dt.datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

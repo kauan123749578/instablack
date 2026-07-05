@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Biblioteca de Mídia — instablack{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2><i data-lucide="image" class="inline-icon"></i> Biblioteca de Mídia</h2>
+  <p class="muted page-header-sub">Vídeos e capas já enviados nas suas automações</p>
+</div>
+
+<div class="page-header-actions" style="margin-bottom:16px">
+  <a href="/automations/new" class="btn btn-primary" data-nav="/automations/new">
+    <i data-lucide="plus"></i> Nova automação
+  </a>
+  <a href="/automations/new/calendar" class="btn btn-sm" data-nav="/automations/new/calendar">
+    Calendário Reels
+  </a>
+</div>
+
+{% if automations %}
+<div class="media-library-grid">
+  {% for a in automations %}
+  <article class="og-glass-card media-library-item">
+    <div class="media-library-thumb">
+      {% if a.thumb_key %}
+      <img src="/media/{{ a.thumb_key }}" alt="">
+      {% else %}
+      <div class="og-auto-thumb-ph og-auto-thumb-ph--{{ a.content_type|default('reel') }}">
+        {% if a.content_type == 'story' %}<i data-lucide="circle-dot"></i>
+        {% elif a.content_type == 'photo' %}<i data-lucide="image"></i>
+        {% else %}<i data-lucide="play"></i>{% endif %}
+      </div>
+      {% endif %}
+    </div>
+    <div class="media-library-meta">
+      <strong>{{ a.name }}</strong>
+      <span class="og-muted">{{ a.content_type|upper }} · {{ status_label(a.status) }}</span>
+      <span class="og-muted">{{ a.video_original_name or a.video_key }}</span>
+    </div>
+    <a href="/automations" class="btn btn-sm" data-nav="/automations">Ver automação</a>
+  </article>
+  {% endfor %}
+</div>
+{% else %}
+<div class="og-glass-card og-empty" style="padding:32px">
+  Nenhuma mídia ainda. <a href="/automations/new" class="og-link" data-nav="/automations/new">Criar automação</a>
+</div>
+{% endif %}
+{% endblock %}

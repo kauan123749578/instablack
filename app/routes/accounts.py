@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.deps import get_current_user
 from app.security import decrypt_secret, encrypt_secret
 from app.templating import templates
+from app.utils.account_health import offline_accounts
 from app.utils.account_limits import (
     account_limit_label,
     accounts_remaining,
@@ -76,9 +77,10 @@ def list_accounts(
     accounts = _load_user_accounts(db, user)
     ok_key = request.query_params.get("ok")
     ok_msg = {"paused": "Conta pausada.", "resumed": "Conta retomada."}.get(ok_key or "")
+    offline = offline_accounts(db, user.id)
     return templates.TemplateResponse(
         "accounts.html",
-        _accounts_page_context(request, user, accounts, ok=ok_msg),
+        {**_accounts_page_context(request, user, accounts, ok=ok_msg), "offline_accounts": offline},
     )
 
 

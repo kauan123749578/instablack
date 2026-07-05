@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.deps import get_current_user, maybe_current_user
 from app.templating import templates
+from app.utils.account_health import offline_accounts
 from app.utils.timezone import brt_now
 from core.database import get_db
 from models.models import Automation, InstagramAccount, PublishLog, User
@@ -222,6 +223,7 @@ def home(
 
     chart_performance = _chart_performance_7d(db, user.id)
     chart_weekly = _chart_weekly_bars(db, user.id)
+    offline = offline_accounts(db, user.id)
 
     return templates.TemplateResponse(
         "dashboard.html",
@@ -244,6 +246,7 @@ def home(
             "chart_performance": chart_performance,
             "chart_weekly": chart_weekly,
             "now_brt": brt_now(),
+            "offline_accounts": offline,
         },
     )
 

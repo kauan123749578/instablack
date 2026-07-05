@@ -5,6 +5,8 @@
   <h2>{% if default_content_type == 'story' %}Agendar Story{% else %}Nova automação{% endif %}</h2>
   {% if default_content_type == 'story' %}
   <p class="muted page-header-sub">Escolha os dias e o horário — ou publique imediatamente.</p>
+  {% else %}
+  <p class="muted page-header-sub">Reels começam a rodar assim que você criar. Use o calendário no menu para agendar dias específicos.</p>
   {% endif %}
 </div>
 
@@ -12,7 +14,7 @@
 
 <form method="post" action="/automations/new" enctype="multipart/form-data" class="form-card form-grid" id="automation-form">
   <label>Nome da automação
-    <input type="text" name="name" required placeholder="{% if default_content_type == 'story' %}Ex.: Story dias 1, 15 e 30{% else %}Ex.: Reels diário 30min{% endif %}">
+    <input type="text" name="name" required placeholder="{% if default_content_type == 'story' %}Ex.: Story dias 1, 15 e 30{% else %}Ex.: Reels a cada 1 hora{% endif %}">
   </label>
 
   <label>Tipo de conteúdo
@@ -53,7 +55,7 @@
       {% if default_content_type == 'story' %}
       <label class="radio-pill">
         <input type="radio" name="schedule_mode" value="calendar" id="mode-calendar" checked>
-        <span>Agendar por calendário</span>
+        <span>Agendar por calendário + horário</span>
       </label>
       <label class="radio-pill">
         <input type="radio" name="schedule_mode" value="now" id="mode-now">
@@ -61,16 +63,12 @@
       </label>
       {% else %}
       <label class="radio-pill">
-        <input type="radio" name="schedule_mode" value="now" id="mode-now">
-        <span>Postar agora</span>
+        <input type="radio" name="schedule_mode" value="recurring" id="mode-recurring" checked>
+        <span>Rodar em intervalo (inicia já)</span>
       </label>
       <label class="radio-pill">
-        <input type="radio" name="schedule_mode" value="recurring" id="mode-recurring" checked>
-        <span>Agendar recorrente</span>
-      </label>
-      <label class="radio-pill schedule-mode-cal-opt">
-        <input type="radio" name="schedule_mode" value="calendar" id="mode-calendar">
-        <span>Por calendário</span>
+        <input type="radio" name="schedule_mode" value="now" id="mode-now">
+        <span>Postar agora</span>
       </label>
       {% endif %}
     </div>

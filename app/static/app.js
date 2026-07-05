@@ -131,7 +131,13 @@
         if (storyLinkWrap) storyLinkWrap.style.display = "none";
       }
     }
-    sel.addEventListener("change", update);
+    sel.addEventListener("change", () => {
+      if (sel.value === "story" && !window.location.pathname.endsWith("/story")) {
+        window.location.href = "/automations/new/story";
+        return;
+      }
+      update();
+    });
     update();
   }
 
@@ -159,8 +165,11 @@
       const isNow = modeNow?.checked;
       const isCalendar = modeCalendar?.checked;
       const isStory = contentType?.value === "story";
-      if (intervalWrap) intervalWrap.style.display = (!isNow && !isCalendar) ? "" : "none";
-      if (calendarWrap) calendarWrap.style.display = isCalendar ? "" : "none";
+      const pathStory = window.location.pathname.endsWith("/story");
+      const storyMode = isStory || pathStory;
+      const showInterval = Boolean(modeRecurring?.checked) || (!storyMode && !isNow && !isCalendar);
+      if (intervalWrap) intervalWrap.style.display = showInterval ? "" : "none";
+      if (calendarWrap) calendarWrap.style.display = (isCalendar && storyMode) ? "" : "none";
       if (submitBtn) {
         if (isNow) {
           submitBtn.textContent = isStory ? "Postar Story agora" : "Publicar agora";
@@ -317,33 +326,11 @@
     });
 
     const sel = document.getElementById("content-type-cal");
-    const mediaLabel = document.getElementById("media-label-cal");
-    const captionWrap = document.getElementById("caption-wrap-cal");
-    const thumbWrap = document.getElementById("thumb-wrap-cal");
-    const storyLinkWrap = document.getElementById("story-link-wrap-cal");
     if (sel) {
-      function updateType() {
-        const t = sel.value;
-        if (t === "story") {
-          if (mediaLabel) mediaLabel.textContent = "Mídia do Story";
-          if (captionWrap) captionWrap.style.display = "none";
-          if (thumbWrap) thumbWrap.style.display = "none";
-          if (storyLinkWrap) storyLinkWrap.style.display = "";
-        } else if (t === "photo") {
-          if (mediaLabel) mediaLabel.textContent = "Foto do feed";
-          if (captionWrap) captionWrap.style.display = "";
-          if (thumbWrap) thumbWrap.style.display = "none";
-          if (storyLinkWrap) storyLinkWrap.style.display = "none";
-        } else {
-          if (mediaLabel) mediaLabel.textContent = "Vídeo Reels";
-          if (captionWrap) captionWrap.style.display = "";
-          if (thumbWrap) thumbWrap.style.display = "";
-          if (storyLinkWrap) storyLinkWrap.style.display = "none";
-        }
-      }
-      sel.addEventListener("change", updateType);
-      updateType();
+      sel.remove();
     }
+    const storyLinkWrap = document.getElementById("story-link-wrap-cal");
+    if (storyLinkWrap) storyLinkWrap.remove();
   }
 
   function initLucide() {

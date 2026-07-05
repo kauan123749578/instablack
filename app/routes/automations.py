@@ -111,6 +111,23 @@ def new_story_page(
     )
 
 
+@router.get("/media-library")
+def media_library(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    automations = db.scalars(
+        select(Automation)
+        .where(Automation.user_id == user.id)
+        .order_by(desc(Automation.created_at))
+    ).all()
+    return templates.TemplateResponse(
+        "media_library.html",
+        {"request": request, "user": user, "automations": automations},
+    )
+
+
 @router.get("/new/calendar")
 def new_calendar_page(
     request: Request,
@@ -128,7 +145,6 @@ def new_calendar_page(
             "request": request,
             "user": user,
             "accounts": accounts,
-            "content_types": CONTENT_TYPES,
             "error": None,
         },
     )
@@ -153,6 +169,8 @@ async def create_calendar_automation(
     error: str | None = None
     if content_type not in CONTENT_TYPES:
         error = "Tipo de conteúdo inválido."
+    elif content_type != "reel":
+        error = "Agendamento por calendário é apenas para Reels."
     elif not days:
         error = "Selecione pelo menos um dia do mês."
     elif not calendar_time:
@@ -183,7 +201,6 @@ async def create_calendar_automation(
                 "request": request,
                 "user": user,
                 "accounts": all_accounts,
-                "content_types": CONTENT_TYPES,
                 "error": error,
             },
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -250,11 +267,14 @@ async def create_automation(
     elif schedule_mode == "recurring" and interval_minutes not in ALLOWED_INTERVALS:
         error = "Intervalo inválido."
     elif schedule_mode == "calendar":
-        days = parse_calendar_days(calendar_days)
-        if not days:
-            error = "Selecione pelo menos um dia do mês."
-        elif not calendar_time.strip():
-            error = "Informe o horário de publicação."
+        if content_type != "story":
+            error = "Calendário com horário é apenas para Story. Reels usam intervalo ou calendário de Reels."
+        else:
+            days = parse_calendar_days(calendar_days)
+            if not days:
+                error = "Selecione pelo menos um dia do mês."
+            elif not calendar_time.strip():
+                error = "Informe o horário de publicação."
 
     if not error and not account_ids:
         error = "Selecione pelo menos uma conta."
@@ -397,8 +417,7 @@ def resume_automation(
 ):
     a = _get_owned(db, automation_id, user)
     a.status = "active"
-    if a.next_run_at is None:
-        a.next_run_at = dt.datetime.utcnow()
+    a.next_run_at = dt.datetime.utcnow()
     db.commit()
     return RedirectResponse("/automations", status_code=status.HTTP_303_SEE_OTHER)
 

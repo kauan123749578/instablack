@@ -2,16 +2,25 @@
 from __future__ import annotations
 
 import logging
+import time
 from contextlib import contextmanager
 from typing import Iterator
 
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import settings
 
 log = logging.getLogger(__name__)
+
+_COMMIT_RETRIES = 5
+_COMMIT_RETRY_BASE_SEC = 0.15
+
+
+def _is_locked_error(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return "locked" in msg or "busy" in msg
 
 
 def _is_already_exists(exc: Exception) -> bool:
@@ -27,6 +36,19 @@ def _engine_kwargs() -> dict:
 
 engine = create_engine(settings.database_url, future=True, **_engine_kwargs())
 
+
+if settings.is_sqlite:
+
+    @event.listens_for(engine, "connect")
+    def _sqlite_pragmas(dbapi_conn, _connection_record) -> None:
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.execute("PRAGMA busy_timeout=30000")
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+
 SessionLocal = sessionmaker(
     bind=engine,
     autoflush=False,
@@ -40,6 +62,19 @@ class Base(DeclarativeBase):
     pass
 
 
+def _commit_with_retry(db: Session) -> None:
+    for attempt in range(_COMMIT_RETRIES):
+        try:
+            db.commit()
+            return
+        except OperationalError as exc:
+            db.rollback()
+            if settings.is_sqlite and _is_locked_error(exc) and attempt < _COMMIT_RETRIES - 1:
+                time.sleep(_COMMIT_RETRY_BASE_SEC * (attempt + 1))
+                continue
+            raise
+
+
 def get_db() -> Iterator[Session]:
     """Dependency do FastAPI."""
     db = SessionLocal()
@@ -51,11 +86,11 @@ def get_db() -> Iterator[Session]:
 
 @contextmanager
 def session_scope() -> Iterator[Session]:
-    """Sess\u00e3o transacional para uso fora do FastAPI (ex.: tasks Celery)."""
+    """Sessão transacional para uso fora do FastAPI (ex.: tasks Celery)."""
     db = SessionLocal()
     try:
         yield db
-        db.commit()
+        _commit_with_retry(db)
     except Exception:
         db.rollback()
         raise
@@ -93,6 +128,10 @@ def _sqlite_migrate() -> None:
             if "account_limit" not in ucols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN account_limit INTEGER"))
             conn.execute(text("UPDATE users SET is_admin = 1 WHERE username = 'admin'"))
+        if "instagram_accounts" in insp.get_table_names():
+            acols = {c["name"] for c in insp.get_columns("instagram_accounts")}
+            if "last_health_check_at" not in acols:
+                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN last_health_check_at DATETIME"))
 
 
 def _postgres_migrate() -> None:
@@ -125,6 +164,10 @@ def _postgres_migrate() -> None:
             if "account_limit" not in ucols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN account_limit INTEGER"))
             conn.execute(text("UPDATE users SET is_admin = TRUE WHERE username = 'admin' AND is_admin IS NOT TRUE"))
+        if "instagram_accounts" in tables:
+            acols = {c["name"] for c in insp.get_columns("instagram_accounts")}
+            if "last_health_check_at" not in acols:
+                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN last_health_check_at TIMESTAMPTZ"))
 
 
 def init_db() -> None:

@@ -42,7 +42,9 @@ def tick() -> dict:
                 )
                 a.next_run_at = nxt or (now + dt.timedelta(days=1))
             else:
-                a.next_run_at = now + dt.timedelta(minutes=a.interval_minutes or 60)
+                interval = max(int(a.interval_minutes or 60), 1)
+                hold = max(interval * 60, 90)
+                a.next_run_at = now + dt.timedelta(seconds=hold)
 
         # commit antes de despachar para garantir que o estado est\u00e1 salvo
         db.flush()
