@@ -109,7 +109,7 @@ def add_account(
     form_state = {
         "auth_method": "sessionid" if use_sessionid else auth_method,
         "username": username,
-        "sessionid": sessionid.strip(),
+        "sessionid": sid or sessionid.strip(),
         "proxy": proxy_raw.strip() or proxy,
     }
 

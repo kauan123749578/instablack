@@ -26,10 +26,26 @@ class InstagramTwoFactorRequired(InstagramAuthError):
     """Conta exige código 2FA — o cliente deve solicitar ao usuário."""
 
 
+def _friendly_auth_error(raw: str) -> str:
+    low = raw.lower()
+    if "467" in raw:
+        return (
+            "Instagram recusou a sessão (código 467). Use o MESMO proxy do navegador, "
+            "gere um Session ID novo (F12 → Application → Cookies → sessionid) "
+            "ou conecte com usuário e senha."
+        )
+    if "login_required" in low or "403" in raw:
+        return "Session ID expirado ou inválido. Gere um novo no navegador."
+    if "challenge" in low:
+        return "Instagram pediu verificação. Abra o app, confirme o login e tente de novo."
+    return raw
+
+
 def _build_client(proxy: Optional[str], settings_dict: Optional[dict]) -> Client:
     if not proxy:
         raise InstagramAuthError("Proxy \u00e9 obrigat\u00f3rio. Nenhuma requisi\u00e7\u00e3o ser\u00e1 feita sem proxy.")
     cl = Client()
+    cl.delay_range = [1, 3]
     cl.set_proxy(proxy)
     if settings_dict:
         cl.set_settings(settings_dict)
@@ -95,7 +111,7 @@ def login_with_credentials(
             "Autenticação de dois fatores necessária. Informe o código do autenticador."
         ) from exc
     except Exception as exc:  # instagrapi tem várias subclasses; tratamos genericamente
-        raise InstagramAuthError(str(exc)) from exc
+        raise InstagramAuthError(_friendly_auth_error(str(exc))) from exc
 
     return cl.get_settings()
 
@@ -108,10 +124,17 @@ def login_with_sessionid(sessionid: str, proxy: str | None = None) -> tuple[dict
     cl = _build_client(proxy=proxy, settings_dict=None)
     try:
         cl.login_by_sessionid(sessionid)
-        info = cl.account_info()
     except Exception as exc:
-        raise InstagramAuthError(str(exc)) from exc
-    return cl.get_settings(), info.username
+        raise InstagramAuthError(_friendly_auth_error(str(exc))) from exc
+
+    username = (cl.username or "").strip()
+    if not username:
+        try:
+            username = cl.account_info().username
+        except Exception as exc:
+            raise InstagramAuthError(_friendly_auth_error(str(exc))) from exc
+
+    return cl.get_settings(), username
 
 
 def get_ready_client(
