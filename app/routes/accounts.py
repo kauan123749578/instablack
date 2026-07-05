@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -28,6 +29,7 @@ from core.instagram import (
     get_account_profile,
     get_ready_client,
     login_with_credentials,
+    login_with_imported_settings,
     login_with_sessionid,
     serialize_settings,
     update_account_profile,
@@ -97,6 +99,7 @@ def add_account(
     password: str = Form(""),
     verification_code: str = Form(""),
     sessionid: str = Form(""),
+    session_json: str = Form(""),
     proxy: str = Form(""),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -105,11 +108,13 @@ def add_account(
     proxy_raw = proxy
     proxy = normalize_proxy(proxy)
     sid = clean_sessionid(sessionid)
-    use_sessionid = bool(sid) or auth_method == "sessionid"
+    use_sessionid = auth_method == "sessionid"
+    use_import = auth_method == "import"
     form_state = {
-        "auth_method": "sessionid" if use_sessionid else auth_method,
+        "auth_method": auth_method,
         "username": username,
         "sessionid": sid or sessionid.strip(),
+        "session_json": session_json.strip(),
         "proxy": proxy_raw.strip() or proxy,
     }
 
@@ -141,12 +146,44 @@ def add_account(
             status_code=status.HTTP_400_BAD_REQUEST,
         )
 
+    encrypted_pw = None
     try:
-        if use_sessionid:
+        if use_import:
+            if not session_json.strip():
+                raise InstagramAuthError("Cole o conteúdo do session.json exportado pelo instagrapi.")
+            if not username:
+                raise InstagramAuthError("Informe o @ da conta para importar a sessão.")
+            try:
+                imported = json.loads(session_json)
+            except json.JSONDecodeError as exc:
+                raise InstagramAuthError("JSON inválido. Cole o session.json completo do instagrapi.") from exc
+            if not isinstance(imported, dict):
+                raise InstagramAuthError("session.json deve ser um objeto JSON.")
+            settings_dict = login_with_imported_settings(
+                imported,
+                proxy=proxy,
+                username=username,
+                password=password or None,
+            )
+            encrypted_pw = encrypt_secret(password) if password else None
+        elif use_sessionid:
             if not sid:
-                raise InstagramAuthError("Cole o Session ID do navegador.")
-            settings_dict, username = login_with_sessionid(sid, proxy=proxy)
-            encrypted_pw = None
+                raise InstagramAuthError("Cole o Session ID ou mude para Usuário & senha.")
+            try:
+                settings_dict, username = login_with_sessionid(
+                    sid, proxy=proxy, username_hint=username or None
+                )
+            except InstagramAuthError:
+                if username and password:
+                    settings_dict = login_with_credentials(
+                        username=username,
+                        password=password,
+                        verification_code=verification_code.strip() or None,
+                        proxy=proxy,
+                    )
+                    encrypted_pw = encrypt_secret(password)
+                else:
+                    raise
         else:
             if not username or not password:
                 raise InstagramAuthError("Usuário e senha são obrigatórios.")

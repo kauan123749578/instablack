@@ -207,16 +207,24 @@
     });
   }
 
-  function initSessionIdAuto() {
-    const sidInput = document.getElementById("sessionid-input");
-    const sessionRadio = document.querySelector('input[name="auth_method"][value="sessionid"]');
-    if (!sidInput || !sessionRadio) return;
-    function sync() {
-      if (sidInput.value.trim()) sessionRadio.checked = true;
+  function initAuthMethodForm() {
+    const form = document.getElementById("account-add-form");
+    if (!form) return;
+    const passwordWrap = document.getElementById("password-wrap");
+    const sessionWrap = document.getElementById("sessionid-wrap");
+    const importWrap = document.getElementById("import-wrap");
+    const radios = form.querySelectorAll('input[name="auth_method"]');
+
+    const passwordHint = document.getElementById("password-hint");
+
+    function update() {
+      const method = form.querySelector('input[name="auth_method"]:checked')?.value || "password";
+      if (sessionWrap) sessionWrap.style.display = method === "sessionid" ? "" : "none";
+      if (importWrap) importWrap.style.display = method === "import" ? "" : "none";
+      if (passwordHint) passwordHint.style.display = method === "sessionid" ? "" : "none";
     }
-    sidInput.addEventListener("input", sync);
-    sidInput.addEventListener("paste", () => setTimeout(sync, 0));
-    sync();
+    radios.forEach((r) => r.addEventListener("change", update));
+    update();
   }
 
   function initAccountsConnect() {
@@ -249,8 +257,6 @@
       const fd = new FormData(form);
       const proxyInput = form.querySelector('[name="proxy"]');
       if (proxyInput) fd.set("proxy", normalizeProxyValue(proxyInput.value));
-      const sidInput = form.querySelector('[name="sessionid"]');
-      if (sidInput?.value.trim()) fd.set("auth_method", "sessionid");
       if (with2fa && codeInput) fd.set("verification_code", codeInput.value.trim());
       if (connectBtn) { connectBtn.disabled = true; connectBtn.textContent = "Conectando…"; }
       try {
@@ -410,8 +416,8 @@
     initOgDashboard();
     initCalendarPicker();
     initAccountsConnect();
+    initAuthMethodForm();
     initProxyInput();
-    initSessionIdAuto();
   }
 
   initPage();
