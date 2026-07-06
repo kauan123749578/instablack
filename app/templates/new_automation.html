@@ -6,7 +6,7 @@
   {% if default_content_type == 'story' %}
   <p class="muted page-header-sub">Escolha os dias e o horário — ou publique imediatamente.</p>
   {% else %}
-  <p class="muted page-header-sub">Reels começam a rodar assim que você criar. Use o calendário no menu para agendar dias específicos.</p>
+  <p class="muted page-header-sub">Reels: selecione vários vídeos e uma capa única para todos. O loop publica um por vez no intervalo escolhido.</p>
   {% endif %}
 </div>
 
@@ -25,14 +25,16 @@
     </select>
   </label>
 
-  <label id="media-label">Vídeo Reels (.mp4) <strong style="color:var(--red)">*</strong>
-    <input type="file" id="video-input" name="video" accept="video/mp4,video/quicktime,video/webm" required>
+  <label id="media-label">Vídeos Reels (.mp4) <strong style="color:var(--red)">*</strong>
+    <input type="file" id="video-input" name="videos" accept="video/mp4,video/quicktime,video/webm" multiple>
     <span id="video-file-name" class="muted" style="display:block;margin-top:4px;font-size:12px">Nenhum vídeo selecionado</span>
+    <ul id="video-file-list" class="video-file-list muted" style="display:none;margin:6px 0 0;padding-left:18px;font-size:12px"></ul>
   </label>
 
   <div id="thumb-wrap">
-    <label>Capa do Reel (.jpg/.png — 9:16) <span class="muted">(opcional)</span>
+    <label>Capa para <strong>todos</strong> os Reels (.jpg/.png — 9:16)
       <input type="file" id="thumb-input" name="thumb" accept="image/jpeg,image/png,image/webp">
+      <span class="muted" style="display:block;margin-top:4px;font-size:12px">Mesma imagem de capa em cada vídeo do loop (opcional).</span>
       <img id="thumb-preview" style="display:none;margin-top:8px;max-width:120px;border-radius:8px" alt="Preview">
     </label>
   </div>

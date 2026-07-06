@@ -10,6 +10,7 @@ from pathlib import Path
 from sqlalchemy import select
 
 from app.security import decrypt_secret
+from app.utils.automation_videos import parse_videos_json, resolve_video_key
 from celery_app.config import celery_app
 from core.database import session_scope
 from core.instagram import (
@@ -43,11 +44,17 @@ def execute_automation(self, automation_id: int) -> dict:
             acc.id for acc in automation.accounts
             if acc.status not in ("banned", "proxy_down", "paused", "needs_login")
         ]
+        video_key = resolve_video_key(automation)
+        items = parse_videos_json(automation.videos_json)
+        if items:
+            automation.current_index = (
+                (int(automation.current_index or 0) + 1) % len(items)
+            )
 
     for idx, account_id in enumerate(account_ids):
         countdown = random.randint(0, 40) + idx * random.randint(2, 8)
         publish_to_account.apply_async(
-            args=[automation_id, account_id],
+            args=[automation_id, account_id, video_key],
             countdown=countdown,
         )
 
@@ -93,7 +100,7 @@ def publish_once(
     retry_jitter=True,
     max_retries=2,
 )
-def publish_to_account(self, automation_id: int, account_id: int) -> dict:
+def publish_to_account(self, automation_id: int, account_id: int, video_key: str | None = None) -> dict:
     with session_scope() as db:
         automation = db.get(Automation, automation_id)
         account = db.get(InstagramAccount, account_id)
@@ -109,10 +116,12 @@ def publish_to_account(self, automation_id: int, account_id: int) -> dict:
             ))
             return {"skipped": True}
 
+        vk = video_key or resolve_video_key(automation)
+
         return _execute_publish(
             automation_id=automation.id,
             account_id=account.id,
-            video_key=automation.video_key,
+            video_key=vk,
             thumb_key=automation.thumb_key,
             caption=automation.caption or "",
             content_type=automation.content_type or "reel",

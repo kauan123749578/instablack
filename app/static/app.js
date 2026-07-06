@@ -106,6 +106,8 @@
     const captionWrap = document.getElementById("caption-wrap");
     const thumbWrap = document.getElementById("thumb-wrap");
     const storyLinkWrap = document.getElementById("story-link-wrap");
+    const videoInput = document.getElementById("video-input");
+    const videoList = document.getElementById("video-file-list");
     if (!sel) return;
 
     const params = new URLSearchParams(window.location.search);
@@ -115,21 +117,39 @@
     function update() {
       const t = sel.value;
       if (t === "story") {
-        if (mediaLabel) mediaLabel.textContent = "Mídia do Story (foto ou vídeo)";
+        if (mediaLabel) mediaLabel.firstChild.textContent = "Mídia do Story (foto ou vídeo) ";
+        if (videoInput) {
+          videoInput.name = "video";
+          videoInput.removeAttribute("multiple");
+          videoInput.accept = "image/jpeg,image/png,image/webp,video/mp4,video/quicktime";
+        }
+        if (videoList) videoList.style.display = "none";
         if (captionWrap) captionWrap.style.display = "none";
         if (thumbWrap) thumbWrap.style.display = "none";
         if (storyLinkWrap) storyLinkWrap.style.display = "";
       } else if (t === "photo") {
-        if (mediaLabel) mediaLabel.textContent = "Foto para o feed (.jpg/.png)";
+        if (mediaLabel) mediaLabel.firstChild.textContent = "Foto para o feed (.jpg/.png) ";
+        if (videoInput) {
+          videoInput.name = "video";
+          videoInput.removeAttribute("multiple");
+          videoInput.accept = "image/jpeg,image/png,image/webp";
+        }
+        if (videoList) videoList.style.display = "none";
         if (captionWrap) captionWrap.style.display = "";
         if (thumbWrap) thumbWrap.style.display = "none";
         if (storyLinkWrap) storyLinkWrap.style.display = "none";
       } else {
-        if (mediaLabel) mediaLabel.textContent = "Vídeo Reels (.mp4)";
+        if (mediaLabel) mediaLabel.firstChild.textContent = "Vídeos Reels (.mp4) ";
+        if (videoInput) {
+          videoInput.name = "videos";
+          videoInput.setAttribute("multiple", "multiple");
+          videoInput.accept = "video/mp4,video/quicktime,video/webm";
+        }
         if (captionWrap) captionWrap.style.display = "";
         if (thumbWrap) thumbWrap.style.display = "";
         if (storyLinkWrap) storyLinkWrap.style.display = "none";
       }
+      document.dispatchEvent(new CustomEvent("automation-media-changed"));
     }
     sel.addEventListener("change", () => {
       if (sel.value === "story" && !window.location.pathname.endsWith("/story")) {
@@ -408,32 +428,76 @@
     const form = document.getElementById("automation-form");
     if (!form) return;
 
+    const contentType = document.getElementById("content-type");
     const videoInput = document.getElementById("video-input");
     const videoName = document.getElementById("video-file-name");
+    const videoList = document.getElementById("video-file-list");
     const accountBoxes = form.querySelectorAll('input[name="account_ids"]');
 
+    const videoExt = /\.(mp4|mov|webm|m4v|mkv)$/i;
+    const imageExt = /\.(jpe?g|png|webp)$/i;
+
     function updateVideoLabel() {
-      const f = videoInput?.files?.[0];
+      const files = videoInput?.files ? Array.from(videoInput.files) : [];
+      const isReel = contentType?.value === "reel";
       if (!videoName) return;
-      if (f) {
-        videoName.textContent = f.name + " (" + Math.round(f.size / 1024 / 1024 * 10) / 10 + " MB)";
-        videoName.style.color = "var(--green, #22c55e)";
-      } else {
-        videoName.textContent = "Nenhum vídeo selecionado — escolha um .mp4";
+      if (!files.length) {
+        videoName.textContent = isReel
+          ? "Nenhum vídeo selecionado — escolha um ou mais .mp4"
+          : "Nenhum arquivo selecionado";
         videoName.style.color = "var(--red, #ef4444)";
+        if (videoList) videoList.style.display = "none";
+        return;
+      }
+      if (isReel) {
+        const bad = files.filter((f) => !videoExt.test(f.name));
+        if (bad.length) {
+          videoName.textContent = "Arquivo inválido: " + bad.map((f) => f.name).join(", ") + " — use .mp4";
+          videoName.style.color = "var(--red, #ef4444)";
+        } else {
+          const mb = Math.round(files.reduce((s, f) => s + f.size, 0) / 1024 / 1024 * 10) / 10;
+          videoName.textContent = files.length + " vídeo(s) — " + mb + " MB total";
+          videoName.style.color = "var(--green, #22c55e)";
+        }
+        if (videoList) {
+          videoList.innerHTML = files.map((f) => "<li>" + f.name + "</li>").join("");
+          videoList.style.display = files.length > 1 ? "block" : "none";
+        }
+      } else {
+        videoName.textContent = files[0].name;
+        videoName.style.color = "var(--green, #22c55e)";
+        if (videoList) videoList.style.display = "none";
       }
     }
 
     videoInput?.addEventListener("change", updateVideoLabel);
+    document.addEventListener("automation-media-changed", updateVideoLabel);
     updateVideoLabel();
 
     form.addEventListener("submit", (e) => {
-      const video = videoInput?.files?.[0];
-      if (!video) {
+      const files = videoInput?.files ? Array.from(videoInput.files) : [];
+      const isReel = contentType?.value === "reel";
+      if (!files.length) {
         e.preventDefault();
-        alert("Selecione um vídeo .mp4 no campo \"Vídeo Reels\". A capa (.png) sozinha não publica.");
+        alert(isReel
+          ? "Selecione pelo menos um vídeo .mp4. A capa (.png) sozinha não publica."
+          : "Selecione o arquivo de mídia.");
         videoInput?.focus();
         return;
+      }
+      if (isReel) {
+        const bad = files.filter((f) => !videoExt.test(f.name));
+        if (bad.length) {
+          e.preventDefault();
+          alert("Estes arquivos não são vídeo: " + bad.map((f) => f.name).join(", "));
+          return;
+        }
+      } else if (contentType?.value === "photo") {
+        if (!imageExt.test(files[0].name)) {
+          e.preventDefault();
+          alert("Para foto no feed, use .jpg ou .png.");
+          return;
+        }
       }
       const checked = Array.from(accountBoxes).some((cb) => cb.checked);
       if (accountBoxes.length && !checked) {
@@ -441,7 +505,6 @@
         alert("Marque pelo menos uma conta para publicar.");
         return;
       }
-      // submit nativo (multipart) — necessário para enviar o arquivo ao R2
     });
   }
 

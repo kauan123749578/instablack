@@ -127,6 +127,8 @@ class Automation(Base):
     video_original_name: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     thumb_key: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     thumb_original_name: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    videos_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # loop: [{video_key, video_original_name}]
+    current_index: Mapped[int] = mapped_column(Integer, default=0)
 
     interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
     schedule_type: Mapped[str] = mapped_column(String(16), default="interval")  # interval | calendar

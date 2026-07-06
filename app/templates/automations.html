@@ -43,6 +43,7 @@
       <li>Próxima: <strong>{{ a.next_run_at | localtime('%d/%m %H:%M') }}</strong></li>
       <li>Última: {{ a.last_run_at | localtime('%d/%m %H:%M') }}</li>
       <li>Total publicado: <strong>{{ a.total_runs }}</strong></li>
+      {% if automation_video_count(a) > 1 %}<li>Loop: <strong>{{ automation_video_count(a) }} vídeos</strong></li>{% endif %}
       {% if a.thumb_original_name %}<li>Capa: {{ a.thumb_original_name }}</li>{% endif %}
     </ul>
     {% if a.caption %}

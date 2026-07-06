@@ -12,6 +12,11 @@ from sqlalchemy.orm import Session, selectinload
 from app.deps import get_current_user
 from app.templating import templates
 from app.utils.calendar_schedule import days_to_json, next_calendar_run, parse_calendar_days
+from app.utils.automation_videos import (
+    all_video_keys,
+    is_video_filename,
+    videos_to_json,
+)
 from celery_app.tasks.publish import publish_once
 from core.database import get_db
 from core.storage import get_storage
@@ -28,6 +33,27 @@ def _story_link_value(content_type: str, story_link: str) -> str | None:
         return None
     link = story_link.strip()
     return link or None
+
+
+def _save_uploaded_videos(storage, files: list[UploadFile]) -> list[dict[str, str]]:
+    entries: list[dict[str, str]] = []
+    for f in files:
+        if not f.filename:
+            continue
+        ext = Path(f.filename).suffix.lower() or ".mp4"
+        key = storage.save(f.file, suggested_ext=ext)
+        entries.append({
+            "video_key": key,
+            "video_original_name": f.filename,
+        })
+    return entries
+
+
+def _save_thumb(storage, thumb: UploadFile | None) -> tuple[str | None, str | None]:
+    if not thumb or not thumb.filename:
+        return None, None
+    thumb_ext = Path(thumb.filename).suffix or ".jpg"
+    return storage.save(thumb.file, suggested_ext=thumb_ext), thumb.filename
 
 
 @router.get("")
@@ -73,7 +99,7 @@ def new_automation_page(
         default_type = "reel"
     err_key = request.query_params.get("error")
     err_msg = {
-        "video": "Selecione um vídeo .mp4. A capa (.png) sozinha não publica.",
+        "video": "Selecione pelo menos um vídeo .mp4. A capa (.png/.jpg) é só a thumbnail — não substitui o vídeo.",
     }.get(err_key or "")
     return templates.TemplateResponse(
         "new_automation.html",
@@ -258,7 +284,8 @@ async def create_automation(
     calendar_days: str = Form(""),
     calendar_time: str = Form("10:00"),
     account_ids: list[int] = Form(default=[]),
-    video: UploadFile = File(...),
+    video: UploadFile | None = File(default=None),
+    videos: list[UploadFile] = File(default=[]),
     thumb: UploadFile | None = File(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -282,8 +309,24 @@ async def create_automation(
 
     if not error and not account_ids:
         error = "Selecione pelo menos uma conta."
-    if not error and (not video or not video.filename):
-        error = "Envie o arquivo de mídia."
+
+    upload_files: list[UploadFile] = []
+    if not error:
+        if content_type == "reel":
+            upload_files = [f for f in videos if f.filename]
+            if not upload_files and video and video.filename:
+                upload_files = [video]
+            if not upload_files:
+                error = "Envie pelo menos um vídeo Reels (.mp4)."
+            else:
+                bad = [f.filename for f in upload_files if not is_video_filename(f.filename)]
+                if bad:
+                    error = f"Arquivo inválido (precisa ser vídeo .mp4): {', '.join(bad)}"
+        else:
+            if not video or not video.filename:
+                error = "Envie o arquivo de mídia."
+            else:
+                upload_files = [video]
 
     accounts: list[InstagramAccount] = []
     if not error:
@@ -315,29 +358,33 @@ async def create_automation(
         )
 
     storage = get_storage()
-    ext = Path(video.filename).suffix or ".mp4"
-    video_key = storage.save(video.file, suggested_ext=ext)
+    video_entries = _save_uploaded_videos(storage, upload_files)
+    video_key = video_entries[0]["video_key"]
+    if len(video_entries) == 1:
+        video_original_name = video_entries[0]["video_original_name"]
+    else:
+        video_original_name = f"{len(video_entries)} vídeos"
+    videos_json = videos_to_json(video_entries) if len(video_entries) > 1 else None
 
-    thumb_key = None
-    thumb_original_name = None
-    if thumb and thumb.filename:
-        thumb_ext = Path(thumb.filename).suffix or ".jpg"
-        thumb_key = storage.save(thumb.file, suggested_ext=thumb_ext)
-        thumb_original_name = thumb.filename
+    thumb_key, thumb_original_name = _save_thumb(storage, thumb)
 
     if schedule_mode == "now":
-        for idx, acc in enumerate(accounts):
-            publish_once.apply_async(
-                args=[
-                    acc.id,
-                    video_key,
-                    thumb_key,
-                    caption,
-                    content_type,
-                    _story_link_value(content_type, story_link),
-                ],
-                countdown=idx * 5,
-            )
+        countdown = 0
+        for v_idx, entry in enumerate(video_entries):
+            for acc_idx, acc in enumerate(accounts):
+                publish_once.apply_async(
+                    args=[
+                        acc.id,
+                        entry["video_key"],
+                        thumb_key,
+                        caption,
+                        content_type,
+                        _story_link_value(content_type, story_link),
+                    ],
+                    countdown=countdown + acc_idx * 5,
+                )
+            if len(video_entries) > 1:
+                countdown += max(30, len(accounts) * 5)
         return RedirectResponse(
             "/automations?posted=1",
             status_code=status.HTTP_303_SEE_OTHER,
@@ -354,7 +401,9 @@ async def create_automation(
             content_type=content_type,
             caption=caption,
             video_key=video_key,
-            video_original_name=video.filename,
+            video_original_name=video_original_name,
+            videos_json=videos_json,
+            current_index=0,
             thumb_key=thumb_key,
             thumb_original_name=thumb_original_name,
             story_link=_story_link_value(content_type, story_link),
@@ -379,7 +428,9 @@ async def create_automation(
         content_type=content_type,
         caption=caption,
         video_key=video_key,
-        video_original_name=video.filename,
+        video_original_name=video_original_name,
+        videos_json=videos_json,
+        current_index=0,
         thumb_key=thumb_key,
         thumb_original_name=thumb_original_name,
         story_link=_story_link_value(content_type, story_link),
@@ -490,12 +541,16 @@ def delete_automation(
 ):
     a = _get_owned(db, automation_id, user)
     storage = get_storage()
-    try:
-        storage.delete(a.video_key)
-        if a.thumb_key:
+    for key in all_video_keys(a):
+        try:
+            storage.delete(key)
+        except Exception:
+            pass
+    if a.thumb_key:
+        try:
             storage.delete(a.thumb_key)
-    except Exception:
-        pass
+        except Exception:
+            pass
     db.delete(a)
     db.commit()
     return RedirectResponse("/automations", status_code=status.HTTP_303_SEE_OTHER)
