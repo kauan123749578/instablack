@@ -91,14 +91,26 @@
   <div class="table-wrap">
     <table class="table">
       <thead>
-        <tr><th>@</th><th>Status</th><th>Proxy</th><th>Último login</th><th></th></tr>
+        <tr><th>@</th><th>Status</th><th>Proxy</th><th>IP</th><th>Último login</th><th></th></tr>
       </thead>
       <tbody>
         {% for acc in accounts %}
         <tr>
           <td>@{{ acc.username }}</td>
           <td><span class="og-badge {{ status_badge_class(acc.status) }}">{{ status_label(acc.status) }}</span></td>
-          <td class="muted" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ proxy_to_raw(acc.proxy) }}">{{ proxy_label(acc.proxy) or '—' }}</td>
+          <td class="muted proxy-cell-auth" title="{{ proxy_to_raw(acc.proxy) }}">{{ proxy_label(acc.proxy) or '—' }}</td>
+          <td class="proxy-ip-cell">
+            {% set ip = account_proxy_ip(acc) %}
+            {% if ip %}
+            <div class="proxy-ip-stack">
+              <span class="proxy-ip-dot" aria-hidden="true"></span>
+              <div>
+                <span class="proxy-ip-value">{{ ip }}</span>
+                {% if acc.proxy_geo %}<span class="proxy-ip-geo muted">{{ acc.proxy_geo }}</span>{% endif %}
+              </div>
+            </div>
+            {% else %}<span class="muted">—</span>{% endif %}
+          </td>
           <td>{{ acc.last_login_at | localtime }}</td>
           <td class="account-actions">
             <details class="proxy-update-panel">

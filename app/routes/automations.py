@@ -17,6 +17,7 @@ from app.utils.automation_videos import (
     is_video_filename,
     videos_to_json,
 )
+from app.utils.intervals import ALLOWED_INTERVALS, interval_label
 from celery_app.tasks.publish import publish_once
 from core.database import get_db
 from core.storage import get_storage
@@ -24,7 +25,6 @@ from models.models import Automation, InstagramAccount, PublishLog, User
 
 router = APIRouter(prefix="/automations", tags=["automations"])
 
-ALLOWED_INTERVALS = [30, 60, 120, 240, 360, 720, 1440]
 CONTENT_TYPES = ["reel", "story", "photo"]
 
 

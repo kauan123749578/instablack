@@ -603,6 +603,15 @@ a:hover { color: var(--primary-hover); }
 .proxy-test-result { margin: 6px 0 0; font-size: 11px; min-height: 1em; }
 .proxy-test-result.ok { color: var(--green, #22c55e); }
 .proxy-test-result.fail { color: var(--red, #ef4444); }
+.proxy-cell-auth { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proxy-ip-cell { min-width: 140px; }
+.proxy-ip-stack { display: flex; align-items: flex-start; gap: 8px; }
+.proxy-ip-dot {
+  width: 8px; height: 8px; border-radius: 2px; margin-top: 5px; flex-shrink: 0;
+  background: var(--green, #22c55e); box-shadow: 0 0 6px rgba(34, 197, 94, 0.45);
+}
+.proxy-ip-value { display: block; font-size: 13px; font-weight: 500; }
+.proxy-ip-geo { display: block; font-size: 11px; margin-top: 2px; }
 
 .logs-stats { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
 .logs-filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }

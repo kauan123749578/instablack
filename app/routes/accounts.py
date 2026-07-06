@@ -14,7 +14,13 @@ from app.security import decrypt_secret, encrypt_secret
 from app.templating import templates
 from app.config import get_settings
 from app.utils.account_health import offline_accounts
-from app.utils.proxy import clean_sessionid, diagnose_proxy, normalize_proxy
+from app.utils.proxy import (
+    account_proxy_ip,
+    clean_sessionid,
+    diagnose_proxy,
+    normalize_proxy,
+    proxy_host,
+)
 from app.utils.account_limits import (
     account_limit_label,
     accounts_remaining,
@@ -67,6 +73,30 @@ def _accounts_page_context(
     }
 
 
+def _set_account_proxy(acc: InstagramAccount, normalized: str, meta: dict) -> None:
+    acc.proxy = normalized
+    acc.proxy_ip = meta.get("ip") or proxy_host(normalized)
+    acc.proxy_geo = meta.get("geo")
+
+
+def _backfill_proxy_meta(db: Session, accounts: list[InstagramAccount]) -> None:
+    dirty = False
+    for acc in accounts:
+        if not acc.proxy or (acc.proxy_ip and acc.proxy_geo):
+            continue
+        if not acc.proxy_ip:
+            acc.proxy_ip = proxy_host(acc.proxy)
+            dirty = True
+        if acc.proxy_ip and not acc.proxy_geo:
+            from app.utils.proxy import lookup_ip_geo
+            geo = lookup_ip_geo(acc.proxy_ip)
+            if geo:
+                acc.proxy_geo = geo["label"]
+                dirty = True
+    if dirty:
+        db.commit()
+
+
 def _load_user_accounts(db: Session, user: User) -> list[InstagramAccount]:
     return db.scalars(
         select(InstagramAccount)
@@ -82,6 +112,7 @@ def list_accounts(
     user: User = Depends(get_current_user),
 ):
     accounts = _load_user_accounts(db, user)
+    _backfill_proxy_meta(db, accounts)
     ok_key = request.query_params.get("ok")
     ok_msg = {
         "paused": "Conta pausada.",
@@ -145,7 +176,8 @@ def add_account(
             status_code=status.HTTP_400_BAD_REQUEST,
         )
 
-    if not check_proxy(proxy):
+    proxy_meta = diagnose_proxy(proxy_raw.strip() or proxy)
+    if not proxy_meta["ok"]:
         accounts = _load_user_accounts(db, user)
         return templates.TemplateResponse(
             "accounts.html",
@@ -153,7 +185,7 @@ def add_account(
                 request,
                 user,
                 accounts,
-                error="Proxy inválido ou fora do ar. Confira host:porta:user:senha e tente de novo.",
+                error=proxy_meta.get("error") or "Proxy inválido ou fora do ar.",
                 form=form_state,
             ),
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -247,22 +279,22 @@ def add_account(
         existing.session_json = serialize_settings(settings_dict)
         if encrypted_pw:
             existing.encrypted_password = encrypted_pw
-        existing.proxy = proxy
+        _set_account_proxy(existing, proxy, proxy_meta)
         existing.status = "active"
         existing.last_login_at = dt.datetime.utcnow()
         existing.last_error = None
     else:
-        db.add(
-            InstagramAccount(
-                user_id=user.id,
-                username=username,
-                encrypted_password=encrypted_pw,
-                proxy=proxy,
-                session_json=serialize_settings(settings_dict),
-                status="active",
-                last_login_at=dt.datetime.utcnow(),
-            )
+        new_acc = InstagramAccount(
+            user_id=user.id,
+            username=username,
+            encrypted_password=encrypted_pw,
+            proxy=proxy,
+            session_json=serialize_settings(settings_dict),
+            status="active",
+            last_login_at=dt.datetime.utcnow(),
         )
+        _set_account_proxy(new_acc, proxy, proxy_meta)
+        db.add(new_acc)
     db.commit()
     return RedirectResponse("/accounts", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -415,7 +447,7 @@ def update_account_proxy(
             "/accounts?error=proxy_invalid",
             status_code=status.HTTP_303_SEE_OTHER,
         )
-    acc.proxy = normalized
+    _set_account_proxy(acc, normalized, diag)
     if acc.status == "proxy_down":
         acc.status = "active"
     acc.last_error = None

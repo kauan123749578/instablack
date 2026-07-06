@@ -73,7 +73,7 @@
           <label>Intervalo
             <select name="interval_minutes">
               {% for m in intervals %}
-              <option value="{{ m }}" {% if m == a.interval_minutes %}selected{% endif %}>{{ m }} min</option>
+              <option value="{{ m }}" {% if m == a.interval_minutes %}selected{% endif %}>{{ interval_label(m) }}</option>
               {% endfor %}
             </select>
           </label>

@@ -250,7 +250,8 @@
           const data = await resp.json();
           if (result) {
             if (data.ok) {
-              result.textContent = "OK — IP: " + data.ip;
+              const geo = data.geo ? " · " + data.geo : "";
+              result.textContent = "OK — IP: " + data.ip + geo;
               result.className = "proxy-test-result ok";
             } else {
               result.textContent = data.error || "Proxy inválido";

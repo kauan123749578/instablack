@@ -92,6 +92,8 @@ class InstagramAccount(Base):
     encrypted_password: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
 
     proxy: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    proxy_ip: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
+    proxy_geo: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)  # ex: BR - Brasil
     session_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     status: Mapped[str] = mapped_column(String(32), default="active")  # active | paused | needs_login | proxy_down | banned

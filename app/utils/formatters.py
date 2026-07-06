@@ -3,14 +3,8 @@ from __future__ import annotations
 
 
 def format_interval(minutes: int) -> str:
-    if minutes < 60:
-        return f"A cada {minutes} min"
-    if minutes == 60:
-        return "A cada 1 hora"
-    if minutes < 1440:
-        h = minutes // 60
-        return f"A cada {h} horas"
-    return "A cada 24 horas"
+    from app.utils.intervals import interval_label
+    return "A cada " + interval_label(minutes).lower()
 
 
 def status_label(status: str) -> str:

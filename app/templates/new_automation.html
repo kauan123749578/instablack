@@ -81,12 +81,7 @@
     <label>Publicar a cada
       <select name="interval_minutes">
         {% for m in intervals %}
-        <option value="{{ m }}">
-          {% if m < 60 %}{{ m }} minutos
-          {% elif m == 60 %}1 hora
-          {% elif m < 1440 %}{{ (m / 60)|int }} horas
-          {% else %}24 horas{% endif %}
-        </option>
+        <option value="{{ m }}">{{ interval_label(m) }}</option>
         {% endfor %}
       </select>
     </label>

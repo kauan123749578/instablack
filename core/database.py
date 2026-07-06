@@ -136,6 +136,10 @@ def _sqlite_migrate() -> None:
             acols = {c["name"] for c in insp.get_columns("instagram_accounts")}
             if "last_health_check_at" not in acols:
                 conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN last_health_check_at DATETIME"))
+            if "proxy_ip" not in acols:
+                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN proxy_ip VARCHAR(45)"))
+            if "proxy_geo" not in acols:
+                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN proxy_geo VARCHAR(64)"))
 
 
 def _postgres_migrate() -> None:
@@ -176,6 +180,10 @@ def _postgres_migrate() -> None:
             acols = {c["name"] for c in insp.get_columns("instagram_accounts")}
             if "last_health_check_at" not in acols:
                 conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN last_health_check_at TIMESTAMPTZ"))
+            if "proxy_ip" not in acols:
+                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN proxy_ip VARCHAR(45)"))
+            if "proxy_geo" not in acols:
+                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN proxy_geo VARCHAR(64)"))
 
 
 def init_db() -> None:
