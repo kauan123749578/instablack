@@ -119,6 +119,38 @@ def _growth_pct(current: int, previous: int) -> float | None:
     return round((current - previous) / previous * 100, 1)
 
 
+def _top_platform_players_today(db: Session, day: dt.date) -> list[dict]:
+    """Top 5 usuários da plataforma por publicações no dia (BRT)."""
+    start, end = _brt_day_bounds(day)
+    rows = db.execute(
+        select(
+            User.id,
+            User.username,
+            User.display_name,
+            func.count(PublishLog.id).label("posts_today"),
+        )
+        .join(InstagramAccount, InstagramAccount.user_id == User.id)
+        .join(PublishLog, PublishLog.account_id == InstagramAccount.id)
+        .where(
+            PublishLog.status == "success",
+            PublishLog.created_at >= _utc_naive(start),
+            PublishLog.created_at < _utc_naive(end),
+        )
+        .group_by(User.id, User.username, User.display_name)
+        .order_by(desc(func.count(PublishLog.id)))
+        .limit(5)
+    ).all()
+    return [
+        {
+            "user_id": r.id,
+            "username": r.username,
+            "display_name": (r.display_name or r.username),
+            "posts_today": int(r.posts_today),
+        }
+        for r in rows
+    ]
+
+
 @router.get("/")
 def home(
     request: Request,
@@ -236,7 +268,8 @@ def home(
         for acc in accounts
     ]
     accounts_data.sort(key=lambda x: x["publish_count"], reverse=True)
-    top_players = accounts_data[:5]
+
+    top_players = _top_platform_players_today(db, today)
 
     top_reels = db.scalars(
         select(PublishLog)

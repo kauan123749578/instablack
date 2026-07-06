@@ -16,13 +16,6 @@
   </div>
   {% endif %}
 
-  <div class="og-dash-actions">
-    <a href="/automations/new" class="og-btn-primary" data-nav="/automations/new">
-      <i data-lucide="plus"></i>
-      Nova automação
-    </a>
-  </div>
-
   <div class="og-kpi-row">
     <article class="og-glass-card og-kpi-card">
       <div class="og-kpi-top">
@@ -197,30 +190,31 @@
     </section>
   </div>
 
-  <div class="og-bottom-grid">
+  <section class="og-glass-card og-top-players-panel og-top-players-panel--wide">
+    <div class="og-card-head">
+      <h2 class="og-card-title"><i data-lucide="trophy" class="inline-icon"></i> Top Players — hoje</h2>
+      <span class="og-muted" style="font-size:12px">Usuários da plataforma · publicações do dia</span>
+    </div>
+    <div class="og-top-players-grid">
+      {% for rank in range(1, 6) %}
+      {% set item = top_players[rank - 1] if top_players|length >= rank else none %}
+      <article class="og-top-player-card{% if not item %} og-top-player-card--empty{% endif %}">
+        <span class="og-top-rank">#{{ rank }}</span>
+        {% if item %}
+        <div class="og-top-player-avatar">{{ item.display_name[0]|upper }}</div>
+        <strong class="og-top-player-name">{{ item.display_name }}</strong>
+        <span class="og-top-player-user">@{{ item.username }}</span>
+        <span class="og-top-player-score">{{ item.posts_today }} post{% if item.posts_today != 1 %}s{% endif %} hoje</span>
+        {% else %}
+        <div class="og-top-player-avatar og-top-player-avatar--empty">—</div>
+        <span class="og-top-player-empty">Vazio</span>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+  </section>
 
-    <section class="og-glass-card og-top-players-panel">
-      <div class="og-card-head">
-        <h2 class="og-card-title"><i data-lucide="trophy" class="inline-icon"></i> Top Players</h2>
-        <span class="og-muted" style="font-size:12px">Por publicações</span>
-      </div>
-      {% if top_players %}
-      <ol class="og-top-players-list">
-        {% for item in top_players %}
-        <li class="og-top-player-item">
-          <span class="og-top-rank">#{{ loop.index }}</span>
-          <div class="og-top-player-avatar">{{ item.account.username[0]|upper }}</div>
-          <div class="og-top-player-info">
-            <strong>@{{ item.account.username }}</strong>
-            <span>{{ item.publish_count }} posts{% if item.total_views %} · {{ format_count(item.total_views) }} views{% endif %}</span>
-          </div>
-        </li>
-        {% endfor %}
-      </ol>
-      {% else %}
-      <p class="og-empty">Nenhuma conta com publicações ainda</p>
-      {% endif %}
-    </section>
+  <div class="og-bottom-grid">
 
     <section class="og-glass-card og-reels-views-panel">
       <div class="og-card-head">
