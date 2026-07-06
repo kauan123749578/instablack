@@ -404,6 +404,47 @@
     });
   }
 
+  function initAutomationForm() {
+    const form = document.getElementById("automation-form");
+    if (!form) return;
+
+    const videoInput = document.getElementById("video-input");
+    const videoName = document.getElementById("video-file-name");
+    const accountBoxes = form.querySelectorAll('input[name="account_ids"]');
+
+    function updateVideoLabel() {
+      const f = videoInput?.files?.[0];
+      if (!videoName) return;
+      if (f) {
+        videoName.textContent = f.name + " (" + Math.round(f.size / 1024 / 1024 * 10) / 10 + " MB)";
+        videoName.style.color = "var(--green, #22c55e)";
+      } else {
+        videoName.textContent = "Nenhum vídeo selecionado — escolha um .mp4";
+        videoName.style.color = "var(--red, #ef4444)";
+      }
+    }
+
+    videoInput?.addEventListener("change", updateVideoLabel);
+    updateVideoLabel();
+
+    form.addEventListener("submit", (e) => {
+      const video = videoInput?.files?.[0];
+      if (!video) {
+        e.preventDefault();
+        alert("Selecione um vídeo .mp4 no campo \"Vídeo Reels\". A capa (.png) sozinha não publica.");
+        videoInput?.focus();
+        return;
+      }
+      const checked = Array.from(accountBoxes).some((cb) => cb.checked);
+      if (accountBoxes.length && !checked) {
+        e.preventDefault();
+        alert("Marque pelo menos uma conta para publicar.");
+        return;
+      }
+      // submit nativo (multipart) — necessário para enviar o arquivo ao R2
+    });
+  }
+
   function initPage() {
     initLucide();
     initCharts();
@@ -411,6 +452,7 @@
     initContentTypeForm();
     initThumbPreview();
     initScheduleMode();
+    initAutomationForm();
     initOgDashboard();
     initCalendarPicker();
     initAccountsConnect();

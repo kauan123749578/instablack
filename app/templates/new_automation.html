@@ -25,12 +25,13 @@
     </select>
   </label>
 
-  <label id="media-label">Vídeo Reels (.mp4)
-    <input type="file" name="video" accept="video/mp4,video/quicktime,image/jpeg,image/png,image/webp" required>
+  <label id="media-label">Vídeo Reels (.mp4) <strong style="color:var(--red)">*</strong>
+    <input type="file" id="video-input" name="video" accept="video/mp4,video/quicktime,video/webm" required>
+    <span id="video-file-name" class="muted" style="display:block;margin-top:4px;font-size:12px">Nenhum vídeo selecionado</span>
   </label>
 
   <div id="thumb-wrap">
-    <label>Capa do Reel (.jpg/.png — 9:16)
+    <label>Capa do Reel (.jpg/.png — 9:16) <span class="muted">(opcional)</span>
       <input type="file" id="thumb-input" name="thumb" accept="image/jpeg,image/png,image/webp">
       <img id="thumb-preview" style="display:none;margin-top:8px;max-width:120px;border-radius:8px" alt="Preview">
     </label>

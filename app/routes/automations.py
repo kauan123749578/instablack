@@ -71,6 +71,10 @@ def new_automation_page(
     default_type = request.query_params.get("type", "reel")
     if default_type not in CONTENT_TYPES:
         default_type = "reel"
+    err_key = request.query_params.get("error")
+    err_msg = {
+        "video": "Selecione um vídeo .mp4. A capa (.png) sozinha não publica.",
+    }.get(err_key or "")
     return templates.TemplateResponse(
         "new_automation.html",
         {
@@ -80,7 +84,7 @@ def new_automation_page(
             "intervals": ALLOWED_INTERVALS,
             "content_types": CONTENT_TYPES,
             "default_content_type": default_type,
-            "error": None,
+            "error": err_msg,
         },
     )
 

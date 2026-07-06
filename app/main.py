@@ -7,8 +7,9 @@ import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 from starlette.middleware.sessions import SessionMiddleware
@@ -63,6 +64,20 @@ def create_app() -> FastAPI:
     app.include_router(automations.router)
     app.include_router(profile.router)
     app.include_router(admin.router)
+
+    @app.exception_handler(RequestValidationError)
+    async def form_validation_error(request: Request, exc: RequestValidationError):
+        """Evita JSON cru quando falta arquivo em formulários multipart."""
+        if request.method == "POST" and request.url.path.startswith("/automations"):
+            missing_video = any(
+                e.get("loc") == ("body", "video") for e in exc.errors()
+            )
+            if missing_video:
+                return RedirectResponse(
+                    "/automations/new?error=video",
+                    status_code=303,
+                )
+        return JSONResponse(status_code=422, content={"detail": exc.errors()})
 
     @app.get("/media/{file_key:path}", include_in_schema=False)
     def serve_media(file_key: str):
