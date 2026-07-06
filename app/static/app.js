@@ -278,7 +278,6 @@
   function initAuthMethodForm() {
     const form = document.getElementById("account-add-form");
     if (!form) return;
-    const passwordWrap = document.getElementById("password-wrap");
     const sessionWrap = document.getElementById("sessionid-wrap");
     const importWrap = document.getElementById("import-wrap");
     const radios = form.querySelectorAll('input[name="auth_method"]');
@@ -287,7 +286,6 @@
       const method = form.querySelector('input[name="auth_method"]:checked')?.value || "sessionid";
       if (sessionWrap) sessionWrap.style.display = method === "sessionid" ? "" : "none";
       if (importWrap) importWrap.style.display = method === "import" ? "" : "none";
-      if (passwordWrap) passwordWrap.style.display = method === "password" || method === "import" ? "" : "none";
     }
     radios.forEach((r) => r.addEventListener("change", update));
     update();

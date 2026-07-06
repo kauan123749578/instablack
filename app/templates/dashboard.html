@@ -284,7 +284,13 @@
           {% for item in top_players %}
           <li class="og-rank-row{% if loop.index == 1 %} og-rank-row--gold{% endif %}">
             <span class="og-rank-pos">{{ loop.index }}</span>
-            <div class="og-rank-avatar">{{ item.display_name[0]|upper }}</div>
+            <div class="og-rank-avatar{% if item.avatar_url %} og-rank-avatar--photo{% endif %}">
+              {% if item.avatar_url %}
+              <img src="{{ item.avatar_url }}" alt="" class="og-rank-avatar-img">
+              {% else %}
+              {{ item.display_name[0]|upper }}
+              {% endif %}
+            </div>
             <div class="og-rank-info">
               <strong>{{ item.display_name }}</strong>
               <span>@{{ item.username }}</span>
@@ -304,7 +310,13 @@
           {% for item in top_players_month %}
           <li class="og-rank-row{% if loop.index == 1 %} og-rank-row--gold{% endif %}">
             <span class="og-rank-pos">{{ loop.index }}</span>
-            <div class="og-rank-avatar">{{ item.display_name[0]|upper }}</div>
+            <div class="og-rank-avatar{% if item.avatar_url %} og-rank-avatar--photo{% endif %}">
+              {% if item.avatar_url %}
+              <img src="{{ item.avatar_url }}" alt="" class="og-rank-avatar-img">
+              {% else %}
+              {{ item.display_name[0]|upper }}
+              {% endif %}
+            </div>
             <div class="og-rank-info">
               <strong>{{ item.display_name }}</strong>
               <span>@{{ item.username }}</span>
@@ -319,7 +331,7 @@
       </div>
     </section>
 
-    <section class="og-glass-card og-panel-accounts og-bottom-span-2">
+    <section class="og-glass-card og-panel-accounts">
       <div class="og-card-head">
         <h2 class="og-card-title"><i data-lucide="instagram" class="inline-icon"></i> Contas conectadas</h2>
         <a href="/accounts" class="og-link" data-nav="/accounts">Gerenciar</a>
@@ -341,7 +353,7 @@
       {% endif %}
     </section>
 
-    <section class="og-glass-card og-bar-panel og-bottom-span-2">
+    <section class="og-glass-card og-bar-panel">
       <div class="og-card-head">
         <h2 class="og-card-title"><i data-lucide="bar-chart-3" class="inline-icon"></i> Publicações por dia</h2>
       </div>

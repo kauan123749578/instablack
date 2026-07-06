@@ -43,7 +43,6 @@
       <legend>Método de autenticação</legend>
       <div class="checkbox-row">
         <label><input type="radio" name="auth_method" value="sessionid" {% if form.get('auth_method', 'sessionid') == 'sessionid' %}checked{% endif %}> Session ID (recomendado)</label>
-        <label><input type="radio" name="auth_method" value="password" {% if form.get('auth_method') == 'password' %}checked{% endif %}> Usuário & senha</label>
         <label><input type="radio" name="auth_method" value="import" {% if form.get('auth_method') == 'import' %}checked{% endif %}> Importar session.json</label>
       </div>
     </fieldset>
@@ -65,17 +64,11 @@
       <input type="text" name="username" placeholder="meu_perfil" value="{{ form.get('username', '') }}">
     </label>
 
-    <div id="password-wrap">
-      <label>Senha
-        <input type="password" name="password" autocomplete="new-password">
-      </label>
-    </div>
-
     <input type="hidden" name="verification_code" id="verification-code-hidden" value="">
 
     <div id="import-wrap">
-      <label>session.json (instagrapi)
-        <textarea name="session_json" rows="5" placeholder='JSON de cl.dump_settings("session.json")'>{{ form.get('session_json', '') }}</textarea>
+      <label>session.json
+        <textarea name="session_json" rows="5" placeholder='Cole o conteúdo do arquivo session.json'>{{ form.get('session_json', '') }}</textarea>
       </label>
     </div>
 

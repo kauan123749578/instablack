@@ -42,37 +42,53 @@
   </div>
 
   <div class="og-main-grid">
-    <section class="og-glass-card og-chart-panel">
-      <div class="og-card-head">
+    <section class="og-glass-card og-chart-panel og-chart-premium">
+      <div class="og-chart-head">
+        <div class="og-chart-head-icon"><i data-lucide="activity"></i></div>
         <div>
-          <h2 class="og-card-title">Desempenho — 7 dias</h2>
-          <p class="og-card-sub">Publicações, sucesso e falhas</p>
+          <h2 class="og-card-title">Seu Desempenho</h2>
+          <p class="og-card-sub og-card-sub--caps">Últimos 7 dias</p>
         </div>
       </div>
-      <div class="og-chart-legend">
-        <span><i class="og-dot og-dot--purple"></i> Publicações</span>
-        <span><i class="og-dot og-dot--green"></i> Sucesso</span>
-        <span><i class="og-dot og-dot--red"></i> Falhas</span>
+      <div class="og-chart-legend og-chart-legend--single">
+        <span><i class="og-dot og-dot--blue"></i> Publicações</span>
       </div>
-      <div class="og-line-chart-wrap" id="og-line-chart">
+      <div class="og-line-chart-wrap og-line-chart-wrap--premium" id="og-line-chart">
         <div class="og-chart-tooltip" id="og-chart-tooltip"></div>
         <svg class="og-line-svg" viewBox="0 0 700 220" preserveAspectRatio="none">
           {% set n = chart_performance|length %}
           {% set step = 700 / (n - 1) if n > 1 else 700 %}
-          {% set max_h = 170 %}
-          {% set base_y = 200 %}
-          <polyline class="og-line og-line--purple og-line-anim" fill="none" stroke="#1161FE" stroke-width="2.5"
-            points="{% for pt in chart_performance %}{% set x = loop.index0 * step %}{% set y = base_y - (pt.pubs_pct / 100 * max_h) %}{{ x }},{{ y }}{% if not loop.last %} {% endif %}{% endfor %}"/>
-          <polyline class="og-line og-line--green og-line-anim" fill="none" stroke="#22c55e" stroke-width="2.5" style="animation-delay:.15s"
-            points="{% for pt in chart_performance %}{% set x = loop.index0 * step %}{% set y = base_y - (pt.success_pct / 100 * max_h) %}{{ x }},{{ y }}{% if not loop.last %} {% endif %}{% endfor %}"/>
-          <polyline class="og-line og-line--red og-line-anim" fill="none" stroke="#ef4444" stroke-width="2.5" style="animation-delay:.3s"
-            points="{% for pt in chart_performance %}{% set x = loop.index0 * step %}{% set y = base_y - (pt.failed_pct / 100 * max_h) %}{{ x }},{{ y }}{% if not loop.last %} {% endif %}{% endfor %}"/>
+          {% set max_h = 150 %}
+          {% set base_y = 195 %}
+          {% set successes = chart_performance|map(attribute='success')|list %}
+          {% set max_val = successes|max if successes else 1 %}
+          {% if max_val < 1 %}{% set max_val = 1 %}{% endif %}
+
+          <defs>
+            <linearGradient id="ogChartFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#1161FE" stop-opacity="0.42"/>
+              <stop offset="55%" stop-color="#1161FE" stop-opacity="0.12"/>
+              <stop offset="100%" stop-color="#1161FE" stop-opacity="0"/>
+            </linearGradient>
+            <linearGradient id="ogChartLine" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stop-color="#3d82ff"/>
+              <stop offset="100%" stop-color="#1161FE"/>
+            </linearGradient>
+          </defs>
+
+          <path class="og-chart-area" fill="url(#ogChartFill)" stroke="none"
+            d="M 0,{{ base_y }}{% for pt in chart_performance %}{% set x = loop.index0 * step %}{% set y = base_y - (pt.success / max_val * max_h) %} L {{ x }},{{ y }}{% endfor %} L {{ (n - 1) * step }},{{ base_y }} Z"/>
+
+          <polyline class="og-line-premium" fill="none" stroke="url(#ogChartLine)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+            points="{% for pt in chart_performance %}{% set x = loop.index0 * step %}{% set y = base_y - (pt.success / max_val * max_h) %}{{ x }},{{ y }}{% if not loop.last %} {% endif %}{% endfor %}"/>
+
           {% for pt in chart_performance %}
           {% set x = loop.index0 * step %}
-          {% set y = base_y - (pt.pubs_pct / 100 * max_h) %}
-          <circle class="og-chart-dot" cx="{{ x }}" cy="{{ y }}" r="4" fill="#1161FE"
-            data-tip="{{ pt.label }} {{ pt.date }}: {{ pt.pubs }} pub · {{ pt.success }} ok · {{ pt.failed }} falhas"/>
+          {% set y = base_y - (pt.success / max_val * max_h) %}
+          <circle class="og-chart-dot" cx="{{ x }}" cy="{{ y }}" r="4" fill="#1161FE" stroke="#050505" stroke-width="2"
+            data-tip="{{ pt.label }} {{ pt.date }}: {{ pt.success }} publicaç{% if pt.success == 1 %}ão{% else %}ões{% endif %}"/>
           {% endfor %}
+
           {% for pt in chart_performance %}
           <text class="og-chart-xlabel" x="{{ loop.index0 * step }}" y="216" text-anchor="middle">{{ pt.label }}</text>
           {% endfor %}

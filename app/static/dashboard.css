@@ -210,12 +210,20 @@ body.premium-app .shark-content { padding: 24px 32px 80px; }
 /* ===== Bottom row ===== */
 .og-bottom-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: 1fr 1fr 1.2fr;
+  grid-template-rows: auto auto;
   gap: 14px;
+  align-items: stretch;
 }
+.og-panel-activity { grid-column: 1; grid-row: 1; }
+.og-reels-views-panel { grid-column: 2; grid-row: 1; }
+.og-top-players-shark {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+}
+.og-panel-accounts { grid-column: 1; grid-row: 2; }
+.og-bar-panel { grid-column: 2; grid-row: 2; }
 .og-bottom-span-2 { grid-column: span 2; }
-.og-panel-accounts.og-bottom-span-2 { grid-column: 1 / 3; }
-.og-bar-panel.og-bottom-span-2 { grid-column: 3 / 4; }
 
 /* Contas conectadas — galeria horizontal estilo Instagram */
 .og-panel-accounts { min-height: 220px; }
@@ -411,7 +419,7 @@ body.premium-app .shark-content { padding: 24px 32px 80px; }
 
 .og-top-players-shark {
   display: flex; flex-direction: column;
-  min-height: 320px;
+  min-height: 480px;
 }
 .og-rank-head {
   display: flex; justify-content: space-between; align-items: flex-start;
@@ -466,12 +474,15 @@ body.premium-app .shark-content { padding: 24px 32px 80px; }
 }
 .og-rank-row--gold .og-rank-pos { color: #fbbf24; }
 .og-rank-avatar {
-  width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
+  width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
   background: rgba(17, 97, 254, 0.18); color: #1161FE;
   display: flex; align-items: center; justify-content: center;
   font-weight: 700; font-size: 14px;
   border: 1px solid rgba(17, 97, 254, 0.25);
+  overflow: hidden;
 }
+.og-rank-avatar--photo { background: #0a0a0a; padding: 0; }
+.og-rank-avatar-img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .og-rank-row--gold .og-rank-avatar {
   background: rgba(251, 191, 36, 0.15); color: #fbbf24;
   border-color: rgba(251, 191, 36, 0.35);
@@ -485,10 +496,11 @@ body.premium-app .shark-content { padding: 24px 32px 80px; }
 }
 .og-rank-empty {
   flex: 1; display: flex; align-items: center; justify-content: center;
-  text-align: center; padding: 32px 16px;
-  font-size: 12px; color: var(--og-muted); line-height: 1.55;
+  text-align: center; padding: 48px 20px;
+  font-size: 13px; color: var(--og-muted); line-height: 1.6;
   background: rgba(0, 0, 0, 0.15);
   border: 1px dashed rgba(255, 255, 255, 0.06);
+  min-height: 280px;
 }
 
 .og-reels-views-panel { min-height: 220px; }
@@ -520,9 +532,9 @@ body.premium-app .shark-content { padding: 24px 32px 80px; }
   .og-next-panel { grid-column: span 1; }
   .og-kpi-row { grid-template-columns: repeat(3, 1fr); }
   .og-bottom-grid { grid-template-columns: 1fr 1fr; }
-  .og-panel-accounts.og-bottom-span-2,
-  .og-bar-panel.og-bottom-span-2 { grid-column: span 2; }
-  .og-top-players-shark { grid-column: span 2; }
+  .og-top-players-shark { grid-column: 1 / -1; grid-row: auto; min-height: 380px; }
+  .og-panel-activity, .og-reels-views-panel,
+  .og-panel-accounts, .og-bar-panel { grid-column: auto; grid-row: auto; }
 }
 @media (max-width: 768px) {
   body.premium-app .shark-content { padding: 16px 14px 88px; }
@@ -531,9 +543,7 @@ body.premium-app .shark-content { padding: 24px 32px 80px; }
   .og-main-grid,
   .og-bottom-grid { grid-template-columns: 1fr; gap: 12px; }
   .og-bottom-span-2,
-  .og-panel-accounts.og-bottom-span-2,
-  .og-bar-panel.og-bottom-span-2,
-  .og-top-players-shark { grid-column: span 1; }
+  .og-top-players-shark { grid-column: span 1; grid-row: auto; min-height: 360px; }
   .og-glass-card { padding: 16px; }
   .og-page-header { flex-direction: column; align-items: flex-start; }
   .og-chart-premium { padding: 16px; }

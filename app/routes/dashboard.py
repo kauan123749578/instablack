@@ -126,6 +126,7 @@ def _top_platform_players(db: Session, start: dt.datetime, end: dt.datetime) -> 
             User.id,
             User.username,
             User.display_name,
+            User.avatar_key,
             func.count(PublishLog.id).label("post_count"),
         )
         .join(InstagramAccount, InstagramAccount.user_id == User.id)
@@ -135,7 +136,7 @@ def _top_platform_players(db: Session, start: dt.datetime, end: dt.datetime) -> 
             PublishLog.created_at >= _utc_naive(start),
             PublishLog.created_at < _utc_naive(end),
         )
-        .group_by(User.id, User.username, User.display_name)
+        .group_by(User.id, User.username, User.display_name, User.avatar_key)
         .order_by(desc(func.count(PublishLog.id)))
         .limit(5)
     ).all()
@@ -144,6 +145,7 @@ def _top_platform_players(db: Session, start: dt.datetime, end: dt.datetime) -> 
             "user_id": r.id,
             "username": r.username,
             "display_name": (r.display_name or r.username),
+            "avatar_url": f"/media/{r.avatar_key}" if r.avatar_key else None,
             "post_count": int(r.post_count),
         }
         for r in rows

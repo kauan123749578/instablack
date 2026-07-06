@@ -134,7 +134,7 @@ a:hover { color: var(--primary-hover); }
 
 /* Lucide icons */
 .lucide, [data-lucide] { flex-shrink: 0; }
-.nav-icon, .nav-link .lucide { width: 18px; height: 18px; stroke-width: 2; }
+.nav-icon, .nav-link .lucide { width: 18px; height: 18px; stroke-width: 2; color: #ffffff; stroke: #ffffff; }
 .icon-btn .lucide { width: 20px; height: 20px; }
 .brand-icon .lucide { width: 18px; height: 18px; }
 .btn-new-icon .lucide { width: 18px; height: 18px; }
@@ -195,17 +195,22 @@ a:hover { color: var(--primary-hover); }
 .page-header-sub { margin: 4px 0 0; font-size: 13px; }
 
 .nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+.nav-section-label {
+  padding: 14px 14px 6px; font-size: 10px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: #ffffff;
+}
 .nav-link {
   display: flex; align-items: center; gap: 12px;
   padding: 10px 14px; border-radius: 10px;
-  color: var(--text-sec); font-size: 13px; font-weight: 500;
+  color: #ffffff; font-size: 13px; font-weight: 500;
   transition: background 0.15s, color 0.15s;
   border: none; background: none; cursor: pointer; width: 100%; text-align: left;
   font-family: inherit;
 }
-.nav-link:hover, .nav-link.active { background: var(--primary-dim); color: var(--text); }
+.nav-link:hover, .nav-link.active { background: var(--primary-dim); color: #ffffff; }
 .nav-link.active { box-shadow: inset 3px 0 0 var(--primary); }
-.nav-svg { width: 18px; height: 18px; flex-shrink: 0; opacity: 0.85; }
+.nav-svg { width: 18px; height: 18px; flex-shrink: 0; opacity: 1; color: #ffffff; stroke: #ffffff; }
 .nav-text { white-space: nowrap; }
 
 .sidebar-plan {
@@ -214,8 +219,8 @@ a:hover { color: var(--primary-hover); }
   white-space: nowrap; overflow: hidden;
 }
 .sidebar:not(:hover) .sidebar-plan { display: none; }
-.sidebar-plan strong { display: block; color: var(--text); font-size: 13px; }
-.sidebar-plan span { color: var(--muted); display: block; margin: 4px 0 8px; }
+.sidebar-plan strong { display: block; color: #ffffff; font-size: 13px; }
+.sidebar-plan span { color: rgba(255, 255, 255, 0.72); display: block; margin: 4px 0 8px; }
 .plan-bar { height: 4px; background: rgba(255,255,255,0.06); border-radius: 99px; overflow: hidden; }
 .plan-bar-fill { height: 100%; background: linear-gradient(90deg, var(--primary), var(--primary-hover)); border-radius: 99px; }
 
