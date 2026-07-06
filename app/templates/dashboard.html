@@ -86,41 +86,51 @@
 
   <div class="og-main-grid">
 
-    <section class="og-glass-card og-chart-panel">
-      <div class="og-card-head">
+    <section class="og-glass-card og-chart-panel og-chart-premium">
+      <div class="og-chart-head">
+        <div class="og-chart-head-icon"><i data-lucide="activity"></i></div>
         <div>
-          <h2 class="og-card-title">Desempenho Geral</h2>
-          <p class="og-card-sub">Publicações, sucesso e falhas</p>
+          <h2 class="og-card-title">Seu Desempenho</h2>
+          <p class="og-card-sub og-card-sub--caps">Últimos 7 dias</p>
         </div>
-        <select class="og-select" aria-label="Período">
-          <option>7 dias</option>
-        </select>
       </div>
-      <div class="og-chart-legend">
-        <span><i class="og-dot og-dot--purple"></i> Publicações</span>
-        <span><i class="og-dot og-dot--green"></i> Sucesso</span>
-        <span><i class="og-dot og-dot--red"></i> Falhas</span>
+      <div class="og-chart-legend og-chart-legend--single">
+        <span><i class="og-dot og-dot--blue"></i> Publicações</span>
       </div>
-      <div class="og-line-chart-wrap" id="og-line-chart">
+      <div class="og-line-chart-wrap og-line-chart-wrap--premium" id="og-line-chart">
         <div class="og-chart-tooltip" id="og-chart-tooltip"></div>
         <svg class="og-line-svg" viewBox="0 0 700 220" preserveAspectRatio="none">
           {% set n = chart_performance|length %}
           {% set step = 700 / (n - 1) if n > 1 else 700 %}
-          {% set max_h = 170 %}
-          {% set base_y = 200 %}
+          {% set max_h = 150 %}
+          {% set base_y = 195 %}
+          {% set successes = chart_performance|map(attribute='success')|list %}
+          {% set max_val = successes|max if successes else 1 %}
+          {% if max_val < 1 %}{% set max_val = 1 %}{% endif %}
 
-          <polyline class="og-line og-line--purple og-line-anim" fill="none" stroke="#1161FE" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
-            points="{% for pt in chart_performance %}{% set x = loop.index0 * step %}{% set y = base_y - (pt.pubs_pct / 100 * max_h) %}{{ x }},{{ y }}{% if not loop.last %} {% endif %}{% endfor %}"/>
-          <polyline class="og-line og-line--green og-line-anim" fill="none" stroke="#22c55e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="animation-delay:.15s"
-            points="{% for pt in chart_performance %}{% set x = loop.index0 * step %}{% set y = base_y - (pt.success_pct / 100 * max_h) %}{{ x }},{{ y }}{% if not loop.last %} {% endif %}{% endfor %}"/>
-          <polyline class="og-line og-line--red og-line-anim" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="animation-delay:.3s"
-            points="{% for pt in chart_performance %}{% set x = loop.index0 * step %}{% set y = base_y - (pt.failed_pct / 100 * max_h) %}{{ x }},{{ y }}{% if not loop.last %} {% endif %}{% endfor %}"/>
+          <defs>
+            <linearGradient id="ogChartFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#1161FE" stop-opacity="0.42"/>
+              <stop offset="55%" stop-color="#1161FE" stop-opacity="0.12"/>
+              <stop offset="100%" stop-color="#1161FE" stop-opacity="0"/>
+            </linearGradient>
+            <linearGradient id="ogChartLine" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stop-color="#3d82ff"/>
+              <stop offset="100%" stop-color="#1161FE"/>
+            </linearGradient>
+          </defs>
+
+          <path class="og-chart-area" fill="url(#ogChartFill)" stroke="none"
+            d="M 0,{{ base_y }}{% for pt in chart_performance %}{% set x = loop.index0 * step %}{% set y = base_y - (pt.success / max_val * max_h) %} L {{ x }},{{ y }}{% endfor %} L {{ (n - 1) * step }},{{ base_y }} Z"/>
+
+          <polyline class="og-line-premium" fill="none" stroke="url(#ogChartLine)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+            points="{% for pt in chart_performance %}{% set x = loop.index0 * step %}{% set y = base_y - (pt.success / max_val * max_h) %}{{ x }},{{ y }}{% if not loop.last %} {% endif %}{% endfor %}"/>
 
           {% for pt in chart_performance %}
           {% set x = loop.index0 * step %}
-          {% set y = base_y - (pt.pubs_pct / 100 * max_h) %}
-          <circle class="og-chart-dot" cx="{{ x }}" cy="{{ y }}" r="4" fill="#1161FE"
-            data-tip="{{ pt.label }} {{ pt.date }}: {{ pt.pubs }} pub · {{ pt.success }} ok · {{ pt.failed }} falhas"/>
+          {% set y = base_y - (pt.success / max_val * max_h) %}
+          <circle class="og-chart-dot" cx="{{ x }}" cy="{{ y }}" r="4" fill="#1161FE" stroke="#050505" stroke-width="2"
+            data-tip="{{ pt.label }} {{ pt.date }}: {{ pt.success }} publicaç{% if pt.success == 1 %}ão{% else %}ões{% endif %}"/>
           {% endfor %}
 
           {% for pt in chart_performance %}
@@ -190,35 +200,44 @@
     </section>
   </div>
 
-  <section class="og-glass-card og-top-players-panel og-top-players-panel--wide">
-    <div class="og-card-head">
-      <h2 class="og-card-title"><i data-lucide="trophy" class="inline-icon"></i> Top Players — hoje</h2>
-      <span class="og-muted" style="font-size:12px">Usuários da plataforma · publicações do dia</span>
-    </div>
-    <div class="og-top-players-grid">
-      {% for rank in range(1, 6) %}
-      {% set item = top_players[rank - 1] if top_players|length >= rank else none %}
-      <article class="og-top-player-card{% if not item %} og-top-player-card--empty{% endif %}">
-        <span class="og-top-rank">#{{ rank }}</span>
-        {% if item %}
-        <div class="og-top-player-avatar">{{ item.display_name[0]|upper }}</div>
-        <strong class="og-top-player-name">{{ item.display_name }}</strong>
-        <span class="og-top-player-user">@{{ item.username }}</span>
-        <span class="og-top-player-score">{{ item.posts_today }} post{% if item.posts_today != 1 %}s{% endif %} hoje</span>
-        {% else %}
-        <div class="og-top-player-avatar og-top-player-avatar--empty">—</div>
-        <span class="og-top-player-empty">Vazio</span>
-        {% endif %}
-      </article>
-      {% endfor %}
-    </div>
-  </section>
-
   <div class="og-bottom-grid">
+
+    <section class="og-glass-card og-panel-activity">
+      <div class="og-card-head">
+        <div>
+          <h2 class="og-card-title">Log de atividades</h2>
+          <p class="og-card-sub og-card-sub--caps">Tempo real</p>
+        </div>
+        <a href="/logs" class="og-link" data-nav="/logs">Ver todos</a>
+      </div>
+      {% if recent_logs %}
+      <ul class="og-timeline">
+        {% for log in recent_logs %}
+        <li class="og-timeline-item">
+          <span class="og-timeline-icon og-timeline-icon--{{ log.status }}">
+            {% if log.status == 'success' %}<i data-lucide="check"></i>
+            {% elif log.status == 'failed' %}<i data-lucide="x"></i>
+            {% else %}<i data-lucide="minus"></i>{% endif %}
+          </span>
+          <div class="og-timeline-body">
+            <strong>@{{ log.account.username }}{% if log.automation %} · {{ log.automation.name }}{% endif %}</strong>
+            <span>{{ log.created_at | localtime('%d/%m %H:%M') }}{% if log.play_count %} · {{ format_count(log.play_count) }} views{% endif %}</span>
+          </div>
+          <span class="og-badge og-timeline-badge {{ status_badge_class(log.status) }}">{{ status_label(log.status) }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="og-empty">Nenhuma atividade registrada ainda. Publicações aparecem aqui automaticamente.</div>
+      {% endif %}
+    </section>
 
     <section class="og-glass-card og-reels-views-panel">
       <div class="og-card-head">
-        <h2 class="og-card-title"><i data-lucide="play-circle" class="inline-icon"></i> Reels com mais views</h2>
+        <div>
+          <h2 class="og-card-title">Reels com mais views</h2>
+          <p class="og-card-sub og-card-sub--caps">Performance</p>
+        </div>
         <a href="/logs" class="og-link" data-nav="/logs">Ver logs</a>
       </div>
       {% if top_reels %}
@@ -240,11 +259,67 @@
         {% endfor %}
       </ul>
       {% else %}
-      <p class="og-empty">Views aparecem após a sincronização (até 1h). Publique um reel para começar.</p>
+      <p class="og-empty">Views aparecem após a sincronização (até 1h).</p>
       {% endif %}
     </section>
 
-    <section class="og-glass-card og-panel-accounts">
+    <section class="og-glass-card og-top-players-shark">
+      <div class="og-rank-head">
+        <div class="og-rank-title-wrap">
+          <span class="og-rank-crown" aria-hidden="true"><i data-lucide="crown"></i></span>
+          <div>
+            <h2 class="og-card-title">Top 5 Players</h2>
+            <p class="og-card-sub og-card-sub--caps">Corrida de publicações</p>
+          </div>
+        </div>
+        <div class="og-rank-tabs" role="tablist">
+          <button type="button" class="og-rank-tab active" data-rank-tab="today" role="tab" aria-selected="true">Concurso</button>
+          <button type="button" class="og-rank-tab" data-rank-tab="month" role="tab" aria-selected="false">Mensal</button>
+        </div>
+      </div>
+
+      <div class="og-rank-panel active" id="rank-panel-today" role="tabpanel">
+        {% if top_players %}
+        <ol class="og-rank-list">
+          {% for item in top_players %}
+          <li class="og-rank-row{% if loop.index == 1 %} og-rank-row--gold{% endif %}">
+            <span class="og-rank-pos">{{ loop.index }}</span>
+            <div class="og-rank-avatar">{{ item.display_name[0]|upper }}</div>
+            <div class="og-rank-info">
+              <strong>{{ item.display_name }}</strong>
+              <span>@{{ item.username }}</span>
+            </div>
+            <span class="og-rank-score">{{ item.posts_today }} post{% if item.posts_today != 1 %}s{% endif %}</span>
+          </li>
+          {% endfor %}
+        </ol>
+        {% else %}
+        <div class="og-rank-empty">Nenhum player no ranking ainda. A corrida começa na primeira publicação confirmada hoje.</div>
+        {% endif %}
+      </div>
+
+      <div class="og-rank-panel" id="rank-panel-month" role="tabpanel" hidden>
+        {% if top_players_month %}
+        <ol class="og-rank-list">
+          {% for item in top_players_month %}
+          <li class="og-rank-row{% if loop.index == 1 %} og-rank-row--gold{% endif %}">
+            <span class="og-rank-pos">{{ loop.index }}</span>
+            <div class="og-rank-avatar">{{ item.display_name[0]|upper }}</div>
+            <div class="og-rank-info">
+              <strong>{{ item.display_name }}</strong>
+              <span>@{{ item.username }}</span>
+            </div>
+            <span class="og-rank-score">{{ item.post_count }} post{% if item.post_count != 1 %}s{% endif %}</span>
+          </li>
+          {% endfor %}
+        </ol>
+        {% else %}
+        <div class="og-rank-empty">Nenhum player no ranking mensal ainda.</div>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="og-glass-card og-panel-accounts og-bottom-span-2">
       <div class="og-card-head">
         <h2 class="og-card-title"><i data-lucide="instagram" class="inline-icon"></i> Contas conectadas</h2>
         <a href="/accounts" class="og-link" data-nav="/accounts">Gerenciar</a>
@@ -266,7 +341,7 @@
       {% endif %}
     </section>
 
-    <section class="og-glass-card og-bar-panel">
+    <section class="og-glass-card og-bar-panel og-bottom-span-2">
       <div class="og-card-head">
         <h2 class="og-card-title"><i data-lucide="bar-chart-3" class="inline-icon"></i> Publicações por dia</h2>
       </div>
@@ -283,32 +358,6 @@
       </div>
     </section>
 
-    <section class="og-glass-card og-panel-activity">
-      <div class="og-card-head">
-        <h2 class="og-card-title"><i data-lucide="activity" class="inline-icon"></i> Atividade recente</h2>
-        <a href="/logs" class="og-link" data-nav="/logs">Ver todos</a>
-      </div>
-      {% if recent_logs %}
-      <ul class="og-timeline">
-        {% for log in recent_logs %}
-        <li class="og-timeline-item">
-          <span class="og-timeline-icon og-timeline-icon--{{ log.status }}">
-            {% if log.status == 'success' %}<i data-lucide="check"></i>
-            {% elif log.status == 'failed' %}<i data-lucide="x"></i>
-            {% else %}<i data-lucide="minus"></i>{% endif %}
-          </span>
-          <div class="og-timeline-body">
-            <strong>@{{ log.account.username }}{% if log.automation %} · {{ log.automation.name }}{% endif %}</strong>
-            <span>{{ log.created_at | localtime('%d/%m %H:%M') }}{% if log.play_count %} · {{ format_count(log.play_count) }} views{% endif %}</span>
-          </div>
-          <span class="og-badge og-timeline-badge {{ status_badge_class(log.status) }}">{{ status_label(log.status) }}</span>
-        </li>
-        {% endfor %}
-      </ul>
-      {% else %}
-      <div class="og-empty">Nenhuma atividade ainda</div>
-      {% endif %}
-    </section>
   </div>
 
 </div>

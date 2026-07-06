@@ -11,7 +11,9 @@
   --primary-dim: rgba(17, 97, 254, 0.14);
   --accent-purple: #1161FE;
   --ig-gradient: linear-gradient(135deg, #1161FE, #3d82ff);
-  --card-gradient: #050505;
+  --card-gradient:
+    radial-gradient(ellipse 100% 75% at 50% 115%, rgba(17, 97, 254, 0.08) 0%, transparent 55%),
+    #050505;
   --text: #f4f8ff;
   --muted: #6b7280;
   --text-sec: #9ca3af;
@@ -671,4 +673,26 @@ a:hover { color: var(--primary-hover); }
   .mobile-drawer { display: block; }
   .shark-content { padding: 16px 16px 80px; }
   .greeting { font-size: 17px; }
+  .page-header { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .form-card, .panel, .auto-card { padding: 16px; }
+  .auto-grid { grid-template-columns: 1fr; }
+  .auto-card-header { flex-direction: column; gap: 8px; }
+  .auto-actions { gap: 6px; }
+  .auto-actions .btn { flex: 1 1 auto; justify-content: center; min-width: 0; }
+  .form-grid input, .form-grid select, .form-grid textarea { font-size: 16px; }
+  .table th, .table td { padding: 9px 10px; font-size: 12px; }
+  .table-wrap { margin: 0 -16px; padding: 0 16px; }
+  .profile-preview { flex-direction: column; }
+  .logs-filters { flex-direction: column; align-items: stretch; }
+  .logs-filters label { min-width: 0; }
+  .account-actions { flex-direction: column; align-items: stretch; }
+  .account-actions .btn { width: 100%; justify-content: center; }
+  .proxy-update-form { position: static; min-width: 0; margin-top: 8px; }
+  .calendar-toolbar { flex-direction: column; align-items: stretch; }
+  .modal-card { padding: 18px; }
+}
+@media (max-width: 420px) {
+  .login-card { padding: 28px 20px 24px; margin: 12px; }
+  .btn { padding: 10px 14px; }
+  .logs-stats { flex-direction: column; }
 }

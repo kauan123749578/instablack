@@ -470,6 +470,23 @@
     document.querySelectorAll(".og-bar-fill").forEach((bar, i) => {
       bar.style.animationDelay = (i * 0.06) + "s";
     });
+
+    document.querySelectorAll(".og-rank-tab").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        const target = tab.dataset.rankTab;
+        if (!target) return;
+        document.querySelectorAll(".og-rank-tab").forEach((t) => {
+          const active = t.dataset.rankTab === target;
+          t.classList.toggle("active", active);
+          t.setAttribute("aria-selected", active ? "true" : "false");
+        });
+        document.querySelectorAll(".og-rank-panel").forEach((panel) => {
+          const show = panel.id === `rank-panel-${target}`;
+          panel.hidden = !show;
+          panel.classList.toggle("active", show);
+        });
+      });
+    });
   }
 
   function initAutomationForm() {

@@ -119,15 +119,14 @@ def _growth_pct(current: int, previous: int) -> float | None:
     return round((current - previous) / previous * 100, 1)
 
 
-def _top_platform_players_today(db: Session, day: dt.date) -> list[dict]:
-    """Top 5 usuários da plataforma por publicações no dia (BRT)."""
-    start, end = _brt_day_bounds(day)
+def _top_platform_players(db: Session, start: dt.datetime, end: dt.datetime) -> list[dict]:
+    """Top 5 usuários da plataforma por publicações no período."""
     rows = db.execute(
         select(
             User.id,
             User.username,
             User.display_name,
-            func.count(PublishLog.id).label("posts_today"),
+            func.count(PublishLog.id).label("post_count"),
         )
         .join(InstagramAccount, InstagramAccount.user_id == User.id)
         .join(PublishLog, PublishLog.account_id == InstagramAccount.id)
@@ -145,10 +144,16 @@ def _top_platform_players_today(db: Session, day: dt.date) -> list[dict]:
             "user_id": r.id,
             "username": r.username,
             "display_name": (r.display_name or r.username),
-            "posts_today": int(r.posts_today),
+            "post_count": int(r.post_count),
         }
         for r in rows
     ]
+
+
+def _top_platform_players_today(db: Session, day: dt.date) -> list[dict]:
+    start, end = _brt_day_bounds(day)
+    items = _top_platform_players(db, start, end)
+    return [{**item, "posts_today": item["post_count"]} for item in items]
 
 
 @router.get("/")
@@ -270,6 +275,10 @@ def home(
     accounts_data.sort(key=lambda x: x["publish_count"], reverse=True)
 
     top_players = _top_platform_players_today(db, today)
+    month_start = today.replace(day=1)
+    top_players_month = _top_platform_players(
+        db, _brt_day_bounds(month_start)[0], _brt_day_bounds(today)[1]
+    )
 
     top_reels = db.scalars(
         select(PublishLog)
@@ -338,6 +347,7 @@ def home(
             "offline_accounts": offline,
             "total_views": int(total_views),
             "top_players": top_players,
+            "top_players_month": top_players_month,
             "top_reels": top_reels,
         },
     )
