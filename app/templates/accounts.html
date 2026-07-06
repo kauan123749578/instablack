@@ -98,9 +98,22 @@
         <tr>
           <td>@{{ acc.username }}</td>
           <td><span class="og-badge {{ status_badge_class(acc.status) }}">{{ status_label(acc.status) }}</span></td>
-          <td class="muted" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ acc.proxy or '—' }}</td>
+          <td class="muted" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ proxy_to_raw(acc.proxy) }}">{{ proxy_label(acc.proxy) or '—' }}</td>
           <td>{{ acc.last_login_at | localtime }}</td>
           <td class="account-actions">
+            <details class="proxy-update-panel">
+              <summary class="btn btn-sm">Atualizar proxy</summary>
+              <form method="post" action="/accounts/{{ acc.id }}/update-proxy" class="proxy-update-form" data-account="@{{ acc.username }}">
+                <input type="text" name="proxy" class="proxy-update-input" required
+                       value="{{ proxy_to_raw(acc.proxy) }}"
+                       placeholder="ip:porta:usuario:senha">
+                <div class="proxy-update-actions">
+                  <button type="button" class="btn btn-sm proxy-test-btn">Testar</button>
+                  <button type="submit" class="btn btn-sm btn-primary">Salvar</button>
+                </div>
+                <p class="proxy-test-result muted" aria-live="polite"></p>
+              </form>
+            </details>
             {% if acc.status == 'paused' %}
             <form method="post" action="/accounts/{{ acc.id }}/resume">
               <button type="submit" class="btn btn-sm btn-primary">Retomar</button>

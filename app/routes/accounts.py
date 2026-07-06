@@ -14,7 +14,7 @@ from app.security import decrypt_secret, encrypt_secret
 from app.templating import templates
 from app.config import get_settings
 from app.utils.account_health import offline_accounts
-from app.utils.proxy import clean_sessionid, normalize_proxy
+from app.utils.proxy import clean_sessionid, diagnose_proxy, normalize_proxy
 from app.utils.account_limits import (
     account_limit_label,
     accounts_remaining,
@@ -83,11 +83,23 @@ def list_accounts(
 ):
     accounts = _load_user_accounts(db, user)
     ok_key = request.query_params.get("ok")
-    ok_msg = {"paused": "Conta pausada.", "resumed": "Conta retomada."}.get(ok_key or "")
+    ok_msg = {
+        "paused": "Conta pausada.",
+        "resumed": "Conta retomada.",
+        "proxy_updated": "Proxy atualizado com sucesso!",
+    }.get(ok_key or "")
+    err_key = request.query_params.get("error")
+    err_msg = {
+        "proxy_vazio": "Informe um proxy válido.",
+        "proxy_invalid": "Proxy inválido ou fora do ar. Teste antes de salvar.",
+    }.get(err_key or "")
     offline = offline_accounts(db, user.id)
     return templates.TemplateResponse(
         "accounts.html",
-        {**_accounts_page_context(request, user, accounts, ok=ok_msg), "offline_accounts": offline},
+        {
+            **_accounts_page_context(request, user, accounts, ok=ok_msg, error=err_msg or None),
+            "offline_accounts": offline,
+        },
     )
 
 
@@ -374,6 +386,45 @@ async def edit_account_submit(
                 tmp_pic.unlink()
             except OSError:
                 pass
+
+
+@router.post("/test-proxy")
+def test_proxy(proxy: str = Form(...)):
+    """Testa proxy sem salvar (AJAX)."""
+    result = diagnose_proxy(proxy)
+    return JSONResponse(result)
+
+
+@router.post("/{account_id}/update-proxy")
+def update_account_proxy(
+    account_id: int,
+    proxy: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    acc = _get_owned_account(db, account_id, user)
+    normalized = normalize_proxy(proxy)
+    if not normalized:
+        return RedirectResponse(
+            "/accounts?error=proxy_vazio",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    diag = diagnose_proxy(proxy)
+    if not diag["ok"]:
+        return RedirectResponse(
+            "/accounts?error=proxy_invalid",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    acc.proxy = normalized
+    if acc.status == "proxy_down":
+        acc.status = "active"
+    acc.last_error = None
+    acc.last_health_check_at = None
+    db.commit()
+    return RedirectResponse(
+        "/accounts?ok=proxy_updated",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
 
 
 @router.post("/{account_id}/pause")
