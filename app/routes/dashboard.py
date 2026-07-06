@@ -204,13 +204,69 @@ def home(
         ).all()
     )
 
+    account_views: dict[int, int] = dict(
+        db.execute(
+            select(PublishLog.account_id, func.coalesce(func.sum(PublishLog.play_count), 0))
+            .join(PublishLog.account)
+            .where(
+                InstagramAccount.user_id == user.id,
+                PublishLog.status == "success",
+                PublishLog.play_count.is_not(None),
+            )
+            .group_by(PublishLog.account_id)
+        ).all()
+    )
+
+    total_views = db.scalar(
+        select(func.coalesce(func.sum(PublishLog.play_count), 0))
+        .join(PublishLog.account)
+        .where(
+            InstagramAccount.user_id == user.id,
+            PublishLog.status == "success",
+            PublishLog.play_count.is_not(None),
+        )
+    ) or 0
+
     accounts_data = [
         {
             "account": acc,
             "publish_count": account_publish_counts.get(acc.id, 0),
+            "total_views": int(account_views.get(acc.id, 0) or 0),
         }
         for acc in accounts
     ]
+    accounts_data.sort(key=lambda x: x["publish_count"], reverse=True)
+    top_players = accounts_data[:5]
+
+    top_reels = db.scalars(
+        select(PublishLog)
+        .join(PublishLog.account)
+        .where(
+            InstagramAccount.user_id == user.id,
+            PublishLog.status == "success",
+            PublishLog.play_count.is_not(None),
+        )
+        .options(selectinload(PublishLog.account), selectinload(PublishLog.automation))
+        .order_by(desc(PublishLog.play_count))
+        .limit(8)
+    ).all()
+
+    pending_views = db.scalar(
+        select(func.count(PublishLog.id))
+        .join(PublishLog.account)
+        .where(
+            InstagramAccount.user_id == user.id,
+            PublishLog.status == "success",
+            PublishLog.media_id.is_not(None),
+            PublishLog.play_count.is_(None),
+        )
+    ) or 0
+    if pending_views:
+        try:
+            from celery_app.tasks.insights import sync_all_views
+            sync_all_views.delay()
+        except Exception:
+            pass
 
     recent_logs = db.scalars(
         select(PublishLog)
@@ -247,6 +303,9 @@ def home(
             "chart_weekly": chart_weekly,
             "now_brt": brt_now(),
             "offline_accounts": offline,
+            "total_views": int(total_views),
+            "top_players": top_players,
+            "top_reels": top_reels,
         },
     )
 

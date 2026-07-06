@@ -240,6 +240,20 @@ def publish_reel(
     return {"id": str(media.pk), "code": media.code, "url": url}
 
 
+def fetch_media_stats(cl: Client, media_pk: str) -> dict:
+    """Busca visualizações e curtidas de um reel/post."""
+    pk = int(str(media_pk).strip())
+    media = cl.media_info(pk)
+    play_count = getattr(media, "play_count", None)
+    if play_count is None:
+        play_count = getattr(media, "view_count", None)
+    like_count = getattr(media, "like_count", None)
+    return {
+        "play_count": play_count if isinstance(play_count, int) and play_count >= 0 else None,
+        "like_count": like_count if isinstance(like_count, int) and like_count >= 0 else None,
+    }
+
+
 def _normalize_url(url: str) -> str:
     u = url.strip()
     if not u:
@@ -284,41 +298,6 @@ def publish_photo_feed(cl: Client, image_path: Path, caption: str) -> dict:
     media = cl.photo_upload(image_path, caption)
     url = f"https://www.instagram.com/p/{media.code}/" if media.code else None
     return {"id": str(media.pk), "code": media.code, "url": url}
-
-
-def get_account_profile(cl: Client) -> dict:
-    info = cl.account_info()
-    return {
-        "username": info.username,
-        "full_name": getattr(info, "full_name", "") or "",
-        "biography": getattr(info, "biography", "") or "",
-        "external_url": getattr(info, "external_url", "") or "",
-        "profile_pic_url": getattr(info, "profile_pic_url", "") or "",
-    }
-
-
-def update_account_profile(
-    cl: Client,
-    biography: str | None = None,
-    external_url: str | None = None,
-    profile_picture_path: Path | None = None,
-) -> dict:
-    if biography is not None:
-        cl.account_set_biography(biography)
-    if external_url is not None:
-        url = external_url.strip()
-        if url:
-            cl.set_external_url(url)
-        else:
-            try:
-                cl.remove_bio_links()
-            except Exception:
-                pass
-    if profile_picture_path is not None:
-        if not profile_picture_path.exists():
-            raise FileNotFoundError("Foto de perfil não encontrada")
-        cl.account_change_picture(profile_picture_path)
-    return get_account_profile(cl)
 
 
 def serialize_settings(settings_dict: dict) -> str:

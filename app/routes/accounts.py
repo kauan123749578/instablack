@@ -4,18 +4,17 @@ from __future__ import annotations
 import datetime as dt
 import json
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.deps import get_current_user
-from app.security import decrypt_secret, encrypt_secret
+from app.security import encrypt_secret
 from app.templating import templates
 from app.config import get_settings
 from app.utils.account_health import offline_accounts
 from app.utils.proxy import (
-    account_proxy_ip,
     clean_sessionid,
     diagnose_proxy,
     normalize_proxy,
@@ -30,17 +29,11 @@ from core.database import get_db
 from core.instagram import (
     InstagramAuthError,
     InstagramTwoFactorRequired,
-    check_proxy,
-    deserialize_settings,
-    get_account_profile,
-    get_ready_client,
     login_with_credentials,
     login_with_imported_settings,
     login_with_sessionid,
     serialize_settings,
-    update_account_profile,
 )
-from core.storage import get_storage
 
 from models.models import InstagramAccount, User
 
@@ -304,120 +297,6 @@ def _get_owned_account(db: Session, account_id: int, user: User) -> InstagramAcc
     if not acc or acc.user_id != user.id:
         raise HTTPException(status_code=404, detail="Conta não encontrada")
     return acc
-
-
-def _client_for_account(acc: InstagramAccount):
-    if not acc.proxy or not check_proxy(acc.proxy):
-        raise InstagramAuthError("Proxy inválido ou fora do ar")
-    settings_dict = deserialize_settings(acc.session_json)
-    if not settings_dict:
-        raise InstagramAuthError("Sessão expirada — reconecte a conta")
-    password = decrypt_secret(acc.encrypted_password)
-    cl = get_ready_client(
-        settings_dict=settings_dict,
-        proxy=acc.proxy,
-        username=acc.username,
-        password=password,
-    )
-    return cl
-
-
-@router.get("/{account_id}/edit")
-def edit_account_page(
-    request: Request,
-    account_id: int,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    acc = _get_owned_account(db, account_id, user)
-    profile = None
-    error = None
-    try:
-        cl = _client_for_account(acc)
-        profile = get_account_profile(cl)
-        acc.session_json = serialize_settings(cl.get_settings())
-        db.commit()
-    except InstagramAuthError as exc:
-        error = str(exc)
-
-    return templates.TemplateResponse(
-        "account_edit.html",
-        {
-            "request": request,
-            "user": user,
-            "account": acc,
-            "profile": profile,
-            "error": error,
-            "ok": None,
-        },
-    )
-
-
-@router.post("/{account_id}/edit")
-async def edit_account_submit(
-    request: Request,
-    account_id: int,
-    biography: str = Form(""),
-    external_url: str = Form(""),
-    profile_picture: UploadFile | None = File(None),
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    acc = _get_owned_account(db, account_id, user)
-    pic_path = None
-    tmp_pic = None
-    try:
-        cl = _client_for_account(acc)
-        if profile_picture and profile_picture.filename:
-            import tempfile
-            from pathlib import Path
-            storage = get_storage()
-            ext = Path(profile_picture.filename).suffix or ".jpg"
-            key = storage.save(profile_picture.file, suggested_ext=ext)
-            tmp_pic = Path(tempfile.mkdtemp()) / f"pic{ext}"
-            storage.download_to(key, tmp_pic)
-            pic_path = tmp_pic
-
-        profile = update_account_profile(
-            cl,
-            biography=biography,
-            external_url=external_url,
-            profile_picture_path=pic_path,
-        )
-        acc.session_json = serialize_settings(cl.get_settings())
-        acc.status = "active"
-        acc.last_error = None
-        db.commit()
-        return templates.TemplateResponse(
-            "account_edit.html",
-            {
-                "request": request,
-                "user": user,
-                "account": acc,
-                "profile": profile,
-                "error": None,
-                "ok": "Perfil atualizado com sucesso!",
-            },
-        )
-    except InstagramAuthError as exc:
-        return templates.TemplateResponse(
-            "account_edit.html",
-            {
-                "request": request,
-                "user": user,
-                "account": acc,
-                "profile": None,
-                "error": str(exc),
-                "ok": None,
-            },
-            status_code=status.HTTP_400_BAD_REQUEST,
-        )
-    finally:
-        if tmp_pic and tmp_pic.exists():
-            try:
-                tmp_pic.unlink()
-            except OSError:
-                pass
 
 
 @router.post("/test-proxy")

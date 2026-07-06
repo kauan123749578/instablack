@@ -4,15 +4,23 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Criar conta · instablack</title>
-  <link rel="stylesheet" href="/static/style.css?v=13" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css?v=3" />
 </head>
 <body class="login-body">
   <div class="ambient-grid"></div>
   <canvas class="login-rays" id="login-rays"></canvas>
 
   <div class="login-card">
-    <h1>instablack</h1>
-    <p class="subtitle">Crie sua conta com um código de convite</p>
+    <div class="login-brand">
+      <div class="login-brand-icon">ib</div>
+      <span class="login-brand-text">instablack</span>
+    </div>
+    <span class="login-badge">Convite necessário</span>
+    <h1>Criar acesso</h1>
+    <p class="subtitle">Use o código de convite para entrar na plataforma.</p>
 
     {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
 
@@ -31,12 +39,12 @@
       <label>Confirmar senha
         <input type="password" name="password_confirm" required minlength="8" autocomplete="new-password">
       </label>
-      <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:4px">Criar conta</button>
+      <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:8px;padding:14px">Criar conta</button>
     </form>
 
-    <p class="login-footer">Já tem conta? <a href="/login">Entrar</a></p>
+    <p class="login-footer">Já tem conta? <a href="/login">Entrar no painel</a></p>
   </div>
 
-  <script src="/static/app.js?v=10"></script>
+  <script src="/static/app.js?v=3"></script>
 </body>
 </html>

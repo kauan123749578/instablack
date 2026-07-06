@@ -589,8 +589,8 @@
         const angle = (i / 8) * Math.PI * 2 + t * 0.0003;
         const len = Math.max(w, h) * 1.2;
         const grad = ctx.createLinearGradient(cx, cy, cx + Math.cos(angle) * len, cy + Math.sin(angle) * len);
-        grad.addColorStop(0, "rgba(225,48,108,0.1)");
-        grad.addColorStop(0.5, "rgba(225,48,108,0.02)");
+        grad.addColorStop(0, "rgba(17,97,254,0.12)");
+        grad.addColorStop(0.5, "rgba(17,97,254,0.03)");
         grad.addColorStop(1, "transparent");
         ctx.beginPath();
         ctx.moveTo(cx, cy);

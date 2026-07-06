@@ -136,7 +136,6 @@
               <button type="submit" class="btn btn-sm">Pausar</button>
             </form>
             {% endif %}
-            <a href="/accounts/{{ acc.id }}/edit" class="btn btn-sm" data-nav="/accounts/{{ acc.id }}/edit">Editar</a>
             <form method="post" action="/accounts/{{ acc.id }}/delete"
                   onsubmit="return confirm('Remover @{{ acc.username }}?');">
               <button type="submit" class="btn btn-sm btn-danger">Remover</button>

@@ -1,19 +1,19 @@
-/* instablack Dashboard — #050505, cantos pontudos, glow rosa Instagram */
+/* instablack Dashboard — #050505, azul #1161FE */
 :root {
   --og-bg: #050505;
   --og-card-bg: #050505;
   --og-card-border: rgba(255, 255, 255, 0.04);
-  --og-glow-pink: rgba(225, 48, 108, 0.14);
-  --og-glow-purple: rgba(131, 58, 180, 0.12);
-  --og-pink: #E1306C;
-  --og-orange: #F77737;
-  --og-purple: #833AB4;
+  --og-glow-pink: rgba(17, 97, 254, 0.14);
+  --og-glow-purple: rgba(17, 97, 254, 0.12);
+  --og-pink: #1161FE;
+  --og-orange: #3d82ff;
+  --og-purple: #1161FE;
   --og-green: #22c55e;
   --og-red: #ef4444;
   --og-muted: #6b7280;
   --og-text-sec: #9ca3af;
-  --og-ig-gradient: linear-gradient(90deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888);
-  --og-ig-gradient-v: linear-gradient(180deg, #f09433, #dc2743, #bc1888);
+  --og-ig-gradient: linear-gradient(90deg, #1161FE, #3d82ff);
+  --og-ig-gradient-v: linear-gradient(180deg, #1161FE, #0d4fd4);
   --og-radius: 0;
 }
 
@@ -117,7 +117,7 @@ body.premium-app .shark-content { padding: 24px 32px 80px; }
 .og-btn-primary:hover { color: #fff; filter: brightness(1.06); }
 
 /* KPI */
-.og-kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 14px; }
+.og-kpi-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 14px; }
 .og-kpi-card { padding: 18px 20px; }
 .og-kpi-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
 .og-kpi-icon {
@@ -376,6 +376,37 @@ body.premium-app .shark-content { padding: 24px 32px 80px; }
 .offline-list { margin: 10px 0 0; padding-left: 18px; font-size: 13px; }
 .offline-list li { margin: 4px 0; }
 
+.og-top-players-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.og-top-player-item {
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px;
+  background: rgba(17, 97, 254, 0.04); border: 1px solid rgba(255, 255, 255, 0.04);
+}
+.og-top-rank {
+  font-size: 12px; font-weight: 700; color: var(--og-pink); min-width: 24px;
+}
+.og-top-player-avatar {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: rgba(17, 97, 254, 0.18); color: #1161FE;
+  display: flex; align-items: center; justify-content: center; font-weight: 700;
+}
+.og-top-player-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.og-top-player-info strong { font-size: 13px; }
+.og-top-player-info span { font-size: 11px; color: var(--og-muted); }
+
+.og-reels-views-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.og-reel-view-item {
+  display: flex; align-items: center; gap: 12px; padding: 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+.og-reel-view-item:last-child { border-bottom: none; }
+.og-reel-view-stats { min-width: 56px; text-align: center; }
+.og-reel-view-stats strong { display: block; font-size: 16px; color: #1161FE; }
+.og-reel-view-stats span { font-size: 10px; color: var(--og-muted); text-transform: uppercase; }
+.og-reel-view-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.og-reel-view-info strong { font-size: 13px; }
+.og-reel-view-info span { font-size: 11px; color: var(--og-muted); }
+.og-reel-view-link { font-size: 12px; white-space: nowrap; }
+
 .analytics-summary-row {
   display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px;
 }
@@ -387,6 +418,7 @@ body.premium-app .shark-content { padding: 24px 32px 80px; }
 @media (max-width: 1100px) {
   .og-main-grid { grid-template-columns: 1fr 1fr; }
   .og-next-panel { grid-column: span 1; }
+  .og-kpi-row { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 768px) {
   .og-kpi-row, .og-bottom-grid, .og-main-grid { grid-template-columns: 1fr; }

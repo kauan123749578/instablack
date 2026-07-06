@@ -7,6 +7,20 @@ def format_interval(minutes: int) -> str:
     return "A cada " + interval_label(minutes).lower()
 
 
+def format_count(n: int | None) -> str:
+    if n is None:
+        return "—"
+    if n >= 1_000_000:
+        v = n / 1_000_000
+        return f"{v:.1f}M".replace(".0M", "M")
+    if n >= 10_000:
+        v = n / 1_000
+        return f"{v:.1f}k".replace(".0k", "k")
+    if n >= 1_000:
+        return f"{n / 1_000:.1f}k".replace(".0k", "k")
+    return str(n)
+
+
 def status_label(status: str) -> str:
     return {
         "active": "Ativa",

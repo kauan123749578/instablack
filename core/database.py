@@ -140,6 +140,14 @@ def _sqlite_migrate() -> None:
                 conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN proxy_ip VARCHAR(45)"))
             if "proxy_geo" not in acols:
                 conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN proxy_geo VARCHAR(64)"))
+        if "publish_logs" in insp.get_table_names():
+            pcols = {c["name"] for c in insp.get_columns("publish_logs")}
+            if "play_count" not in pcols:
+                conn.execute(text("ALTER TABLE publish_logs ADD COLUMN play_count INTEGER"))
+            if "like_count" not in pcols:
+                conn.execute(text("ALTER TABLE publish_logs ADD COLUMN like_count INTEGER"))
+            if "insights_fetched_at" not in pcols:
+                conn.execute(text("ALTER TABLE publish_logs ADD COLUMN insights_fetched_at DATETIME"))
 
 
 def _postgres_migrate() -> None:
@@ -184,6 +192,14 @@ def _postgres_migrate() -> None:
                 conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN proxy_ip VARCHAR(45)"))
             if "proxy_geo" not in acols:
                 conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN proxy_geo VARCHAR(64)"))
+        if "publish_logs" in tables:
+            pcols = {c["name"] for c in insp.get_columns("publish_logs")}
+            if "play_count" not in pcols:
+                conn.execute(text("ALTER TABLE publish_logs ADD COLUMN play_count INTEGER"))
+            if "like_count" not in pcols:
+                conn.execute(text("ALTER TABLE publish_logs ADD COLUMN like_count INTEGER"))
+            if "insights_fetched_at" not in pcols:
+                conn.execute(text("ALTER TABLE publish_logs ADD COLUMN insights_fetched_at TIMESTAMPTZ"))
 
 
 def init_db() -> None:

@@ -67,6 +67,16 @@
 
     <article class="og-glass-card og-kpi-card">
       <div class="og-kpi-top">
+        <div class="og-kpi-icon og-kpi-icon--pink">
+          <i data-lucide="eye"></i>
+        </div>
+      </div>
+      <div class="og-kpi-value">{{ format_count(total_views) }}</div>
+      <div class="og-kpi-label">Visualizações nos Reels</div>
+    </article>
+
+    <article class="og-glass-card og-kpi-card">
+      <div class="og-kpi-top">
         <div class="og-kpi-icon og-kpi-icon--green">
           <i data-lucide="activity"></i>
         </div>
@@ -106,7 +116,7 @@
           {% set max_h = 170 %}
           {% set base_y = 200 %}
 
-          <polyline class="og-line og-line--purple og-line-anim" fill="none" stroke="#833AB4" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+          <polyline class="og-line og-line--purple og-line-anim" fill="none" stroke="#1161FE" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
             points="{% for pt in chart_performance %}{% set x = loop.index0 * step %}{% set y = base_y - (pt.pubs_pct / 100 * max_h) %}{{ x }},{{ y }}{% if not loop.last %} {% endif %}{% endfor %}"/>
           <polyline class="og-line og-line--green og-line-anim" fill="none" stroke="#22c55e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="animation-delay:.15s"
             points="{% for pt in chart_performance %}{% set x = loop.index0 * step %}{% set y = base_y - (pt.success_pct / 100 * max_h) %}{{ x }},{{ y }}{% if not loop.last %} {% endif %}{% endfor %}"/>
@@ -116,7 +126,7 @@
           {% for pt in chart_performance %}
           {% set x = loop.index0 * step %}
           {% set y = base_y - (pt.pubs_pct / 100 * max_h) %}
-          <circle class="og-chart-dot" cx="{{ x }}" cy="{{ y }}" r="4" fill="#E1306C"
+          <circle class="og-chart-dot" cx="{{ x }}" cy="{{ y }}" r="4" fill="#1161FE"
             data-tip="{{ pt.label }} {{ pt.date }}: {{ pt.pubs }} pub · {{ pt.success }} ok · {{ pt.failed }} falhas"/>
           {% endfor %}
 
@@ -189,6 +199,57 @@
 
   <div class="og-bottom-grid">
 
+    <section class="og-glass-card og-top-players-panel">
+      <div class="og-card-head">
+        <h2 class="og-card-title"><i data-lucide="trophy" class="inline-icon"></i> Top Players</h2>
+        <span class="og-muted" style="font-size:12px">Por publicações</span>
+      </div>
+      {% if top_players %}
+      <ol class="og-top-players-list">
+        {% for item in top_players %}
+        <li class="og-top-player-item">
+          <span class="og-top-rank">#{{ loop.index }}</span>
+          <div class="og-top-player-avatar">{{ item.account.username[0]|upper }}</div>
+          <div class="og-top-player-info">
+            <strong>@{{ item.account.username }}</strong>
+            <span>{{ item.publish_count }} posts{% if item.total_views %} · {{ format_count(item.total_views) }} views{% endif %}</span>
+          </div>
+        </li>
+        {% endfor %}
+      </ol>
+      {% else %}
+      <p class="og-empty">Nenhuma conta com publicações ainda</p>
+      {% endif %}
+    </section>
+
+    <section class="og-glass-card og-reels-views-panel">
+      <div class="og-card-head">
+        <h2 class="og-card-title"><i data-lucide="play-circle" class="inline-icon"></i> Reels com mais views</h2>
+        <a href="/logs" class="og-link" data-nav="/logs">Ver logs</a>
+      </div>
+      {% if top_reels %}
+      <ul class="og-reels-views-list">
+        {% for log in top_reels %}
+        <li class="og-reel-view-item">
+          <div class="og-reel-view-stats">
+            <strong>{{ format_count(log.play_count) }}</strong>
+            <span>views</span>
+          </div>
+          <div class="og-reel-view-info">
+            <strong>@{{ log.account.username }}</strong>
+            <span>{{ log.created_at | localtime('%d/%m %H:%M') }}{% if log.automation %} · {{ log.automation.name }}{% endif %}</span>
+          </div>
+          {% if log.media_url %}
+          <a href="{{ log.media_url }}" target="_blank" rel="noopener" class="og-link og-reel-view-link">Abrir</a>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="og-empty">Views aparecem após a sincronização (até 1h). Publique um reel para começar.</p>
+      {% endif %}
+    </section>
+
     <section class="og-glass-card og-panel-accounts">
       <div class="og-card-head">
         <h2 class="og-card-title"><i data-lucide="instagram" class="inline-icon"></i> Contas conectadas</h2>
@@ -244,7 +305,7 @@
           </span>
           <div class="og-timeline-body">
             <strong>@{{ log.account.username }}{% if log.automation %} · {{ log.automation.name }}{% endif %}</strong>
-            <span>{{ log.created_at | localtime('%d/%m %H:%M') }}</span>
+            <span>{{ log.created_at | localtime('%d/%m %H:%M') }}{% if log.play_count %} · {{ format_count(log.play_count) }} views{% endif %}</span>
           </div>
           <span class="og-badge og-timeline-badge {{ status_badge_class(log.status) }}">{{ status_label(log.status) }}</span>
         </li>

@@ -174,6 +174,11 @@ class PublishLog(Base):
     status: Mapped[str] = mapped_column(String(16))  # success | failed | skipped
     media_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     media_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    play_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    like_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    insights_fetched_at: Mapped[Optional[dt.datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[dt.datetime] = mapped_column(
