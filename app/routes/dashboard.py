@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.deps import get_current_user, maybe_current_user
 from app.templating import templates
 from app.utils.account_health import offline_accounts
+from app.utils.charts import attach_chart_paths
 from app.utils.timezone import brt_now
 from core.database import get_db
 from models.models import Automation, InstagramAccount, PublishLog, User
@@ -19,6 +20,15 @@ from models.models import Automation, InstagramAccount, PublishLog, User
 router = APIRouter(tags=["dashboard"])
 BRT = ZoneInfo("America/Sao_Paulo")
 WEEKDAY_LABELS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
+ALLOWED_CHART_DAYS = {7, 15, 30}
+
+
+def _parse_chart_days(raw: str | int | None) -> int:
+    try:
+        days = int(raw or 7)
+    except (TypeError, ValueError):
+        return 7
+    return days if days in ALLOWED_CHART_DAYS else 7
 
 
 def _brt_day_bounds(day: dt.date) -> tuple[dt.datetime, dt.datetime]:
@@ -56,9 +66,10 @@ def _count_logs(
     return db.scalar(q) or 0
 
 
-def _chart_performance_7d(db: Session, user_id: int) -> list[dict]:
+def _chart_performance(db: Session, user_id: int, days: int = 7) -> list[dict]:
+    days = _parse_chart_days(days)
     today = brt_now().date()
-    days = [today - dt.timedelta(days=i) for i in range(6, -1, -1)]
+    day_list = [today - dt.timedelta(days=i) for i in range(days - 1, -1, -1)]
 
     rows = db.execute(
         select(
@@ -69,7 +80,7 @@ def _chart_performance_7d(db: Session, user_id: int) -> list[dict]:
         .join(PublishLog.account)
         .where(
             InstagramAccount.user_id == user_id,
-            PublishLog.created_at >= _utc_naive(_brt_day_bounds(days[0])[0]),
+            PublishLog.created_at >= _utc_naive(_brt_day_bounds(day_list[0])[0]),
         )
         .group_by(func.date(PublishLog.created_at), PublishLog.status)
     ).all()
@@ -82,13 +93,15 @@ def _chart_performance_7d(db: Session, user_id: int) -> list[dict]:
 
     max_val = 1
     chart = []
-    for d in days:
+    for d in day_list:
         key = str(d)
         stats = by_day.get(key, {"success": 0, "failed": 0, "skipped": 0})
         pubs = stats["success"] + stats["failed"] + stats["skipped"]
         max_val = max(max_val, pubs, stats["success"], stats["failed"])
+        # 7D: dia da semana; 15/30D: data curta para caber no eixo
+        label = WEEKDAY_LABELS[d.weekday()] if days <= 7 else d.strftime("%d/%m")
         chart.append({
-            "label": WEEKDAY_LABELS[d.weekday()],
+            "label": label,
             "date": d.strftime("%d/%m"),
             "pubs": pubs,
             "success": stats["success"],
@@ -105,8 +118,12 @@ def _chart_performance_7d(db: Session, user_id: int) -> list[dict]:
     return chart
 
 
-def _chart_weekly_bars(db: Session, user_id: int) -> list[dict]:
-    chart = _chart_performance_7d(db, user_id)
+def _chart_performance_7d(db: Session, user_id: int) -> list[dict]:
+    return _chart_performance(db, user_id, 7)
+
+
+def _chart_weekly_bars(db: Session, user_id: int, days: int = 7) -> list[dict]:
+    chart = _chart_performance(db, user_id, days)
     max_val = max((pt["pubs"] for pt in chart), default=0) or 1
     for pt in chart:
         pt["bar_pct"] = round(pt["pubs"] / max_val * 100, 1)
@@ -161,12 +178,14 @@ def _top_platform_players_today(db: Session, day: dt.date) -> list[dict]:
 @router.get("/")
 def home(
     request: Request,
+    days: int = 7,
     db: Session = Depends(get_db),
     user: User | None = Depends(maybe_current_user),
 ):
     if user is None:
         return RedirectResponse("/login", status_code=303)
 
+    chart_days = _parse_chart_days(days)
     today = brt_now().date()
     yesterday = today - dt.timedelta(days=1)
     month_start = today.replace(day=1)
@@ -321,8 +340,11 @@ def home(
         .limit(12)
     ).all()
 
-    chart_performance = _chart_performance_7d(db, user.id)
-    chart_weekly = _chart_weekly_bars(db, user.id)
+    chart_performance = _chart_performance(db, user.id, chart_days)
+    chart_performance, chart_line_path, chart_area_path, chart_max_val = attach_chart_paths(
+        chart_performance
+    )
+    chart_weekly = _chart_weekly_bars(db, user.id, min(chart_days, 7) if chart_days == 7 else 7)
     offline = offline_accounts(db, user.id)
 
     return templates.TemplateResponse(
@@ -344,6 +366,10 @@ def home(
             "next_publications": next_publications,
             "recent_logs": recent_logs,
             "chart_performance": chart_performance,
+            "chart_line_path": chart_line_path,
+            "chart_area_path": chart_area_path,
+            "chart_max_val": chart_max_val,
+            "chart_days": chart_days,
             "chart_weekly": chart_weekly,
             "now_brt": brt_now(),
             "offline_accounts": offline,
@@ -358,12 +384,14 @@ def home(
 @router.get("/analytics")
 def analytics_page(
     request: Request,
+    days: int = 7,
     db: Session = Depends(get_db),
     user: User | None = Depends(maybe_current_user),
 ):
     if user is None:
         return RedirectResponse("/login", status_code=303)
 
+    chart_days = _parse_chart_days(days)
     today = brt_now().date()
     yesterday = today - dt.timedelta(days=1)
 
@@ -403,8 +431,11 @@ def analytics_page(
         ) or 0
         account_stats.append({"account": acc, "success": ok, "failed": fail})
 
-    chart_performance = _chart_performance_7d(db, user.id)
-    chart_weekly = _chart_weekly_bars(db, user.id)
+    chart_performance = _chart_performance(db, user.id, chart_days)
+    chart_performance, chart_line_path, chart_area_path, chart_max_val = attach_chart_paths(
+        chart_performance
+    )
+    chart_weekly = _chart_weekly_bars(db, user.id, 7)
 
     return templates.TemplateResponse(
         "analytics.html",
@@ -423,6 +454,10 @@ def analytics_page(
             "skipped_total": skipped_total,
             "account_stats": account_stats,
             "chart_performance": chart_performance,
+            "chart_line_path": chart_line_path,
+            "chart_area_path": chart_area_path,
+            "chart_max_val": chart_max_val,
+            "chart_days": chart_days,
             "chart_weekly": chart_weekly,
         },
     )

@@ -187,3 +187,68 @@ class PublishLog(Base):
 
     automation: Mapped[Optional["Automation"]] = relationship(back_populates="publish_logs")
     account: Mapped["InstagramAccount"] = relationship(back_populates="publish_logs")
+
+
+class PushSubscription(Base):
+    """Subscription Web Push do navegador/celular do usuário do painel."""
+
+    __tablename__ = "push_subscriptions"
+    __table_args__ = (UniqueConstraint("endpoint", name="uq_push_endpoint"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    endpoint: Mapped[str] = mapped_column(Text)
+    p256dh: Mapped[str] = mapped_column(String(255))
+    auth: Mapped[str] = mapped_column(String(255))
+    user_agent: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    user: Mapped["User"] = relationship()
+
+
+class WarmupJob(Base):
+    """Aquecimento de conta: interações randomizadas com lista de influenciadores."""
+
+    __tablename__ = "warmup_jobs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    account_id: Mapped[int] = mapped_column(
+        ForeignKey("instagram_accounts.id", ondelete="CASCADE"), index=True
+    )
+    influencers_json: Mapped[str] = mapped_column(Text, default="[]")  # ["user1","user2"]
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    # pending | running | paused | done | failed
+    actions_done: Mapped[int] = mapped_column(Integer, default=0)
+    actions_target: Mapped[int] = mapped_column(Integer, default=40)
+    last_action: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    user: Mapped["User"] = relationship()
+    account: Mapped["InstagramAccount"] = relationship()
+
+
+class WarmupLog(Base):
+    __tablename__ = "warmup_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_id: Mapped[int] = mapped_column(
+        ForeignKey("warmup_jobs.id", ondelete="CASCADE"), index=True
+    )
+    action: Mapped[str] = mapped_column(String(64))
+    target: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    ok: Mapped[bool] = mapped_column(Boolean, default=True)
+    detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    job: Mapped["WarmupJob"] = relationship()

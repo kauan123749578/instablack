@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Aquecer contas — instablack{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2>Aquecer contas</h2>
+    <p class="muted page-header-sub">Interações randomizadas (seguir, curtir, comentar, stories, feed) com pausas humanas — ideal antes de postar Reels.</p>
+  </div>
+</div>
+
+{% if error == 'lista' %}<div class="alert alert-error">Informe pelo menos 1 @ de influenciador.</div>{% endif %}
+{% if error == 'conta' %}<div class="alert alert-error">Conta inválida.</div>{% endif %}
+{% if ok %}<div class="alert alert-ok">Aquecimento iniciado. Acompanhe o progresso abaixo.</div>{% endif %}
+
+<div class="form-card" style="margin-bottom:24px">
+  <h3 style="margin-top:0">Novo aquecimento</h3>
+  <form method="post" action="/warmup/start" class="form-grid">
+    <label>Conta Instagram
+      <select name="account_id" required>
+        {% for acc in accounts %}
+        <option value="{{ acc.id }}">@{{ acc.username }} · {{ status_label(acc.status) }}</option>
+        {% else %}
+        <option value="" disabled>Nenhuma conta conectada</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Lista de influenciadores (um @ por linha)
+      <textarea name="influencers" rows="6" required placeholder="neymarjr&#10;cristiano&#10;larissamanoela"></textarea>
+    </label>
+    <label>Quantidade de ações
+      <input type="number" name="actions_target" value="40" min="5" max="200">
+    </label>
+    <p class="muted" style="margin:0;font-size:12px">
+      Ações: seguir · curtir post · comentar · rolar feed · ver story · curtir story — escolhidas aleatoriamente, com pausas de alguns segundos entre cada uma.
+    </p>
+    <button type="submit" class="btn btn-primary" {% if not accounts %}disabled{% endif %}>Iniciar aquecimento</button>
+  </form>
+</div>
+
+<div class="panel">
+  <div class="panel-header"><h3>Jobs recentes</h3></div>
+  {% if jobs %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr><th>Conta</th><th>Status</th><th>Progresso</th><th>Última ação</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for job in jobs %}
+        <tr>
+          <td>@{{ job.account.username if job.account else '—' }}</td>
+          <td><span class="og-badge">{{ job.status }}</span></td>
+          <td>{{ job.actions_done }} / {{ job.actions_target }}</td>
+          <td class="muted" style="font-size:12px">{{ job.last_action or '—' }}</td>
+          <td class="account-actions">
+            <a class="btn btn-sm" href="/warmup/{{ job.id }}" data-nav="/warmup/{{ job.id }}">Detalhes</a>
+            {% if job.status == 'running' %}
+            <form method="post" action="/warmup/{{ job.id }}/pause"><button class="btn btn-sm" type="submit">Pausar</button></form>
+            {% elif job.status == 'paused' %}
+            <form method="post" action="/warmup/{{ job.id }}/resume"><button class="btn btn-sm btn-primary" type="submit">Retomar</button></form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">Nenhum aquecimento ainda.</p>
+  {% endif %}
+</div>
+{% endblock %}

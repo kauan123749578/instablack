@@ -92,12 +92,69 @@
   }
 
   function initPeriodPills() {
+    /* pills são links reais (?days=) — só reforça estado visual */
     document.querySelectorAll(".period-pill").forEach((pill) => {
       pill.addEventListener("click", () => {
         document.querySelectorAll(".period-pill").forEach((p) => p.classList.remove("active"));
         pill.classList.add("active");
       });
     });
+  }
+
+  function urlBase64ToUint8Array(base64String) {
+    const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    const raw = atob(base64);
+    const out = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+    return out;
+  }
+
+  async function initWebPush() {
+    const btn = document.getElementById("enable-push-btn");
+    if (!btn || !("serviceWorker" in navigator) || !("PushManager" in window)) return;
+
+    btn.addEventListener("click", async () => {
+      try {
+        const keyRes = await fetch("/api/vapid-public-key");
+        const keyData = await keyRes.json();
+        if (!keyData.configured || !keyData.publicKey) {
+          alert("Web Push ainda não configurado no servidor (VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY).");
+          return;
+        }
+        const perm = await Notification.requestPermission();
+        if (perm !== "granted") {
+          alert("Permissão de notificação negada.");
+          return;
+        }
+        const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+        await navigator.serviceWorker.ready;
+        let sub = await reg.pushManager.getSubscription();
+        if (!sub) {
+          sub = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(keyData.publicKey),
+          });
+        }
+        const res = await fetch("/api/push/subscribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(sub.toJSON()),
+        });
+        if (!res.ok) throw new Error("Falha ao salvar subscription");
+        btn.classList.add("icon-btn--on");
+        alert("Notificações ativadas! Você receberá avisos no celular a cada post com sucesso.");
+      } catch (err) {
+        console.error(err);
+        alert("Não foi possível ativar as notificações. Use HTTPS e permita o aviso do navegador.");
+      }
+    });
+
+    // Auto-register SW se já tiver permissão
+    if (Notification.permission === "granted") {
+      navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {});
+      btn.classList.add("icon-btn--on");
+    }
   }
 
   function initContentTypeForm() {
@@ -585,6 +642,7 @@
     initAuthMethodForm();
     initProxyInput();
     initAccountProxyUpdate();
+    initWebPush();
   }
 
   initPage();

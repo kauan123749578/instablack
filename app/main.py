@@ -16,7 +16,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app.config import settings
-from app.routes import accounts, admin, auth, automations, dashboard, logs, profile
+from app.routes import accounts, admin, auth, automations, dashboard, logs, notifications, profile
 from core.database import init_db
 from core.health import check_database, check_redis, check_storage
 from core.storage import get_storage
@@ -64,6 +64,15 @@ def create_app() -> FastAPI:
     app.include_router(automations.router)
     app.include_router(profile.router)
     app.include_router(admin.router)
+    app.include_router(notifications.router)
+
+    @app.get("/sw.js", include_in_schema=False)
+    def service_worker():
+        return FileResponse(
+            static_dir / "sw.js",
+            media_type="application/javascript",
+            headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache"},
+        )
 
     @app.exception_handler(RequestValidationError)
     async def form_validation_error(request: Request, exc: RequestValidationError):

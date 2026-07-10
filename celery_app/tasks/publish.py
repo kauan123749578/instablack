@@ -221,6 +221,9 @@ def _execute_publish(
             _log_failure(automation_id, account_id, f"upload: {exc}")
             raise
 
+        notify_user_id: int | None = None
+        notify_username = username
+
         with session_scope() as db:
             acc = db.get(InstagramAccount, account_id)
             if acc:
@@ -242,6 +245,18 @@ def _execute_publish(
                 media_id=result.get("id"),
                 media_url=result.get("url"),
             ))
+            notify_user_id = acc.user_id if acc else None
+            notify_username = acc.username if acc else username
+
+        if notify_user_id:
+            try:
+                from core.webpush import notify_user_publish_success
+
+                notify_user_publish_success(
+                    notify_user_id, notify_username, content_type=content_type
+                )
+            except Exception:
+                log.exception("Falha ao enviar web push de publicação")
 
         return {"ok": True, **result}
 

@@ -32,6 +32,7 @@ body.premium-app .topbar {
   display: flex; justify-content: flex-end; margin-bottom: 18px;
 }
 body.premium-app .icon-btn { border-radius: 0; border: 1px solid var(--og-card-border); }
+body.premium-app .icon-btn--on { border-color: rgba(17, 97, 254, 0.55); color: #1161FE; }
 body.premium-app .shark-content { padding: 24px 32px 80px; }
 
 /* Cards — preto sólido + degradê interno + feixe na borda */
@@ -160,6 +161,23 @@ body.premium-app .shark-content { padding: 24px 32px 80px; }
 .og-chart-head {
   display: flex; align-items: center; gap: 12px; margin-bottom: 14px;
 }
+.og-chart-head > div:nth-child(2) { flex: 1; min-width: 0; }
+.og-period-pills {
+  display: flex; gap: 4px; margin-left: auto; flex-shrink: 0;
+  padding: 3px; background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.05);
+}
+.period-pill {
+  padding: 5px 10px; font-size: 11px; font-weight: 600;
+  color: var(--og-muted); text-decoration: none; border: none;
+  background: transparent; cursor: pointer; font-family: inherit;
+}
+.period-pill:hover { color: #fff; }
+.period-pill.active {
+  background: #1161FE; color: #fff;
+  box-shadow: 0 4px 12px rgba(17, 97, 254, 0.35);
+}
+.og-line-premium { fill: none; }
 .og-chart-head-icon {
   width: 36px; height: 36px; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;

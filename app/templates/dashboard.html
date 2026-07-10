@@ -91,7 +91,12 @@
         <div class="og-chart-head-icon"><i data-lucide="activity"></i></div>
         <div>
           <h2 class="og-card-title">Seu Desempenho</h2>
-          <p class="og-card-sub og-card-sub--caps">Últimos 7 dias</p>
+          <p class="og-card-sub og-card-sub--caps">Últimos {{ chart_days }} dias</p>
+        </div>
+        <div class="og-period-pills" role="tablist">
+          {% for d in [7, 15, 30] %}
+          <a href="/?days={{ d }}" class="period-pill{% if chart_days == d %} active{% endif %}" data-nav="/?days={{ d }}">{{ d }}D</a>
+          {% endfor %}
         </div>
       </div>
       <div class="og-chart-legend og-chart-legend--single">
@@ -102,11 +107,6 @@
         <svg class="og-line-svg" viewBox="0 0 700 220" preserveAspectRatio="none">
           {% set n = chart_performance|length %}
           {% set step = 700 / (n - 1) if n > 1 else 700 %}
-          {% set max_h = 150 %}
-          {% set base_y = 195 %}
-          {% set successes = chart_performance|map(attribute='success')|list %}
-          {% set max_val = successes|max if successes else 1 %}
-          {% if max_val < 1 %}{% set max_val = 1 %}{% endif %}
 
           <defs>
             <linearGradient id="ogChartFill" x1="0" y1="0" x2="0" y2="1">
@@ -120,21 +120,18 @@
             </linearGradient>
           </defs>
 
-          <path class="og-chart-area" fill="url(#ogChartFill)" stroke="none"
-            d="M 0,{{ base_y }}{% for pt in chart_performance %}{% set x = loop.index0 * step %}{% set y = base_y - (pt.success / max_val * max_h) %} L {{ x }},{{ y }}{% endfor %} L {{ (n - 1) * step }},{{ base_y }} Z"/>
-
-          <polyline class="og-line-premium" fill="none" stroke="url(#ogChartLine)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
-            points="{% for pt in chart_performance %}{% set x = loop.index0 * step %}{% set y = base_y - (pt.success / max_val * max_h) %}{{ x }},{{ y }}{% if not loop.last %} {% endif %}{% endfor %}"/>
+          <path class="og-chart-area" fill="url(#ogChartFill)" stroke="none" d="{{ chart_area_path }}"/>
+          <path class="og-line-premium" fill="none" stroke="url(#ogChartLine)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="{{ chart_line_path }}"/>
 
           {% for pt in chart_performance %}
-          {% set x = loop.index0 * step %}
-          {% set y = base_y - (pt.success / max_val * max_h) %}
-          <circle class="og-chart-dot" cx="{{ x }}" cy="{{ y }}" r="4" fill="#1161FE" stroke="#050505" stroke-width="2"
+          <circle class="og-chart-dot" cx="{{ pt.x }}" cy="{{ pt.y }}" r="4" fill="#1161FE" stroke="#050505" stroke-width="2"
             data-tip="{{ pt.label }} {{ pt.date }}: {{ pt.success }} publicaç{% if pt.success == 1 %}ão{% else %}ões{% endif %}"/>
           {% endfor %}
 
           {% for pt in chart_performance %}
-          <text class="og-chart-xlabel" x="{{ loop.index0 * step }}" y="216" text-anchor="middle">{{ pt.label }}</text>
+          {% if chart_days <= 7 or loop.index0 % (2 if chart_days == 15 else 3) == 0 or loop.last %}
+          <text class="og-chart-xlabel" x="{{ pt.x }}" y="216" text-anchor="middle">{{ pt.label }}</text>
+          {% endif %}
           {% endfor %}
         </svg>
       </div>

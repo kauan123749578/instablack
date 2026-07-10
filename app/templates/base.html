@@ -4,11 +4,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{% block title %}instablack{% endblock %}</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/static/favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bricolage+Grotesque:wght@600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=16" />
-  <link rel="stylesheet" href="/static/dashboard.css?v=15" />
+  <link rel="stylesheet" href="/static/style.css?v=17" />
+  <link rel="stylesheet" href="/static/dashboard.css?v=16" />
   {% block head %}{% endblock %}
 </head>
 <body class="app-body premium-app">
@@ -57,6 +59,10 @@
           <a href="/automations/new/calendar" class="nav-link" data-nav="/automations/new/calendar">
             <i data-lucide="calendar-days" class="nav-icon"></i>
             <span class="nav-text">Calendário Reels</span>
+          </a>
+          <a href="/warmup" class="nav-link" data-nav="/warmup">
+            <i data-lucide="flame" class="nav-icon"></i>
+            <span class="nav-text">Aquecer contas</span>
           </a>
 
           <div class="nav-section-label">Relatórios</div>
@@ -113,6 +119,9 @@
           {% endblock %}
         </div>
         <div class="topbar-slot topbar-right">
+          <button type="button" class="icon-btn" id="enable-push-btn" title="Ativar notificações no celular" aria-label="Notificações">
+            <i data-lucide="bell"></i>
+          </button>
           <a href="/perfil" class="user-avatar-link" data-nav="/perfil" title="Minha conta">
             {% if user_avatar_url(user) %}
             <img src="{{ user_avatar_url(user) }}" alt="" class="user-avatar user-avatar-img">
@@ -145,6 +154,7 @@
       <a href="/automations" data-nav="/automations">Automações</a>
       <a href="/automations/media-library" data-nav="/automations/media-library">Biblioteca</a>
       <a href="/automations/new/calendar" data-nav="/automations/new/calendar">Calendário Reels</a>
+      <a href="/warmup" data-nav="/warmup">Aquecer contas</a>
       <a href="/analytics" data-nav="/analytics">Analytics</a>
       <a href="/logs" data-nav="/logs">Logs</a>
       <a href="/automations/new/story" data-nav="/automations/new/story">Agendar Story</a>

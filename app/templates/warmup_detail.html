@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Aquecimento #{{ job.id }} — instablack{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2>Aquecimento #{{ job.id }}</h2>
+    <p class="muted page-header-sub">@{{ job.account.username if job.account else '—' }} · {{ job.status }} · {{ job.actions_done }}/{{ job.actions_target }}</p>
+  </div>
+  <a href="/warmup" class="btn" data-nav="/warmup">Voltar</a>
+</div>
+
+<div class="form-card" style="margin-bottom:16px">
+  <p style="margin:0 0 8px"><strong>Influenciadores:</strong></p>
+  <p class="muted" style="margin:0">{% for u in influencers %}@{{ u }}{% if not loop.last %}, {% endif %}{% endfor %}</p>
+  {% if job.last_error %}<p class="alert alert-error" style="margin-top:12px">{{ job.last_error }}</p>{% endif %}
+</div>
+
+<div class="panel">
+  <div class="panel-header"><h3>Log de ações</h3></div>
+  {% if logs %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead><tr><th>Quando</th><th>Ação</th><th>Alvo</th><th>OK</th><th>Detalhe</th></tr></thead>
+      <tbody>
+        {% for row in logs %}
+        <tr>
+          <td>{{ row.created_at | localtime('%d/%m %H:%M:%S') }}</td>
+          <td>{{ row.action }}</td>
+          <td>{% if row.target %}@{{ row.target }}{% else %}—{% endif %}</td>
+          <td>{% if row.ok %}✓{% else %}✗{% endif %}</td>
+          <td class="muted" style="font-size:12px">{{ row.detail or '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">Aguardando primeiras ações…</p>
+  {% endif %}
+</div>
+{% endblock %}

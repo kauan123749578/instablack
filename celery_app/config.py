@@ -16,6 +16,7 @@ celery_app = Celery(
         "celery_app.tasks.publish",
         "celery_app.tasks.health",
         "celery_app.tasks.insights",
+        "celery_app.tasks.warmup",
         "celery_app.beat",
     ],
 )
@@ -33,6 +34,7 @@ celery_conf: dict = {
         "celery_app.tasks.health.check_all_accounts": {"queue": "beat"},
         "celery_app.tasks.health.check_account_health": {"queue": "default"},
         "celery_app.tasks.insights.sync_all_views": {"queue": "default"},
+        "celery_app.tasks.warmup.run_warmup_job": {"queue": "default"},
     },
     "broker_connection_retry_on_startup": True,
     "result_expires": 60 * 60,

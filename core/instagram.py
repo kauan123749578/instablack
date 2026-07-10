@@ -20,6 +20,80 @@ IPIFY_URL = "https://api.ipify.org"
 IP_CHECK_TIMEOUT = 8
 
 
+def _apply_story_sticker_ids_fix() -> None:
+    """Corrige instagrapi: story_sticker_ids deve juntar todos os stickers (e4c3820).
+
+    Bug: usava story_sticker_ids[0] e descartava link/hashtag extras.
+    Ref: https://github.com/subzeroid/instagrapi/commit/e4c3820
+    """
+    try:
+        from instagrapi.mixins.photo import PhotoMixin
+        from instagrapi.mixins.video import VideoMixin
+    except Exception:
+        return
+
+    def _wrap(original):
+        def wrapper(self, *args, **kwargs):
+            real_pr = self.private_request
+
+            def patched_pr(endpoint, data=None, *a, **kw):
+                if isinstance(data, dict) and "story_sticker_ids" in data:
+                    data = dict(data)
+                    ids: list[str] = []
+                    # Reconstrói a partir do payload (ordem alinhada ao teste do commit)
+                    if data.get("story_hashtags"):
+                        ids.append("hashtag_sticker")
+                    if data.get("reel_mentions"):
+                        ids.append("mention_sticker")
+                    if data.get("story_polls"):
+                        ids.append("poll_sticker")
+                    if data.get("story_sliders"):
+                        ids.append("slider_sticker")
+                    if data.get("story_questions"):
+                        ids.append("question_sticker")
+                    if data.get("story_quizs"):
+                        ids.append("quiz_sticker")
+                    if data.get("story_countdowns"):
+                        ids.append("countdown_sticker")
+                    # Link sticker — campos usados pelo configure
+                    if (
+                        data.get("story_cta")
+                        or data.get("story_link")
+                        or data.get("link_text")
+                        or "link_sticker" in str(data.get("story_sticker_ids", ""))
+                    ):
+                        if "link_sticker_default" not in ids:
+                            ids.append("link_sticker_default")
+                    # Se só veio o primeiro ID (bug), e temos link nos kwargs
+                    if not ids and kwargs.get("links"):
+                        ids.append("link_sticker_default")
+                    if not ids and kwargs.get("hashtags"):
+                        ids.append("hashtag_sticker")
+                    if ids:
+                        data["story_sticker_ids"] = ",".join(ids)
+                    elif isinstance(data["story_sticker_ids"], (list, tuple)):
+                        data["story_sticker_ids"] = ",".join(str(x) for x in data["story_sticker_ids"])
+                return real_pr(endpoint, data, *a, **kw)
+
+            self.private_request = patched_pr
+            try:
+                return original(self, *args, **kwargs)
+            finally:
+                self.private_request = real_pr
+
+        return wrapper
+
+    if not getattr(PhotoMixin.photo_configure_to_story, "_ib_sticker_fixed", False):
+        PhotoMixin.photo_configure_to_story = _wrap(PhotoMixin.photo_configure_to_story)
+        PhotoMixin.photo_configure_to_story._ib_sticker_fixed = True  # type: ignore[attr-defined]
+    if not getattr(VideoMixin.video_configure_to_story, "_ib_sticker_fixed", False):
+        VideoMixin.video_configure_to_story = _wrap(VideoMixin.video_configure_to_story)
+        VideoMixin.video_configure_to_story._ib_sticker_fixed = True  # type: ignore[attr-defined]
+
+
+_apply_story_sticker_ids_fix()
+
+
 class InstagramAuthError(RuntimeError):
     pass
 

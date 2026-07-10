@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     default_account_limit: int = 0
     default_proxy: str = ""
 
+    # Web Push (VAPID) — gere em https://vapidkeys.com/
+    vapid_public_key: str = ""
+    vapid_private_key: str = ""
+    vapid_subject: str = "mailto:kauawqii@gmail.com"
+
     @field_validator("database_url", mode="before")
     @classmethod
     def normalize_database_url(cls, value: str) -> str:
