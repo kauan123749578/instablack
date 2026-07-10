@@ -9,8 +9,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bricolage+Grotesque:wght@600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=17" />
-  <link rel="stylesheet" href="/static/dashboard.css?v=16" />
+  <link rel="stylesheet" href="/static/style.css?v=18" />
+  <link rel="stylesheet" href="/static/dashboard.css?v=17" />
   {% block head %}{% endblock %}
 </head>
 <body class="app-body premium-app">
@@ -119,9 +119,24 @@
           {% endblock %}
         </div>
         <div class="topbar-slot topbar-right">
-          <button type="button" class="icon-btn" id="enable-push-btn" title="Ativar notificações no celular" aria-label="Notificações">
-            <i data-lucide="bell"></i>
-          </button>
+          <div class="notif-wrap" id="notif-wrap">
+            <button type="button" class="icon-btn" id="notif-bell-btn" title="Notificações" aria-label="Notificações" aria-expanded="false">
+              <i data-lucide="bell"></i>
+              <span class="notif-dot" id="notif-dot" hidden></span>
+            </button>
+            <div class="notif-card" id="notif-card" hidden>
+              <div class="notif-card-head">
+                <strong>Notificações</strong>
+                <button type="button" class="notif-mark-read" id="notif-mark-read">Marcar lidas</button>
+              </div>
+              <div class="notif-card-push">
+                <button type="button" class="btn btn-sm" id="enable-push-btn">Ativar no celular</button>
+              </div>
+              <ul class="notif-list" id="notif-list">
+                <li class="notif-empty">Carregando…</li>
+              </ul>
+            </div>
+          </div>
           <a href="/perfil" class="user-avatar-link" data-nav="/perfil" title="Minha conta">
             {% if user_avatar_url(user) %}
             <img src="{{ user_avatar_url(user) }}" alt="" class="user-avatar user-avatar-img">

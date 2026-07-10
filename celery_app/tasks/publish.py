@@ -156,6 +156,7 @@ def _execute_publish(
         proxy = account.proxy
         password = decrypt_secret(account.encrypted_password)
         username = account.username
+        owner_user_id = account.user_id
 
     if not proxy:
         _log_failure(automation_id, account_id, "sem proxy — publicação bloqueada")
@@ -180,11 +181,40 @@ def _execute_publish(
 
     try:
         storage.download_to(video_key, raw_path)
+
+        from core.notifications import create_notification
+
+        create_notification(
+            owner_user_id,
+            "Limpando metadados",
+            f"Gerando metadados únicos para @{username} antes de publicar…",
+            kind="metadata",
+            link="/logs",
+        )
+
         try:
-            clean_path = prepare_clean_media(
-                raw_path, clean_path, content_type=content_type
+            clean_path, meta_info = prepare_clean_media(
+                raw_path,
+                clean_path,
+                content_type=content_type,
+                account_hint=username,
+            )
+            fp = (meta_info or {}).get("fingerprint", "ok")
+            create_notification(
+                owner_user_id,
+                "Metadados limpos",
+                f"@{username}: fingerprint {fp} — pronto para postar.",
+                kind="metadata",
+                link="/logs",
             )
         except MetadataStripError as exc:
+            create_notification(
+                owner_user_id,
+                "Falha ao limpar metadados",
+                f"@{username}: {exc}",
+                kind="warning",
+                link="/logs",
+            )
             _log_failure(automation_id, account_id, f"metadados: {exc}")
             return {"error": "metadata_strip"}
 
@@ -250,13 +280,21 @@ def _execute_publish(
 
         if notify_user_id:
             try:
+                from core.notifications import create_notification
                 from core.webpush import notify_user_publish_success
 
+                create_notification(
+                    notify_user_id,
+                    "Post enviado com sucesso",
+                    f"Publicado em @{notify_username}",
+                    kind="publish",
+                    link="/logs",
+                )
                 notify_user_publish_success(
                     notify_user_id, notify_username, content_type=content_type
                 )
             except Exception:
-                log.exception("Falha ao enviar web push de publicação")
+                log.exception("Falha ao enviar notificação de publicação")
 
         return {"ok": True, **result}
 

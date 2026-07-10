@@ -4,13 +4,13 @@
 <div class="page-header">
   <div>
     <h2>Aquecer contas</h2>
-    <p class="muted page-header-sub">Interações randomizadas (seguir, curtir, comentar, stories, feed) com pausas humanas — ideal antes de postar Reels.</p>
+    <p class="muted page-header-sub">Extrai seguidores dos influenciadores e interage com eles (seguir, curtir, stories…) com pausas longas e aleatórias. Tudo aparece em Logs.</p>
   </div>
 </div>
 
 {% if error == 'lista' %}<div class="alert alert-error">Informe pelo menos 1 @ de influenciador.</div>{% endif %}
 {% if error == 'conta' %}<div class="alert alert-error">Conta inválida.</div>{% endif %}
-{% if ok %}<div class="alert alert-ok">Aquecimento iniciado. Acompanhe o progresso abaixo.</div>{% endif %}
+{% if ok %}<div class="alert alert-ok">Aquecimento iniciado. Acompanhe no sino, nos Logs e abaixo.</div>{% endif %}
 
 <div class="form-card" style="margin-bottom:24px">
   <h3 style="margin-top:0">Novo aquecimento</h3>
@@ -27,11 +27,23 @@
     <label>Lista de influenciadores (um @ por linha)
       <textarea name="influencers" rows="6" required placeholder="neymarjr&#10;cristiano&#10;larissamanoela"></textarea>
     </label>
-    <label>Quantidade de ações
-      <input type="number" name="actions_target" value="40" min="5" max="200">
+    <p class="muted" style="margin:0;font-size:12px">
+      A conta <strong>não</strong> interage com esses @ — ela extrai os <strong>seguidores</strong> deles e interage com esses perfis, um a um, com pausas longas.
+    </p>
+    <label>Tempo de aquecimento
+      <select name="duration_minutes" required>
+        <option value="30">30 minutos</option>
+        <option value="60" selected>1 hora</option>
+        <option value="120">2 horas</option>
+        <option value="240">4 horas</option>
+        <option value="480">8 horas</option>
+      </select>
+    </label>
+    <label>Limite máximo de ações (opcional)
+      <input type="number" name="actions_target" value="80" min="10" max="500">
     </label>
     <p class="muted" style="margin:0;font-size:12px">
-      Ações: seguir · curtir post · comentar · rolar feed · ver story · curtir story — escolhidas aleatoriamente, com pausas de alguns segundos entre cada uma.
+      Para quando o tempo acabar <em>ou</em> atingir o limite. Ações: seguir · curtir · comentar (raro) · feed · ver/curtir story — sempre randomizado.
     </p>
     <button type="submit" class="btn btn-primary" {% if not accounts %}disabled{% endif %}>Iniciar aquecimento</button>
   </form>
@@ -43,13 +55,14 @@
   <div class="table-wrap">
     <table class="table">
       <thead>
-        <tr><th>Conta</th><th>Status</th><th>Progresso</th><th>Última ação</th><th></th></tr>
+        <tr><th>Conta</th><th>Status</th><th>Tempo</th><th>Progresso</th><th>Última ação</th><th></th></tr>
       </thead>
       <tbody>
         {% for job in jobs %}
         <tr>
           <td>@{{ job.account.username if job.account else '—' }}</td>
           <td><span class="og-badge">{{ job.status }}</span></td>
+          <td>{{ job.duration_minutes or 60 }} min</td>
           <td>{{ job.actions_done }} / {{ job.actions_target }}</td>
           <td class="muted" style="font-size:12px">{{ job.last_action or '—' }}</td>
           <td class="account-actions">

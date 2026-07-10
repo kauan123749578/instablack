@@ -7,7 +7,7 @@ import logging
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.config import settings
@@ -15,7 +15,14 @@ from app.deps import get_current_user, maybe_current_user
 from app.templating import templates
 from core.database import get_db
 from core.webpush import vapid_configured
-from models.models import InstagramAccount, PushSubscription, User, WarmupJob, WarmupLog
+from models.models import (
+    AppNotification,
+    InstagramAccount,
+    PushSubscription,
+    User,
+    WarmupJob,
+    WarmupLog,
+)
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["notifications-warmup"])
@@ -88,6 +95,57 @@ async def api_push_unsubscribe(
     return {"ok": True}
 
 
+@router.get("/api/notifications")
+def api_list_notifications(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    rows = db.scalars(
+        select(AppNotification)
+        .where(AppNotification.user_id == user.id)
+        .order_by(AppNotification.created_at.desc())
+        .limit(40)
+    ).all()
+    unread = db.scalar(
+        select(func.count(AppNotification.id)).where(
+            AppNotification.user_id == user.id,
+            AppNotification.is_read.is_(False),
+        )
+    ) or 0
+    return {
+        "unread": int(unread),
+        "items": [
+            {
+                "id": n.id,
+                "title": n.title,
+                "body": n.body or "",
+                "kind": n.kind,
+                "link": n.link,
+                "is_read": n.is_read,
+                "created_at": n.created_at.isoformat() if n.created_at else None,
+            }
+            for n in rows
+        ],
+    }
+
+
+@router.post("/api/notifications/read")
+def api_mark_notifications_read(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    rows = db.scalars(
+        select(AppNotification).where(
+            AppNotification.user_id == user.id,
+            AppNotification.is_read.is_(False),
+        )
+    ).all()
+    for n in rows:
+        n.is_read = True
+    db.commit()
+    return {"ok": True, "marked": len(rows)}
+
+
 @router.get("/warmup")
 def warmup_page(
     request: Request,
@@ -129,10 +187,13 @@ def warmup_start(
     request: Request,
     account_id: int = Form(...),
     influencers: str = Form(""),
-    actions_target: int = Form(40),
+    actions_target: int = Form(80),
+    duration_minutes: int = Form(60),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    import datetime as dt
+
     acc = db.get(InstagramAccount, account_id)
     if acc is None or acc.user_id != user.id:
         return RedirectResponse("/warmup?error=conta", status_code=303)
@@ -145,7 +206,13 @@ def warmup_start(
     if len(names) < 1:
         return RedirectResponse("/warmup?error=lista", status_code=303)
 
-    target = max(5, min(int(actions_target or 40), 200))
+    allowed_durations = {30, 60, 120, 240, 480}
+    duration = int(duration_minutes or 60)
+    if duration not in allowed_durations:
+        duration = 60
+    # teto alto — o tempo é o limite principal
+    target = max(10, min(int(actions_target or 80), 500))
+    ends = dt.datetime.utcnow() + dt.timedelta(minutes=duration)
     job = WarmupJob(
         user_id=user.id,
         account_id=acc.id,
@@ -153,6 +220,8 @@ def warmup_start(
         status="pending",
         actions_target=target,
         actions_done=0,
+        duration_minutes=duration,
+        ends_at=ends,
     )
     db.add(job)
     db.commit()

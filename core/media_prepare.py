@@ -14,8 +14,12 @@ def prepare_clean_media(
     clean_path: Path,
     *,
     content_type: str,
-) -> Path:
-    """Remove metadados. Falha se não conseguir limpar (nunca publica original)."""
+    account_hint: str | None = None,
+) -> tuple[Path, dict | None]:
+    """Remove metadados. Falha se não conseguir limpar (nunca publica original).
+
+    Retorna (path_limpo, meta_info|None). meta_info tem fingerprint único por post.
+    """
     ext = raw_path.suffix.lower()
     is_video = ext in VIDEO_EXT
 
@@ -23,16 +27,16 @@ def prepare_clean_media(
         if ext not in IMAGE_EXT and ext not in VIDEO_EXT:
             raise MetadataStripError(f"Formato não suportado: {ext}")
         strip_image_metadata(raw_path, clean_path)
-        return clean_path
+        return clean_path, {"fingerprint": f"img-{account_hint or 'x'}-{clean_path.stat().st_size}"}
 
     if not is_video:
         raise MetadataStripError(f"Reels/Story em vídeo exige arquivo de vídeo, recebido: {ext}")
 
-    strip_metadata(raw_path, clean_path)
-    return clean_path
+    path, meta = strip_metadata(raw_path, clean_path, account_hint=account_hint)
+    return path, meta
 
 
 def prepare_clean_thumb(raw_path: Path, clean_path: Path) -> Path:
-    """Remove EXIF da capa do Reel."""
+    """Remove EXIF da capa do Reel (sempre único)."""
     strip_image_metadata(raw_path, clean_path)
     return clean_path

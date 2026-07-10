@@ -43,6 +43,7 @@
       <legend>Método de autenticação</legend>
       <div class="checkbox-row">
         <label><input type="radio" name="auth_method" value="sessionid" {% if form.get('auth_method', 'sessionid') == 'sessionid' %}checked{% endif %}> Session ID (recomendado)</label>
+        <label><input type="radio" name="auth_method" value="password" {% if form.get('auth_method') == 'password' %}checked{% endif %}> Usuário e senha</label>
         <label><input type="radio" name="auth_method" value="import" {% if form.get('auth_method') == 'import' %}checked{% endif %}> Importar session.json</label>
       </div>
     </fieldset>
@@ -60,9 +61,16 @@
       </label>
     </div>
 
-    <label>Usuário Instagram (@) <span class="muted">(opcional com sessionid)</span>
+    <label>Usuário Instagram (@) <span class="muted" id="username-hint">(opcional com sessionid)</span>
       <input type="text" name="username" placeholder="meu_perfil" value="{{ form.get('username', '') }}">
     </label>
+
+    <div id="password-wrap" style="display:none">
+      <label>Senha
+        <input type="password" name="password" autocomplete="new-password" placeholder="Senha do Instagram">
+      </label>
+      <p class="muted" style="margin:0;font-size:12px">Após o login, a sessão (<code>session.json</code>) é salva no banco automaticamente.</p>
+    </div>
 
     <input type="hidden" name="verification_code" id="verification-code-hidden" value="">
 

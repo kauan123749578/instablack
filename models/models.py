@@ -208,8 +208,28 @@ class PushSubscription(Base):
     user: Mapped["User"] = relationship()
 
 
+class AppNotification(Base):
+    """Notificações in-app (card do sino na dashboard)."""
+
+    __tablename__ = "app_notifications"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    title: Mapped[str] = mapped_column(String(255))
+    body: Mapped[str] = mapped_column(Text, default="")
+    kind: Mapped[str] = mapped_column(String(32), default="info")
+    # info | success | warning | metadata | warmup | publish
+    link: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    is_read: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+
+    user: Mapped["User"] = relationship()
+
+
 class WarmupJob(Base):
-    """Aquecimento de conta: interações randomizadas com lista de influenciadores."""
+    """Aquecimento de conta: interações randomizadas com seguidores de influenciadores."""
 
     __tablename__ = "warmup_jobs"
 
@@ -223,6 +243,8 @@ class WarmupJob(Base):
     # pending | running | paused | done | failed
     actions_done: Mapped[int] = mapped_column(Integer, default=0)
     actions_target: Mapped[int] = mapped_column(Integer, default=40)
+    duration_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    ends_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     last_action: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(

@@ -114,7 +114,8 @@
     const btn = document.getElementById("enable-push-btn");
     if (!btn || !("serviceWorker" in navigator) || !("PushManager" in window)) return;
 
-    btn.addEventListener("click", async () => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
       try {
         const keyRes = await fetch("/api/vapid-public-key");
         const keyData = await keyRes.json();
@@ -142,19 +143,99 @@
           body: JSON.stringify(sub.toJSON()),
         });
         if (!res.ok) throw new Error("Falha ao salvar subscription");
-        btn.classList.add("icon-btn--on");
-        alert("Notificações ativadas! Você receberá avisos no celular a cada post com sucesso.");
+        btn.textContent = "Celular ativado ✓";
+        btn.disabled = true;
+        alert("Notificações no celular ativadas!");
       } catch (err) {
         console.error(err);
-        alert("Não foi possível ativar as notificações. Use HTTPS e permita o aviso do navegador.");
+        alert("Não foi possível ativar. Use HTTPS e permita o aviso do navegador.");
       }
     });
 
-    // Auto-register SW se já tiver permissão
     if (Notification.permission === "granted") {
       navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {});
-      btn.classList.add("icon-btn--on");
+      btn.textContent = "Celular ativado ✓";
+      btn.disabled = true;
     }
+  }
+
+  function formatNotifTime(iso) {
+    if (!iso) return "";
+    try {
+      const d = new Date(iso);
+      return d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+    } catch { return ""; }
+  }
+
+  async function loadNotifications() {
+    const list = document.getElementById("notif-list");
+    const dot = document.getElementById("notif-dot");
+    if (!list) return;
+    try {
+      const res = await fetch("/api/notifications");
+      if (!res.ok) throw new Error("fail");
+      const data = await res.json();
+      if (dot) {
+        if (data.unread > 0) { dot.hidden = false; } else { dot.hidden = true; }
+      }
+      if (!data.items || !data.items.length) {
+        list.innerHTML = '<li class="notif-empty">Nenhuma notificação ainda.</li>';
+        return;
+      }
+      list.innerHTML = data.items.map((n) => {
+        const cls = `notif-kind-${n.kind || "info"}${n.is_read ? "" : " unread"}`;
+        const body = n.body ? `<span>${escapeHtml(n.body)}</span>` : "";
+        const link = n.link ? ` data-href="${escapeHtml(n.link)}"` : "";
+        return `<li class="${cls}"${link}><strong>${escapeHtml(n.title)}</strong>${body}<time>${formatNotifTime(n.created_at)}</time></li>`;
+      }).join("");
+      list.querySelectorAll("li[data-href]").forEach((li) => {
+        li.style.cursor = "pointer";
+        li.addEventListener("click", () => { window.location.href = li.dataset.href; });
+      });
+    } catch {
+      list.innerHTML = '<li class="notif-empty">Não foi possível carregar.</li>';
+    }
+  }
+
+  function escapeHtml(s) {
+    return String(s || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function initNotifCard() {
+    const wrap = document.getElementById("notif-wrap");
+    const btn = document.getElementById("notif-bell-btn");
+    const card = document.getElementById("notif-card");
+    const markBtn = document.getElementById("notif-mark-read");
+    if (!btn || !card) return;
+
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const open = card.hidden;
+      card.hidden = !open;
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+      if (open) loadNotifications();
+    });
+
+    document.addEventListener("click", (e) => {
+      if (wrap && !wrap.contains(e.target)) {
+        card.hidden = true;
+        btn.setAttribute("aria-expanded", "false");
+      }
+    });
+
+    markBtn?.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      await fetch("/api/notifications/read", { method: "POST" });
+      loadNotifications();
+    });
+
+    // badge inicial
+    loadNotifications();
+    setInterval(loadNotifications, 60000);
   }
 
   function initContentTypeForm() {
@@ -335,14 +416,22 @@
   function initAuthMethodForm() {
     const form = document.getElementById("account-add-form");
     if (!form) return;
+    const passwordWrap = document.getElementById("password-wrap");
     const sessionWrap = document.getElementById("sessionid-wrap");
     const importWrap = document.getElementById("import-wrap");
+    const usernameHint = document.getElementById("username-hint");
     const radios = form.querySelectorAll('input[name="auth_method"]');
 
     function update() {
       const method = form.querySelector('input[name="auth_method"]:checked')?.value || "sessionid";
       if (sessionWrap) sessionWrap.style.display = method === "sessionid" ? "" : "none";
       if (importWrap) importWrap.style.display = method === "import" ? "" : "none";
+      if (passwordWrap) passwordWrap.style.display = method === "password" ? "" : "none";
+      if (usernameHint) {
+        usernameHint.textContent = method === "password" || method === "import"
+          ? "(obrigatório)"
+          : "(opcional com sessionid)";
+      }
     }
     radios.forEach((r) => r.addEventListener("change", update));
     update();
@@ -643,6 +732,7 @@
     initProxyInput();
     initAccountProxyUpdate();
     initWebPush();
+    initNotifCard();
   }
 
   initPage();
