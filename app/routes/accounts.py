@@ -63,6 +63,7 @@ def _accounts_page_context(
         "can_add_account": can_add,
         "default_proxy": normalize_proxy(get_settings().default_proxy),
         "form": form or {},
+        "needs_2fa": False,
     }
 
 

@@ -56,25 +56,27 @@
     </label>
     <p class="muted" style="margin:0;font-size:12px">Mesma proxy do perfil no Multilogin. Aceita http, socks5 e <code>ip:porta:user:senha</code>.</p>
 
-    <div id="sessionid-wrap" class="auth-method-panel"{% if auth_method != 'sessionid' %} hidden{% endif %}>
+    <div id="sessionid-wrap" class="auth-method-panel">
       <label>Session ID do navegador
         <textarea name="sessionid" id="sessionid-input" rows="2" placeholder="Cole o sessionid (F12 → Application → Cookies → instagram.com)">{{ form.get('sessionid', '') }}</textarea>
       </label>
     </div>
 
-    <div id="import-wrap" class="auth-method-panel"{% if auth_method != 'import' %} hidden{% endif %}>
+    <div id="import-wrap" class="auth-method-panel">
       <label>session.json
         <textarea name="session_json" rows="5" placeholder='Cole o conteúdo do arquivo session.json'>{{ form.get('session_json', '') }}</textarea>
       </label>
     </div>
 
-    <label>Usuário Instagram (@) <span class="muted" id="username-hint">{% if auth_method == 'password' or auth_method == 'import' %}(obrigatório){% else %}(opcional com sessionid){% endif %}</span>
+    <label>Usuário Instagram (@)
+      <span class="muted username-hint hint-sessionid">(opcional com sessionid)</span>
+      <span class="muted username-hint hint-required">(obrigatório)</span>
       <input type="text" name="username" id="account-username-input" placeholder="meu_perfil" value="{{ form.get('username', '') }}">
     </label>
 
-    <div id="password-wrap" class="auth-method-panel"{% if auth_method != 'password' %} hidden{% endif %}>
+    <div id="password-wrap" class="auth-method-panel">
       <label>Senha <strong style="color:var(--red)">*</strong>
-        <input type="password" name="password" id="account-password-input" autocomplete="new-password" placeholder="Senha do Instagram">
+        <input type="password" name="password" id="account-password-input" autocomplete="current-password" placeholder="Senha do Instagram">
       </label>
       <p class="muted" style="margin:0;font-size:12px">Após o login, a sessão (<code>session.json</code>) é salva no banco automaticamente.</p>
     </div>
@@ -152,18 +154,7 @@
   <p class="muted">Nenhuma conta conectada ainda.</p>
   {% endif %}
 </div>
-
-<div class="modal-overlay{% if needs_2fa %} modal-overlay--open{% endif %}" id="twofa-modal" aria-hidden="{% if needs_2fa %}false{% else %}true{% endif %}">
-  <div class="modal-card" role="dialog" aria-labelledby="twofa-title">
-    <h3 id="twofa-title">Autenticação de dois fatores</h3>
-    <p class="muted">Esta conta exige o código do autenticador. Digite abaixo para concluir o login.</p>
-    <label>Código 2FA
-      <input type="text" id="twofa-code-input" inputmode="numeric" autocomplete="one-time-code" placeholder="000000" maxlength="8">
-    </label>
-    <div class="modal-actions">
-      <button type="button" class="btn" id="twofa-cancel">Cancelar</button>
-      <button type="button" class="btn btn-primary" id="twofa-submit">Confirmar</button>
-    </div>
-  </div>
-</div>
+{% if needs_2fa %}
+<input type="hidden" id="needs-2fa-flag" value="1">
+{% endif %}
 {% endblock %}

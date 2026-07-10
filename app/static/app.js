@@ -436,92 +436,127 @@
     });
   }
 
-  function setAuthPanelVisible(el, visible) {
-    if (!el) return;
-    if (visible) el.removeAttribute("hidden");
-    else el.setAttribute("hidden", "");
-  }
-
   function initAuthMethodForm() {
     const form = document.getElementById("account-add-form");
     if (!form) return;
-    const passwordWrap = document.getElementById("password-wrap");
-    const sessionWrap = document.getElementById("sessionid-wrap");
-    const importWrap = document.getElementById("import-wrap");
-    const usernameHint = document.getElementById("username-hint");
     const passwordInput = document.getElementById("account-password-input");
     const radios = form.querySelectorAll('input[name="auth_method"]');
 
     function update() {
       const method = form.querySelector('input[name="auth_method"]:checked')?.value || "sessionid";
-      setAuthPanelVisible(sessionWrap, method === "sessionid");
-      setAuthPanelVisible(importWrap, method === "import");
-      setAuthPanelVisible(passwordWrap, method === "password");
-      if (usernameHint) {
-        usernameHint.textContent = method === "password" || method === "import"
-          ? "(obrigatório)"
-          : "(opcional com sessionid)";
-      }
       if (passwordInput) {
         passwordInput.required = method === "password";
       }
     }
-    radios.forEach((r) => r.addEventListener("change", update));
+    radios.forEach((r) => {
+      r.addEventListener("change", update);
+      r.addEventListener("click", update);
+    });
     update();
+  }
+
+  function openTwofaModal(message) {
+    const modal = document.getElementById("twofa-modal");
+    const codeInput = document.getElementById("twofa-code-input");
+    const msgEl = document.getElementById("twofa-message");
+    if (!modal) return;
+    if (msgEl && message) msgEl.textContent = message;
+    modal.classList.add("modal-overlay--open");
+    modal.setAttribute("aria-hidden", "false");
+    document.body.style.overflow = "hidden";
+    if (codeInput) {
+      codeInput.value = "";
+      setTimeout(() => codeInput.focus(), 50);
+    }
+  }
+
+  function closeTwofaModal() {
+    const modal = document.getElementById("twofa-modal");
+    const hiddenCode = document.getElementById("verification-code-hidden");
+    if (!modal) return;
+    modal.classList.remove("modal-overlay--open");
+    modal.setAttribute("aria-hidden", "true");
+    document.body.style.overflow = "";
+    if (hiddenCode) hiddenCode.value = "";
+  }
+
+  function initTwofaModal() {
+    const modal = document.getElementById("twofa-modal");
+    if (!modal || modal.dataset.bound === "1") return;
+    modal.dataset.bound = "1";
+    const cancelBtn = document.getElementById("twofa-cancel");
+    const submitBtn = document.getElementById("twofa-submit");
+    const codeInput = document.getElementById("twofa-code-input");
+
+    cancelBtn?.addEventListener("click", closeTwofaModal);
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) closeTwofaModal();
+    });
+    submitBtn?.addEventListener("click", () => {
+      const form = document.getElementById("account-add-form");
+      if (form && typeof form._submitWith2fa === "function") {
+        form._submitWith2fa(true);
+      }
+    });
+    codeInput?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const form = document.getElementById("account-add-form");
+        if (form && typeof form._submitWith2fa === "function") {
+          form._submitWith2fa(true);
+        }
+      }
+    });
   }
 
   function initAccountsConnect() {
     const form = document.getElementById("account-add-form");
-    const modal = document.getElementById("twofa-modal");
     const codeInput = document.getElementById("twofa-code-input");
-    const hiddenCode = document.getElementById("verification-code-hidden");
-    const submitBtn = document.getElementById("twofa-submit");
-    const cancelBtn = document.getElementById("twofa-cancel");
     const connectBtn = document.getElementById("account-connect-btn");
-    if (!form) return;
+    if (!form || form.dataset.connectInit === "1") return;
+    form.dataset.connectInit = "1";
 
-    function openModal() {
-      modal?.classList.add("modal-overlay--open");
-      if (modal) modal.setAttribute("aria-hidden", "false");
-      if (codeInput) { codeInput.value = ""; codeInput.focus(); }
-    }
-    function closeModal() {
-      modal?.classList.remove("modal-overlay--open");
-      if (modal) modal.setAttribute("aria-hidden", "true");
-      if (hiddenCode) hiddenCode.value = "";
-    }
+    initTwofaModal();
 
-    cancelBtn?.addEventListener("click", closeModal);
-    modal?.addEventListener("click", (e) => {
-      if (e.target === modal) closeModal();
-    });
+    if (document.getElementById("needs-2fa-flag")) {
+      openTwofaModal();
+    }
 
     async function submitForm(with2fa) {
       const fd = new FormData(form);
       const proxyInput = form.querySelector('[name="proxy"]');
       if (proxyInput) fd.set("proxy", normalizeProxyValue(proxyInput.value));
-      if (with2fa && codeInput) fd.set("verification_code", codeInput.value.trim());
+      if (with2fa) {
+        const code = codeInput?.value.trim() || "";
+        if (!code) {
+          alert("Digite o código 2FA do autenticador.");
+          codeInput?.focus();
+          return;
+        }
+        fd.set("verification_code", code);
+      }
       if (connectBtn) { connectBtn.disabled = true; connectBtn.textContent = "Conectando…"; }
       try {
         const resp = await fetch(form.action, {
           method: "POST",
           body: fd,
-          headers: { "X-Requested-With": "fetch" },
+          headers: { "X-Requested-With": "fetch", Accept: "application/json, text/html" },
           redirect: "manual",
         });
         if (resp.status === 303 || resp.status === 302) {
+          closeTwofaModal();
           window.location.href = resp.headers.get("Location") || "/accounts";
           return;
         }
         const ct = resp.headers.get("content-type") || "";
-        if (ct.includes("application/json")) {
+        if (resp.status === 403 && ct.includes("application/json")) {
           const data = await resp.json();
           if (data.needs_2fa) {
-            openModal();
+            openTwofaModal(data.message);
             return;
           }
         }
-        if (resp.ok || resp.status === 400) {
+        if (resp.ok || resp.status === 400 || resp.status === 403) {
           const html = await resp.text();
           const doc = new DOMParser().parseFromString(html, "text/html");
           const newContent = doc.getElementById("app-content");
@@ -529,6 +564,9 @@
             appContent.innerHTML = newContent.innerHTML;
             history.pushState({ url: "/accounts" }, "", "/accounts");
             initPage();
+            if (doc.getElementById("needs-2fa-flag")) {
+              openTwofaModal();
+            }
             return;
           }
         }
@@ -540,16 +578,12 @@
       }
     }
 
+    form._submitWith2fa = submitForm;
+
     form.addEventListener("submit", (e) => {
       e.preventDefault();
       submitForm(false);
     });
-    submitBtn?.addEventListener("click", () => submitForm(true));
-    codeInput?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") { e.preventDefault(); submitForm(true); }
-    });
-
-    if (modal?.classList.contains("modal-overlay--open")) openModal();
   }
 
   function initCalendarPicker() {

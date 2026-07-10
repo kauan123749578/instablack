@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bricolage+Grotesque:wght@600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=19" />
+  <link rel="stylesheet" href="/static/style.css?v=20" />
   <link rel="stylesheet" href="/static/dashboard.css?v=17" />
   {% block head %}{% endblock %}
 </head>
@@ -179,8 +179,22 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="twofa-modal" aria-hidden="true">
+    <div class="modal-card" role="dialog" aria-labelledby="twofa-title" onclick="event.stopPropagation()">
+      <h3 id="twofa-title">Autenticação de dois fatores</h3>
+      <p class="muted" id="twofa-message">Esta conta exige o código do autenticador. Digite abaixo para concluir o login.</p>
+      <label>Código 2FA
+        <input type="text" id="twofa-code-input" inputmode="numeric" autocomplete="one-time-code" placeholder="000000" maxlength="8">
+      </label>
+      <div class="modal-actions">
+        <button type="button" class="btn" id="twofa-cancel">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="twofa-submit">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/lucide@0.475.0/dist/umd/lucide.min.js" crossorigin="anonymous"></script>
-  <script src="/static/app.js?v=18"></script>
+  <script src="/static/app.js?v=20"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>
