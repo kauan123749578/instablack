@@ -7,12 +7,15 @@ from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
+from sqlalchemy import func, select
+
 from app.deps import get_current_user
 from app.security import hash_password
 from app.templating import templates
 from core.database import get_db
 from core.storage import get_storage
-from models.models import User
+from core.webpush import vapid_configured
+from models.models import PushSubscription, User
 
 router = APIRouter(prefix="/perfil", tags=["perfil"])
 
@@ -23,9 +26,24 @@ def profile_page(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    push_subscribed = (
+        db.scalar(
+            select(func.count())
+            .select_from(PushSubscription)
+            .where(PushSubscription.user_id == user.id)
+        )
+        or 0
+    ) > 0
     return templates.TemplateResponse(
         "profile.html",
-        {"request": request, "user": user, "error": None, "ok": None},
+        {
+            "request": request,
+            "user": user,
+            "error": None,
+            "ok": None,
+            "vapid_ready": vapid_configured(),
+            "push_subscribed": push_subscribed,
+        },
     )
 
 
@@ -47,9 +65,24 @@ async def profile_update(
             error = "As senhas não conferem."
 
     if error:
+        push_subscribed = (
+            db.scalar(
+                select(func.count())
+                .select_from(PushSubscription)
+                .where(PushSubscription.user_id == user.id)
+            )
+            or 0
+        ) > 0
         return templates.TemplateResponse(
             "profile.html",
-            {"request": request, "user": user, "error": error, "ok": None},
+            {
+                "request": request,
+                "user": user,
+                "error": error,
+                "ok": None,
+                "vapid_ready": vapid_configured(),
+                "push_subscribed": push_subscribed,
+            },
             status_code=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -70,7 +103,22 @@ async def profile_update(
 
     db.commit()
     db.refresh(user)
+    push_subscribed = (
+        db.scalar(
+            select(func.count())
+            .select_from(PushSubscription)
+            .where(PushSubscription.user_id == user.id)
+        )
+        or 0
+    ) > 0
     return templates.TemplateResponse(
         "profile.html",
-        {"request": request, "user": user, "error": None, "ok": "Perfil atualizado com sucesso!"},
+        {
+            "request": request,
+            "user": user,
+            "error": None,
+            "ok": "Perfil atualizado com sucesso!",
+            "vapid_ready": vapid_configured(),
+            "push_subscribed": push_subscribed,
+        },
     )

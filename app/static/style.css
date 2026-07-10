@@ -544,6 +544,24 @@ a:hover { color: var(--primary-hover); }
   font-size: 24px; font-weight: 700; color: var(--primary-hover);
 }
 
+.push-settings-block { display: grid; gap: 10px; }
+.push-settings-title { margin: 0; font-size: 15px; }
+.push-settings-desc { margin: 0; font-size: 13px; line-height: 1.5; }
+.push-settings-tips {
+  margin: 0; padding-left: 18px; font-size: 12px; line-height: 1.55;
+}
+.push-status {
+  margin: 0; font-size: 13px; padding: 10px 12px;
+  border: 1px solid var(--border); background: rgba(255,255,255,0.02);
+}
+.push-status--on {
+  border-color: rgba(34, 197, 94, 0.35);
+  background: rgba(34, 197, 94, 0.08);
+  color: #86efac;
+}
+
+.auth-method-panel[hidden] { display: none !important; }
+
 /* Login — premium privado */
 .login-body {
   min-height: 100vh; display: flex; align-items: center; justify-content: center;

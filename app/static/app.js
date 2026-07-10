@@ -110,52 +110,75 @@
     return out;
   }
 
-  async function initWebPush() {
-    const btn = document.getElementById("enable-push-btn");
-    if (!btn || !("serviceWorker" in navigator) || !("PushManager" in window)) return;
+  function markPushButtonsEnabled() {
+    document.querySelectorAll("[data-push-btn]").forEach((b) => {
+      b.textContent = "Notificações ativadas ✓";
+      b.disabled = true;
+    });
+    const status = document.getElementById("push-status-profile");
+    if (status) {
+      status.textContent = "Ativado neste dispositivo — você receberá avisos quando um post for publicado.";
+      status.classList.add("push-status--on");
+    }
+  }
 
-    btn.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      try {
-        const keyRes = await fetch("/api/vapid-public-key");
-        const keyData = await keyRes.json();
-        if (!keyData.configured || !keyData.publicKey) {
-          alert("Web Push ainda não configurado no servidor (VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY).");
-          return;
-        }
-        const perm = await Notification.requestPermission();
-        if (perm !== "granted") {
-          alert("Permissão de notificação negada.");
-          return;
-        }
-        const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
-        await navigator.serviceWorker.ready;
-        let sub = await reg.pushManager.getSubscription();
-        if (!sub) {
-          sub = await reg.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(keyData.publicKey),
-          });
-        }
-        const res = await fetch("/api/push/subscribe", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(sub.toJSON()),
-        });
-        if (!res.ok) throw new Error("Falha ao salvar subscription");
-        btn.textContent = "Celular ativado ✓";
-        btn.disabled = true;
-        alert("Notificações no celular ativadas!");
-      } catch (err) {
-        console.error(err);
-        alert("Não foi possível ativar. Use HTTPS e permita o aviso do navegador.");
+  async function activateWebPush(triggerBtn) {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      alert("Seu navegador não suporta notificações push. Use Chrome no Android ou Safari no iOS.");
+      return;
+    }
+    if (triggerBtn) triggerBtn.disabled = true;
+    try {
+      const keyRes = await fetch("/api/vapid-public-key");
+      const keyData = await keyRes.json();
+      if (!keyData.configured || !keyData.publicKey) {
+        alert("Web Push ainda não configurado no servidor (VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY).");
+        return;
       }
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") {
+        alert("Permissão de notificação negada. Ative nas configurações do navegador.");
+        return;
+      }
+      const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+      await navigator.serviceWorker.ready;
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(keyData.publicKey),
+        });
+      }
+      const res = await fetch("/api/push/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(sub.toJSON()),
+      });
+      if (!res.ok) throw new Error("Falha ao salvar subscription");
+      markPushButtonsEnabled();
+      alert("Notificações no celular ativadas! Você receberá aviso a cada post publicado.");
+    } catch (err) {
+      console.error(err);
+      alert("Não foi possível ativar. Use HTTPS, permita o aviso do navegador e tente de novo.");
+    } finally {
+      if (triggerBtn && !triggerBtn.disabled) triggerBtn.disabled = false;
+    }
+  }
+
+  function initWebPush() {
+    const buttons = document.querySelectorAll("[data-push-btn]");
+    if (!buttons.length) return;
+
+    buttons.forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        await activateWebPush(btn);
+      });
     });
 
-    if (Notification.permission === "granted") {
+    if ("Notification" in window && Notification.permission === "granted") {
       navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {});
-      btn.textContent = "Celular ativado ✓";
-      btn.disabled = true;
+      markPushButtonsEnabled();
     }
   }
 
@@ -413,6 +436,12 @@
     });
   }
 
+  function setAuthPanelVisible(el, visible) {
+    if (!el) return;
+    if (visible) el.removeAttribute("hidden");
+    else el.setAttribute("hidden", "");
+  }
+
   function initAuthMethodForm() {
     const form = document.getElementById("account-add-form");
     if (!form) return;
@@ -420,17 +449,21 @@
     const sessionWrap = document.getElementById("sessionid-wrap");
     const importWrap = document.getElementById("import-wrap");
     const usernameHint = document.getElementById("username-hint");
+    const passwordInput = document.getElementById("account-password-input");
     const radios = form.querySelectorAll('input[name="auth_method"]');
 
     function update() {
       const method = form.querySelector('input[name="auth_method"]:checked')?.value || "sessionid";
-      if (sessionWrap) sessionWrap.style.display = method === "sessionid" ? "" : "none";
-      if (importWrap) importWrap.style.display = method === "import" ? "" : "none";
-      if (passwordWrap) passwordWrap.style.display = method === "password" ? "" : "none";
+      setAuthPanelVisible(sessionWrap, method === "sessionid");
+      setAuthPanelVisible(importWrap, method === "import");
+      setAuthPanelVisible(passwordWrap, method === "password");
       if (usernameHint) {
         usernameHint.textContent = method === "password" || method === "import"
           ? "(obrigatório)"
           : "(opcional com sessionid)";
+      }
+      if (passwordInput) {
+        passwordInput.required = method === "password";
       }
     }
     radios.forEach((r) => r.addEventListener("change", update));

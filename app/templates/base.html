@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bricolage+Grotesque:wght@600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=18" />
+  <link rel="stylesheet" href="/static/style.css?v=19" />
   <link rel="stylesheet" href="/static/dashboard.css?v=17" />
   {% block head %}{% endblock %}
 </head>
@@ -130,7 +130,7 @@
                 <button type="button" class="notif-mark-read" id="notif-mark-read">Marcar lidas</button>
               </div>
               <div class="notif-card-push">
-                <button type="button" class="btn btn-sm" id="enable-push-btn">Ativar no celular</button>
+                <button type="button" class="btn btn-sm" id="enable-push-btn" data-push-btn>Ativar no celular</button>
               </div>
               <ul class="notif-list" id="notif-list">
                 <li class="notif-empty">Carregando…</li>
@@ -180,7 +180,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/lucide@0.475.0/dist/umd/lucide.min.js" crossorigin="anonymous"></script>
-  <script src="/static/app.js?v=16"></script>
+  <script src="/static/app.js?v=18"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

@@ -38,13 +38,14 @@
     Limite de contas atingido ({{ account_limit_label }}). Peça ao administrador para liberar mais vagas.
   </div>
   {% endif %}
+  {% set auth_method = form.get('auth_method', 'sessionid') %}
   <form method="post" action="/accounts/add" class="form-grid" id="account-add-form"{% if not can_add_account %} style="opacity:0.45;pointer-events:none"{% endif %}>
     <fieldset>
       <legend>Método de autenticação</legend>
       <div class="checkbox-row">
-        <label><input type="radio" name="auth_method" value="sessionid" {% if form.get('auth_method', 'sessionid') == 'sessionid' %}checked{% endif %}> Session ID (recomendado)</label>
-        <label><input type="radio" name="auth_method" value="password" {% if form.get('auth_method') == 'password' %}checked{% endif %}> Usuário e senha</label>
-        <label><input type="radio" name="auth_method" value="import" {% if form.get('auth_method') == 'import' %}checked{% endif %}> Importar session.json</label>
+        <label><input type="radio" name="auth_method" value="sessionid" {% if auth_method == 'sessionid' %}checked{% endif %}> Session ID (recomendado)</label>
+        <label><input type="radio" name="auth_method" value="password" {% if auth_method == 'password' %}checked{% endif %}> Usuário e senha</label>
+        <label><input type="radio" name="auth_method" value="import" {% if auth_method == 'import' %}checked{% endif %}> Importar session.json</label>
       </div>
     </fieldset>
 
@@ -55,30 +56,30 @@
     </label>
     <p class="muted" style="margin:0;font-size:12px">Mesma proxy do perfil no Multilogin. Aceita http, socks5 e <code>ip:porta:user:senha</code>.</p>
 
-    <div id="sessionid-wrap">
+    <div id="sessionid-wrap" class="auth-method-panel"{% if auth_method != 'sessionid' %} hidden{% endif %}>
       <label>Session ID do navegador
         <textarea name="sessionid" id="sessionid-input" rows="2" placeholder="Cole o sessionid (F12 → Application → Cookies → instagram.com)">{{ form.get('sessionid', '') }}</textarea>
       </label>
     </div>
 
-    <label>Usuário Instagram (@) <span class="muted" id="username-hint">(opcional com sessionid)</span>
-      <input type="text" name="username" placeholder="meu_perfil" value="{{ form.get('username', '') }}">
+    <div id="import-wrap" class="auth-method-panel"{% if auth_method != 'import' %} hidden{% endif %}>
+      <label>session.json
+        <textarea name="session_json" rows="5" placeholder='Cole o conteúdo do arquivo session.json'>{{ form.get('session_json', '') }}</textarea>
+      </label>
+    </div>
+
+    <label>Usuário Instagram (@) <span class="muted" id="username-hint">{% if auth_method == 'password' or auth_method == 'import' %}(obrigatório){% else %}(opcional com sessionid){% endif %}</span>
+      <input type="text" name="username" id="account-username-input" placeholder="meu_perfil" value="{{ form.get('username', '') }}">
     </label>
 
-    <div id="password-wrap" style="display:none">
-      <label>Senha
-        <input type="password" name="password" autocomplete="new-password" placeholder="Senha do Instagram">
+    <div id="password-wrap" class="auth-method-panel"{% if auth_method != 'password' %} hidden{% endif %}>
+      <label>Senha <strong style="color:var(--red)">*</strong>
+        <input type="password" name="password" id="account-password-input" autocomplete="new-password" placeholder="Senha do Instagram">
       </label>
       <p class="muted" style="margin:0;font-size:12px">Após o login, a sessão (<code>session.json</code>) é salva no banco automaticamente.</p>
     </div>
 
     <input type="hidden" name="verification_code" id="verification-code-hidden" value="">
-
-    <div id="import-wrap">
-      <label>session.json
-        <textarea name="session_json" rows="5" placeholder='Cole o conteúdo do arquivo session.json'>{{ form.get('session_json', '') }}</textarea>
-      </label>
-    </div>
 
     <button type="submit" class="btn btn-primary" id="account-connect-btn">Conectar conta</button>
   </form>

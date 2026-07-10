@@ -20,6 +20,28 @@
 
     <hr style="border:none;border-top:1px solid var(--border);margin:8px 0">
 
+    <div class="push-settings-block">
+      <h3 class="push-settings-title">Notificações no celular</h3>
+      <p class="muted push-settings-desc">
+        Receba aviso no <strong>iPhone (iOS)</strong> e <strong>Android</strong> sempre que um post for publicado com sucesso.
+      </p>
+      <ul class="push-settings-tips muted">
+        <li><strong>Android:</strong> abra o painel no Chrome, toque em <em>Ativar notificações</em> e aceite o aviso.</li>
+        <li><strong>iPhone (iOS):</strong> no Safari, use <em>Compartilhar → Adicionar à Tela de Início</em>, abra o app e ative as notificações.</li>
+      </ul>
+      {% if not vapid_ready %}
+      <p class="alert alert-error" style="margin:0 0 12px">Servidor sem chaves VAPID — peça ao admin para configurar no Railway.</p>
+      {% endif %}
+      <p class="push-status{% if push_subscribed %} push-status--on{% endif %}" id="push-status-profile">
+        {% if push_subscribed %}Este usuário já tem dispositivo(s) registrado(s) no servidor.{% else %}Ainda não ativado neste navegador.{% endif %}
+      </p>
+      <button type="button" class="btn btn-primary" id="enable-push-profile-btn" data-push-btn{% if not vapid_ready %} disabled{% endif %}>
+        Ativar notificações
+      </button>
+    </div>
+
+    <hr style="border:none;border-top:1px solid var(--border);margin:8px 0">
+
     <label>Nova senha (opcional)
       <input type="password" name="new_password" autocomplete="new-password" minlength="8">
     </label>
