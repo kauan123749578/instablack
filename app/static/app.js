@@ -110,65 +110,106 @@
     return out;
   }
 
+  let deferredPwaPrompt = null;
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    deferredPwaPrompt = e;
+    document.querySelectorAll("#btn-pwa-install-profile").forEach((btn) => {
+      btn.textContent = "Instalar app agora";
+    });
+  });
+
+  async function ensurePushSubscription() {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      throw new Error("unsupported");
+    }
+    const keyRes = await fetch("/api/vapid-public-key");
+    const keyData = await keyRes.json();
+    if (!keyData.configured || !keyData.publicKey) {
+      throw new Error("vapid_not_configured");
+    }
+    const perm = await Notification.requestPermission();
+    if (perm !== "granted") {
+      throw new Error("permission_denied");
+    }
+    const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+    await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(keyData.publicKey),
+      });
+    }
+    const res = await fetch("/api/push/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(sub.toJSON()),
+    });
+    if (!res.ok) throw new Error("subscribe_failed");
+    return sub;
+  }
+
+  async function showLocalNotification(title, body, url) {
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      if (reg && "showNotification" in reg) {
+        await reg.showNotification(title, {
+          body,
+          icon: "/static/favicon.svg",
+          badge: "/static/favicon.svg",
+          tag: "instablack-local",
+          data: { url: url || "/perfil" },
+        });
+        return;
+      }
+    } catch (_) {}
+    if ("Notification" in window && Notification.permission === "granted") {
+      new Notification(title, { body, icon: "/static/favicon.svg" });
+    }
+  }
+
+  function updatePushStatusProfile(text, on) {
+    const status = document.getElementById("push-status-profile");
+    if (!status) return;
+    if (text) status.textContent = text;
+    status.classList.toggle("push-status--on", !!on);
+  }
+
   function markPushButtonsEnabled() {
     document.querySelectorAll("[data-push-btn]").forEach((b) => {
       b.textContent = "Notificações ativadas ✓";
       b.disabled = true;
     });
-    const status = document.getElementById("push-status-profile");
-    if (status) {
-      status.textContent = "Ativado neste dispositivo — você receberá avisos quando um post for publicado.";
-      status.classList.add("push-status--on");
-    }
+    updatePushStatusProfile("Dispositivo registrado — alertas ativos neste navegador.", true);
   }
 
   async function activateWebPush(triggerBtn) {
-    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-      alert("Seu navegador não suporta notificações push. Use Chrome no Android ou Safari no iOS.");
-      return;
-    }
     if (triggerBtn) triggerBtn.disabled = true;
     try {
-      const keyRes = await fetch("/api/vapid-public-key");
-      const keyData = await keyRes.json();
-      if (!keyData.configured || !keyData.publicKey) {
-        alert("Web Push ainda não configurado no servidor (VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY).");
-        return;
-      }
-      const perm = await Notification.requestPermission();
-      if (perm !== "granted") {
-        alert("Permissão de notificação negada. Ative nas configurações do navegador.");
-        return;
-      }
-      const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
-      await navigator.serviceWorker.ready;
-      let sub = await reg.pushManager.getSubscription();
-      if (!sub) {
-        sub = await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(keyData.publicKey),
-        });
-      }
-      const res = await fetch("/api/push/subscribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(sub.toJSON()),
-      });
-      if (!res.ok) throw new Error("Falha ao salvar subscription");
+      await ensurePushSubscription();
       markPushButtonsEnabled();
-      alert("Notificações no celular ativadas! Você receberá aviso a cada post publicado.");
+      alert("Notificações no celular ativadas!");
     } catch (err) {
       console.error(err);
-      alert("Não foi possível ativar. Use HTTPS, permita o aviso do navegador e tente de novo.");
+      if (err.message === "unsupported") {
+        alert("Seu navegador não suporta push. Use Chrome no Android ou Safari no iOS.");
+      } else if (err.message === "permission_denied") {
+        alert("Permissão negada. Ative nas configurações do navegador.");
+      } else if (err.message === "vapid_not_configured") {
+        alert("Web Push não configurado no servidor (VAPID).");
+      } else {
+        alert("Não foi possível ativar. Use HTTPS e tente de novo.");
+      }
     } finally {
-      if (triggerBtn && !triggerBtn.disabled) triggerBtn.disabled = false;
+      if (triggerBtn && triggerBtn.textContent !== "Notificações ativadas ✓") {
+        triggerBtn.disabled = false;
+      }
     }
   }
 
   function initWebPush() {
     const buttons = document.querySelectorAll("[data-push-btn]");
-    if (!buttons.length) return;
-
     buttons.forEach((btn) => {
       btn.addEventListener("click", async (e) => {
         e.stopPropagation();
@@ -177,9 +218,76 @@
     });
 
     if ("Notification" in window && Notification.permission === "granted") {
-      navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {});
-      markPushButtonsEnabled();
+      navigator.serviceWorker.register("/sw.js", { scope: "/" }).then(() => {
+        markPushButtonsEnabled();
+      }).catch(() => {});
     }
+  }
+
+  function initProfileNotifications() {
+    const testBtn = document.getElementById("btn-test-notify");
+    const installBtn = document.getElementById("btn-pwa-install-profile");
+    const prefsForm = document.getElementById("notify-prefs-form");
+    if (!testBtn && !installBtn && !prefsForm) return;
+
+    const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    if (installBtn && isIos) {
+      installBtn.hidden = false;
+      installBtn.textContent = "Instalar app na tela do celular";
+      installBtn.addEventListener("click", () => {
+        alert("No iPhone: toque em Compartilhar → Adicionar à Tela de Início, depois abra o app e teste as notificações.");
+      });
+    } else if (installBtn) {
+      installBtn.addEventListener("click", async () => {
+        if (!deferredPwaPrompt) {
+          alert("Use o menu do navegador → Instalar app / Adicionar à tela inicial.");
+          return;
+        }
+        deferredPwaPrompt.prompt();
+        await deferredPwaPrompt.userChoice;
+        deferredPwaPrompt = null;
+        installBtn.textContent = "App instalado ✓";
+      });
+    }
+
+    testBtn?.addEventListener("click", async () => {
+      testBtn.disabled = true;
+      try {
+        const desktopOn = prefsForm?.querySelector('input[name="desktop"]')?.checked;
+        if (!desktopOn) {
+          alert("Marque \"Notificações do navegador\" e salve antes de testar.");
+          return;
+        }
+        await ensurePushSubscription();
+        markPushButtonsEnabled();
+        const res = await fetch("/api/push/test", { method: "POST" });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.message || data.error || "Falha no teste");
+        }
+        await showLocalNotification(
+          "instablack — teste OK",
+          "Notificações no celular funcionando!",
+          "/perfil"
+        );
+        alert(`Teste enviado! ${data.sent || 0} dispositivo(s) notificado(s).`);
+      } catch (err) {
+        console.error(err);
+        alert(err.message || "Não foi possível testar. Aceite a permissão e tente de novo.");
+      } finally {
+        testBtn.disabled = false;
+      }
+    });
+
+    prefsForm?.addEventListener("submit", async () => {
+      const desktopOn = prefsForm.querySelector('input[name="desktop"]')?.checked;
+      if (desktopOn && "Notification" in window && Notification.permission === "default") {
+        try {
+          await ensurePushSubscription();
+          markPushButtonsEnabled();
+        } catch (_) {}
+      }
+    });
   }
 
   function formatNotifTime(iso) {
@@ -799,6 +907,7 @@
     initProxyInput();
     initAccountProxyUpdate();
     initWebPush();
+    initProfileNotifications();
     initNotifCard();
   }
 

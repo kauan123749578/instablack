@@ -37,7 +37,6 @@ def send_web_push(subscription_info: dict[str, Any], payload: dict[str, Any]) ->
     except WebPushException as exc:
         status = getattr(getattr(exc, "response", None), "status_code", None)
         log.warning("Web push falhou (status=%s): %s", status, exc)
-        # 404/410 = subscription morta
         if status in (404, 410):
             raise
         return False
@@ -46,30 +45,17 @@ def send_web_push(subscription_info: dict[str, Any], payload: dict[str, Any]) ->
         return False
 
 
-def notify_user_publish_success(user_id: int, username: str, content_type: str = "reel") -> None:
-    """Notifica todas as subscriptions do usuário sobre post enviado."""
-    if not vapid_configured():
-        return
-
+def _load_user_subscriptions(user_id: int) -> list[dict[str, Any]]:
     from sqlalchemy import select
 
     from core.database import session_scope
     from models.models import PushSubscription
 
-    label = {"reel": "Reel", "story": "Story", "photo": "Foto"}.get(content_type, "Post")
-    payload = {
-        "title": "Post enviado com sucesso",
-        "body": f"{label} publicado em @{username}",
-        "url": "/logs",
-        "tag": f"publish-{username}",
-    }
-
-    dead_ids: list[int] = []
     with session_scope() as db:
         subs = db.scalars(
             select(PushSubscription).where(PushSubscription.user_id == user_id)
         ).all()
-        rows = [
+        return [
             {
                 "id": s.id,
                 "info": {
@@ -80,12 +66,41 @@ def notify_user_publish_success(user_id: int, username: str, content_type: str =
             for s in subs
         ]
 
+
+def notify_user_push(
+    user_id: int,
+    payload: dict[str, Any],
+    *,
+    kind: str = "publish",
+) -> tuple[int, int]:
+    """Envia push para todas as subscriptions do usuário. Retorna (enviados, falhas)."""
+    if not vapid_configured():
+        return 0, 0
+
+    from core.database import session_scope
+    from core.notification_prefs import can_notify_push, get_notification_prefs_by_id
+    from models.models import PushSubscription
+
+    with session_scope() as db:
+        prefs = get_notification_prefs_by_id(db, user_id)
+    if not can_notify_push(kind, prefs):
+        return 0, 0
+
+    rows = _load_user_subscriptions(user_id)
+    if not rows:
+        return 0, 0
+
+    sent = 0
+    failed = 0
+    dead_ids: list[int] = []
     for row in rows:
         try:
-            ok = send_web_push(row["info"], payload)
-            if not ok:
-                continue
+            if send_web_push(row["info"], payload):
+                sent += 1
+            else:
+                failed += 1
         except Exception:
+            failed += 1
             dead_ids.append(row["id"])
 
     if dead_ids:
@@ -94,3 +109,32 @@ def notify_user_publish_success(user_id: int, username: str, content_type: str =
                 sub = db.get(PushSubscription, sid)
                 if sub:
                     db.delete(sub)
+
+    return sent, failed
+
+
+def notify_user_publish_success(user_id: int, username: str, content_type: str = "reel") -> None:
+    label = {"reel": "Reel", "story": "Story", "photo": "Foto"}.get(content_type, "Post")
+    notify_user_push(
+        user_id,
+        {
+            "title": "Post enviado com sucesso",
+            "body": f"{label} publicado em @{username}",
+            "url": "/logs",
+            "tag": f"publish-{username}",
+        },
+        kind="publish",
+    )
+
+
+def send_test_push(user_id: int) -> tuple[int, int]:
+    return notify_user_push(
+        user_id,
+        {
+            "title": "instablack — teste OK",
+            "body": "Notificações no celular funcionando!",
+            "url": "/perfil",
+            "tag": "instablack-test",
+        },
+        kind="publish",
+    )

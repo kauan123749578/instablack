@@ -560,6 +560,36 @@ a:hover { color: var(--primary-hover); }
   color: #86efac;
 }
 
+.profile-page-grid { align-items: start; }
+.profile-left-stack { display: grid; gap: 20px; }
+
+.notify-prefs-form { display: grid; gap: 14px; }
+.notify-prefs-head h3 { margin: 0 0 4px; font-size: 16px; }
+.notify-prefs-head p { margin: 0; font-size: 13px; }
+.notify-pref-list { display: grid; gap: 10px; }
+.notify-pref-row {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 14px 16px; border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02); cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.notify-pref-row:hover {
+  border-color: rgba(17, 97, 254, 0.35);
+  background: rgba(17, 97, 254, 0.05);
+}
+.notify-pref-row input[type="checkbox"] {
+  width: 18px; height: 18px; margin-top: 2px; flex-shrink: 0;
+  accent-color: var(--primary);
+}
+.notify-pref-copy { display: grid; gap: 4px; }
+.notify-pref-copy strong { font-size: 14px; font-weight: 600; }
+.notify-pref-copy small { font-size: 12px; color: var(--muted); line-height: 1.45; }
+.notify-prefs-actions { display: grid; gap: 10px; }
+.notify-prefs-actions .btn-glow {
+  box-shadow: 0 0 0 1px rgba(17, 97, 254, 0.25), 0 8px 28px rgba(17, 97, 254, 0.22);
+}
+.notify-prefs-hint { margin: 0; font-size: 12px; line-height: 1.55; }
+
 .auth-method-panel { display: none; }
 #account-add-form:has(input[name="auth_method"][value="sessionid"]:checked) #sessionid-wrap { display: block; }
 #account-add-form:has(input[name="auth_method"][value="password"]:checked) #password-wrap { display: block; }

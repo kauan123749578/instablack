@@ -131,6 +131,8 @@ def _sqlite_migrate() -> None:
                 conn.execute(text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT 0"))
             if "account_limit" not in ucols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN account_limit INTEGER"))
+            if "notification_prefs_json" not in ucols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN notification_prefs_json TEXT"))
             conn.execute(text("UPDATE users SET is_admin = 1 WHERE username = 'admin'"))
         if "instagram_accounts" in insp.get_table_names():
             acols = {c["name"] for c in insp.get_columns("instagram_accounts")}
@@ -190,6 +192,8 @@ def _postgres_migrate() -> None:
                 conn.execute(text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT FALSE"))
             if "account_limit" not in ucols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN account_limit INTEGER"))
+            if "notification_prefs_json" not in ucols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN notification_prefs_json TEXT"))
             conn.execute(text("UPDATE users SET is_admin = TRUE WHERE username = 'admin' AND is_admin IS NOT TRUE"))
         if "instagram_accounts" in tables:
             acols = {c["name"] for c in insp.get_columns("instagram_accounts")}

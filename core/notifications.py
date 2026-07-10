@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 
 from core.database import session_scope
+from core.notification_prefs import can_notify_in_app, get_notification_prefs_by_id
 from models.models import AppNotification
 
 log = logging.getLogger(__name__)
@@ -20,6 +21,9 @@ def create_notification(
     """Persiste notificação para aparecer no card do sino."""
     try:
         with session_scope() as db:
+            prefs = get_notification_prefs_by_id(db, user_id)
+            if not can_notify_in_app(kind, prefs):
+                return
             db.add(
                 AppNotification(
                     user_id=user_id,

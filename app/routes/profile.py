@@ -5,14 +5,14 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, status
 from fastapi.responses import RedirectResponse
-from sqlalchemy.orm import Session
-
 from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 from app.deps import get_current_user
 from app.security import hash_password
 from app.templating import templates
 from core.database import get_db
+from core.notification_prefs import get_notification_prefs, prefs_from_form, save_notification_prefs
 from core.storage import get_storage
 from core.webpush import vapid_configured
 from models.models import PushSubscription, User
@@ -20,12 +20,14 @@ from models.models import PushSubscription, User
 router = APIRouter(prefix="/perfil", tags=["perfil"])
 
 
-@router.get("")
-def profile_page(
+def _profile_context(
     request: Request,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
+    user: User,
+    db: Session,
+    *,
+    error: str | None = None,
+    ok: str | None = None,
+) -> dict:
     push_subscribed = (
         db.scalar(
             select(func.count())
@@ -34,16 +36,30 @@ def profile_page(
         )
         or 0
     ) > 0
+    return {
+        "request": request,
+        "user": user,
+        "error": error,
+        "ok": ok,
+        "vapid_ready": vapid_configured(),
+        "push_subscribed": push_subscribed,
+        "notification_prefs": get_notification_prefs(user),
+    }
+
+
+@router.get("")
+def profile_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    ok_key = request.query_params.get("ok")
+    ok_msg = {
+        "notificacoes": "Preferências de notificação salvas!",
+    }.get(ok_key or "")
     return templates.TemplateResponse(
         "profile.html",
-        {
-            "request": request,
-            "user": user,
-            "error": None,
-            "ok": None,
-            "vapid_ready": vapid_configured(),
-            "push_subscribed": push_subscribed,
-        },
+        _profile_context(request, user, db, ok=ok_msg or None),
     )
 
 
@@ -65,24 +81,9 @@ async def profile_update(
             error = "As senhas não conferem."
 
     if error:
-        push_subscribed = (
-            db.scalar(
-                select(func.count())
-                .select_from(PushSubscription)
-                .where(PushSubscription.user_id == user.id)
-            )
-            or 0
-        ) > 0
         return templates.TemplateResponse(
             "profile.html",
-            {
-                "request": request,
-                "user": user,
-                "error": error,
-                "ok": None,
-                "vapid_ready": vapid_configured(),
-                "push_subscribed": push_subscribed,
-            },
+            _profile_context(request, user, db, error=error),
             status_code=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -103,22 +104,34 @@ async def profile_update(
 
     db.commit()
     db.refresh(user)
-    push_subscribed = (
-        db.scalar(
-            select(func.count())
-            .select_from(PushSubscription)
-            .where(PushSubscription.user_id == user.id)
-        )
-        or 0
-    ) > 0
     return templates.TemplateResponse(
         "profile.html",
-        {
-            "request": request,
-            "user": user,
-            "error": None,
-            "ok": "Perfil atualizado com sucesso!",
-            "vapid_ready": vapid_configured(),
-            "push_subscribed": push_subscribed,
-        },
+        _profile_context(request, user, db, ok="Perfil atualizado com sucesso!"),
     )
+
+
+@router.post("/notificacoes")
+def profile_notifications_save(
+    request: Request,
+    enabled: str = Form(""),
+    publish: str = Form(""),
+    account_offline: str = Form(""),
+    warmup: str = Form(""),
+    errors: str = Form(""),
+    desktop: str = Form(""),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    save_notification_prefs(
+        db,
+        user,
+        prefs_from_form(
+            enabled=enabled,
+            publish=publish,
+            account_offline=account_offline,
+            warmup=warmup,
+            errors=errors,
+            desktop=desktop,
+        ),
+    )
+    return RedirectResponse("/perfil?ok=notificacoes", status_code=303)

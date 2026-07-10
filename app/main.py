@@ -74,6 +74,30 @@ def create_app() -> FastAPI:
             headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache"},
         )
 
+    @app.get("/manifest.webmanifest", include_in_schema=False)
+    def web_manifest():
+        return JSONResponse(
+            {
+                "name": "instablack",
+                "short_name": "instablack",
+                "description": "Painel de automação Instagram",
+                "start_url": "/",
+                "scope": "/",
+                "display": "standalone",
+                "background_color": "#030308",
+                "theme_color": "#1161FE",
+                "orientation": "portrait-primary",
+                "icons": [
+                    {
+                        "src": "/static/favicon.svg",
+                        "sizes": "any",
+                        "type": "image/svg+xml",
+                        "purpose": "any maskable",
+                    }
+                ],
+            }
+        )
+
     @app.exception_handler(RequestValidationError)
     async def form_validation_error(request: Request, exc: RequestValidationError):
         """Evita JSON cru quando falta arquivo em formulários multipart."""

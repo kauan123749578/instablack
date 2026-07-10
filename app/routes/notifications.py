@@ -14,7 +14,7 @@ from app.config import settings
 from app.deps import get_current_user, maybe_current_user
 from app.templating import templates
 from core.database import get_db
-from core.webpush import vapid_configured
+from core.webpush import send_test_push, vapid_configured
 from models.models import (
     AppNotification,
     InstagramAccount,
@@ -93,6 +93,27 @@ async def api_push_unsubscribe(
         db.delete(sub)
         db.commit()
     return {"ok": True}
+
+
+@router.post("/api/push/test")
+def api_push_test(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if not vapid_configured():
+        return JSONResponse({"ok": False, "error": "vapid_not_configured"}, status_code=400)
+    sub_count = db.scalar(
+        select(func.count())
+        .select_from(PushSubscription)
+        .where(PushSubscription.user_id == user.id)
+    ) or 0
+    if sub_count < 1:
+        return JSONResponse(
+            {"ok": False, "error": "no_subscription", "message": "Ative as notificações neste dispositivo primeiro."},
+            status_code=400,
+        )
+    sent, failed = send_test_push(user.id)
+    return {"ok": True, "sent": sent, "failed": failed}
 
 
 @router.get("/api/notifications")

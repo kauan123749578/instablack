@@ -8,49 +8,104 @@
 {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
 {% if ok %}<div class="alert alert-ok">{{ ok }}</div>{% endif %}
 
-<div class="dash-grid-2">
-  <form method="post" action="/perfil" enctype="multipart/form-data" class="form-card form-grid">
-    <label>Nome de exibição
-      <input type="text" name="display_name" value="{{ user.display_name or '' }}" placeholder="{{ user.username }}">
-    </label>
-    <label>Foto de perfil (.jpg/.png)
-      <input type="file" name="avatar" accept="image/jpeg,image/png,image/webp">
-    </label>
-    <p class="muted" style="font-size:12px;margin:0">Aparece no canto superior direito do painel.</p>
+{% set prefs = notification_prefs %}
+<div class="dash-grid-2 profile-page-grid">
+  <div class="profile-left-stack">
+    <form method="post" action="/perfil" enctype="multipart/form-data" class="form-card form-grid">
+      <label>Nome de exibição
+        <input type="text" name="display_name" value="{{ user.display_name or '' }}" placeholder="{{ user.username }}">
+      </label>
+      <label>Foto de perfil (.jpg/.png)
+        <input type="file" name="avatar" accept="image/jpeg,image/png,image/webp">
+      </label>
+      <p class="muted" style="font-size:12px;margin:0">Aparece no canto superior direito do painel.</p>
 
-    <hr style="border:none;border-top:1px solid var(--border);margin:8px 0">
+      <hr style="border:none;border-top:1px solid var(--border);margin:8px 0">
 
-    <div class="push-settings-block">
-      <h3 class="push-settings-title">Notificações no celular</h3>
-      <p class="muted push-settings-desc">
-        Receba aviso no <strong>iPhone (iOS)</strong> e <strong>Android</strong> sempre que um post for publicado com sucesso.
-      </p>
-      <ul class="push-settings-tips muted">
-        <li><strong>Android:</strong> abra o painel no Chrome, toque em <em>Ativar notificações</em> e aceite o aviso.</li>
-        <li><strong>iPhone (iOS):</strong> no Safari, use <em>Compartilhar → Adicionar à Tela de Início</em>, abra o app e ative as notificações.</li>
-      </ul>
+      <label>Nova senha (opcional)
+        <input type="password" name="new_password" autocomplete="new-password" minlength="8">
+      </label>
+      <label>Confirmar nova senha
+        <input type="password" name="new_password_confirm" autocomplete="new-password">
+      </label>
+
+      <button type="submit" class="btn btn-primary">Salvar perfil</button>
+    </form>
+
+    <form method="post" action="/perfil/notificacoes" class="form-card notify-prefs-form" id="notify-prefs-form">
+      <div class="notify-prefs-head">
+        <h3>Notificações</h3>
+        <p class="muted">Escolha quais alertas você quer receber no painel e no sino.</p>
+      </div>
+
       {% if not vapid_ready %}
-      <p class="alert alert-error" style="margin:0 0 12px">Servidor sem chaves VAPID — peça ao admin para configurar no Railway.</p>
+      <p class="alert alert-error" style="margin:0 0 12px">Servidor sem chaves VAPID — configure no Railway.</p>
       {% endif %}
-      <p class="push-status{% if push_subscribed %} push-status--on{% endif %}" id="push-status-profile">
-        {% if push_subscribed %}Este usuário já tem dispositivo(s) registrado(s) no servidor.{% else %}Ainda não ativado neste navegador.{% endif %}
+
+      <div class="notify-pref-list">
+        <label class="notify-pref-row">
+          <input type="checkbox" name="enabled" value="on"{% if prefs.enabled %} checked{% endif %}>
+          <span class="notify-pref-copy">
+            <strong>Ativar notificações</strong>
+            <small>Controle geral de alertas em tempo real</small>
+          </span>
+        </label>
+
+        <label class="notify-pref-row">
+          <input type="checkbox" name="publish" value="on"{% if prefs.publish %} checked{% endif %}>
+          <span class="notify-pref-copy">
+            <strong>Posts publicados</strong>
+            <small>Popup e sino quando um reel/story/foto for publicado</small>
+          </span>
+        </label>
+
+        <label class="notify-pref-row">
+          <input type="checkbox" name="account_offline" value="on"{% if prefs.account_offline %} checked{% endif %}>
+          <span class="notify-pref-copy">
+            <strong>Conta fora do ar</strong>
+            <small>Quando uma conta Instagram cair ou perder sessão</small>
+          </span>
+        </label>
+
+        <label class="notify-pref-row">
+          <input type="checkbox" name="warmup" value="on"{% if prefs.warmup %} checked{% endif %}>
+          <span class="notify-pref-copy">
+            <strong>Aquecimento de contas</strong>
+            <small>Início, pausa e fim das rotinas de warmup</small>
+          </span>
+        </label>
+
+        <label class="notify-pref-row">
+          <input type="checkbox" name="errors" value="on"{% if prefs.errors %} checked{% endif %}>
+          <span class="notify-pref-copy">
+            <strong>Erros de publicação</strong>
+            <small>Quando uma automação falhar ao postar</small>
+          </span>
+        </label>
+
+        <label class="notify-pref-row">
+          <input type="checkbox" name="desktop" value="on"{% if prefs.desktop %} checked{% endif %}>
+          <span class="notify-pref-copy">
+            <strong>Notificações do navegador</strong>
+            <small>Alertas nativos no celular (iOS e Android)</small>
+          </span>
+        </label>
+      </div>
+
+      <div class="notify-prefs-actions">
+        <button type="submit" class="btn btn-primary btn-glow">Salvar notificações</button>
+        <button type="button" class="btn" id="btn-pwa-install-profile">Instalar app na tela do celular</button>
+        <button type="button" class="btn" id="btn-test-notify"{% if not vapid_ready %} disabled{% endif %}>Testar notificação no celular</button>
+      </div>
+      <p class="muted notify-prefs-hint">
+        Para push com app fechado: instale o app + aceite notificações.
+        <strong>iOS:</strong> Safari → Compartilhar → Adicionar à Tela de Início.
       </p>
-      <button type="button" class="btn btn-primary" id="enable-push-profile-btn" data-push-btn{% if not vapid_ready %} disabled{% endif %}>
-        Ativar notificações
-      </button>
-    </div>
-
-    <hr style="border:none;border-top:1px solid var(--border);margin:8px 0">
-
-    <label>Nova senha (opcional)
-      <input type="password" name="new_password" autocomplete="new-password" minlength="8">
-    </label>
-    <label>Confirmar nova senha
-      <input type="password" name="new_password_confirm" autocomplete="new-password">
-    </label>
-
-    <button type="submit" class="btn btn-primary">Salvar</button>
-  </form>
+      <p class="push-status{% if push_subscribed %} push-status--on{% endif %}" id="push-status-profile">
+        {% if push_subscribed %}Dispositivo registrado no servidor.{% else %}Nenhum dispositivo registrado ainda.{% endif %}
+      </p>
+    </form>
+  </div>
 
   <div class="panel profile-preview-panel">
     <h3 style="margin-top:0">Preview</h3>
