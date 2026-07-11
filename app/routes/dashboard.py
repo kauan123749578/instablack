@@ -15,7 +15,7 @@ from app.utils.account_health import offline_accounts
 from app.utils.charts import attach_chart_paths
 from app.utils.timezone import brt_now
 from core.database import get_db
-from models.models import Automation, InstagramAccount, PublishLog, User
+from models.models import Automation, InstagramAccount, PublishLog, User, WarmupJob
 
 router = APIRouter(tags=["dashboard"])
 BRT = ZoneInfo("America/Sao_Paulo")
@@ -314,6 +314,29 @@ def home(
         .limit(8)
     ).all()
 
+    warming_jobs = db.scalars(
+        select(WarmupJob)
+        .where(
+            WarmupJob.user_id == user.id,
+            WarmupJob.status.in_(("pending", "running", "paused")),
+        )
+        .options(selectinload(WarmupJob.account))
+        .order_by(desc(WarmupJob.updated_at))
+        .limit(8)
+    ).all()
+
+    failed_videos = db.scalars(
+        select(PublishLog)
+        .join(PublishLog.account)
+        .where(
+            InstagramAccount.user_id == user.id,
+            PublishLog.status == "failed",
+        )
+        .options(selectinload(PublishLog.account), selectinload(PublishLog.automation))
+        .order_by(desc(PublishLog.created_at))
+        .limit(8)
+    ).all()
+
     pending_views = db.scalar(
         select(func.count(PublishLog.id))
         .join(PublishLog.account)
@@ -377,6 +400,8 @@ def home(
             "top_players": top_players,
             "top_players_month": top_players_month,
             "top_reels": top_reels,
+            "warming_jobs": warming_jobs,
+            "failed_videos": failed_videos,
         },
     )
 

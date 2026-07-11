@@ -229,34 +229,33 @@
       {% endif %}
     </section>
 
-    <section class="og-glass-card og-reels-views-panel">
+    <section class="og-glass-card og-warmup-panel">
       <div class="og-card-head">
         <div>
-          <h2 class="og-card-title">Reels com mais views</h2>
-          <p class="og-card-sub og-card-sub--caps">Performance</p>
+          <h2 class="og-card-title">Contas aquecendo</h2>
+          <p class="og-card-sub og-card-sub--caps">Warmup ativo</p>
         </div>
-        <a href="/logs" class="og-link" data-nav="/logs">Ver logs</a>
+        <a href="/warmup" class="og-link" data-nav="/warmup">Ver todos</a>
       </div>
-      {% if top_reels %}
-      <ul class="og-reels-views-list">
-        {% for log in top_reels %}
-        <li class="og-reel-view-item">
-          <div class="og-reel-view-stats">
-            <strong>{{ format_count(log.play_count) }}</strong>
-            <span>views</span>
+      {% if warming_jobs %}
+      <ul class="og-dash-list">
+        {% for job in warming_jobs %}
+        <li class="og-dash-list-item">
+          <span class="og-timeline-icon og-timeline-icon--{% if job.status == 'running' %}success{% elif job.status == 'paused' %}skipped{% else %}failed{% endif %}">
+            {% if job.status == 'running' %}<i data-lucide="flame"></i>
+            {% elif job.status == 'paused' %}<i data-lucide="pause"></i>
+            {% else %}<i data-lucide="clock"></i>{% endif %}
+          </span>
+          <div class="og-dash-list-body">
+            <strong>@{{ job.account.username if job.account else '?' }}</strong>
+            <span>{{ job.actions_done }}/{{ job.actions_target }} ações · {{ job.duration_minutes }} min{% if job.last_action %} · {{ job.last_action[:40] }}{% endif %}</span>
           </div>
-          <div class="og-reel-view-info">
-            <strong>@{{ log.account.username }}</strong>
-            <span>{{ log.created_at | localtime('%d/%m %H:%M') }}{% if log.automation %} · {{ log.automation.name }}{% endif %}</span>
-          </div>
-          {% if log.media_url %}
-          <a href="{{ log.media_url }}" target="_blank" rel="noopener" class="og-link og-reel-view-link">Abrir</a>
-          {% endif %}
+          <span class="og-badge {{ status_badge_class(job.status) }}">{{ status_label(job.status) }}</span>
         </li>
         {% endfor %}
       </ul>
       {% else %}
-      <p class="og-empty">Views aparecem após a sincronização (até 1h).</p>
+      <div class="og-empty">Nenhuma conta aquecendo agora.<br><a href="/warmup" data-nav="/warmup" class="og-link">Iniciar aquecimento</a></div>
       {% endif %}
     </section>
 
@@ -350,21 +349,30 @@
       {% endif %}
     </section>
 
-    <section class="og-glass-card og-bar-panel">
+    <section class="og-glass-card og-failed-panel">
       <div class="og-card-head">
-        <h2 class="og-card-title"><i data-lucide="bar-chart-3" class="inline-icon"></i> Publicações por dia</h2>
-      </div>
-      <div class="og-bar-chart">
-        {% for pt in chart_weekly %}
-        <div class="og-bar-col" title="{{ pt.pubs }} publicações em {{ pt.label }}">
-          <span class="og-bar-value">{% if pt.pubs > 0 %}{{ pt.pubs }}{% endif %}</span>
-          <div class="og-bar-track">
-            <div class="og-bar-fill" style="height:{{ pt.bar_pct if pt.bar_pct > 3 else 4 }}%"></div>
-          </div>
-          <span class="og-bar-label">{{ pt.label }}</span>
+        <div>
+          <h2 class="og-card-title">Vídeos que falharam</h2>
+          <p class="og-card-sub og-card-sub--caps">Últimas falhas</p>
         </div>
-        {% endfor %}
+        <a href="/logs" class="og-link" data-nav="/logs">Ver logs</a>
       </div>
+      {% if failed_videos %}
+      <ul class="og-dash-list">
+        {% for log in failed_videos %}
+        <li class="og-dash-list-item">
+          <span class="og-timeline-icon og-timeline-icon--failed"><i data-lucide="x"></i></span>
+          <div class="og-dash-list-body">
+            <strong>@{{ log.account.username }}{% if log.automation %} · {{ log.automation.name }}{% endif %}</strong>
+            <span>{{ log.created_at | localtime('%d/%m %H:%M') }}{% if log.error %} · {{ log.error[:80] }}{% endif %}</span>
+          </div>
+          <span class="og-badge badge-red">Falhou</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="og-empty">Nenhuma falha recente. Publicações com erro aparecem aqui.</div>
+      {% endif %}
     </section>
 
   </div>

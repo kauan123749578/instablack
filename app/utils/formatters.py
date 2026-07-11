@@ -25,6 +25,9 @@ def status_label(status: str) -> str:
     return {
         "active": "Ativa",
         "paused": "Pausada",
+        "pending": "Na fila",
+        "running": "Aquecendo",
+        "done": "Concluído",
         "needs_login": "Sessão expirada",
         "proxy_down": "Proxy offline",
         "banned": "Banida",
@@ -35,9 +38,9 @@ def status_label(status: str) -> str:
 
 
 def status_badge_class(status: str) -> str:
-    if status in ("active", "success"):
+    if status in ("active", "success", "running", "done"):
         return "badge-green"
-    if status in ("paused", "skipped", "needs_login"):
+    if status in ("paused", "skipped", "needs_login", "pending"):
         return "badge-yellow"
     if status in ("failed", "proxy_down", "banned"):
         return "badge-red"
