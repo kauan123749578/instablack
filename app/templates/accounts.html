@@ -30,8 +30,9 @@
 <div class="form-card" style="margin-bottom:24px">
   <h3 style="margin-top:0">Adicionar nova conta</h3>
   <p class="muted" style="margin:0 0 16px;font-size:13px">
-    <strong>Igual ao PostagemIG:</strong> cole o <strong>Session ID</strong> do Multilogin + proxy do perfil.
-    Login por senha no Railway costuma ser bloqueado pelo Instagram — sessionid funciona melhor.
+    <strong>Proxy residencial ajuda, mas login por senha via API ainda falha bastante</strong>
+    (Instagram devolve “senha incorreta” mesmo com senha certa).
+    O caminho estável é o mesmo do PostagemIG: <strong>Session ID</strong> do Multilogin + a mesma proxy.
   </p>
   {% if not can_add_account %}
   <div class="alert alert-error" style="margin-bottom:12px">

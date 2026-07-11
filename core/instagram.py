@@ -1,15 +1,23 @@
 """Wrapper do instagrapi com sessão persistida no banco e proxy obrigatório."""
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import uuid
 from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
 import requests
 from instagrapi import Client
-from instagrapi.exceptions import BadPassword, LoginRequired, TwoFactorRequired
+from instagrapi.exceptions import (
+    BadPassword,
+    ChallengeRequired,
+    LoginRequired,
+    PleaseWaitFewMinutes,
+    TwoFactorRequired,
+)
 from instagrapi.types import StoryLink
 
 from app.utils.proxy import normalize_proxy
@@ -18,6 +26,26 @@ log = logging.getLogger(__name__)
 
 IPIFY_URL = "https://api.ipify.org"
 IP_CHECK_TIMEOUT = 8
+
+
+def _stable_uuids(username: str) -> dict[str, str]:
+    """Mesmo @ → mesmo device fingerprint (evita 'aparelho novo' a cada tentativa)."""
+    seed = hashlib.sha256(f"instablack:{username.lower()}".encode()).hexdigest()
+
+    def _u(n: int) -> str:
+        h = hashlib.md5(f"{seed}:{n}".encode()).hexdigest()
+        return str(uuid.UUID(h))
+
+    phone = _u(1)
+    return {
+        "phone_id": phone,
+        "uuid": _u(2),
+        "client_session_id": _u(3),
+        "advertising_id": _u(4),
+        "android_device_id": f"android-{seed[:16]}",
+        "request_id": _u(5),
+        "tray_session_id": _u(6),
+    }
 
 
 def _apply_story_sticker_ids_fix() -> None:
@@ -104,26 +132,33 @@ class InstagramTwoFactorRequired(InstagramAuthError):
 
 def _friendly_auth_error(raw: str, proxy: str | None = None) -> str:
     low = raw.lower()
-    if "blacklist" in low or ("ip" in low and "block" in low):
+    if "please wait" in low or "few minutes" in low:
+        msg = "Instagram pediu para aguardar alguns minutos (muitas tentativas). Espere e tente de novo."
+    elif "blacklist" in low or ("ip" in low and "block" in low):
         msg = (
             "Instagram bloqueou este IP para login por senha. "
-            "Use Session ID do Multilogin com a mesma proxy (recomendado)."
+            "Troque a proxy (IP limpo) ou use Session ID do Multilogin."
         )
     elif "password" in low and "incorrect" in low:
+        # Instagram devolve "senha incorreta" também quando desconfia do login (API + proxy)
         msg = (
-            "Senha recusada pelo Instagram. Confira usuário/senha "
-            "ou use Session ID — login por senha costuma ser bloqueado em proxy/datacenter."
+            "Instagram recusou o login por senha (pode ser senha errada OU bloqueio de confiança). "
+            "Mesmo com proxy residencial, login via API costuma falhar. "
+            "Solução mais estável: Session ID do Multilogin com a mesma proxy."
+        )
+    elif "challenge" in low or "checkpoint" in low:
+        msg = (
+            "Instagram pediu verificação (challenge). Abra a conta no app/navegador "
+            "com a mesma proxy, confirme, e use Session ID."
         )
     elif "login_required" in low or "467" in raw:
         msg = "Sessão expirada ou recusada. Cole um sessionid novo do navegador (Multilogin)."
     elif "403" in raw:
         msg = "Sessão recusada pelo Instagram. Gere um sessionid novo."
-    elif "challenge" in low:
-        msg = "Instagram pediu verificação. Confirme no app e tente de novo com Session ID."
     elif "two" in low and "factor" in low:
         msg = "Conta com 2FA. Informe o código do autenticador no popup."
     elif "redirect" in low and "exceeded" in low:
-        msg = "Proxy inválido ou instável. Tente socks5:// ou revise host:porta:user:senha."
+        msg = "Proxy inválido ou instável. Tente socks5h:// ou revise host:porta:user:senha."
     else:
         msg = raw
 
@@ -134,18 +169,28 @@ def _friendly_auth_error(raw: str, proxy: str | None = None) -> str:
     return msg
 
 
-def _build_client(proxy: Optional[str], settings_dict: Optional[dict]) -> Client:
+def _build_client(
+    proxy: Optional[str],
+    settings_dict: Optional[dict],
+    *,
+    username_for_device: str | None = None,
+) -> Client:
     if not proxy:
         raise InstagramAuthError("Proxy é obrigatório. Nenhuma requisição será feita sem proxy.")
     cl = Client()
     cl.delay_range = [1, 3]
-    if settings_dict:
-        cl.set_settings(settings_dict)
     normalized = normalize_proxy(proxy)
     try:
         cl.set_proxy(normalized)
     except Exception as exc:
         raise InstagramAuthError(f"Proxy inválido: {exc}") from exc
+    if settings_dict:
+        cl.set_settings(settings_dict)
+    elif username_for_device:
+        try:
+            cl.set_uuids(_stable_uuids(username_for_device))
+        except Exception:
+            log.debug("Não foi possível fixar UUIDs do device", exc_info=True)
     # Locale BR reduz challenge em contas brasileiras
     try:
         cl.set_locale("pt_BR")
@@ -219,7 +264,7 @@ def login_with_credentials(
             "Teste o proxy antes — formato: ip:porta:usuario:senha"
         )
 
-    cl = _build_client(proxy=proxy, settings_dict=None)
+    cl = _build_client(proxy=proxy, settings_dict=None, username_for_device=username)
     try:
         if verification_code:
             cl.login(username, password, verification_code=verification_code.strip())
@@ -229,16 +274,20 @@ def login_with_credentials(
         raise InstagramTwoFactorRequired(
             "Autenticação de dois fatores necessária. Informe o código do autenticador."
         ) from exc
+    except PleaseWaitFewMinutes as exc:
+        raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
+    except ChallengeRequired as exc:
+        raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
     except BadPassword as exc:
+        log.warning("BadPassword no login @%s via proxy (raw=%s)", username, exc)
         raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
     except Exception as exc:
-        # Alguns builds do instagrapi embutem 2FA em Exception genérica
         low = str(exc).lower()
-        if "two_factor" in low or "two-factor" in low or "checkpoint_required" in low:
-            if "two_factor" in low or "two-factor" in low:
-                raise InstagramTwoFactorRequired(
-                    "Autenticação de dois fatores necessária. Informe o código do autenticador."
-                ) from exc
+        log.warning("Falha login @%s: %s", username, exc)
+        if "two_factor" in low or "two-factor" in low:
+            raise InstagramTwoFactorRequired(
+                "Autenticação de dois fatores necessária. Informe o código do autenticador."
+            ) from exc
         raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
 
     _after_login(cl)
