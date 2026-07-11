@@ -173,6 +173,7 @@ class PublishLog(Base):
     )
 
     status: Mapped[str] = mapped_column(String(16))  # success | failed | skipped
+    content_type: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)  # reel | story | photo
     media_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     media_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     play_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)

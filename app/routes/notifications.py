@@ -52,9 +52,12 @@ def _maybe_push_for_new_logs(user_id: int, rows: list[PublishLog]) -> None:
             _recent_push_log_ids.clear()
         try:
             uname = r.account.username if r.account else "conta"
+            ctype = r.content_type or (
+                r.automation.content_type if r.automation else None
+            ) or "reel"
             from core.webpush import notify_user_publish_success
 
-            notify_user_publish_success(user_id, uname, content_type="reel")
+            notify_user_publish_success(user_id, uname, content_type=ctype)
         except Exception:
             log.exception("Push via poll falhou user=%s log=%s", user_id, r.id)
 
@@ -170,6 +173,9 @@ def api_logs_latest(
                 "status": r.status,
                 "username": r.account.username if r.account else "",
                 "automation": r.automation.name if r.automation else "Post imediato",
+                "content_type": r.content_type
+                or (r.automation.content_type if r.automation else None)
+                or "reel",
                 "error": (r.error or "")[:200],
                 "media_url": r.media_url,
                 "created_at": r.created_at.isoformat() if r.created_at else None,
@@ -180,12 +186,22 @@ def api_logs_latest(
     }
 
 
+def _resolve_log_content_type(plog: PublishLog) -> str:
+    if plog.content_type:
+        return plog.content_type
+    if plog.automation and plog.automation.content_type:
+        return plog.automation.content_type
+    return "reel"
+
+
 def _sync_notifications_from_logs(db: Session, user: User) -> list[PublishLog]:
     """Cria notificações in-app a partir de PublishLog de sucesso faltantes.
 
     Cobre worker antigo, falha silenciosa no Celery, ou deploy parcial.
     Retorna os logs novos (mais recente primeiro) para eventual push.
     """
+    from core.notifications import content_label
+
     newest_notif_at = db.scalar(
         select(func.max(AppNotification.created_at)).where(AppNotification.user_id == user.id)
     )
@@ -196,7 +212,7 @@ def _sync_notifications_from_logs(db: Session, user: User) -> list[PublishLog]:
             InstagramAccount.user_id == user.id,
             PublishLog.status == "success",
         )
-        .options(selectinload(PublishLog.account))
+        .options(selectinload(PublishLog.account), selectinload(PublishLog.automation))
         .order_by(PublishLog.created_at.desc())
         .limit(15)
     )
@@ -218,7 +234,7 @@ def _sync_notifications_from_logs(db: Session, user: User) -> list[PublishLog]:
                     InstagramAccount.user_id == user.id,
                     PublishLog.status == "success",
                 )
-                .options(selectinload(PublishLog.account))
+                .options(selectinload(PublishLog.account), selectinload(PublishLog.automation))
                 .order_by(PublishLog.created_at.desc())
                 .limit(10)
             ).all()
@@ -227,11 +243,12 @@ def _sync_notifications_from_logs(db: Session, user: User) -> list[PublishLog]:
         return []
     for plog in reversed(recent_ok):
         uname = plog.account.username if plog.account else "?"
+        label = content_label(_resolve_log_content_type(plog))
         db.add(
             AppNotification(
                 user_id=user.id,
-                title="Post enviado com sucesso",
-                body=f"Publicado em @{uname}",
+                title=f"{label} publicado",
+                body=f"@{uname}",
                 kind="publish",
                 link="/logs",
                 is_read=False,
@@ -254,7 +271,11 @@ def api_list_notifications(
             uname = latest.account.username if latest.account else "conta"
             from core.webpush import notify_user_publish_success
 
-            notify_user_publish_success(user.id, uname, content_type="reel")
+            notify_user_publish_success(
+                user.id,
+                uname,
+                content_type=_resolve_log_content_type(latest),
+            )
         except Exception:
             log.exception("Sync push falhou user=%s", user.id)
 

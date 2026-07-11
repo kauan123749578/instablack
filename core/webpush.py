@@ -126,14 +126,17 @@ def notify_user_push(
 
 
 def notify_user_publish_success(user_id: int, username: str, content_type: str = "reel") -> None:
-    label = {"reel": "Reel", "story": "Story", "photo": "Foto"}.get(content_type, "Post")
+    from core.notifications import content_label
+
+    label = content_label(content_type)
+    title = f"{label} publicado"
     sent, failed = notify_user_push(
         user_id,
         {
-            "title": "Post enviado com sucesso",
-            "body": f"{label} publicado em @{username}",
+            "title": title,
+            "body": f"@{username}",
             "url": "/logs",
-            "tag": f"publish-{username}",
+            "tag": f"publish-{content_type}-{username}",
         },
         kind="publish",
         force=False,
@@ -145,6 +148,37 @@ def notify_user_publish_success(user_id: int, username: str, content_type: str =
         content_type,
         sent,
         failed,
+    )
+
+
+def notify_user_publish_error(user_id: int, username: str, error: str, content_type: str = "reel") -> None:
+    from core.notifications import content_label
+
+    label = content_label(content_type)
+    notify_user_push(
+        user_id,
+        {
+            "title": f"Erro ao publicar {label}",
+            "body": f"@{username}: {(error or '')[:120]}",
+            "url": "/logs",
+            "tag": f"error-{username}",
+        },
+        kind="warning",
+        force=False,
+    )
+
+
+def notify_user_account_offline(user_id: int, username: str, reason: str) -> None:
+    notify_user_push(
+        user_id,
+        {
+            "title": f"Conta @{username} fora do ar",
+            "body": (reason or "Sessão ou proxy com problema")[:160],
+            "url": "/accounts",
+            "tag": f"offline-{username}",
+        },
+        kind="offline",
+        force=False,
     )
 
 

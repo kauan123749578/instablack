@@ -149,6 +149,7 @@ def _execute_publish(
                 automation_id=automation_id,
                 account_id=account_id,
                 status="skipped",
+                content_type=content_type or "reel",
                 error="conta pausada",
             ))
             return {"skipped": True, "reason": "account_paused"}
@@ -159,17 +160,39 @@ def _execute_publish(
         owner_user_id = account.user_id
 
     if not proxy:
-        _log_failure(automation_id, account_id, "sem proxy — publicação bloqueada")
+        _log_failure(
+            automation_id,
+            account_id,
+            "sem proxy — publicação bloqueada",
+            content_type=content_type,
+            owner_user_id=owner_user_id,
+            username=username,
+        )
         _mark_account_proxy_down(account_id, "Conta sem proxy configurado")
         return {"error": "no_proxy"}
 
     if not check_proxy(proxy):
-        _log_failure(automation_id, account_id, "proxy fora ou vazando IP do servidor")
+        _log_failure(
+            automation_id,
+            account_id,
+            "proxy fora ou vazando IP do servidor",
+            content_type=content_type,
+            owner_user_id=owner_user_id,
+            username=username,
+        )
         _mark_account_proxy_down(account_id, "Proxy inválido ou fora do ar")
         return {"error": "proxy_down"}
 
     if not settings_dict:
-        _log_failure(automation_id, account_id, "sem sessão salva (refaça o login)")
+        _log_failure(
+            automation_id,
+            account_id,
+            "sem sessão salva (refaça o login)",
+            content_type=content_type,
+            owner_user_id=owner_user_id,
+            username=username,
+        )
+        _mark_account_needs_login(account_id, "Sessão expirada — reconecte a conta")
         return {"error": "no_session"}
 
     tmp_dir = Path(tempfile.mkdtemp(prefix="pub_"))
@@ -190,6 +213,7 @@ def _execute_publish(
             f"Gerando metadados únicos para @{username} antes de publicar…",
             kind="metadata",
             link="/logs",
+            send_push=False,
         )
 
         try:
@@ -206,6 +230,7 @@ def _execute_publish(
                 f"@{username}: fingerprint {fp} — pronto para postar.",
                 kind="metadata",
                 link="/logs",
+                send_push=False,
             )
         except MetadataStripError as exc:
             create_notification(
@@ -215,7 +240,14 @@ def _execute_publish(
                 kind="warning",
                 link="/logs",
             )
-            _log_failure(automation_id, account_id, f"metadados: {exc}")
+            _log_failure(
+                automation_id,
+                account_id,
+                f"metadados: {exc}",
+                content_type=content_type,
+                owner_user_id=owner_user_id,
+                username=username,
+            )
             return {"error": "metadata_strip"}
 
         if content_type == "reel" and thumb_key:
@@ -225,7 +257,14 @@ def _execute_publish(
             try:
                 thumb_path = prepare_clean_thumb(raw_thumb, clean_thumb_path)
             except Exception as exc:
-                _log_failure(automation_id, account_id, f"metadados capa: {exc}")
+                _log_failure(
+                    automation_id,
+                    account_id,
+                    f"metadados capa: {exc}",
+                    content_type=content_type,
+                    owner_user_id=owner_user_id,
+                    username=username,
+                )
                 return {"error": "metadata_strip_thumb"}
 
         try:
@@ -237,7 +276,14 @@ def _execute_publish(
             )
         except InstagramAuthError as exc:
             _mark_account_needs_login(account_id, str(exc))
-            _log_failure(automation_id, account_id, f"login: {exc}")
+            _log_failure(
+                automation_id,
+                account_id,
+                f"login: {exc}",
+                content_type=content_type,
+                owner_user_id=owner_user_id,
+                username=username,
+            )
             return {"error": "auth"}
 
         try:
@@ -248,7 +294,14 @@ def _execute_publish(
             else:
                 result = publish_reel(cl, clean_path, caption, thumbnail_path=thumb_path)
         except Exception as exc:
-            _log_failure(automation_id, account_id, f"upload: {exc}")
+            _log_failure(
+                automation_id,
+                account_id,
+                f"upload: {exc}",
+                content_type=content_type,
+                owner_user_id=owner_user_id,
+                username=username,
+            )
             raise
 
         notify_user_id: int | None = None
@@ -273,6 +326,7 @@ def _execute_publish(
                 automation_id=automation_id,
                 account_id=account_id,
                 status="success",
+                content_type=content_type or "reel",
                 media_id=result.get("id"),
                 media_url=result.get("url"),
             )
@@ -285,16 +339,15 @@ def _execute_publish(
             # Notificação in-app NA MESMA transação do log (garante aparecer no sino)
             uid = notify_user_id or owner_user_id
             if uid:
+                from core.notifications import content_label
                 from models.models import AppNotification
 
-                label = {"reel": "Reel", "story": "Story", "photo": "Foto"}.get(
-                    content_type, "Post"
-                )
+                label = content_label(content_type)
                 db.add(
                     AppNotification(
                         user_id=uid,
-                        title="Post enviado com sucesso",
-                        body=f"{label} publicado em @{notify_username}",
+                        title=f"{label} publicado",
+                        body=f"@{notify_username}",
                         kind="publish",
                         link="/logs",
                         is_read=False,
@@ -336,27 +389,85 @@ def _execute_publish(
             pass
 
 
-def _log_failure(automation_id: int | None, account_id: int, error: str) -> None:
+def _log_failure(
+    automation_id: int | None,
+    account_id: int,
+    error: str,
+    *,
+    content_type: str | None = None,
+    owner_user_id: int | None = None,
+    username: str | None = None,
+) -> None:
+    from core.notifications import content_label, create_notification
+
+    uid = owner_user_id
+    uname = username
     with session_scope() as db:
-        db.add(PublishLog(
-            automation_id=automation_id,
-            account_id=account_id,
-            status="failed",
-            error=error[:2000],
-        ))
+        db.add(
+            PublishLog(
+                automation_id=automation_id,
+                account_id=account_id,
+                status="failed",
+                content_type=content_type,
+                error=error[:2000],
+            )
+        )
+        if uid is None or uname is None:
+            acc = db.get(InstagramAccount, account_id)
+            if acc:
+                uid = uid or acc.user_id
+                uname = uname or acc.username
+
+    if uid:
+        label = content_label(content_type)
+        create_notification(
+            uid,
+            f"Erro ao publicar {label}",
+            f"@{uname or '?'}: {error[:180]}",
+            kind="warning",
+            link="/logs",
+        )
 
 
 def _mark_account_needs_login(account_id: int, reason: str) -> None:
+    from core.notifications import create_notification
+
     with session_scope() as db:
         acc = db.get(InstagramAccount, account_id)
-        if acc:
-            acc.status = "needs_login"
-            acc.last_error = reason[:1000]
+        if not acc:
+            return
+        prev = acc.status
+        acc.status = "needs_login"
+        acc.last_error = reason[:1000]
+        uid = acc.user_id
+        uname = acc.username
+    if prev != "needs_login":
+        create_notification(
+            uid,
+            f"Conta @{uname} fora do ar",
+            reason[:200] or "Sessão expirada — reconecte a conta",
+            kind="offline",
+            link="/accounts",
+        )
 
 
 def _mark_account_proxy_down(account_id: int, reason: str) -> None:
+    from core.notifications import create_notification
+
     with session_scope() as db:
         acc = db.get(InstagramAccount, account_id)
-        if acc:
-            acc.status = "proxy_down"
-            acc.last_error = reason[:1000]
+        if not acc:
+            return
+        prev = acc.status
+        acc.status = "proxy_down"
+        acc.last_error = reason[:1000]
+        uid = acc.user_id
+        uname = acc.username
+    if prev != "proxy_down":
+        create_notification(
+            uid,
+            f"Conta @{uname} fora do ar",
+            reason[:200] or "Proxy inválido ou fora do ar",
+            kind="offline",
+            link="/accounts",
+        )

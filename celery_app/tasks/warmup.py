@@ -153,6 +153,7 @@ def run_warmup_job(self, job_id: int) -> dict:
         f"@{username}: {len(targets)} perfis para interagir (aleatório + pausas longas).",
         kind="warmup",
         link=f"/warmup/{job_id}",
+        send_push=False,
     )
     _log_publish_style(
         account_id,
@@ -213,7 +214,7 @@ def run_warmup_job(self, job_id: int) -> dict:
             + f" — {detail}",
         )
 
-        # Notifica a cada 5 ações
+        # Notifica a cada 5 ações (só no sino — evita spam no celular)
         if done % 5 == 0:
             create_notification(
                 owner_id,
@@ -221,6 +222,7 @@ def run_warmup_job(self, job_id: int) -> dict:
                 f"{done} ações · última: {action}" + (f" @{target_user}" if target_user else ""),
                 kind="warmup",
                 link=f"/warmup/{job_id}",
+                send_push=False,
             )
 
         log.info("warmup #%s action=%s ok=%s done=%s", job_id, action, ok, done)
@@ -235,7 +237,7 @@ def run_warmup_job(self, job_id: int) -> dict:
         owner_id,
         "Aquecimento concluído",
         f"@{username}: {done} ações realizadas.",
-        kind="success",
+        kind="warmup",
         link=f"/warmup/{job_id}",
     )
     return {"ok": True, "done": done}

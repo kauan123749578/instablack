@@ -29,6 +29,7 @@ _KIND_TO_PREF: dict[str, str] = {
     "account": "account_offline",
     "warning": "errors",
     "metadata": "publish",
+    "success": "warmup",
 }
 
 

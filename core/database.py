@@ -150,6 +150,8 @@ def _sqlite_migrate() -> None:
                 conn.execute(text("ALTER TABLE publish_logs ADD COLUMN like_count INTEGER"))
             if "insights_fetched_at" not in pcols:
                 conn.execute(text("ALTER TABLE publish_logs ADD COLUMN insights_fetched_at DATETIME"))
+            if "content_type" not in pcols:
+                conn.execute(text("ALTER TABLE publish_logs ADD COLUMN content_type VARCHAR(16)"))
         # warmup duration
         if "warmup_jobs" in insp.get_table_names():
             wcols = {c["name"] for c in insp.get_columns("warmup_jobs")}
@@ -211,6 +213,8 @@ def _postgres_migrate() -> None:
                 conn.execute(text("ALTER TABLE publish_logs ADD COLUMN like_count INTEGER"))
             if "insights_fetched_at" not in pcols:
                 conn.execute(text("ALTER TABLE publish_logs ADD COLUMN insights_fetched_at TIMESTAMPTZ"))
+            if "content_type" not in pcols:
+                conn.execute(text("ALTER TABLE publish_logs ADD COLUMN content_type VARCHAR(16)"))
         if "warmup_jobs" in tables:
             wcols = {c["name"] for c in insp.get_columns("warmup_jobs")}
             if "duration_minutes" not in wcols:
