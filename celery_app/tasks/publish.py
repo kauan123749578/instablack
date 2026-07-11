@@ -253,6 +253,7 @@ def _execute_publish(
 
         notify_user_id: int | None = None
         notify_username = username
+        publish_log_id: int | None = None
 
         with session_scope() as db:
             acc = db.get(InstagramAccount, account_id)
@@ -268,33 +269,48 @@ def _execute_publish(
                     auto.last_run_at = dt.datetime.utcnow()
                     auto.total_runs = (auto.total_runs or 0) + 1
 
-            db.add(PublishLog(
+            plog = PublishLog(
                 automation_id=automation_id,
                 account_id=account_id,
                 status="success",
                 media_id=result.get("id"),
                 media_url=result.get("url"),
-            ))
-            notify_user_id = acc.user_id if acc else None
+            )
+            db.add(plog)
+            db.flush()
+            publish_log_id = plog.id
+            notify_user_id = acc.user_id if acc else owner_user_id
             notify_username = acc.username if acc else username
 
-        if notify_user_id:
+        # Notifica sempre o dono da conta (sino + push). force no sino garante o registro.
+        uid = notify_user_id or owner_user_id
+        if uid:
             try:
                 from core.notifications import create_notification
                 from core.webpush import notify_user_publish_success
 
+                label = {"reel": "Reel", "story": "Story", "photo": "Foto"}.get(
+                    content_type, "Post"
+                )
                 create_notification(
-                    notify_user_id,
+                    uid,
                     "Post enviado com sucesso",
-                    f"Publicado em @{notify_username}",
+                    f"{label} publicado em @{notify_username}",
                     kind="publish",
                     link="/logs",
+                    force=True,
                 )
-                notify_user_publish_success(
-                    notify_user_id, notify_username, content_type=content_type
-                )
+                notify_user_publish_success(uid, notify_username, content_type=content_type)
             except Exception:
-                log.exception("Falha ao enviar notificação de publicação")
+                log.exception("Falha ao enviar notificação de publicação user=%s", uid)
+
+        if content_type == "reel" and publish_log_id:
+            try:
+                from celery_app.tasks.insights import sync_all_views
+
+                sync_all_views.apply_async(countdown=90)
+            except Exception:
+                log.debug("Não foi possível agendar sync de views", exc_info=True)
 
         return {"ok": True, **result}
 

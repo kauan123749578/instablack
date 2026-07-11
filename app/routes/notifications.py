@@ -227,7 +227,7 @@ def warmup_start(
     if len(names) < 1:
         return RedirectResponse("/warmup?error=lista", status_code=303)
 
-    allowed_durations = {30, 60, 120, 240, 480}
+    allowed_durations = {5, 10, 15, 20, 30, 60, 120, 240, 480}
     duration = int(duration_minutes or 60)
     if duration not in allowed_durations:
         duration = 60

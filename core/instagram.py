@@ -51,14 +51,23 @@ def _stable_uuids(username: str) -> dict[str, str]:
 def _apply_story_sticker_ids_fix() -> None:
     """Corrige instagrapi: story_sticker_ids deve juntar todos os stickers (e4c3820).
 
-    Bug: usava story_sticker_ids[0] e descartava link/hashtag extras.
+    Em versões antigas usava story_sticker_ids[0] e descartava o link sticker.
+    O mixin correto é UploadPhotoMixin / UploadVideoMixin (não PhotoMixin).
     Ref: https://github.com/subzeroid/instagrapi/commit/e4c3820
     """
+    targets: list[tuple[object, str]] = []
     try:
-        from instagrapi.mixins.photo import PhotoMixin
-        from instagrapi.mixins.video import VideoMixin
+        from instagrapi.mixins.photo import UploadPhotoMixin
+
+        targets.append((UploadPhotoMixin, "photo_configure_to_story"))
     except Exception:
-        return
+        log.warning("UploadPhotoMixin indisponível — patch de story sticker não aplicado (foto)")
+    try:
+        from instagrapi.mixins.video import UploadVideoMixin
+
+        targets.append((UploadVideoMixin, "video_configure_to_story"))
+    except Exception:
+        log.warning("UploadVideoMixin indisponível — patch de story sticker não aplicado (vídeo)")
 
     def _wrap(original):
         def wrapper(self, *args, **kwargs):
@@ -67,40 +76,51 @@ def _apply_story_sticker_ids_fix() -> None:
             def patched_pr(endpoint, data=None, *a, **kw):
                 if isinstance(data, dict) and "story_sticker_ids" in data:
                     data = dict(data)
+                    raw_ids = data.get("story_sticker_ids")
                     ids: list[str] = []
-                    # Reconstrói a partir do payload (ordem alinhada ao teste do commit)
+                    if isinstance(raw_ids, (list, tuple)):
+                        ids = [str(x) for x in raw_ids if x]
+                    elif isinstance(raw_ids, str) and raw_ids.strip():
+                        ids = [p.strip() for p in raw_ids.split(",") if p.strip()]
+
+                    # Garante stickers inferidos do payload (caso a lib tenha cortado no [0])
+                    def _ensure(name: str) -> None:
+                        if name not in ids:
+                            ids.append(name)
+
                     if data.get("story_hashtags"):
-                        ids.append("hashtag_sticker")
+                        _ensure("hashtag_sticker")
                     if data.get("reel_mentions"):
-                        ids.append("mention_sticker")
+                        _ensure("mention_sticker")
                     if data.get("story_polls"):
-                        ids.append("poll_sticker")
+                        _ensure("polling_sticker_v2")
                     if data.get("story_sliders"):
-                        ids.append("slider_sticker")
+                        _ensure("slider_sticker")
                     if data.get("story_questions"):
-                        ids.append("question_sticker")
+                        _ensure("question_sticker")
                     if data.get("story_quizs"):
-                        ids.append("quiz_sticker")
+                        _ensure("quiz_sticker")
                     if data.get("story_countdowns"):
-                        ids.append("countdown_sticker")
-                    # Link sticker — campos usados pelo configure
+                        _ensure("countdown_sticker")
                     if (
                         data.get("story_cta")
                         or data.get("story_link")
                         or data.get("link_text")
-                        or "link_sticker" in str(data.get("story_sticker_ids", ""))
+                        or any("link_sticker" in x for x in ids)
+                        or kwargs.get("links")
                     ):
-                        if "link_sticker_default" not in ids:
-                            ids.append("link_sticker_default")
-                    # Se só veio o primeiro ID (bug), e temos link nos kwargs
-                    if not ids and kwargs.get("links"):
-                        ids.append("link_sticker_default")
-                    if not ids and kwargs.get("hashtags"):
-                        ids.append("hashtag_sticker")
+                        _ensure("link_sticker_default")
+                    # tap_models com type story_link
+                    taps = data.get("tap_models")
+                    if isinstance(taps, str) and "story_link" in taps:
+                        _ensure("link_sticker_default")
                     if ids:
                         data["story_sticker_ids"] = ",".join(ids)
-                    elif isinstance(data["story_sticker_ids"], (list, tuple)):
-                        data["story_sticker_ids"] = ",".join(str(x) for x in data["story_sticker_ids"])
+                        log.info(
+                            "story configure sticker_ids=%s endpoint=%s",
+                            data["story_sticker_ids"],
+                            endpoint,
+                        )
                 return real_pr(endpoint, data, *a, **kw)
 
             self.private_request = patched_pr
@@ -111,12 +131,14 @@ def _apply_story_sticker_ids_fix() -> None:
 
         return wrapper
 
-    if not getattr(PhotoMixin.photo_configure_to_story, "_ib_sticker_fixed", False):
-        PhotoMixin.photo_configure_to_story = _wrap(PhotoMixin.photo_configure_to_story)
-        PhotoMixin.photo_configure_to_story._ib_sticker_fixed = True  # type: ignore[attr-defined]
-    if not getattr(VideoMixin.video_configure_to_story, "_ib_sticker_fixed", False):
-        VideoMixin.video_configure_to_story = _wrap(VideoMixin.video_configure_to_story)
-        VideoMixin.video_configure_to_story._ib_sticker_fixed = True  # type: ignore[attr-defined]
+    for cls, method_name in targets:
+        method = getattr(cls, method_name, None)
+        if method is None or getattr(method, "_ib_sticker_fixed", False):
+            continue
+        wrapped = _wrap(method)
+        wrapped._ib_sticker_fixed = True  # type: ignore[attr-defined]
+        setattr(cls, method_name, wrapped)
+        log.info("Patch story sticker aplicado: %s.%s", cls.__name__, method_name)
 
 
 _apply_story_sticker_ids_fix()
@@ -424,14 +446,15 @@ def _story_links(link_url: str | None) -> list[StoryLink]:
     url = _normalize_url(link_url or "")
     if not url:
         return []
+    # Posição padrão do sticker de link (centro-inferior) — alinhada ao instagrapi
     return [
         StoryLink(
             webUri=url,
             x=0.5,
-            y=0.85,
-            z=1,
-            width=0.45,
-            height=0.08,
+            y=0.8,
+            z=0.0,
+            width=0.5,
+            height=0.14,
             rotation=0.0,
         )
     ]
@@ -441,11 +464,17 @@ def publish_story(cl: Client, media_path: Path, link_url: str | None = None) -> 
     if not media_path.exists():
         raise FileNotFoundError(f"Mídia não encontrada: {media_path}")
     links = _story_links(link_url)
+    if link_url and not links:
+        log.warning("story_link inválido ignorado: %r", link_url)
+    elif links:
+        log.info("Publicando story COM link sticker: %s", links[0].webUri)
+    else:
+        log.info("Publicando story SEM link sticker")
     ext = media_path.suffix.lower()
     if ext in (".mp4", ".mov", ".webm"):
-        media = cl.video_upload_to_story(media_path, links=links)
+        media = cl.video_upload_to_story(media_path, links=links or None)
     else:
-        media = cl.photo_upload_to_story(media_path, links=links)
+        media = cl.photo_upload_to_story(media_path, links=links or None)
     return {"id": str(media.pk), "code": getattr(media, "code", None), "url": None}
 
 

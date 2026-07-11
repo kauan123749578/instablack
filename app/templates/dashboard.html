@@ -66,6 +66,9 @@
       </div>
       <div class="og-kpi-value">{{ format_count(total_views) }}</div>
       <div class="og-kpi-label">Visualizações nos Reels</div>
+      {% if pending_views %}
+      <div class="og-kpi-sub muted" style="font-size:11px;margin-top:4px">Atualizando {{ pending_views }} reel(s)…</div>
+      {% endif %}
     </article>
 
     <article class="og-glass-card og-kpi-card">

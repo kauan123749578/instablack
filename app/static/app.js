@@ -342,18 +342,29 @@
     const card = document.getElementById("notif-card");
     const markBtn = document.getElementById("notif-mark-read");
     if (!btn || !card) return;
+    if (btn.dataset.bound === "1") {
+      loadNotifications();
+      return;
+    }
+    btn.dataset.bound = "1";
 
     btn.addEventListener("click", (e) => {
+      e.preventDefault();
       e.stopPropagation();
-      const open = card.hidden;
-      card.hidden = !open;
-      btn.setAttribute("aria-expanded", open ? "true" : "false");
-      if (open) loadNotifications();
+      const open = card.hasAttribute("hidden");
+      if (open) {
+        card.removeAttribute("hidden");
+        btn.setAttribute("aria-expanded", "true");
+        loadNotifications();
+      } else {
+        card.setAttribute("hidden", "");
+        btn.setAttribute("aria-expanded", "false");
+      }
     });
 
     document.addEventListener("click", (e) => {
-      if (wrap && !wrap.contains(e.target)) {
-        card.hidden = true;
+      if (wrap && !wrap.contains(e.target) && !card.hasAttribute("hidden")) {
+        card.setAttribute("hidden", "");
         btn.setAttribute("aria-expanded", "false");
       }
     });
@@ -364,9 +375,8 @@
       loadNotifications();
     });
 
-    // badge inicial
     loadNotifications();
-    setInterval(loadNotifications, 60000);
+    setInterval(loadNotifications, 30000);
   }
 
   function initContentTypeForm() {

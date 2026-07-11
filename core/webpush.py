@@ -72,22 +72,33 @@ def notify_user_push(
     payload: dict[str, Any],
     *,
     kind: str = "publish",
+    force: bool = False,
 ) -> tuple[int, int]:
     """Envia push para todas as subscriptions do usuário. Retorna (enviados, falhas)."""
     if not vapid_configured():
+        log.warning(
+            "Push ignorado: VAPID não configurado no worker (defina VAPID_PUBLIC_KEY/PRIVATE_KEY)"
+        )
         return 0, 0
 
     from core.database import session_scope
-    from core.notification_prefs import can_notify_push, get_notification_prefs_by_id
+    from core.notification_prefs import DEFAULT_PREFS, can_notify_push, get_notification_prefs_by_id
     from models.models import PushSubscription
 
-    with session_scope() as db:
-        prefs = get_notification_prefs_by_id(db, user_id)
-    if not can_notify_push(kind, prefs):
+    prefs = DEFAULT_PREFS
+    try:
+        with session_scope() as db:
+            prefs = get_notification_prefs_by_id(db, user_id) or DEFAULT_PREFS
+    except Exception:
+        log.exception("Falha ao ler prefs de push user=%s — enviando mesmo assim", user_id)
+
+    if not force and not can_notify_push(kind, prefs):
+        log.info("Push bloqueado por prefs user=%s kind=%s", user_id, kind)
         return 0, 0
 
     rows = _load_user_subscriptions(user_id)
     if not rows:
+        log.warning("Push: nenhuma subscription para user=%s", user_id)
         return 0, 0
 
     sent = 0
@@ -110,12 +121,13 @@ def notify_user_push(
                 if sub:
                     db.delete(sub)
 
+    log.info("Push user=%s kind=%s sent=%s failed=%s", user_id, kind, sent, failed)
     return sent, failed
 
 
 def notify_user_publish_success(user_id: int, username: str, content_type: str = "reel") -> None:
     label = {"reel": "Reel", "story": "Story", "photo": "Foto"}.get(content_type, "Post")
-    notify_user_push(
+    sent, failed = notify_user_push(
         user_id,
         {
             "title": "Post enviado com sucesso",
@@ -124,6 +136,15 @@ def notify_user_publish_success(user_id: int, username: str, content_type: str =
             "tag": f"publish-{username}",
         },
         kind="publish",
+        force=False,
+    )
+    log.info(
+        "notify_user_publish_success user=%s @%s type=%s sent=%s failed=%s",
+        user_id,
+        username,
+        content_type,
+        sent,
+        failed,
     )
 
 
@@ -137,4 +158,5 @@ def send_test_push(user_id: int) -> tuple[int, int]:
             "tag": "instablack-test",
         },
         kind="publish",
+        force=True,
     )

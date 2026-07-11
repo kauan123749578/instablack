@@ -402,6 +402,7 @@ def home(
             "top_reels": top_reels,
             "warming_jobs": warming_jobs,
             "failed_videos": failed_videos,
+            "pending_views": int(pending_views),
         },
     )
 

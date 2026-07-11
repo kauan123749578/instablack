@@ -22,8 +22,8 @@ from models.models import InstagramAccount, PublishLog
 
 log = logging.getLogger(__name__)
 
-STALE_HOURS = 6
-MAX_LOGS_PER_RUN = 40
+STALE_HOURS = 1
+MAX_LOGS_PER_RUN = 80
 
 
 @celery_app.task(name="celery_app.tasks.insights.sync_all_views")

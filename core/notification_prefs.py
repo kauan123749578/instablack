@@ -75,15 +75,17 @@ def prefs_from_form(**fields: str) -> dict[str, bool]:
 
 
 def can_notify_in_app(kind: str, prefs: dict[str, bool] | None = None) -> bool:
-    if not prefs or not prefs.get("enabled", True):
+    p = prefs if prefs is not None else DEFAULT_PREFS
+    if not p.get("enabled", True):
         return False
     pref_key = _KIND_TO_PREF.get(kind)
     if pref_key:
-        return bool(prefs.get(pref_key, True))
+        return bool(p.get(pref_key, True))
     return True
 
 
 def can_notify_push(kind: str, prefs: dict[str, bool] | None = None) -> bool:
-    if not prefs or not prefs.get("enabled", True) or not prefs.get("desktop", True):
+    p = prefs if prefs is not None else DEFAULT_PREFS
+    if not p.get("enabled", True) or not p.get("desktop", True):
         return False
-    return can_notify_in_app(kind, prefs)
+    return can_notify_in_app(kind, p)
