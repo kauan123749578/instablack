@@ -472,9 +472,9 @@ def publish_story(cl: Client, media_path: Path, link_url: str | None = None) -> 
         log.info("Publicando story SEM link sticker")
     ext = media_path.suffix.lower()
     if ext in (".mp4", ".mov", ".webm"):
-        media = cl.video_upload_to_story(media_path, links=links or None)
+        media = cl.video_upload_to_story(media_path, links=links)
     else:
-        media = cl.photo_upload_to_story(media_path, links=links or None)
+        media = cl.photo_upload_to_story(media_path, links=links)
     return {"id": str(media.pk), "code": getattr(media, "code", None), "url": None}
 
 
