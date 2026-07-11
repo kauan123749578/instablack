@@ -18,7 +18,7 @@ from instagrapi.exceptions import (
     PleaseWaitFewMinutes,
     TwoFactorRequired,
 )
-from instagrapi.types import StoryLink, StorySticker
+from instagrapi.types import StoryLink
 
 from app.utils.proxy import normalize_proxy
 
@@ -464,37 +464,18 @@ def publish_story(cl: Client, media_path: Path, link_url: str | None = None) -> 
     if not media_path.exists():
         raise FileNotFoundError(f"Mídia não encontrada: {media_path}")
     links = _story_links(link_url)
-    stickers: list[StorySticker] = []
     if links:
-        link = links[0]
-        url = str(link.webUri)
-        log.info("Publicando story COM link sticker: %s", url)
-        # Stickers explícitos + links — reforça o payload do configure_to_story
-        stickers = [
-            StorySticker(
-                type="story_link",
-                x=float(link.x),
-                y=float(link.y),
-                z=float(link.z),
-                width=float(link.width),
-                height=float(link.height),
-                rotation=float(link.rotation),
-                extra={
-                    "link_type": "web",
-                    "url": url,
-                    "tap_state_str_id": "link_sticker_default",
-                },
-            )
-        ]
+        log.info("Publicando story COM link sticker: %s", links[0].webUri)
     elif link_url:
         log.warning("story_link inválido ignorado: %r", link_url)
     else:
         log.info("Publicando story SEM link sticker")
 
+    # API oficial do instagrapi: só `links=[StoryLink(...)]`.
+    # Stickers custom tipo story_link conflitam com o configure e o Instagram
+    # pode descartar o link. Conta precisa ser elegível (pro/creator / limiar de seguidores).
     ext = media_path.suffix.lower()
     kwargs: dict = {"links": links}
-    if stickers:
-        kwargs["stickers"] = stickers
     if ext in (".mp4", ".mov", ".webm"):
         media = cl.video_upload_to_story(media_path, **kwargs)
     else:

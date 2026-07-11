@@ -6,6 +6,10 @@
   <p class="muted page-header-sub">Histórico completo — sucessos, erros e publicações ignoradas</p>
 </div>
 
+{% if request.query_params.get('watch') == '1' %}
+<div class="alert alert-ok">Publicação na fila — esta página atualiza sozinha a cada poucos segundos.</div>
+{% endif %}
+
 <div class="logs-stats">
   <span class="og-badge badge-green">{{ counts.get('success', 0) }} sucesso</span>
   <span class="og-badge badge-red">{{ counts.get('failed', 0) }} erro</span>
@@ -33,11 +37,11 @@
   <a href="/logs" class="btn btn-sm" data-nav="/logs">Limpar</a>
 </form>
 
-<div class="og-glass-card og-table-panel" style="margin-top:16px">
-  <div class="og-table-wrap">
+<div class="og-glass-card og-table-panel" style="margin-top:16px" data-latest-id="{{ logs[0].id if logs else 0 }}">
+  <div class="og-table-wrap hide-scrollbar">
     {% if logs %}
     <table class="og-table">
-      <thead>
+    <thead>
         <tr>
           <th>Quando</th>
           <th>Conta</th>
@@ -48,7 +52,7 @@
       </thead>
       <tbody>
         {% for log in logs %}
-        <tr>
+        <tr data-log-id="{{ log.id }}">
           <td class="og-muted">{{ log.created_at | localtime('%d/%m/%Y %H:%M:%S') }}</td>
           <td><strong>@{{ log.account.username }}</strong></td>
           <td class="og-muted">

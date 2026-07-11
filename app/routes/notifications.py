@@ -28,10 +28,35 @@ from models.models import (
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["notifications-warmup"])
 
+# Evita spam de push quando vários abas fazem poll do mesmo log
+_recent_push_log_ids: set[int] = set()
+_RECENT_PUSH_MAX = 200
+
 
 class SubscriptionIn(BaseModel):
     endpoint: str
     keys: dict
+
+
+def _maybe_push_for_new_logs(user_id: int, rows: list[PublishLog]) -> None:
+    """Envia push pelo processo web (tem VAPID) quando o poll vê sucesso novo.
+
+    O worker Celery às vezes sobe sem as envs VAPID — o teste no perfil funciona,
+    mas o push pós-publicação falha. O poll do painel corrige isso.
+    """
+    for r in rows:
+        if r.status != "success" or r.id in _recent_push_log_ids:
+            continue
+        _recent_push_log_ids.add(r.id)
+        if len(_recent_push_log_ids) > _RECENT_PUSH_MAX:
+            _recent_push_log_ids.clear()
+        try:
+            uname = r.account.username if r.account else "conta"
+            from core.webpush import notify_user_publish_success
+
+            notify_user_publish_success(user_id, uname, content_type="reel")
+        except Exception:
+            log.exception("Push via poll falhou user=%s log=%s", user_id, r.id)
 
 
 @router.get("/api/vapid-public-key")
@@ -134,7 +159,10 @@ def api_logs_latest(
     )
     if since_id > 0:
         q = q.where(PublishLog.id > since_id)
-    rows = db.scalars(q).all()
+    rows = list(db.scalars(q).all())
+    # Só dispara push em deltas (since_id>0), não no carregamento inicial
+    if since_id > 0 and rows:
+        _maybe_push_for_new_logs(user.id, rows)
     return {
         "items": [
             {
@@ -152,52 +180,83 @@ def api_logs_latest(
     }
 
 
+def _sync_notifications_from_logs(db: Session, user: User) -> list[PublishLog]:
+    """Cria notificações in-app a partir de PublishLog de sucesso faltantes.
+
+    Cobre worker antigo, falha silenciosa no Celery, ou deploy parcial.
+    Retorna os logs novos (mais recente primeiro) para eventual push.
+    """
+    newest_notif_at = db.scalar(
+        select(func.max(AppNotification.created_at)).where(AppNotification.user_id == user.id)
+    )
+    q = (
+        select(PublishLog)
+        .join(PublishLog.account)
+        .where(
+            InstagramAccount.user_id == user.id,
+            PublishLog.status == "success",
+        )
+        .options(selectinload(PublishLog.account))
+        .order_by(PublishLog.created_at.desc())
+        .limit(15)
+    )
+    if newest_notif_at is not None:
+        q = q.where(PublishLog.created_at > newest_notif_at)
+    recent_ok = list(db.scalars(q).all())
+    if not recent_ok:
+        # Sino vazio + logs antigos: backfill dos 10 mais recentes
+        existing = db.scalar(
+            select(func.count(AppNotification.id)).where(AppNotification.user_id == user.id)
+        ) or 0
+        if existing > 0:
+            return []
+        recent_ok = list(
+            db.scalars(
+                select(PublishLog)
+                .join(PublishLog.account)
+                .where(
+                    InstagramAccount.user_id == user.id,
+                    PublishLog.status == "success",
+                )
+                .options(selectinload(PublishLog.account))
+                .order_by(PublishLog.created_at.desc())
+                .limit(10)
+            ).all()
+        )
+    if not recent_ok:
+        return []
+    for plog in reversed(recent_ok):
+        uname = plog.account.username if plog.account else "?"
+        db.add(
+            AppNotification(
+                user_id=user.id,
+                title="Post enviado com sucesso",
+                body=f"Publicado em @{uname}",
+                kind="publish",
+                link="/logs",
+                is_read=False,
+                created_at=plog.created_at,
+            )
+        )
+    db.commit()
+    return recent_ok
+
+
 @router.get("/api/notifications")
 def api_list_notifications(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    # Backfill: se o sino está vazio mas já houve posts com sucesso, cria as notificações
-    # (cobre worker antigo / falha silenciosa no Celery).
-    existing = db.scalar(
-        select(func.count(AppNotification.id)).where(AppNotification.user_id == user.id)
-    ) or 0
-    if existing == 0:
-        recent_ok = db.scalars(
-            select(PublishLog)
-            .join(PublishLog.account)
-            .where(
-                InstagramAccount.user_id == user.id,
-                PublishLog.status == "success",
-            )
-            .options(selectinload(PublishLog.account))
-            .order_by(PublishLog.created_at.desc())
-            .limit(10)
-        ).all()
-        for plog in reversed(recent_ok):
-            uname = plog.account.username if plog.account else "?"
-            db.add(
-                AppNotification(
-                    user_id=user.id,
-                    title="Post enviado com sucesso",
-                    body=f"Publicado em @{uname}",
-                    kind="publish",
-                    link="/logs",
-                    is_read=False,
-                    created_at=plog.created_at,
-                )
-            )
-        if recent_ok:
-            db.commit()
-            # Tenta push do post mais recente (se o celular já ativou)
-            try:
-                latest = recent_ok[0]
-                uname = latest.account.username if latest.account else "conta"
-                from core.webpush import notify_user_publish_success
+    synced = _sync_notifications_from_logs(db, user)
+    if synced:
+        try:
+            latest = synced[0]
+            uname = latest.account.username if latest.account else "conta"
+            from core.webpush import notify_user_publish_success
 
-                notify_user_publish_success(user.id, uname, content_type="reel")
-            except Exception:
-                log.exception("Backfill push falhou user=%s", user.id)
+            notify_user_publish_success(user.id, uname, content_type="reel")
+        except Exception:
+            log.exception("Sync push falhou user=%s", user.id)
 
     rows = db.scalars(
         select(AppNotification)

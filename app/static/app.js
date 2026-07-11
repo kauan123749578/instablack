@@ -389,7 +389,98 @@
     }
 
     poll();
-    setInterval(poll, 4000);
+    setInterval(poll, 2500);
+  }
+
+  function initLogsWatchPoll() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("watch") !== "1") return;
+    const tbody = document.querySelector(".og-table tbody");
+    const panel = document.querySelector(".og-table-panel");
+    if (!panel) return;
+    if (panel.dataset.watchBound === "1") return;
+    panel.dataset.watchBound = "1";
+
+    let latest = 0;
+    tbody?.querySelectorAll("tr[data-log-id]").forEach((tr) => {
+      latest = Math.max(latest, Number(tr.dataset.logId || 0));
+    });
+    if (!latest) {
+      latest = Number(panel.dataset.latestId || 0);
+    }
+
+    const badgeFor = (s) => {
+      if (s === "success") return "badge-green";
+      if (s === "failed") return "badge-red";
+      return "badge-yellow";
+    };
+    const labelFor = (s) => ({ success: "Sucesso", failed: "Erro", skipped: "Ignorada" }[s] || s);
+
+    let ticks = 0;
+    const maxTicks = 60; // ~2 min a 2s
+
+    async function poll() {
+      ticks += 1;
+      if (ticks > maxTicks) return;
+      try {
+        const res = await fetch("/api/logs/latest?since_id=" + latest);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data.items || !data.items.length) {
+          if (ticks < maxTicks) setTimeout(poll, 2000);
+          return;
+        }
+        let table = document.querySelector(".og-table");
+        if (!table) {
+          const wrap = document.querySelector(".og-table-wrap");
+          if (wrap) {
+            wrap.innerHTML =
+              '<table class="og-table"><thead><tr>' +
+              "<th>Quando</th><th>Conta</th><th>Automação</th><th>Status</th><th>Detalhe</th>" +
+              "</tr></thead><tbody></tbody></table>";
+            table = wrap.querySelector(".og-table");
+            const empty = wrap.querySelector(".og-empty");
+            if (empty) empty.remove();
+          }
+        }
+        const body = table && table.querySelector("tbody");
+        if (!body) {
+          if (ticks < maxTicks) setTimeout(poll, 2000);
+          return;
+        }
+        for (const item of data.items.reverse()) {
+          if (body.querySelector('tr[data-log-id="' + item.id + '"]')) continue;
+          const when = item.created_at
+            ? new Date(item.created_at).toLocaleString("pt-BR", {
+                day: "2-digit", month: "2-digit", year: "numeric",
+                hour: "2-digit", minute: "2-digit", second: "2-digit",
+              })
+            : "";
+          let detail = "—";
+          if (item.media_url) {
+            detail = '<a href="' + escapeHtml(item.media_url) + '" target="_blank" rel="noopener">Abrir post</a>';
+          } else if (item.error) {
+            detail = '<span class="og-muted log-error-cell">' + escapeHtml(item.error) + "</span>";
+          }
+          const tr = document.createElement("tr");
+          tr.dataset.logId = String(item.id);
+          tr.className = "log-row-new";
+          tr.innerHTML =
+            '<td class="og-muted">' + when + "</td>" +
+            "<td><strong>@" + escapeHtml(item.username || "?") + "</strong></td>" +
+            '<td class="og-muted">' + escapeHtml(item.automation || "Post imediato") + "</td>" +
+            '<td><span class="og-badge ' + badgeFor(item.status) + '">' + labelFor(item.status) + "</span></td>" +
+            "<td>" + detail + "</td>";
+          body.prepend(tr);
+          latest = Math.max(latest, item.id);
+          panel.dataset.latestId = String(latest);
+        }
+        loadNotifications();
+      } catch (_) {}
+      if (ticks < maxTicks) setTimeout(poll, 2000);
+    }
+
+    setTimeout(poll, 1500);
   }
 
   function initNotifCard() {
@@ -976,6 +1067,7 @@
     initProfileNotifications();
     initNotifCard();
     initDashActivityPoll();
+    initLogsWatchPoll();
   }
 
   initPage();
