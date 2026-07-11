@@ -18,6 +18,7 @@ from core.webpush import send_test_push, vapid_configured
 from models.models import (
     AppNotification,
     InstagramAccount,
+    PublishLog,
     PushSubscription,
     User,
     WarmupJob,
@@ -116,11 +117,88 @@ def api_push_test(
     return {"ok": True, "sent": sent, "failed": failed}
 
 
+@router.get("/api/logs/latest")
+def api_logs_latest(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    since_id: int = 0,
+):
+    """Polling leve para atualizar logs após post imediato."""
+    q = (
+        select(PublishLog)
+        .join(PublishLog.account)
+        .where(InstagramAccount.user_id == user.id)
+        .options(selectinload(PublishLog.account), selectinload(PublishLog.automation))
+        .order_by(PublishLog.created_at.desc())
+        .limit(20)
+    )
+    if since_id > 0:
+        q = q.where(PublishLog.id > since_id)
+    rows = db.scalars(q).all()
+    return {
+        "items": [
+            {
+                "id": r.id,
+                "status": r.status,
+                "username": r.account.username if r.account else "",
+                "automation": r.automation.name if r.automation else "Post imediato",
+                "error": (r.error or "")[:200],
+                "media_url": r.media_url,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in rows
+        ],
+        "latest_id": rows[0].id if rows else since_id,
+    }
+
+
 @router.get("/api/notifications")
 def api_list_notifications(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    # Backfill: se o sino está vazio mas já houve posts com sucesso, cria as notificações
+    # (cobre worker antigo / falha silenciosa no Celery).
+    existing = db.scalar(
+        select(func.count(AppNotification.id)).where(AppNotification.user_id == user.id)
+    ) or 0
+    if existing == 0:
+        recent_ok = db.scalars(
+            select(PublishLog)
+            .join(PublishLog.account)
+            .where(
+                InstagramAccount.user_id == user.id,
+                PublishLog.status == "success",
+            )
+            .options(selectinload(PublishLog.account))
+            .order_by(PublishLog.created_at.desc())
+            .limit(10)
+        ).all()
+        for plog in reversed(recent_ok):
+            uname = plog.account.username if plog.account else "?"
+            db.add(
+                AppNotification(
+                    user_id=user.id,
+                    title="Post enviado com sucesso",
+                    body=f"Publicado em @{uname}",
+                    kind="publish",
+                    link="/logs",
+                    is_read=False,
+                    created_at=plog.created_at,
+                )
+            )
+        if recent_ok:
+            db.commit()
+            # Tenta push do post mais recente (se o celular já ativou)
+            try:
+                latest = recent_ok[0]
+                uname = latest.account.username if latest.account else "conta"
+                from core.webpush import notify_user_publish_success
+
+                notify_user_publish_success(user.id, uname, content_type="reel")
+            except Exception:
+                log.exception("Backfill push falhou user=%s", user.id)
+
     rows = db.scalars(
         select(AppNotification)
         .where(AppNotification.user_id == user.id)

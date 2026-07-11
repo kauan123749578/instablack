@@ -202,7 +202,7 @@
 
   <div class="og-bottom-grid">
 
-    <section class="og-glass-card og-panel-activity">
+    <section class="og-glass-card og-panel-activity" id="dash-activity-panel" data-latest-id="{{ recent_logs[0].id if recent_logs else 0 }}">
       <div class="og-card-head">
         <div>
           <h2 class="og-card-title">Log de atividades</h2>
@@ -211,9 +211,9 @@
         <a href="/logs" class="og-link" data-nav="/logs">Ver todos</a>
       </div>
       {% if recent_logs %}
-      <ul class="og-timeline">
+      <ul class="og-timeline" id="dash-activity-list">
         {% for log in recent_logs %}
-        <li class="og-timeline-item">
+        <li class="og-timeline-item" data-log-id="{{ log.id }}">
           <span class="og-timeline-icon og-timeline-icon--{{ log.status }}">
             {% if log.status == 'success' %}<i data-lucide="check"></i>
             {% elif log.status == 'failed' %}<i data-lucide="x"></i>
@@ -228,7 +228,8 @@
         {% endfor %}
       </ul>
       {% else %}
-      <div class="og-empty">Nenhuma atividade registrada ainda. Publicações aparecem aqui automaticamente.</div>
+      <div class="og-empty" id="dash-activity-empty">Nenhuma atividade registrada ainda. Publicações aparecem aqui automaticamente.</div>
+      <ul class="og-timeline" id="dash-activity-list" hidden></ul>
       {% endif %}
     </section>
 

@@ -386,7 +386,7 @@ async def create_automation(
             if len(video_entries) > 1:
                 countdown += max(30, len(accounts) * 5)
         return RedirectResponse(
-            "/automations?posted=1",
+            "/logs?watch=1",
             status_code=status.HTTP_303_SEE_OTHER,
         )
 

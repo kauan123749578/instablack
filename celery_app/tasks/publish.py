@@ -282,27 +282,34 @@ def _execute_publish(
             notify_user_id = acc.user_id if acc else owner_user_id
             notify_username = acc.username if acc else username
 
-        # Notifica sempre o dono da conta (sino + push). force no sino garante o registro.
-        uid = notify_user_id or owner_user_id
-        if uid:
-            try:
-                from core.notifications import create_notification
-                from core.webpush import notify_user_publish_success
+            # Notificação in-app NA MESMA transação do log (garante aparecer no sino)
+            uid = notify_user_id or owner_user_id
+            if uid:
+                from models.models import AppNotification
 
                 label = {"reel": "Reel", "story": "Story", "photo": "Foto"}.get(
                     content_type, "Post"
                 )
-                create_notification(
-                    uid,
-                    "Post enviado com sucesso",
-                    f"{label} publicado em @{notify_username}",
-                    kind="publish",
-                    link="/logs",
-                    force=True,
+                db.add(
+                    AppNotification(
+                        user_id=uid,
+                        title="Post enviado com sucesso",
+                        body=f"{label} publicado em @{notify_username}",
+                        kind="publish",
+                        link="/logs",
+                        is_read=False,
+                    )
                 )
+
+        # Push no celular (fora da TX — não pode bloquear o commit do log)
+        uid = notify_user_id or owner_user_id
+        if uid:
+            try:
+                from core.webpush import notify_user_publish_success
+
                 notify_user_publish_success(uid, notify_username, content_type=content_type)
             except Exception:
-                log.exception("Falha ao enviar notificação de publicação user=%s", uid)
+                log.exception("Falha ao enviar push de publicação user=%s", uid)
 
         if content_type == "reel" and publish_log_id:
             try:

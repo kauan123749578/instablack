@@ -336,6 +336,62 @@
       .replace(/"/g, "&quot;");
   }
 
+  function initDashActivityPoll() {
+    const panel = document.getElementById("dash-activity-panel");
+    const list = document.getElementById("dash-activity-list");
+    if (!panel || !list || panel.dataset.pollBound === "1") return;
+    panel.dataset.pollBound = "1";
+    let latest = Number(panel.dataset.latestId || 0);
+
+    const iconFor = (s) => {
+      if (s === "success") return "check";
+      if (s === "failed") return "x";
+      return "minus";
+    };
+    const labelFor = (s) => ({ success: "Sucesso", failed: "Erro", skipped: "Ignorada" }[s] || s);
+    const badgeFor = (s) => {
+      if (s === "success") return "badge-green";
+      if (s === "failed") return "badge-red";
+      return "badge-yellow";
+    };
+
+    async function poll() {
+      try {
+        const res = await fetch("/api/logs/latest?since_id=" + latest);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data.items || !data.items.length) return;
+        const empty = document.getElementById("dash-activity-empty");
+        if (empty) empty.hidden = true;
+        list.hidden = false;
+        for (const item of data.items.reverse()) {
+          if (list.querySelector('[data-log-id="' + item.id + '"]')) continue;
+          const when = item.created_at
+            ? new Date(item.created_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+            : "";
+          const li = document.createElement("li");
+          li.className = "og-timeline-item";
+          li.dataset.logId = String(item.id);
+          li.innerHTML =
+            '<span class="og-timeline-icon og-timeline-icon--' + item.status + '"><i data-lucide="' + iconFor(item.status) + '"></i></span>' +
+            '<div class="og-timeline-body"><strong>@' + escapeHtml(item.username || "?") +
+            (item.automation ? " · " + escapeHtml(item.automation) : "") +
+            "</strong><span>" + when + "</span></div>" +
+            '<span class="og-badge og-timeline-badge ' + badgeFor(item.status) + '">' + labelFor(item.status) + "</span>";
+          list.prepend(li);
+          latest = Math.max(latest, item.id);
+          panel.dataset.latestId = String(latest);
+          while (list.children.length > 12) list.removeChild(list.lastElementChild);
+        }
+        try { if (window.lucide) lucide.createIcons(); } catch (_) {}
+        loadNotifications();
+      } catch (_) {}
+    }
+
+    poll();
+    setInterval(poll, 4000);
+  }
+
   function initNotifCard() {
     const wrap = document.getElementById("notif-wrap");
     const btn = document.getElementById("notif-bell-btn");
@@ -919,6 +975,7 @@
     initWebPush();
     initProfileNotifications();
     initNotifCard();
+    initDashActivityPoll();
   }
 
   initPage();
