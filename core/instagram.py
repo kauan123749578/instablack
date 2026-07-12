@@ -110,118 +110,12 @@ def _extract_link_from_kwargs(links) -> dict | None:
     }
 
 
-IG_WEB_APP_ID = "936619743392459"  # mesmo do Instagram Web / INSSIST
-
-
-def _strip_link_from_tap_models(tap_models_raw):
-    """Tira story_link do tap_models — senão o IG desenha o sticker genérico."""
-    if not tap_models_raw:
-        return None
-    taps = tap_models_raw
-    if isinstance(taps, str):
-        try:
-            taps = json.loads(taps)
-        except json.JSONDecodeError:
-            return tap_models_raw
-    if not isinstance(taps, list):
-        return tap_models_raw
-    cleaned = [
-        t
-        for t in taps
-        if not (
-            isinstance(t, dict)
-            and (
-                t.get("type") in ("story_link", "link")
-                or t.get("tap_state_str_id") == "link_sticker_default"
-            )
-        )
-    ]
-    return json.dumps(cleaned) if cleaned else None
-
-
-def _web_configure_story(client, data: dict, link_payload: dict) -> dict:
-    """Configure via API web — é o que o INSSIST usa para o sticker nativo."""
-    upload_id = data.get("upload_id")
-    if not upload_id:
-        raise RuntimeError("configure_to_story sem upload_id")
-
-    cookies = {}
-    try:
-        cookies = dict(getattr(client, "cookie_dict", None) or {})
-    except Exception:
-        cookies = {}
-    sessionid = cookies.get("sessionid") or getattr(client, "sessionid", None)
-    csrftoken = cookies.get("csrftoken") or getattr(client, "token", None)
-    if not sessionid or not csrftoken:
-        raise RuntimeError("Sessão sem sessionid/csrftoken para configure web")
-
-    body = {
-        "upload_id": str(upload_id),
-        "story_link_stickers": json.dumps([link_payload]),
-    }
-    for key in ("reel_mentions", "story_locations", "audience", "caption"):
-        if data.get(key) is not None:
-            body[key] = data[key]
-
-    proxies = None
-    try:
-        proxies = getattr(getattr(client, "private", None), "proxies", None)
-    except Exception:
-        proxies = None
-
-    headers = {
-        "accept": "*/*",
-        "content-type": "application/x-www-form-urlencoded",
-        "x-csrftoken": str(csrftoken),
-        "x-ig-app-id": IG_WEB_APP_ID,
-        "x-requested-with": "XMLHttpRequest",
-        "origin": "https://www.instagram.com",
-        "referer": "https://www.instagram.com/",
-        "user-agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/122.0.0.0 Safari/537.36"
-        ),
-    }
-    cookie_jar = {"sessionid": str(sessionid), "csrftoken": str(csrftoken)}
-    if cookies.get("ds_user_id"):
-        cookie_jar["ds_user_id"] = str(cookies["ds_user_id"])
-    if cookies.get("mid"):
-        cookie_jar["mid"] = str(cookies["mid"])
-    if cookies.get("ig_did"):
-        cookie_jar["ig_did"] = str(cookies["ig_did"])
-
-    url = "https://www.instagram.com/api/v1/web/create/configure_to_story/"
-    resp = requests.post(
-        url,
-        data=body,
-        headers=headers,
-        cookies=cookie_jar,
-        proxies=proxies,
-        timeout=60,
-    )
-    log.info(
-        "web configure_to_story status=%s body_keys=%s",
-        resp.status_code,
-        list(body.keys()),
-    )
-    try:
-        payload = resp.json()
-    except Exception:
-        raise RuntimeError(f"configure web falhou: HTTP {resp.status_code} {resp.text[:300]}")
-    if resp.status_code >= 400 or (isinstance(payload, dict) and payload.get("status") == "fail"):
-        raise RuntimeError(f"configure web rejeitado: {payload}")
-    # espelha last_json do client (instagrapi usa isso em erros)
-    try:
-        client.last_json = payload
-        client.last_response = resp
-    except Exception:
-        pass
-    return payload
-
-
 def _apply_story_sticker_ids_fix() -> None:
-    """Injeta story_link_stickers + remove tap_models de link + configure via WEB (INSSIST)."""
+    """Só reforça story_sticker_ids + story_link_stickers no configure MOBILE.
+
+    NÃO redireciona para a API web (quebrava o upload / extract do media).
+    O visual do botão vem do desenho na mídia; o links=[StoryLink] faz o tap.
+    """
     targets: list[tuple[object, str]] = []
     try:
         from instagrapi.mixins.photo import UploadPhotoMixin
@@ -279,33 +173,19 @@ def _apply_story_sticker_ids_fix() -> None:
                     link_payload = _extract_link_from_kwargs(kwargs.get("links"))
 
                 if link_payload:
-                    data["story_link_stickers"] = json.dumps([link_payload])
+                    # Mantém tap_models do instagrapi + reforça story_link_stickers
+                    # (sem ir para API web — isso quebrava a publicação)
+                    if not data.get("story_link_stickers"):
+                        data["story_link_stickers"] = json.dumps([link_payload])
                     _ensure("link_sticker_default")
-                    # CRÍTICO: sem isso o IG desenha o sticker genérico
-                    cleaned = _strip_link_from_tap_models(data.get("tap_models"))
-                    if cleaned:
-                        data["tap_models"] = cleaned
-                    else:
-                        data.pop("tap_models", None)
-                    data.pop("story_cta", None)
-                    if ids:
-                        data["story_sticker_ids"] = ",".join(ids)
                     log.info(
-                        "story nativo via WEB: url=%s sticker_ids=%s",
+                        "story configure mobile+link: url=%s",
                         link_payload.get("url"),
-                        data.get("story_sticker_ids"),
                     )
-                    try:
-                        return _web_configure_story(self, data, link_payload)
-                    except Exception as exc:
-                        log.warning(
-                            "configure WEB falhou (%s) — fallback mobile sem tap_models link",
-                            exc,
-                        )
-                        return real_pr(endpoint, data, *a, **kw)
 
                 if ids:
                     data["story_sticker_ids"] = ",".join(ids)
+
                 return real_pr(endpoint, data, *a, **kw)
 
             self.private_request = patched_pr
@@ -318,12 +198,12 @@ def _apply_story_sticker_ids_fix() -> None:
 
     for cls, method_name in targets:
         method = getattr(cls, method_name, None)
-        if method is None or getattr(method, "_ib_story_link_native_v2", False):
+        if method is None or getattr(method, "_ib_story_link_stable", False):
             continue
         wrapped = _wrap(method)
-        wrapped._ib_story_link_native_v2 = True  # type: ignore[attr-defined]
+        wrapped._ib_story_link_stable = True  # type: ignore[attr-defined]
         setattr(cls, method_name, wrapped)
-        log.info("Patch story link NATIVO v2 (web): %s.%s", cls.__name__, method_name)
+        log.info("Patch story link estável (mobile): %s.%s", cls.__name__, method_name)
 
 
 _apply_story_sticker_ids_fix()
@@ -700,11 +580,27 @@ def publish_story(
 
     # Desenho já está na mídia; links= posiciona o tap do Instagram em cima do pill.
     ext = media_path.suffix.lower()
-    kwargs: dict = {"links": links}
-    if ext in (".mp4", ".mov", ".webm"):
-        media = cl.video_upload_to_story(media_path, **kwargs)
-    else:
-        media = cl.photo_upload_to_story(media_path, **kwargs)
+    is_video = ext in (".mp4", ".mov", ".webm")
+
+    def _upload(use_links: list) -> object:
+        kwargs: dict = {"links": use_links}
+        if is_video:
+            return cl.video_upload_to_story(media_path, **kwargs)
+        return cl.photo_upload_to_story(media_path, **kwargs)
+
+    try:
+        media = _upload(links)
+    except Exception as exc:
+        # Link às vezes quebra o configure — story ainda sobe com o desenho
+        if links:
+            log.warning(
+                "Story com link falhou (%s) — republicando SEM link (desenho mantido)",
+                exc,
+            )
+            media = _upload([])
+        else:
+            raise
+
     return {"id": str(media.pk), "code": getattr(media, "code", None), "url": None}
 
 

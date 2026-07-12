@@ -85,7 +85,7 @@ def link_sticker_geometry(text: str = "Link") -> dict[str, float]:
     sticker = render_link_sticker_rgba(label, scale=2)
     width = STICKER_WIDTH_FRAC
     aspect = sticker.height / max(1, sticker.width)
-    height = min(0.18, max(0.08, width * aspect))
+    height = min(0.14, max(0.08, width * aspect))
     return {
         "x": 0.5,
         "y": STICKER_Y_CENTER,
