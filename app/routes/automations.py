@@ -39,25 +39,6 @@ def _story_link_value(content_type: str, story_link: str) -> str | None:
     return link or None
 
 
-def _story_sticker_text_value(content_type: str, story_sticker_text: str, story_link: str) -> str | None:
-    if content_type != "story":
-        return None
-    text = (story_sticker_text or "").strip()[:40]
-    if text:
-        return text
-    # Sem texto: se tiver link, usa o domínio como label do sticker desenhado
-    link = (story_link or "").strip()
-    if not link:
-        return None
-    try:
-        from urllib.parse import urlparse
-
-        host = urlparse(link if "://" in link else f"https://{link}").hostname or ""
-        return host.replace("www.", "")[:40] or "Link"
-    except Exception:
-        return "Link"
-
-
 def _collect_upload_files(form, *, field_names: tuple[str, ...]) -> list[UploadFile]:
     """Lê todos os arquivos do multipart (FastAPI/Starlette às vezes entrega só 1 via File())."""
     out: list[UploadFile] = []
@@ -338,7 +319,6 @@ async def create_automation(
     content_type: str = Form("reel"),
     caption: str = Form(""),
     story_link: str = Form(""),
-    story_sticker_text: str = Form(""),
     schedule_mode: str = Form("recurring"),
     interval_minutes: int = Form(60),
     calendar_days: str = Form(""),
@@ -462,7 +442,6 @@ async def create_automation(
                         caption,
                         content_type,
                         _story_link_value(content_type, story_link),
-                        _story_sticker_text_value(content_type, story_sticker_text, story_link),
                     ],
                     countdown=countdown + acc_idx * 5,
                 )
@@ -491,7 +470,6 @@ async def create_automation(
             thumb_key=thumb_key,
             thumb_original_name=thumb_original_name,
             story_link=_story_link_value(content_type, story_link),
-            story_sticker_text=_story_sticker_text_value(content_type, story_sticker_text, story_link),
             schedule_type="calendar",
             calendar_days=days_to_json(days),
             calendar_time=calendar_time.strip(),
@@ -519,7 +497,6 @@ async def create_automation(
         thumb_key=thumb_key,
         thumb_original_name=thumb_original_name,
         story_link=_story_link_value(content_type, story_link),
-        story_sticker_text=_story_sticker_text_value(content_type, story_sticker_text, story_link),
         schedule_type="interval",
         interval_minutes=interval_minutes,
         status="active",

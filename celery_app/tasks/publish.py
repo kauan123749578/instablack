@@ -162,7 +162,6 @@ def publish_once(
     caption: str,
     content_type: str,
     story_link: str | None = None,
-    story_sticker_text: str | None = None,
 ) -> dict:
     """Publicação única imediata (sem automação recorrente)."""
     return _execute_publish(
@@ -173,7 +172,6 @@ def publish_once(
         caption=caption or "",
         content_type=content_type or "reel",
         story_link=story_link,
-        story_sticker_text=story_sticker_text,
     )
 
 
@@ -230,7 +228,6 @@ def publish_to_account(
             caption=automation.caption or "",
             content_type=automation.content_type or "reel",
             story_link=automation.story_link,
-            story_sticker_text=getattr(automation, "story_sticker_text", None),
             playlist_index=posted_index,
         )
 
@@ -243,7 +240,6 @@ def _execute_publish(
     caption: str,
     content_type: str,
     story_link: str | None = None,
-    story_sticker_text: str | None = None,
     playlist_index: int | None = None,
 ) -> dict:
     storage = get_storage()
@@ -307,7 +303,6 @@ def _execute_publish(
     ext = Path(video_key).suffix or ".mp4"
     raw_path = tmp_dir / f"raw{ext}"
     clean_path = tmp_dir / f"clean{ext}"
-    stickered_path: Path | None = None
     thumb_path: Path | None = None
     clean_thumb_path: Path | None = None
 
@@ -360,39 +355,6 @@ def _execute_publish(
             return {"error": "metadata_strip"}
 
         publish_path = clean_path
-        sticker_label: str | None = None
-        # Sticker desenhado no story (pill branco + texto) + link clicável alinhado
-        if content_type == "story" and (story_sticker_text or story_link):
-            from core.story_sticker_draw import apply_story_link_sticker
-            from urllib.parse import urlparse
-
-            label = (story_sticker_text or "").strip()
-            if not label and story_link:
-                try:
-                    host = urlparse(
-                        story_link if "://" in story_link else f"https://{story_link}"
-                    ).hostname or ""
-                    label = host.replace("www.", "") or "Link"
-                except Exception:
-                    label = "Link"
-            if not label:
-                label = "Link"
-            sticker_label = label
-            stickered_path = tmp_dir / f"sticker{clean_path.suffix or ext}"
-            try:
-                apply_story_link_sticker(clean_path, stickered_path, label)
-                publish_path = stickered_path
-                log.info("Sticker desenhado no story: %r", label)
-            except Exception as exc:
-                log.exception("Falha ao desenhar sticker — publica sem overlay")
-                create_notification(
-                    owner_user_id,
-                    "Sticker não aplicado",
-                    f"@{username}: {exc}",
-                    kind="warning",
-                    link="/logs",
-                    send_push=False,
-                )
 
         if content_type == "reel" and thumb_key:
             raw_thumb = tmp_dir / "raw_thumb.jpg"
@@ -432,13 +394,7 @@ def _execute_publish(
 
         try:
             if content_type == "story":
-                # Desenho na mídia + StoryLink do instagrapi na mesma posição (tap funciona)
-                result = publish_story(
-                    cl,
-                    publish_path,
-                    link_url=story_link,
-                    sticker_text=sticker_label,
-                )
+                result = publish_story(cl, publish_path, link_url=story_link)
             elif content_type == "photo":
                 result = publish_photo_feed(cl, clean_path, caption)
             else:
@@ -507,7 +463,7 @@ def _execute_publish(
         return {"ok": True, **result}
 
     finally:
-        for p in (raw_path, clean_path, stickered_path, thumb_path, clean_thumb_path):
+        for p in (raw_path, clean_path, thumb_path, clean_thumb_path):
             if p is None:
                 continue
             try:

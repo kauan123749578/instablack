@@ -532,31 +532,20 @@ def _normalize_url(url: str) -> str:
     return u
 
 
-def _story_links(link_url: str | None, sticker_text: str | None = None) -> list[StoryLink]:
+def _story_links(link_url: str | None) -> list[StoryLink]:
     url = _normalize_url(link_url or "")
     if not url:
         return []
-    from core.story_sticker_draw import link_sticker_geometry
-
-    # Hitbox alinhado ao pill desenhado na mídia (mesmo x/y/width/height)
-    geo = link_sticker_geometry(sticker_text or "Link")
-    log.info(
-        "StoryLink hitbox alinhado ao desenho: x=%.2f y=%.2f w=%.2f h=%.2f url=%s",
-        geo["x"],
-        geo["y"],
-        geo["width"],
-        geo["height"],
-        url,
-    )
+    # Hitbox padrão do instagrapi (sticker nativo do Instagram)
     return [
         StoryLink(
             webUri=url,
-            x=geo["x"],
-            y=geo["y"],
-            z=geo["z"],
-            width=geo["width"],
-            height=geo["height"],
-            rotation=geo["rotation"],
+            x=0.5,
+            y=0.5,
+            z=0,
+            width=0.5,
+            height=0.5,
+            rotation=0.0,
         )
     ]
 
@@ -565,25 +554,22 @@ def publish_story(
     cl: Client,
     media_path: Path,
     link_url: str | None = None,
-    *,
-    sticker_text: str | None = None,
 ) -> dict:
     if not media_path.exists():
         raise FileNotFoundError(f"Mídia não encontrada: {media_path}")
-    links = _story_links(link_url, sticker_text=sticker_text)
+    links = _story_links(link_url)
     if links:
-        log.info("Publicando story COM link clicável sob o desenho: %s", links[0].webUri)
+        log.info("Publicando story COM link: %s", links[0].webUri)
     elif link_url:
         log.warning("story_link inválido ignorado: %r", link_url)
     else:
         log.info("Publicando story SEM link")
 
-    # Desenho já está na mídia; links= posiciona o tap do Instagram em cima do pill.
     ext = media_path.suffix.lower()
     is_video = ext in (".mp4", ".mov", ".webm")
 
     def _upload(use_links: list) -> object:
-        kwargs: dict = {"links": use_links}
+        kwargs: dict = {"links": use_links} if use_links else {}
         if is_video:
             return cl.video_upload_to_story(media_path, **kwargs)
         return cl.photo_upload_to_story(media_path, **kwargs)
@@ -591,12 +577,8 @@ def publish_story(
     try:
         media = _upload(links)
     except Exception as exc:
-        # Link às vezes quebra o configure — story ainda sobe com o desenho
         if links:
-            log.warning(
-                "Story com link falhou (%s) — republicando SEM link (desenho mantido)",
-                exc,
-            )
+            log.warning("Story com link falhou (%s) — republicando SEM link", exc)
             media = _upload([])
         else:
             raise
