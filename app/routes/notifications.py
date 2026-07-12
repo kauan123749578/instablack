@@ -39,27 +39,9 @@ class SubscriptionIn(BaseModel):
 
 
 def _maybe_push_for_new_logs(user_id: int, rows: list[PublishLog]) -> None:
-    """Envia push pelo processo web (tem VAPID) quando o poll vê sucesso novo.
+    """Reservado — push de publicação sai só do worker (evita notificação duplicada)."""
+    return
 
-    O worker Celery às vezes sobe sem as envs VAPID — o teste no perfil funciona,
-    mas o push pós-publicação falha. O poll do painel corrige isso.
-    """
-    for r in rows:
-        if r.status != "success" or r.id in _recent_push_log_ids:
-            continue
-        _recent_push_log_ids.add(r.id)
-        if len(_recent_push_log_ids) > _RECENT_PUSH_MAX:
-            _recent_push_log_ids.clear()
-        try:
-            uname = r.account.username if r.account else "conta"
-            ctype = r.content_type or (
-                r.automation.content_type if r.automation else None
-            ) or "reel"
-            from core.webpush import notify_user_publish_success
-
-            notify_user_publish_success(user_id, uname, content_type=ctype)
-        except Exception:
-            log.exception("Push via poll falhou user=%s log=%s", user_id, r.id)
 
 
 @router.get("/api/vapid-public-key")
@@ -248,19 +230,7 @@ def api_list_notifications(
     user: User = Depends(get_current_user),
 ):
     synced = _sync_notifications_from_logs(db, user)
-    if synced:
-        try:
-            latest = synced[0]
-            uname = latest.account.username if latest.account else "conta"
-            from core.webpush import notify_user_publish_success
-
-            notify_user_publish_success(
-                user.id,
-                uname,
-                content_type=_resolve_log_content_type(latest),
-            )
-        except Exception:
-            log.exception("Sync push falhou user=%s", user.id)
+    # Não dispara push aqui — o worker já enviou no publish (evita duplicata)
 
     rows = db.scalars(
         select(AppNotification)

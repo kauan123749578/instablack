@@ -117,6 +117,8 @@ def _sqlite_migrate() -> None:
             conn.execute(text("ALTER TABLE automations ADD COLUMN calendar_time VARCHAR(8)"))
         if "story_link" not in cols:
             conn.execute(text("ALTER TABLE automations ADD COLUMN story_link VARCHAR(512)"))
+        if "story_sticker_text" not in cols:
+            conn.execute(text("ALTER TABLE automations ADD COLUMN story_sticker_text VARCHAR(64)"))
         if "videos_json" not in cols:
             conn.execute(text("ALTER TABLE automations ADD COLUMN videos_json TEXT"))
         if "current_index" not in cols:
@@ -180,6 +182,8 @@ def _postgres_migrate() -> None:
                 conn.execute(text("ALTER TABLE automations ADD COLUMN calendar_time VARCHAR(8)"))
             if "story_link" not in cols:
                 conn.execute(text("ALTER TABLE automations ADD COLUMN story_link VARCHAR(512)"))
+            if "story_sticker_text" not in cols:
+                conn.execute(text("ALTER TABLE automations ADD COLUMN story_sticker_text VARCHAR(64)"))
             if "videos_json" not in cols:
                 conn.execute(text("ALTER TABLE automations ADD COLUMN videos_json TEXT"))
             if "current_index" not in cols:
