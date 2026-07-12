@@ -1,6 +1,7 @@
 """Rotas Web Push + página de aquecimento de contas."""
 from __future__ import annotations
 
+import datetime as dt
 import json
 import logging
 
@@ -39,8 +40,26 @@ class SubscriptionIn(BaseModel):
 
 
 def _maybe_push_for_new_logs(user_id: int, rows: list[PublishLog]) -> None:
-    """Reservado — push de publicação sai só do worker (evita notificação duplicada)."""
-    return
+    """Fallback de push quando o worker não enviou (ex.: VAPID só no web)."""
+    global _recent_push_log_ids
+    if not rows:
+        return
+    from core.webpush import notify_user_publish_success
+
+    for plog in rows:
+        if plog.status != "success":
+            continue
+        if plog.id in _recent_push_log_ids:
+            continue
+        _recent_push_log_ids.add(plog.id)
+        if len(_recent_push_log_ids) > _RECENT_PUSH_MAX:
+            _recent_push_log_ids = set(list(_recent_push_log_ids)[-_RECENT_PUSH_MAX:])
+        uname = plog.account.username if plog.account else "?"
+        ct = _resolve_log_content_type(plog)
+        try:
+            notify_user_publish_success(user_id, uname, content_type=ct)
+        except Exception:
+            log.exception("Fallback push falhou log=%s user=%s", plog.id, user_id)
 
 
 
@@ -177,36 +196,34 @@ def _resolve_log_content_type(plog: PublishLog) -> str:
 
 
 def _sync_notifications_from_logs(db: Session, user: User) -> list[PublishLog]:
-    """Cria notificações in-app só para logs NOVOS após a última notificação.
-
-    Após Limpar o sino fica vazio de propósito — NÃO recria o histórico.
-    """
+    """Cria notificações in-app para logs de sucesso recentes sem notificação vinculada."""
     from core.notifications import content_label
 
-    newest_notif_at = db.scalar(
-        select(func.max(AppNotification.created_at)).where(AppNotification.user_id == user.id)
-    )
-    # Sino vazio (incluindo depois de Limpar) — não backfill de posts antigos
-    if newest_notif_at is None:
-        return []
-
+    since = dt.datetime.utcnow() - dt.timedelta(hours=6)
     recent_ok = list(
         db.scalars(
             select(PublishLog)
             .join(PublishLog.account)
+            .outerjoin(
+                AppNotification,
+                (AppNotification.publish_log_id == PublishLog.id)
+                & (AppNotification.user_id == user.id),
+            )
             .where(
                 InstagramAccount.user_id == user.id,
                 PublishLog.status == "success",
-                PublishLog.created_at > newest_notif_at,
+                PublishLog.created_at >= since,
+                AppNotification.id.is_(None),
             )
             .options(selectinload(PublishLog.account), selectinload(PublishLog.automation))
-            .order_by(PublishLog.created_at.desc())
-            .limit(15)
+            .order_by(PublishLog.created_at.asc())
+            .limit(20)
         ).all()
     )
     if not recent_ok:
         return []
-    for plog in reversed(recent_ok):
+
+    for plog in recent_ok:
         uname = plog.account.username if plog.account else "?"
         label = content_label(_resolve_log_content_type(plog))
         db.add(
@@ -216,6 +233,7 @@ def _sync_notifications_from_logs(db: Session, user: User) -> list[PublishLog]:
                 body=f"@{uname}",
                 kind="publish",
                 link="/logs",
+                publish_log_id=plog.id,
                 is_read=False,
                 created_at=plog.created_at,
             )
@@ -230,7 +248,8 @@ def api_list_notifications(
     user: User = Depends(get_current_user),
 ):
     synced = _sync_notifications_from_logs(db, user)
-    # Não dispara push aqui — o worker já enviou no publish (evita duplicata)
+    if synced:
+        _maybe_push_for_new_logs(user.id, synced)
 
     rows = db.scalars(
         select(AppNotification)

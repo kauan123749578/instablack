@@ -539,7 +539,7 @@
     });
 
     loadNotifications();
-    setInterval(loadNotifications, 30000);
+    setInterval(loadNotifications, 10000);
   }
 
   function initContentTypeForm() {

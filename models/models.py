@@ -183,6 +183,7 @@ class PublishLog(Base):
         DateTime(timezone=True), nullable=True
     )
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    video_key: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
 
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
@@ -223,6 +224,9 @@ class AppNotification(Base):
     kind: Mapped[str] = mapped_column(String(32), default="info")
     # info | success | warning | metadata | warmup | publish
     link: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    publish_log_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("publish_logs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True

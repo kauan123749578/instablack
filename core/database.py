@@ -154,7 +154,12 @@ def _sqlite_migrate() -> None:
                 conn.execute(text("ALTER TABLE publish_logs ADD COLUMN insights_fetched_at DATETIME"))
             if "content_type" not in pcols:
                 conn.execute(text("ALTER TABLE publish_logs ADD COLUMN content_type VARCHAR(16)"))
-        # warmup duration
+            if "video_key" not in pcols:
+                conn.execute(text("ALTER TABLE publish_logs ADD COLUMN video_key VARCHAR(512)"))
+        if "app_notifications" in insp.get_table_names():
+            ncols = {c["name"] for c in insp.get_columns("app_notifications")}
+            if "publish_log_id" not in ncols:
+                conn.execute(text("ALTER TABLE app_notifications ADD COLUMN publish_log_id INTEGER"))
         if "warmup_jobs" in insp.get_table_names():
             wcols = {c["name"] for c in insp.get_columns("warmup_jobs")}
             if "duration_minutes" not in wcols:
@@ -219,6 +224,12 @@ def _postgres_migrate() -> None:
                 conn.execute(text("ALTER TABLE publish_logs ADD COLUMN insights_fetched_at TIMESTAMPTZ"))
             if "content_type" not in pcols:
                 conn.execute(text("ALTER TABLE publish_logs ADD COLUMN content_type VARCHAR(16)"))
+            if "video_key" not in pcols:
+                conn.execute(text("ALTER TABLE publish_logs ADD COLUMN video_key VARCHAR(512)"))
+        if "app_notifications" in tables:
+            ncols = {c["name"] for c in insp.get_columns("app_notifications")}
+            if "publish_log_id" not in ncols:
+                conn.execute(text("ALTER TABLE app_notifications ADD COLUMN publish_log_id INTEGER"))
         if "warmup_jobs" in tables:
             wcols = {c["name"] for c in insp.get_columns("warmup_jobs")}
             if "duration_minutes" not in wcols:

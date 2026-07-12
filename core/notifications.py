@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import logging
 
+from sqlalchemy import select
+
 from core.database import session_scope
 from core.notification_prefs import (
     DEFAULT_PREFS,
@@ -29,6 +31,70 @@ CONTENT_LABELS = {"reel": "Reel", "story": "Story", "photo": "Foto"}
 
 def content_label(content_type: str | None) -> str:
     return CONTENT_LABELS.get((content_type or "").lower(), "Post")
+
+
+def notify_publish_success(
+    user_id: int,
+    username: str,
+    *,
+    content_type: str = "reel",
+    publish_log_id: int | None = None,
+    send_push: bool = True,
+) -> bool:
+    """Garante notificação in-app + push após publicação (dedupe por publish_log_id)."""
+    if not user_id:
+        return False
+
+    label = content_label(content_type)
+    title = f"{label} publicado"
+    body = f"@{username}"
+
+    try:
+        with session_scope() as db:
+            if publish_log_id is not None:
+                existing = db.scalar(
+                    select(AppNotification.id).where(
+                        AppNotification.publish_log_id == publish_log_id
+                    )
+                )
+                if existing:
+                    log.debug("Notificação já existe publish_log_id=%s", publish_log_id)
+                    return True
+
+            db.add(
+                AppNotification(
+                    user_id=user_id,
+                    title=title[:255],
+                    body=body[:1000],
+                    kind="publish",
+                    link="/logs",
+                    publish_log_id=publish_log_id,
+                    is_read=False,
+                )
+            )
+    except Exception:
+        log.exception(
+            "Falha ao criar notificação de publish user=%s log=%s",
+            user_id,
+            publish_log_id,
+        )
+        return False
+
+    if send_push:
+        try:
+            from core.webpush import notify_user_publish_success
+
+            notify_user_publish_success(user_id, username, content_type=content_type)
+        except Exception:
+            log.exception("Push publish falhou user=%s log=%s", user_id, publish_log_id)
+
+    log.info(
+        "notify_publish_success user=%s @%s log=%s",
+        user_id,
+        username,
+        publish_log_id,
+    )
+    return True
 
 
 def create_notification(

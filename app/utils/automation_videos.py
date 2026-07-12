@@ -58,16 +58,44 @@ def video_count(automation: Automation) -> int:
     return max(1, len(playlist_items(automation)))
 
 
-def resolve_video_key(automation: Automation) -> str:
+def pick_next_playlist_entry(
+    automation: Automation,
+    last_video_key: str | None = None,
+) -> tuple[dict[str, str], int] | None:
+    """Próximo vídeo da fila — usa o último publicado com sucesso (estilo postagemIG).
+
+    Retorna None quando a playlist acabou (sem loop).
+    """
     items = playlist_items(automation)
     if not items:
-        return automation.video_key
-    idx = int(getattr(automation, "current_index", 0) or 0)
-    if idx < 0:
-        idx = 0
-    if idx >= len(items):
+        return None
+    if len(items) == 1:
+        return items[0], 0
+
+    keys = [it["video_key"] for it in items]
+
+    if last_video_key and last_video_key in keys:
+        next_idx = keys.index(last_video_key) + 1
+    else:
+        next_idx = int(getattr(automation, "current_index", 0) or 0)
+        if next_idx < 0:
+            next_idx = 0
+        if next_idx >= len(items):
+            return None
+
+    if next_idx >= len(items):
+        return None
+    return items[next_idx], next_idx
+
+
+def resolve_video_key(automation: Automation) -> str:
+    picked = pick_next_playlist_entry(automation)
+    if picked:
+        return picked[0]["video_key"]
+    items = playlist_items(automation)
+    if items:
         return items[-1]["video_key"]
-    return items[idx]["video_key"]
+    return automation.video_key
 
 
 def resolve_video_label(automation: Automation) -> str:
@@ -97,10 +125,9 @@ def is_video_filename(name: str | None) -> bool:
     return Path(name).suffix.lower() in VIDEO_EXTENSIONS
 
 
-def playlist_is_exhausted(automation: Automation) -> bool:
-    """True quando há vários vídeos e o índice já passou do último."""
+def playlist_is_exhausted(automation: Automation, last_video_key: str | None = None) -> bool:
+    """True quando há vários vídeos e não há próximo na fila."""
     items = playlist_items(automation)
     if len(items) <= 1:
         return False
-    idx = int(getattr(automation, "current_index", 0) or 0)
-    return idx >= len(items)
+    return pick_next_playlist_entry(automation, last_video_key) is None
