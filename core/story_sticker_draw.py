@@ -16,6 +16,10 @@ log = logging.getLogger(__name__)
 VIDEO_EXT = {".mp4", ".mov", ".webm", ".mkv", ".avi"}
 IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp"}
 
+# Mesma geometria no desenho e no StoryLink do instagrapi (centro + frações 0–1)
+STICKER_Y_CENTER = 0.78
+STICKER_WIDTH_FRAC = 0.48
+
 
 def _load_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     candidates = [
@@ -37,10 +41,8 @@ def _draw_link_icon(draw: ImageDraw.ImageDraw, cx: int, cy: int, size: int, colo
     """Ícone de link (dois elos) — visual próximo ao sticker do Instagram."""
     stroke = max(2, size // 7)
     r = max(5, int(size * 0.38))
-    # elo esquerdo (inclinado)
     box1 = [cx - size // 2, cy - r, cx - size // 2 + 2 * r, cy + r]
     draw.arc(box1, start=40, end=320, fill=color, width=stroke)
-    # elo direito
     box2 = [cx + size // 2 - 2 * r, cy - r, cx + size // 2, cy + r]
     draw.arc(box2, start=220, end=140, fill=color, width=stroke)
 
@@ -54,7 +56,6 @@ def render_link_sticker_rgba(text: str, scale: int = 1) -> Image.Image:
     gap = 14 * scale
     font = _load_font(26 * scale)
 
-    # mede texto
     tmp = Image.new("RGBA", (10, 10))
     d = ImageDraw.Draw(tmp)
     bbox = d.textbbox((0, 0), label, font=font)
@@ -62,7 +63,7 @@ def render_link_sticker_rgba(text: str, scale: int = 1) -> Image.Image:
 
     width = pad_x + icon_size + gap + tw + pad_x
     height = max(icon_size, th) + pad_y * 2
-    radius = height // 2  # pill
+    radius = height // 2
 
     img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
@@ -70,7 +71,7 @@ def render_link_sticker_rgba(text: str, scale: int = 1) -> Image.Image:
 
     icon_cx = pad_x + icon_size // 2
     icon_cy = height // 2
-    _draw_link_icon(draw, icon_cx, icon_cy, icon_size, (37, 116, 254))  # azul IG-ish
+    _draw_link_icon(draw, icon_cx, icon_cy, icon_size, (37, 116, 254))
 
     text_x = pad_x + icon_size + gap
     text_y = (height - th) // 2 - (bbox[1] if bbox else 0)
@@ -78,11 +79,33 @@ def render_link_sticker_rgba(text: str, scale: int = 1) -> Image.Image:
     return img
 
 
-def _paste_sticker_on_image(base: Image.Image, sticker: Image.Image, *, y_ratio: float = 0.78) -> Image.Image:
+def link_sticker_geometry(text: str = "Link") -> dict[str, float]:
+    """Posição/tamanho do hitbox do link — alinhado ao pill desenhado."""
+    label = (text or "Link").strip()[:40] or "Link"
+    sticker = render_link_sticker_rgba(label, scale=2)
+    width = STICKER_WIDTH_FRAC
+    aspect = sticker.height / max(1, sticker.width)
+    height = min(0.18, max(0.08, width * aspect))
+    return {
+        "x": 0.5,
+        "y": STICKER_Y_CENTER,
+        "z": 0.0,
+        "width": width,
+        "height": height,
+        "rotation": 0.0,
+    }
+
+
+def _paste_sticker_on_image(
+    base: Image.Image,
+    sticker: Image.Image,
+    *,
+    y_ratio: float = STICKER_Y_CENTER,
+    width_frac: float = STICKER_WIDTH_FRAC,
+) -> Image.Image:
     canvas = base.convert("RGBA")
     w, h = canvas.size
-    # escala sticker ~48% da largura do story
-    target_w = int(w * 0.48)
+    target_w = int(w * width_frac)
     ratio = target_w / sticker.width
     target_h = max(1, int(sticker.height * ratio))
     sticker_r = sticker.resize((target_w, target_h), Image.Resampling.LANCZOS)
@@ -109,7 +132,6 @@ def apply_link_sticker_to_video(src: Path, dst: Path, text: str) -> Path:
     if not shutil.which(ffmpeg):
         raise RuntimeError(f"ffmpeg não encontrado ({ffmpeg}) — necessário para sticker em story de vídeo")
 
-    # Descobre resolução do vídeo
     probe = subprocess.run(
         [
             shutil.which("ffprobe") or "ffprobe",
@@ -137,15 +159,14 @@ def apply_link_sticker_to_video(src: Path, dst: Path, text: str) -> Path:
                 pass
 
     sticker = render_link_sticker_rgba(text, scale=3)
-    target_w = int(w * 0.48)
+    target_w = int(w * STICKER_WIDTH_FRAC)
     ratio = target_w / sticker.width
     target_h = max(1, int(sticker.height * ratio))
     sticker = sticker.resize((target_w, target_h), Image.Resampling.LANCZOS)
 
-    # canvas transparente do tamanho do vídeo com sticker posicionado
     overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     x = (w - target_w) // 2
-    y = int(h * 0.78) - target_h // 2
+    y = int(h * STICKER_Y_CENTER) - target_h // 2
     y = max(0, min(h - target_h, y))
     overlay.alpha_composite(sticker, (x, y))
 

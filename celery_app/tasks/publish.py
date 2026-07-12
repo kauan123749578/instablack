@@ -312,7 +312,8 @@ def _execute_publish(
             return {"error": "metadata_strip"}
 
         publish_path = clean_path
-        # Sticker desenhado no story (pill branco + texto custom)
+        sticker_label: str | None = None
+        # Sticker desenhado no story (pill branco + texto) + link clicável alinhado
         if content_type == "story" and (story_sticker_text or story_link):
             from core.story_sticker_draw import apply_story_link_sticker
             from urllib.parse import urlparse
@@ -328,6 +329,7 @@ def _execute_publish(
                     label = "Link"
             if not label:
                 label = "Link"
+            sticker_label = label
             stickered_path = tmp_dir / f"sticker{clean_path.suffix or ext}"
             try:
                 apply_story_link_sticker(clean_path, stickered_path, label)
@@ -382,8 +384,13 @@ def _execute_publish(
 
         try:
             if content_type == "story":
-                # Visual já desenhado na mídia — não manda sticker nativo (evita retângulo genérico)
-                result = publish_story(cl, publish_path, link_url=None)
+                # Desenho na mídia + StoryLink do instagrapi na mesma posição (tap funciona)
+                result = publish_story(
+                    cl,
+                    publish_path,
+                    link_url=story_link,
+                    sticker_text=sticker_label,
+                )
             elif content_type == "photo":
                 result = publish_photo_feed(cl, clean_path, caption)
             else:
