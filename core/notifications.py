@@ -91,7 +91,7 @@ def create_notification(
                     "title": title[:120],
                     "body": (body or "")[:200],
                     "url": link or "/",
-                    "tag": f"{kind}-{user_id}-{title[:40]}",
+                    "tag": f"{kind}-{user_id}-{int(__import__('time').time()*1000)}",
                 },
                 kind=kind,
                 force=force,

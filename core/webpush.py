@@ -126,17 +126,21 @@ def notify_user_push(
 
 
 def notify_user_publish_success(user_id: int, username: str, content_type: str = "reel") -> None:
+    import time
+
     from core.notifications import content_label
 
     label = content_label(content_type)
     title = f"{label} publicado"
+    # tag única — senão o SO substitui a notificação anterior no celular
+    tag = f"publish-{content_type}-{username}-{int(time.time() * 1000)}"
     sent, failed = notify_user_push(
         user_id,
         {
             "title": title,
             "body": f"@{username}",
             "url": "/logs",
-            "tag": f"publish-{content_type}-{username}",
+            "tag": tag,
         },
         kind="publish",
         force=False,

@@ -13,12 +13,17 @@ self.addEventListener("push", (event) => {
     if (event.data) data = { ...data, ...event.data.json() };
   } catch (_) {}
 
+  // tag única por evento — não substitui notificações anteriores na tela
+  const tag = data.tag || ("instablack-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8));
+
   event.waitUntil(
     self.registration.showNotification(data.title || "instablack", {
       body: data.body || "",
       icon: "/static/favicon.svg",
       badge: "/static/favicon.svg",
-      tag: data.tag || "instablack",
+      tag: tag,
+      renotify: true,
+      requireInteraction: false,
       data: { url: data.url || "/" },
       vibrate: [120, 60, 120],
     })

@@ -621,7 +621,16 @@ body.premium-app .shark-content { padding: 24px 32px 80px; }
   .og-rank-score { font-size: 11px; }
   .og-bar-chart { height: 140px; gap: 4px; padding: 4px 2px 0; }
   .og-bar-track { max-width: 28px; min-height: 100px; }
-  .og-timeline { max-height: none; }
+  .og-timeline {
+    max-height: 200px !important;
+    overflow-y: auto !important;
+  }
+  .og-panel-activity {
+    max-height: none;
+  }
+  .og-panel-activity .og-timeline {
+    max-height: 200px !important;
+  }
   .og-accounts-gallery { gap: 12px; }
   .og-acc-ring { width: 50px; height: 50px; }
   .analytics-summary-row { grid-template-columns: 1fr; }

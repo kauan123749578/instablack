@@ -25,6 +25,7 @@ from core.instagram import (
 )
 from core.media_prepare import prepare_clean_media, prepare_clean_thumb
 from core.metadata import MetadataStripError
+from core.notifications import create_notification
 from core.storage import get_storage
 from models.models import Automation, InstagramAccount, PublishLog
 
@@ -40,25 +41,71 @@ def execute_automation(self, automation_id: int) -> dict:
         if automation.status != "active":
             return {"skipped": True, "reason": "not_active"}
 
+        items = parse_videos_json(automation.videos_json)
+        idx = int(automation.current_index or 0)
+
+        # Playlist multi-vídeo já esgotada
+        if items and len(items) > 1 and idx >= len(items):
+            automation.status = "completed"
+            automation.next_run_at = None
+            owner_id = automation.user_id
+            name = automation.name
+            create_notification(
+                owner_id,
+                "Automação concluída",
+                f"“{name}”: todos os {len(items)} vídeos foram publicados.",
+                kind="publish",
+                link="/automations",
+            )
+            return {"skipped": True, "reason": "playlist_done"}
+
         account_ids = [
             acc.id for acc in automation.accounts
             if acc.status not in ("banned", "proxy_down", "paused", "needs_login")
         ]
         video_key = resolve_video_key(automation)
-        items = parse_videos_json(automation.videos_json)
-        if items:
-            automation.current_index = (
-                (int(automation.current_index or 0) + 1) % len(items)
-            )
+        queue_index = idx
+        playlist_done = False
 
-    for idx, account_id in enumerate(account_ids):
-        countdown = random.randint(0, 40) + idx * random.randint(2, 8)
+        if items:
+            next_idx = idx + 1
+            if len(items) > 1:
+                # Playlist: avança sem loop; ao passar do último, encerra
+                automation.current_index = next_idx
+                if next_idx >= len(items):
+                    automation.next_run_at = None
+                    automation.status = "completed"
+                    playlist_done = True
+            else:
+                # Um único vídeo: mantém recorrência no intervalo
+                automation.current_index = 0
+
+        owner_id = automation.user_id
+        auto_name = automation.name
+        total_videos = len(items) if items else 1
+
+    for i, account_id in enumerate(account_ids):
+        countdown = random.randint(0, 40) + i * random.randint(2, 8)
         publish_to_account.apply_async(
             args=[automation_id, account_id, video_key],
             countdown=countdown,
         )
 
-    return {"automation_id": automation_id, "accounts_dispatched": len(account_ids)}
+    if playlist_done:
+        create_notification(
+            owner_id,
+            "Automação concluída",
+            f"“{auto_name}”: último vídeo da playlist ({total_videos}/{total_videos}) enfileirado.",
+            kind="publish",
+            link="/automations",
+        )
+
+    return {
+        "automation_id": automation_id,
+        "accounts_dispatched": len(account_ids),
+        "queue_index": queue_index,
+        "playlist_done": playlist_done,
+    }
 
 
 @celery_app.task(
@@ -107,7 +154,16 @@ def publish_to_account(self, automation_id: int, account_id: int, video_key: str
         if automation is None or account is None:
             return {"error": "not_found"}
 
-        if automation.status != "active":
+        # video_key explícito = já enfileirado (pode ser o último da playlist com status completed)
+        if automation.status == "paused":
+            db.add(PublishLog(
+                automation_id=automation.id,
+                account_id=account.id,
+                status="skipped",
+                error="automation_paused",
+            ))
+            return {"skipped": True}
+        if video_key is None and automation.status != "active":
             db.add(PublishLog(
                 automation_id=automation.id,
                 account_id=account.id,

@@ -426,7 +426,32 @@ def fetch_media_stats(cl: Client, media_pk: str) -> dict:
     play_count = getattr(media, "play_count", None)
     if play_count is None:
         play_count = getattr(media, "view_count", None)
+    if play_count is None:
+        play_count = getattr(media, "ig_play_count", None)
+    # Fallback: payload bruto do Instagram
+    if play_count is None:
+        try:
+            raw = cl.private_request(f"media/{pk}/info/")
+            items = (raw or {}).get("items") or []
+            if items:
+                item = items[0]
+                play_count = (
+                    item.get("play_count")
+                    or item.get("view_count")
+                    or item.get("ig_play_count")
+                    or (item.get("metrics") or {}).get("play_count")
+                )
+        except Exception:
+            log.debug("media info raw falhou pk=%s", pk, exc_info=True)
     like_count = getattr(media, "like_count", None)
+    try:
+        play_count = int(play_count) if play_count is not None else None
+    except (TypeError, ValueError):
+        play_count = None
+    try:
+        like_count = int(like_count) if like_count is not None else None
+    except (TypeError, ValueError):
+        like_count = None
     return {
         "play_count": play_count if isinstance(play_count, int) and play_count >= 0 else None,
         "like_count": like_count if isinstance(like_count, int) and like_count >= 0 else None,

@@ -285,7 +285,7 @@ async def create_automation(
     calendar_time: str = Form("10:00"),
     account_ids: list[int] = Form(default=[]),
     video: UploadFile | None = File(default=None),
-    videos: list[UploadFile] = File(default=[]),
+    videos: list[UploadFile] | None = File(default=None),
     thumb: UploadFile | None = File(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -310,10 +310,17 @@ async def create_automation(
     if not error and not account_ids:
         error = "Selecione pelo menos uma conta."
 
+    # Garante todos os arquivos do input multiple (FastAPI às vezes entrega só 1)
+    form = await request.form()
+    raw_multi = form.getlist("videos")
     upload_files: list[UploadFile] = []
     if not error:
         if content_type == "reel":
-            upload_files = [f for f in videos if f.filename]
+            for item in raw_multi:
+                if hasattr(item, "filename") and item.filename:
+                    upload_files.append(item)  # type: ignore[arg-type]
+            if not upload_files and videos:
+                upload_files = [f for f in videos if f and f.filename]
             if not upload_files and video and video.filename:
                 upload_files = [video]
             if not upload_files:
@@ -323,10 +330,17 @@ async def create_automation(
                 if bad:
                     error = f"Arquivo inválido (precisa ser vídeo .mp4): {', '.join(bad)}"
         else:
-            if not video or not video.filename:
+            story_file = None
+            for item in raw_multi:
+                if hasattr(item, "filename") and item.filename:
+                    story_file = item
+                    break
+            if story_file is None and video and video.filename:
+                story_file = video
+            if story_file is None:
                 error = "Envie o arquivo de mídia."
             else:
-                upload_files = [video]
+                upload_files = [story_file]  # type: ignore[list-item]
 
     accounts: list[InstagramAccount] = []
     if not error:
@@ -359,12 +373,17 @@ async def create_automation(
 
     storage = get_storage()
     video_entries = _save_uploaded_videos(storage, upload_files)
+    if not video_entries:
+        raise HTTPException(status_code=400, detail="Falha ao salvar os vídeos.")
     video_key = video_entries[0]["video_key"]
     if len(video_entries) == 1:
         video_original_name = video_entries[0]["video_original_name"]
     else:
         video_original_name = f"{len(video_entries)} vídeos"
-    videos_json = videos_to_json(video_entries) if len(video_entries) > 1 else None
+    # Sempre persiste a lista para Reels — sem isso o worker republica só o 1º vídeo
+    videos_json = videos_to_json(video_entries) if content_type == "reel" else (
+        videos_to_json(video_entries) if len(video_entries) > 1 else None
+    )
 
     thumb_key, thumb_original_name = _save_thumb(storage, thumb)
 
@@ -471,6 +490,12 @@ def resume_automation(
     user: User = Depends(get_current_user),
 ):
     a = _get_owned(db, automation_id, user)
+    from app.utils.automation_videos import parse_videos_json
+
+    # Se a playlist tinha terminado, recomeça do primeiro vídeo
+    items = parse_videos_json(a.videos_json)
+    if a.status == "completed" or (items and len(items) > 1 and int(a.current_index or 0) >= len(items)):
+        a.current_index = 0
     a.status = "active"
     a.next_run_at = dt.datetime.utcnow()
     db.commit()

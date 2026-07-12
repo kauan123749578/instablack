@@ -130,14 +130,14 @@ class Automation(Base):
     video_original_name: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     thumb_key: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     thumb_original_name: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
-    videos_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # loop: [{video_key, video_original_name}]
+    videos_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # playlist: [{video_key, video_original_name}]
     current_index: Mapped[int] = mapped_column(Integer, default=0)
 
     interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
     schedule_type: Mapped[str] = mapped_column(String(16), default="interval")  # interval | calendar
     calendar_days: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON [1,5,15]
     calendar_time: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)  # HH:MM BRT
-    status: Mapped[str] = mapped_column(String(16), default="active", index=True)  # active | paused
+    status: Mapped[str] = mapped_column(String(16), default="active", index=True)  # active | paused | completed
 
     next_run_at: Mapped[Optional[dt.datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True

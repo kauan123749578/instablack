@@ -1,8 +1,8 @@
-"""Lista de vídeos em loop (vários reels + capa única)."""
+"""Lista de vídeos em playlist (um por ciclo; para ao terminar se N>1)."""
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from models.models import Automation
@@ -42,7 +42,12 @@ def resolve_video_key(automation: Automation) -> str:
     items = parse_videos_json(getattr(automation, "videos_json", None))
     if not items:
         return automation.video_key
-    idx = int(getattr(automation, "current_index", 0) or 0) % len(items)
+    idx = int(getattr(automation, "current_index", 0) or 0)
+    if idx < 0:
+        idx = 0
+    if idx >= len(items):
+        # Playlist esgotada — não volta ao início
+        return items[-1]["video_key"]
     return items[idx]["video_key"]
 
 
@@ -50,7 +55,9 @@ def resolve_video_label(automation: Automation) -> str:
     items = parse_videos_json(getattr(automation, "videos_json", None))
     if not items:
         return automation.video_original_name or automation.video_key
-    idx = int(getattr(automation, "current_index", 0) or 0) % len(items)
+    idx = min(int(getattr(automation, "current_index", 0) or 0), len(items) - 1)
+    if idx < 0:
+        idx = 0
     name = items[idx].get("video_original_name") or f"vídeo {idx + 1}"
     if len(items) > 1:
         return f"{name} ({idx + 1}/{len(items)})"
@@ -69,3 +76,12 @@ def is_video_filename(name: str | None) -> bool:
         return False
     from pathlib import Path
     return Path(name).suffix.lower() in VIDEO_EXTENSIONS
+
+
+def playlist_is_exhausted(automation: Automation) -> bool:
+    """True quando há vários vídeos e o índice já passou do último."""
+    items = parse_videos_json(getattr(automation, "videos_json", None))
+    if len(items) <= 1:
+        return False
+    idx = int(getattr(automation, "current_index", 0) or 0)
+    return idx >= len(items)

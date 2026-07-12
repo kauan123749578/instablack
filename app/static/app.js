@@ -132,7 +132,7 @@
     if (perm !== "granted") {
       throw new Error("permission_denied");
     }
-    const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+    const reg = await navigator.serviceWorker.register("/sw.js?v=2", { scope: "/" });
     await navigator.serviceWorker.ready;
     let sub = await reg.pushManager.getSubscription();
     if (!sub) {
@@ -218,7 +218,7 @@
     });
 
     if ("Notification" in window && Notification.permission === "granted") {
-      navigator.serviceWorker.register("/sw.js", { scope: "/" }).then(() => {
+      navigator.serviceWorker.register("/sw.js?v=2", { scope: "/" }).then(() => {
         markPushButtonsEnabled();
       }).catch(() => {});
     }
@@ -488,6 +488,7 @@
     const btn = document.getElementById("notif-bell-btn");
     const card = document.getElementById("notif-card");
     const markBtn = document.getElementById("notif-mark-read");
+    const clearBtn = document.getElementById("notif-clear-all");
     if (!btn || !card) return;
     if (btn.dataset.bound === "1") {
       loadNotifications();
@@ -519,6 +520,13 @@
     markBtn?.addEventListener("click", async (e) => {
       e.stopPropagation();
       await fetch("/api/notifications/read", { method: "POST" });
+      loadNotifications();
+    });
+
+    clearBtn?.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      if (!confirm("Limpar todas as notificações do sino?")) return;
+      await fetch("/api/notifications/clear", { method: "POST" });
       loadNotifications();
     });
 

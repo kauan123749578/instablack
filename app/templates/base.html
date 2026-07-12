@@ -14,8 +14,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bricolage+Grotesque:wght@600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=23" />
-  <link rel="stylesheet" href="/static/dashboard.css?v=20" />
+  <link rel="stylesheet" href="/static/style.css?v=24" />
+  <link rel="stylesheet" href="/static/dashboard.css?v=21" />
   {% block head %}{% endblock %}
 </head>
 <body class="app-body premium-app">
@@ -132,7 +132,10 @@
             <div class="notif-card" id="notif-card" hidden>
               <div class="notif-card-head">
                 <strong>Notificações</strong>
-                <button type="button" class="notif-mark-read" id="notif-mark-read">Marcar lidas</button>
+                <div class="notif-card-actions">
+                  <button type="button" class="notif-mark-read" id="notif-mark-read">Marcar lidas</button>
+                  <button type="button" class="notif-mark-read" id="notif-clear-all">Limpar</button>
+                </div>
               </div>
               <div class="notif-card-push">
                 <button type="button" class="btn btn-sm" id="enable-push-btn" data-push-btn>Ativar no celular</button>
@@ -199,7 +202,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/lucide@0.475.0/dist/umd/lucide.min.js" crossorigin="anonymous"></script>
-  <script src="/static/app.js?v=25"></script>
+  <script src="/static/app.js?v=26"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

@@ -325,6 +325,20 @@ def api_mark_notifications_read(
     return {"ok": True, "marked": len(rows)}
 
 
+@router.post("/api/notifications/clear")
+def api_clear_notifications(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    rows = db.scalars(
+        select(AppNotification).where(AppNotification.user_id == user.id)
+    ).all()
+    for n in rows:
+        db.delete(n)
+    db.commit()
+    return {"ok": True, "cleared": len(rows)}
+
+
 @router.get("/warmup")
 def warmup_page(
     request: Request,

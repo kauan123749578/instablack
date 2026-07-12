@@ -105,6 +105,9 @@ def _sync_one_log(log_id: int, account_id: int, media_id: str) -> bool:
             return False
         if stats.get("play_count") is not None:
             log_row.play_count = stats["play_count"]
+        elif log_row.play_count is None:
+            # Evita "Atualizando…" eterno quando o IG ainda não devolve views
+            log_row.play_count = 0
         if stats.get("like_count") is not None:
             log_row.like_count = stats["like_count"]
         log_row.insights_fetched_at = dt.datetime.utcnow()

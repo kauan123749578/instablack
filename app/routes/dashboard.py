@@ -345,6 +345,7 @@ def home(
             PublishLog.status == "success",
             PublishLog.media_id.is_not(None),
             PublishLog.play_count.is_(None),
+            PublishLog.insights_fetched_at.is_(None),
         )
     ) or 0
     if pending_views:

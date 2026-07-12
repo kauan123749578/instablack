@@ -25,6 +25,7 @@ def status_label(status: str) -> str:
     return {
         "active": "Ativa",
         "paused": "Pausada",
+        "completed": "Concluída",
         "pending": "Na fila",
         "running": "Aquecendo",
         "done": "Concluído",
