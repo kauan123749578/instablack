@@ -48,12 +48,71 @@ def _stable_uuids(username: str) -> dict[str, str]:
     }
 
 
-def _apply_story_sticker_ids_fix() -> None:
-    """Corrige instagrapi: story_sticker_ids deve juntar todos os stickers (e4c3820).
+def _extract_link_from_tap_models(tap_models_raw) -> dict | None:
+    """Pega o link que o instagrapi colocou em tap_models e vira story_link_stickers (estilo INSSIST)."""
+    if not tap_models_raw:
+        return None
+    taps = tap_models_raw
+    if isinstance(taps, str):
+        try:
+            taps = json.loads(taps)
+        except json.JSONDecodeError:
+            return None
+    if not isinstance(taps, list):
+        return None
+    for item in taps:
+        if not isinstance(item, dict):
+            continue
+        url = item.get("url")
+        if not url and isinstance(item.get("story_link"), dict):
+            url = item["story_link"].get("url")
+        if not url and isinstance(item.get("extra"), dict):
+            url = item["extra"].get("url")
+        if item.get("type") in ("story_link", "link") or url:
+            if not url:
+                continue
+            return {
+                "x": float(item.get("x", 0.5)),
+                "y": float(item.get("y", 0.8)),
+                "width": float(item.get("width", 0.5)),
+                "height": float(item.get("height", 0.14)),
+                "rotation": float(item.get("rotation", 0.0)),
+                "link_type": item.get("link_type") or "web",
+                "url": str(url),
+            }
+    return None
 
-    Em versões antigas usava story_sticker_ids[0] e descartava o link sticker.
-    O mixin correto é UploadPhotoMixin / UploadVideoMixin (não PhotoMixin).
-    Ref: https://github.com/subzeroid/instagrapi/commit/e4c3820
+
+def _extract_link_from_kwargs(links) -> dict | None:
+    """Fallback: monta story_link_stickers a partir de links=[StoryLink(...)] do upload."""
+    if not links:
+        return None
+    link = links[0]
+    url = getattr(link, "webUri", None) or getattr(link, "url", None)
+    if isinstance(link, dict):
+        url = url or link.get("webUri") or link.get("url")
+    if not url:
+        return None
+    return {
+        "x": float(getattr(link, "x", 0.5) if not isinstance(link, dict) else link.get("x", 0.5) or 0.5),
+        "y": float(getattr(link, "y", 0.8) if not isinstance(link, dict) else link.get("y", 0.8) or 0.8),
+        "width": float(
+            getattr(link, "width", 0.5) if not isinstance(link, dict) else link.get("width", 0.5) or 0.5
+        ),
+        "height": float(
+            getattr(link, "height", 0.14) if not isinstance(link, dict) else link.get("height", 0.14) or 0.14
+        ),
+        "rotation": float(
+            getattr(link, "rotation", 0.0) if not isinstance(link, dict) else link.get("rotation", 0.0) or 0.0
+        ),
+        "link_type": "web",
+        "url": str(url),
+    }
+
+
+def _apply_story_sticker_ids_fix() -> None:
+    """1) Junta story_sticker_ids.
+    2) Injeta story_link_stickers (mesmo campo do INSSIST) para sticker nativo.
     """
     targets: list[tuple[object, str]] = []
     try:
@@ -74,8 +133,15 @@ def _apply_story_sticker_ids_fix() -> None:
             real_pr = self.private_request
 
             def patched_pr(endpoint, data=None, *a, **kw):
-                if isinstance(data, dict) and "story_sticker_ids" in data:
+                ep = str(endpoint or "")
+                if isinstance(data, dict) and (
+                    "story_sticker_ids" in data
+                    or "tap_models" in data
+                    or "configure_to_story" in ep
+                ):
                     data = dict(data)
+
+                    # --- A) story_sticker_ids completo ---
                     raw_ids = data.get("story_sticker_ids")
                     ids: list[str] = []
                     if isinstance(raw_ids, (list, tuple)):
@@ -83,7 +149,6 @@ def _apply_story_sticker_ids_fix() -> None:
                     elif isinstance(raw_ids, str) and raw_ids.strip():
                         ids = [p.strip() for p in raw_ids.split(",") if p.strip()]
 
-                    # Garante stickers inferidos do payload (caso a lib tenha cortado no [0])
                     def _ensure(name: str) -> None:
                         if name not in ids:
                             ids.append(name)
@@ -102,7 +167,27 @@ def _apply_story_sticker_ids_fix() -> None:
                         _ensure("quiz_sticker")
                     if data.get("story_countdowns"):
                         _ensure("countdown_sticker")
-                    if (
+
+                    # --- B) story_link_stickers nativo (INSSIST) ---
+                    link_payload = None
+                    existing = data.get("story_link_stickers")
+                    if existing:
+                        # Já veio no formato certo — só garante o id do sticker
+                        _ensure("link_sticker_default")
+                        log.info("story_link_stickers já presente no payload")
+                    else:
+                        link_payload = _extract_link_from_tap_models(data.get("tap_models"))
+                        if not link_payload:
+                            link_payload = _extract_link_from_kwargs(kwargs.get("links"))
+
+                    if link_payload:
+                        data["story_link_stickers"] = json.dumps([link_payload])
+                        _ensure("link_sticker_default")
+                        log.info(
+                            "story_link_stickers nativo injetado: %s",
+                            link_payload.get("url"),
+                        )
+                    elif (
                         data.get("story_cta")
                         or data.get("story_link")
                         or data.get("link_text")
@@ -110,10 +195,11 @@ def _apply_story_sticker_ids_fix() -> None:
                         or kwargs.get("links")
                     ):
                         _ensure("link_sticker_default")
-                    # tap_models com type story_link
-                    taps = data.get("tap_models")
-                    if isinstance(taps, str) and "story_link" in taps:
-                        _ensure("link_sticker_default")
+                    else:
+                        taps = data.get("tap_models")
+                        if isinstance(taps, str) and "story_link" in taps:
+                            _ensure("link_sticker_default")
+
                     if ids:
                         data["story_sticker_ids"] = ",".join(ids)
                         log.info(
@@ -121,6 +207,7 @@ def _apply_story_sticker_ids_fix() -> None:
                             data["story_sticker_ids"],
                             endpoint,
                         )
+
                 return real_pr(endpoint, data, *a, **kw)
 
             self.private_request = patched_pr
@@ -133,12 +220,12 @@ def _apply_story_sticker_ids_fix() -> None:
 
     for cls, method_name in targets:
         method = getattr(cls, method_name, None)
-        if method is None or getattr(method, "_ib_sticker_fixed", False):
+        if method is None or getattr(method, "_ib_story_link_native", False):
             continue
         wrapped = _wrap(method)
-        wrapped._ib_sticker_fixed = True  # type: ignore[attr-defined]
+        wrapped._ib_story_link_native = True  # type: ignore[attr-defined]
         setattr(cls, method_name, wrapped)
-        log.info("Patch story sticker aplicado: %s.%s", cls.__name__, method_name)
+        log.info("Patch story sticker + link nativo: %s.%s", cls.__name__, method_name)
 
 
 _apply_story_sticker_ids_fix()
@@ -496,9 +583,10 @@ def publish_story(cl: Client, media_path: Path, link_url: str | None = None) -> 
     else:
         log.info("Publicando story SEM link sticker")
 
-    # API oficial do instagrapi: só `links=[StoryLink(...)]`.
-    # Stickers custom tipo story_link conflitam com o configure e o Instagram
-    # pode descartar o link. Conta precisa ser elegível (pro/creator / limiar de seguidores).
+    # Mantém links=[StoryLink] (instagrapi valida URL + monta tap_models).
+    # O patch _apply_story_sticker_ids_fix injeta story_link_stickers (formato INSSIST)
+    # no configure_to_story para o visual nativo “Acessar link → domínio”.
+    # Conta ainda precisa ser elegível (pro/creator). Texto do botão = locale do IG.
     ext = media_path.suffix.lower()
     kwargs: dict = {"links": links}
     if ext in (".mp4", ".mov", ".webm"):
