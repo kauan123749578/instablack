@@ -110,23 +110,131 @@ def _extract_link_from_kwargs(links) -> dict | None:
     }
 
 
+IG_WEB_APP_ID = "936619743392459"  # mesmo do Instagram Web / INSSIST
+
+
+def _strip_link_from_tap_models(tap_models_raw):
+    """Tira story_link do tap_models — senão o IG desenha o sticker genérico."""
+    if not tap_models_raw:
+        return None
+    taps = tap_models_raw
+    if isinstance(taps, str):
+        try:
+            taps = json.loads(taps)
+        except json.JSONDecodeError:
+            return tap_models_raw
+    if not isinstance(taps, list):
+        return tap_models_raw
+    cleaned = [
+        t
+        for t in taps
+        if not (
+            isinstance(t, dict)
+            and (
+                t.get("type") in ("story_link", "link")
+                or t.get("tap_state_str_id") == "link_sticker_default"
+            )
+        )
+    ]
+    return json.dumps(cleaned) if cleaned else None
+
+
+def _web_configure_story(client, data: dict, link_payload: dict) -> dict:
+    """Configure via API web — é o que o INSSIST usa para o sticker nativo."""
+    upload_id = data.get("upload_id")
+    if not upload_id:
+        raise RuntimeError("configure_to_story sem upload_id")
+
+    cookies = {}
+    try:
+        cookies = dict(getattr(client, "cookie_dict", None) or {})
+    except Exception:
+        cookies = {}
+    sessionid = cookies.get("sessionid") or getattr(client, "sessionid", None)
+    csrftoken = cookies.get("csrftoken") or getattr(client, "token", None)
+    if not sessionid or not csrftoken:
+        raise RuntimeError("Sessão sem sessionid/csrftoken para configure web")
+
+    body = {
+        "upload_id": str(upload_id),
+        "story_link_stickers": json.dumps([link_payload]),
+    }
+    for key in ("reel_mentions", "story_locations", "audience", "caption"):
+        if data.get(key) is not None:
+            body[key] = data[key]
+
+    proxies = None
+    try:
+        proxies = getattr(getattr(client, "private", None), "proxies", None)
+    except Exception:
+        proxies = None
+
+    headers = {
+        "accept": "*/*",
+        "content-type": "application/x-www-form-urlencoded",
+        "x-csrftoken": str(csrftoken),
+        "x-ig-app-id": IG_WEB_APP_ID,
+        "x-requested-with": "XMLHttpRequest",
+        "origin": "https://www.instagram.com",
+        "referer": "https://www.instagram.com/",
+        "user-agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/122.0.0.0 Safari/537.36"
+        ),
+    }
+    cookie_jar = {"sessionid": str(sessionid), "csrftoken": str(csrftoken)}
+    if cookies.get("ds_user_id"):
+        cookie_jar["ds_user_id"] = str(cookies["ds_user_id"])
+    if cookies.get("mid"):
+        cookie_jar["mid"] = str(cookies["mid"])
+    if cookies.get("ig_did"):
+        cookie_jar["ig_did"] = str(cookies["ig_did"])
+
+    url = "https://www.instagram.com/api/v1/web/create/configure_to_story/"
+    resp = requests.post(
+        url,
+        data=body,
+        headers=headers,
+        cookies=cookie_jar,
+        proxies=proxies,
+        timeout=60,
+    )
+    log.info(
+        "web configure_to_story status=%s body_keys=%s",
+        resp.status_code,
+        list(body.keys()),
+    )
+    try:
+        payload = resp.json()
+    except Exception:
+        raise RuntimeError(f"configure web falhou: HTTP {resp.status_code} {resp.text[:300]}")
+    if resp.status_code >= 400 or (isinstance(payload, dict) and payload.get("status") == "fail"):
+        raise RuntimeError(f"configure web rejeitado: {payload}")
+    # espelha last_json do client (instagrapi usa isso em erros)
+    try:
+        client.last_json = payload
+        client.last_response = resp
+    except Exception:
+        pass
+    return payload
+
+
 def _apply_story_sticker_ids_fix() -> None:
-    """1) Junta story_sticker_ids.
-    2) Injeta story_link_stickers (mesmo campo do INSSIST) para sticker nativo.
-    """
+    """Injeta story_link_stickers + remove tap_models de link + configure via WEB (INSSIST)."""
     targets: list[tuple[object, str]] = []
     try:
         from instagrapi.mixins.photo import UploadPhotoMixin
 
         targets.append((UploadPhotoMixin, "photo_configure_to_story"))
     except Exception:
-        log.warning("UploadPhotoMixin indisponível — patch de story sticker não aplicado (foto)")
+        log.warning("UploadPhotoMixin indisponível")
     try:
         from instagrapi.mixins.video import UploadVideoMixin
 
         targets.append((UploadVideoMixin, "video_configure_to_story"))
     except Exception:
-        log.warning("UploadVideoMixin indisponível — patch de story sticker não aplicado (vídeo)")
+        log.warning("UploadVideoMixin indisponível")
 
     def _wrap(original):
         def wrapper(self, *args, **kwargs):
@@ -134,80 +242,70 @@ def _apply_story_sticker_ids_fix() -> None:
 
             def patched_pr(endpoint, data=None, *a, **kw):
                 ep = str(endpoint or "")
-                if isinstance(data, dict) and (
-                    "story_sticker_ids" in data
-                    or "tap_models" in data
-                    or "configure_to_story" in ep
-                ):
-                    data = dict(data)
+                is_story_cfg = isinstance(data, dict) and "configure_to_story" in ep
+                if not is_story_cfg:
+                    return real_pr(endpoint, data, *a, **kw)
 
-                    # --- A) story_sticker_ids completo ---
-                    raw_ids = data.get("story_sticker_ids")
-                    ids: list[str] = []
-                    if isinstance(raw_ids, (list, tuple)):
-                        ids = [str(x) for x in raw_ids if x]
-                    elif isinstance(raw_ids, str) and raw_ids.strip():
-                        ids = [p.strip() for p in raw_ids.split(",") if p.strip()]
+                data = dict(data)
 
-                    def _ensure(name: str) -> None:
-                        if name not in ids:
-                            ids.append(name)
+                raw_ids = data.get("story_sticker_ids")
+                ids: list[str] = []
+                if isinstance(raw_ids, (list, tuple)):
+                    ids = [str(x) for x in raw_ids if x]
+                elif isinstance(raw_ids, str) and raw_ids.strip():
+                    ids = [p.strip() for p in raw_ids.split(",") if p.strip()]
 
-                    if data.get("story_hashtags"):
-                        _ensure("hashtag_sticker")
-                    if data.get("reel_mentions"):
-                        _ensure("mention_sticker")
-                    if data.get("story_polls"):
-                        _ensure("polling_sticker_v2")
-                    if data.get("story_sliders"):
-                        _ensure("slider_sticker")
-                    if data.get("story_questions"):
-                        _ensure("question_sticker")
-                    if data.get("story_quizs"):
-                        _ensure("quiz_sticker")
-                    if data.get("story_countdowns"):
-                        _ensure("countdown_sticker")
+                def _ensure(name: str) -> None:
+                    if name not in ids:
+                        ids.append(name)
 
-                    # --- B) story_link_stickers nativo (INSSIST) ---
-                    link_payload = None
-                    existing = data.get("story_link_stickers")
-                    if existing:
-                        # Já veio no formato certo — só garante o id do sticker
-                        _ensure("link_sticker_default")
-                        log.info("story_link_stickers já presente no payload")
+                if data.get("story_hashtags"):
+                    _ensure("hashtag_sticker")
+                if data.get("reel_mentions"):
+                    _ensure("mention_sticker")
+                if data.get("story_polls"):
+                    _ensure("polling_sticker_v2")
+                if data.get("story_sliders"):
+                    _ensure("slider_sticker")
+                if data.get("story_questions"):
+                    _ensure("question_sticker")
+                if data.get("story_quizs"):
+                    _ensure("quiz_sticker")
+                if data.get("story_countdowns"):
+                    _ensure("countdown_sticker")
+
+                link_payload = _extract_link_from_tap_models(data.get("tap_models"))
+                if not link_payload:
+                    link_payload = _extract_link_from_kwargs(kwargs.get("links"))
+
+                if link_payload:
+                    data["story_link_stickers"] = json.dumps([link_payload])
+                    _ensure("link_sticker_default")
+                    # CRÍTICO: sem isso o IG desenha o sticker genérico
+                    cleaned = _strip_link_from_tap_models(data.get("tap_models"))
+                    if cleaned:
+                        data["tap_models"] = cleaned
                     else:
-                        link_payload = _extract_link_from_tap_models(data.get("tap_models"))
-                        if not link_payload:
-                            link_payload = _extract_link_from_kwargs(kwargs.get("links"))
-
-                    if link_payload:
-                        data["story_link_stickers"] = json.dumps([link_payload])
-                        _ensure("link_sticker_default")
-                        log.info(
-                            "story_link_stickers nativo injetado: %s",
-                            link_payload.get("url"),
-                        )
-                    elif (
-                        data.get("story_cta")
-                        or data.get("story_link")
-                        or data.get("link_text")
-                        or any("link_sticker" in x for x in ids)
-                        or kwargs.get("links")
-                    ):
-                        _ensure("link_sticker_default")
-                    else:
-                        taps = data.get("tap_models")
-                        if isinstance(taps, str) and "story_link" in taps:
-                            _ensure("link_sticker_default")
-
+                        data.pop("tap_models", None)
+                    data.pop("story_cta", None)
                     if ids:
                         data["story_sticker_ids"] = ",".join(ids)
-                        log.info(
-                            "story configure sticker_ids=%s endpoint=%s",
-                            data["story_sticker_ids"],
-                            endpoint,
+                    log.info(
+                        "story nativo via WEB: url=%s sticker_ids=%s",
+                        link_payload.get("url"),
+                        data.get("story_sticker_ids"),
+                    )
+                    try:
+                        return _web_configure_story(self, data, link_payload)
+                    except Exception as exc:
+                        log.warning(
+                            "configure WEB falhou (%s) — fallback mobile sem tap_models link",
+                            exc,
                         )
+                        return real_pr(endpoint, data, *a, **kw)
 
+                if ids:
+                    data["story_sticker_ids"] = ",".join(ids)
                 return real_pr(endpoint, data, *a, **kw)
 
             self.private_request = patched_pr
@@ -220,12 +318,12 @@ def _apply_story_sticker_ids_fix() -> None:
 
     for cls, method_name in targets:
         method = getattr(cls, method_name, None)
-        if method is None or getattr(method, "_ib_story_link_native", False):
+        if method is None or getattr(method, "_ib_story_link_native_v2", False):
             continue
         wrapped = _wrap(method)
-        wrapped._ib_story_link_native = True  # type: ignore[attr-defined]
+        wrapped._ib_story_link_native_v2 = True  # type: ignore[attr-defined]
         setattr(cls, method_name, wrapped)
-        log.info("Patch story sticker + link nativo: %s.%s", cls.__name__, method_name)
+        log.info("Patch story link NATIVO v2 (web): %s.%s", cls.__name__, method_name)
 
 
 _apply_story_sticker_ids_fix()
@@ -583,10 +681,10 @@ def publish_story(cl: Client, media_path: Path, link_url: str | None = None) -> 
     else:
         log.info("Publicando story SEM link sticker")
 
-    # Mantém links=[StoryLink] (instagrapi valida URL + monta tap_models).
-    # O patch _apply_story_sticker_ids_fix injeta story_link_stickers (formato INSSIST)
-    # no configure_to_story para o visual nativo “Acessar link → domínio”.
-    # Conta ainda precisa ser elegível (pro/creator). Texto do botão = locale do IG.
+    # Upload + links=[StoryLink] (instagrapi valida URL e monta tap_models).
+    # Patch v2: remove story_link do tap_models e configura via API WEB
+    # (/api/v1/web/create/configure_to_story/) com story_link_stickers — igual INSSIST.
+    # Texto “Acessar link” = locale do Instagram; conta precisa ser elegível.
     ext = media_path.suffix.lower()
     kwargs: dict = {"links": links}
     if ext in (".mp4", ".mov", ".webm"):

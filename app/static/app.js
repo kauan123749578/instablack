@@ -526,8 +526,16 @@
     clearBtn?.addEventListener("click", async (e) => {
       e.stopPropagation();
       if (!confirm("Limpar todas as notificações do sino?")) return;
-      await fetch("/api/notifications/clear", { method: "POST" });
-      loadNotifications();
+      const list = document.getElementById("notif-list");
+      const dot = document.getElementById("notif-dot");
+      try {
+        const res = await fetch("/api/notifications/clear", { method: "POST" });
+        if (!res.ok) throw new Error("fail");
+        if (list) list.innerHTML = '<li class="notif-empty">Nenhuma notificação ainda.</li>';
+        if (dot) dot.hidden = true;
+      } catch {
+        if (list) list.innerHTML = '<li class="notif-empty">Não foi possível limpar.</li>';
+      }
     });
 
     loadNotifications();

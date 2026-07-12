@@ -195,50 +195,33 @@ def _resolve_log_content_type(plog: PublishLog) -> str:
 
 
 def _sync_notifications_from_logs(db: Session, user: User) -> list[PublishLog]:
-    """Cria notificações in-app a partir de PublishLog de sucesso faltantes.
+    """Cria notificações in-app só para logs NOVOS após a última notificação.
 
-    Cobre worker antigo, falha silenciosa no Celery, ou deploy parcial.
-    Retorna os logs novos (mais recente primeiro) para eventual push.
+    Após Limpar o sino fica vazio de propósito — NÃO recria o histórico.
     """
     from core.notifications import content_label
 
     newest_notif_at = db.scalar(
         select(func.max(AppNotification.created_at)).where(AppNotification.user_id == user.id)
     )
-    q = (
-        select(PublishLog)
-        .join(PublishLog.account)
-        .where(
-            InstagramAccount.user_id == user.id,
-            PublishLog.status == "success",
-        )
-        .options(selectinload(PublishLog.account), selectinload(PublishLog.automation))
-        .order_by(PublishLog.created_at.desc())
-        .limit(15)
+    # Sino vazio (incluindo depois de Limpar) — não backfill de posts antigos
+    if newest_notif_at is None:
+        return []
+
+    recent_ok = list(
+        db.scalars(
+            select(PublishLog)
+            .join(PublishLog.account)
+            .where(
+                InstagramAccount.user_id == user.id,
+                PublishLog.status == "success",
+                PublishLog.created_at > newest_notif_at,
+            )
+            .options(selectinload(PublishLog.account), selectinload(PublishLog.automation))
+            .order_by(PublishLog.created_at.desc())
+            .limit(15)
+        ).all()
     )
-    if newest_notif_at is not None:
-        q = q.where(PublishLog.created_at > newest_notif_at)
-    recent_ok = list(db.scalars(q).all())
-    if not recent_ok:
-        # Sino vazio + logs antigos: backfill dos 10 mais recentes
-        existing = db.scalar(
-            select(func.count(AppNotification.id)).where(AppNotification.user_id == user.id)
-        ) or 0
-        if existing > 0:
-            return []
-        recent_ok = list(
-            db.scalars(
-                select(PublishLog)
-                .join(PublishLog.account)
-                .where(
-                    InstagramAccount.user_id == user.id,
-                    PublishLog.status == "success",
-                )
-                .options(selectinload(PublishLog.account), selectinload(PublishLog.automation))
-                .order_by(PublishLog.created_at.desc())
-                .limit(10)
-            ).all()
-        )
     if not recent_ok:
         return []
     for plog in reversed(recent_ok):
@@ -333,10 +316,12 @@ def api_clear_notifications(
     rows = db.scalars(
         select(AppNotification).where(AppNotification.user_id == user.id)
     ).all()
+    cleared = len(rows)
     for n in rows:
         db.delete(n)
     db.commit()
-    return {"ok": True, "cleared": len(rows)}
+    # Resposta imediata sem sync — o GET seguinte também não recria histórico
+    return {"ok": True, "cleared": cleared, "items": [], "unread": 0}
 
 
 @router.get("/warmup")
