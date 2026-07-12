@@ -997,6 +997,8 @@
     function updateVideoLabel() {
       const files = videoInput?.files ? Array.from(videoInput.files) : [];
       const isReel = contentType?.value === "reel";
+      const countInput = document.getElementById("video-count-input");
+      if (countInput) countInput.value = String(files.length);
       if (!videoName) return;
       if (!files.length) {
         videoName.textContent = isReel

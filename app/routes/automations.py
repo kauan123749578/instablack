@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
+import logging
+from io import BytesIO
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
@@ -24,6 +27,7 @@ from core.storage import get_storage
 from models.models import Automation, InstagramAccount, PublishLog, User
 
 router = APIRouter(prefix="/automations", tags=["automations"])
+log = logging.getLogger(__name__)
 
 CONTENT_TYPES = ["reel", "story", "photo"]
 
@@ -54,23 +58,59 @@ def _story_sticker_text_value(content_type: str, story_sticker_text: str, story_
         return "Link"
 
 
+def _collect_upload_files(form, *, field_names: tuple[str, ...]) -> list[UploadFile]:
+    """Lê todos os arquivos do multipart (FastAPI/Starlette às vezes entrega só 1 via File())."""
+    out: list[UploadFile] = []
+    seen: set[int] = set()
+    for name in field_names:
+        for item in form.getlist(name):
+            if not hasattr(item, "filename") or not item.filename:
+                continue
+            oid = id(item)
+            if oid in seen:
+                continue
+            seen.add(oid)
+            out.append(item)  # type: ignore[arg-type]
+    return out
+
+
 def _save_uploaded_videos(storage, files: list[UploadFile]) -> list[dict[str, str]]:
+    """Materializa cada upload em memória (evita stream consumido / só o 1º arquivo)."""
     entries: list[dict[str, str]] = []
+    seen_hash: set[str] = set()
     for f in files:
         if not f.filename:
             continue
+        try:
+            f.file.seek(0)
+        except Exception:
+            pass
+        data = f.file.read()
+        if not data:
+            log.warning("Upload vazio ignorado: %s", f.filename)
+            continue
+        digest = hashlib.sha256(data).hexdigest()
+        if digest in seen_hash:
+            log.warning("Vídeo duplicado ignorado: %s", f.filename)
+            continue
+        seen_hash.add(digest)
         ext = Path(f.filename).suffix.lower() or ".mp4"
-        key = storage.save(f.file, suggested_ext=ext)
+        key = storage.save(BytesIO(data), suggested_ext=ext)
         entries.append({
             "video_key": key,
             "video_original_name": f.filename,
         })
+        log.info("Vídeo salvo %s/%s: %s → %s (%s bytes)", len(entries), "?", f.filename, key, len(data))
     return entries
 
 
 def _save_thumb(storage, thumb: UploadFile | None) -> tuple[str | None, str | None]:
     if not thumb or not thumb.filename:
         return None, None
+    try:
+        thumb.file.seek(0)
+    except Exception:
+        pass
     thumb_ext = Path(thumb.filename).suffix or ".jpg"
     return storage.save(thumb.file, suggested_ext=thumb_ext), thumb.filename
 
@@ -304,8 +344,7 @@ async def create_automation(
     calendar_days: str = Form(""),
     calendar_time: str = Form("10:00"),
     account_ids: list[int] = Form(default=[]),
-    video: UploadFile | None = File(default=None),
-    videos: list[UploadFile] | None = File(default=None),
+    video_count: int = Form(0),
     thumb: UploadFile | None = File(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -330,37 +369,29 @@ async def create_automation(
     if not error and not account_ids:
         error = "Selecione pelo menos uma conta."
 
-    # Garante todos os arquivos do input multiple (FastAPI às vezes entrega só 1)
+    # Só via request.form() — evita perder arquivos do input multiple
     form = await request.form()
-    raw_multi = form.getlist("videos")
     upload_files: list[UploadFile] = []
     if not error:
         if content_type == "reel":
-            for item in raw_multi:
-                if hasattr(item, "filename") and item.filename:
-                    upload_files.append(item)  # type: ignore[arg-type]
-            if not upload_files and videos:
-                upload_files = [f for f in videos if f and f.filename]
-            if not upload_files and video and video.filename:
-                upload_files = [video]
+            upload_files = _collect_upload_files(form, field_names=("videos", "video"))
             if not upload_files:
                 error = "Envie pelo menos um vídeo Reels (.mp4)."
             else:
                 bad = [f.filename for f in upload_files if not is_video_filename(f.filename)]
                 if bad:
                     error = f"Arquivo inválido (precisa ser vídeo .mp4): {', '.join(bad)}"
+                elif video_count > 1 and len(upload_files) < video_count:
+                    error = (
+                        f"Só chegaram {len(upload_files)} de {video_count} vídeos no servidor. "
+                        "Tente de novo (arquivos menores) ou envie em lotes."
+                    )
         else:
-            story_file = None
-            for item in raw_multi:
-                if hasattr(item, "filename") and item.filename:
-                    story_file = item
-                    break
-            if story_file is None and video and video.filename:
-                story_file = video
-            if story_file is None:
+            upload_files = _collect_upload_files(form, field_names=("video", "videos"))
+            if not upload_files:
                 error = "Envie o arquivo de mídia."
             else:
-                upload_files = [story_file]  # type: ignore[list-item]
+                upload_files = upload_files[:1]
 
     accounts: list[InstagramAccount] = []
     if not error:
@@ -395,14 +426,26 @@ async def create_automation(
     video_entries = _save_uploaded_videos(storage, upload_files)
     if not video_entries:
         raise HTTPException(status_code=400, detail="Falha ao salvar os vídeos.")
+    if content_type == "reel" and video_count > 1 and len(video_entries) < video_count:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Só {len(video_entries)} de {video_count} vídeos foram salvos "
+                "(arquivos vazios ou duplicados). Selecione de novo."
+            ),
+        )
     video_key = video_entries[0]["video_key"]
     if len(video_entries) == 1:
         video_original_name = video_entries[0]["video_original_name"]
     else:
         video_original_name = f"{len(video_entries)} vídeos"
-    # Sempre persiste a lista para Reels — sem isso o worker republica só o 1º vídeo
-    videos_json = videos_to_json(video_entries) if content_type == "reel" else (
-        videos_to_json(video_entries) if len(video_entries) > 1 else None
+    # Sempre persiste a lista completa — sem isso o worker republica só o 1º
+    videos_json = videos_to_json(video_entries)
+    log.info(
+        "Nova automação user=%s playlist=%s arquivos=%s",
+        user.id,
+        len(video_entries),
+        [e["video_original_name"] for e in video_entries],
     )
 
     thumb_key, thumb_original_name = _save_thumb(storage, thumb)
@@ -424,9 +467,10 @@ async def create_automation(
                     countdown=countdown + acc_idx * 5,
                 )
             if len(video_entries) > 1:
-                countdown += max(30, len(accounts) * 5)
+                # Espaça cada vídeo da fila (um por vez, sem repetir)
+                countdown += max(45, len(accounts) * 8)
         return RedirectResponse(
-            "/logs?watch=1",
+            f"/logs?watch=1&n={len(video_entries)}",
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
@@ -459,7 +503,7 @@ async def create_automation(
         db.add(automation)
         db.commit()
         return RedirectResponse(
-            "/automations?ok=calendar",
+            f"/automations?ok=calendar&n={len(video_entries)}",
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
@@ -484,7 +528,10 @@ async def create_automation(
     automation.accounts = accounts
     db.add(automation)
     db.commit()
-    return RedirectResponse("/automations", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(
+        f"/automations?ok=1&n={len(video_entries)}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
 
 
 def _get_owned(db: Session, automation_id: int, user: User) -> Automation:
@@ -513,11 +560,11 @@ def resume_automation(
     user: User = Depends(get_current_user),
 ):
     a = _get_owned(db, automation_id, user)
-    from app.utils.automation_videos import parse_videos_json
+    from app.utils.automation_videos import playlist_items
 
     # Se a playlist tinha terminado, recomeça do primeiro vídeo
-    items = parse_videos_json(a.videos_json)
-    if a.status == "completed" or (items and len(items) > 1 and int(a.current_index or 0) >= len(items)):
+    items = playlist_items(a)
+    if a.status == "completed" or (len(items) > 1 and int(a.current_index or 0) >= len(items)):
         a.current_index = 0
     a.status = "active"
     a.next_run_at = dt.datetime.utcnow()

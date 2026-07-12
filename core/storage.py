@@ -32,6 +32,10 @@ class LocalStorage:
         key = f"videos/{uuid.uuid4().hex}{ext}"
         dest = self._abs(key)
         dest.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            src_stream.seek(0)
+        except Exception:
+            pass
         with dest.open("wb") as out:
             shutil.copyfileobj(src_stream, out)
         return key

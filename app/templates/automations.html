@@ -20,6 +20,13 @@
 <div class="alert alert-ok">Agendamento por calendário criado!</div>
 {% endif %}
 
+{% if request.query_params.get('ok') and request.query_params.get('ok') != 'calendar' %}
+<div class="alert alert-ok">
+  Automação criada
+  {% if request.query_params.get('n') %}com <strong>{{ request.query_params.get('n') }}</strong> vídeo(s) na playlist{% endif %}!
+</div>
+{% endif %}
+
 {% if request.query_params.get('posted') %}
 <div class="alert alert-ok">Publicação enviada para a fila! Acompanhe no log de atividades.</div>
 {% endif %}

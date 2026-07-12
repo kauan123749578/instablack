@@ -20,39 +20,58 @@ def parse_videos_json(raw: str | None) -> list[dict[str, str]]:
     if not isinstance(data, list):
         return []
     out: list[dict[str, str]] = []
+    seen: set[str] = set()
     for item in data:
-        if isinstance(item, dict) and item.get("video_key"):
-            out.append({
-                "video_key": str(item["video_key"]),
-                "video_original_name": str(item.get("video_original_name") or ""),
-            })
+        if not isinstance(item, dict):
+            continue
+        key = str(item.get("video_key") or "").strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append({
+            "video_key": key,
+            "video_original_name": str(item.get("video_original_name") or ""),
+        })
     return out
 
 
 def videos_to_json(entries: list[dict[str, str]]) -> str:
-    return json.dumps(entries, ensure_ascii=False)
+    cleaned = parse_videos_json(json.dumps(entries or []))
+    return json.dumps(cleaned, ensure_ascii=False)
+
+
+def playlist_items(automation: Automation) -> list[dict[str, str]]:
+    """Playlist completa; se videos_json vazio, usa o video_key único."""
+    items = parse_videos_json(getattr(automation, "videos_json", None))
+    if items:
+        return items
+    key = getattr(automation, "video_key", None)
+    if not key:
+        return []
+    return [{
+        "video_key": str(key),
+        "video_original_name": str(getattr(automation, "video_original_name", None) or ""),
+    }]
 
 
 def video_count(automation: Automation) -> int:
-    items = parse_videos_json(getattr(automation, "videos_json", None))
-    return len(items) if items else 1
+    return max(1, len(playlist_items(automation)))
 
 
 def resolve_video_key(automation: Automation) -> str:
-    items = parse_videos_json(getattr(automation, "videos_json", None))
+    items = playlist_items(automation)
     if not items:
         return automation.video_key
     idx = int(getattr(automation, "current_index", 0) or 0)
     if idx < 0:
         idx = 0
     if idx >= len(items):
-        # Playlist esgotada — não volta ao início
         return items[-1]["video_key"]
     return items[idx]["video_key"]
 
 
 def resolve_video_label(automation: Automation) -> str:
-    items = parse_videos_json(getattr(automation, "videos_json", None))
+    items = playlist_items(automation)
     if not items:
         return automation.video_original_name or automation.video_key
     idx = min(int(getattr(automation, "current_index", 0) or 0), len(items) - 1)
@@ -65,7 +84,7 @@ def resolve_video_label(automation: Automation) -> str:
 
 
 def all_video_keys(automation: Automation) -> list[str]:
-    items = parse_videos_json(getattr(automation, "videos_json", None))
+    items = playlist_items(automation)
     if items:
         return [e["video_key"] for e in items]
     return [automation.video_key]
@@ -80,7 +99,7 @@ def is_video_filename(name: str | None) -> bool:
 
 def playlist_is_exhausted(automation: Automation) -> bool:
     """True quando há vários vídeos e o índice já passou do último."""
-    items = parse_videos_json(getattr(automation, "videos_json", None))
+    items = playlist_items(automation)
     if len(items) <= 1:
         return False
     idx = int(getattr(automation, "current_index", 0) or 0)

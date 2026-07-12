@@ -13,6 +13,7 @@
 {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
 
 <form method="post" action="/automations/new" enctype="multipart/form-data" class="form-card form-grid" id="automation-form">
+  <input type="hidden" name="video_count" id="video-count-input" value="0">
   <label>Nome da automação
     <input type="text" name="name" required placeholder="{% if default_content_type == 'story' %}Ex.: Story dias 1, 15 e 30{% else %}Ex.: Reels a cada 1 hora{% endif %}">
   </label>

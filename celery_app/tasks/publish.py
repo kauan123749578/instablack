@@ -10,7 +10,7 @@ from pathlib import Path
 from sqlalchemy import select
 
 from app.security import decrypt_secret
-from app.utils.automation_videos import parse_videos_json, resolve_video_key
+from app.utils.automation_videos import playlist_items, resolve_video_key
 from celery_app.config import celery_app
 from core.database import session_scope
 from core.instagram import (
@@ -32,62 +32,126 @@ from models.models import Automation, InstagramAccount, PublishLog
 log = logging.getLogger(__name__)
 
 
+def _advance_playlist_after_success(automation_id: int, posted_index: int) -> None:
+    """Safety net: se o claim no execute não avançou, avança após sucesso."""
+    from sqlalchemy import select
+
+    notify = None
+    with session_scope() as db:
+        automation = db.execute(
+            select(Automation).where(Automation.id == automation_id).with_for_update()
+        ).scalar_one_or_none()
+        if not automation:
+            return
+        items = playlist_items(automation)
+        if len(items) <= 1:
+            return
+        cur = int(automation.current_index or 0)
+        # Só avança se ainda estamos no vídeo que acabou de sair (evita double-advance)
+        if cur != posted_index:
+            return
+        automation.current_index = posted_index + 1
+        if automation.current_index >= len(items):
+            automation.status = "completed"
+            automation.next_run_at = None
+            notify = (automation.user_id, automation.name, len(items))
+            log.info(
+                "Playlist concluída automation=%s (%s/%s)",
+                automation_id,
+                len(items),
+                len(items),
+            )
+        else:
+            log.info(
+                "Playlist automation=%s avançou para %s/%s",
+                automation_id,
+                automation.current_index + 1,
+                len(items),
+            )
+    if notify:
+        uid, name, total = notify
+        create_notification(
+            uid,
+            "Automação concluída",
+            f"“{name}”: todos os {total} vídeos foram publicados.",
+            kind="publish",
+            link="/automations",
+        )
+
+
 @celery_app.task(name="celery_app.tasks.publish.execute_automation", bind=True, max_retries=0)
 def execute_automation(self, automation_id: int) -> dict:
+    done_notify = None
     with session_scope() as db:
-        automation = db.get(Automation, automation_id)
+        from sqlalchemy import select
+
+        automation = db.execute(
+            select(Automation).where(Automation.id == automation_id).with_for_update()
+        ).scalar_one_or_none()
         if not automation:
             return {"error": "automation_not_found", "id": automation_id}
         if automation.status != "active":
             return {"skipped": True, "reason": "not_active"}
 
-        items = parse_videos_json(automation.videos_json)
+        items = playlist_items(automation)
         idx = int(automation.current_index or 0)
+        total_videos = len(items) if items else 1
 
         # Playlist multi-vídeo já esgotada
-        if items and len(items) > 1 and idx >= len(items):
+        if len(items) > 1 and idx >= len(items):
             automation.status = "completed"
             automation.next_run_at = None
-            owner_id = automation.user_id
-            name = automation.name
-            create_notification(
-                owner_id,
-                "Automação concluída",
-                f"“{name}”: todos os {len(items)} vídeos foram publicados.",
-                kind="publish",
-                link="/automations",
-            )
-            return {"skipped": True, "reason": "playlist_done"}
+            done_notify = (automation.user_id, automation.name, len(items))
+            # commit on exit; notify after
+        else:
+            account_ids = [
+                acc.id for acc in automation.accounts
+                if acc.status not in ("banned", "proxy_down", "paused", "needs_login")
+            ]
+            if not items:
+                return {"error": "no_videos", "id": automation_id}
 
-        account_ids = [
-            acc.id for acc in automation.accounts
-            if acc.status not in ("banned", "proxy_down", "paused", "needs_login")
-        ]
-        video_key = resolve_video_key(automation)
-        queue_index = idx
-        playlist_done = False
+            video_key = items[idx]["video_key"] if idx < len(items) else items[-1]["video_key"]
+            queue_index = idx
+            playlist_done = False
 
-        if items:
-            next_idx = idx + 1
+            # Claim do slot agora (impede o próximo tick republicar o mesmo vídeo)
             if len(items) > 1:
-                # Playlist: avança sem loop; ao passar do último, encerra
-                automation.current_index = next_idx
-                if next_idx >= len(items):
+                automation.current_index = idx + 1
+                if automation.current_index >= len(items):
                     automation.next_run_at = None
                     automation.status = "completed"
                     playlist_done = True
             else:
-                # Um único vídeo: mantém recorrência no intervalo
                 automation.current_index = 0
 
-        owner_id = automation.user_id
-        auto_name = automation.name
-        total_videos = len(items) if items else 1
+            owner_id = automation.user_id
+            auto_name = automation.name
+            log.info(
+                "execute_automation id=%s claim video %s/%s key=%s → next_index=%s accounts=%s",
+                automation_id,
+                idx + 1,
+                total_videos,
+                video_key,
+                automation.current_index,
+                len(account_ids),
+            )
+
+    if done_notify:
+        uid, name, total = done_notify
+        create_notification(
+            uid,
+            "Automação concluída",
+            f"“{name}”: todos os {total} vídeos foram publicados.",
+            kind="publish",
+            link="/automations",
+        )
+        return {"skipped": True, "reason": "playlist_done"}
 
     for i, account_id in enumerate(account_ids):
         countdown = random.randint(0, 40) + i * random.randint(2, 8)
         publish_to_account.apply_async(
-            args=[automation_id, account_id, video_key],
+            args=[automation_id, account_id, video_key, queue_index],
             countdown=countdown,
         )
 
@@ -104,6 +168,7 @@ def execute_automation(self, automation_id: int) -> dict:
         "automation_id": automation_id,
         "accounts_dispatched": len(account_ids),
         "queue_index": queue_index,
+        "playlist_size": total_videos,
         "playlist_done": playlist_done,
     }
 
@@ -149,7 +214,13 @@ def publish_once(
     retry_jitter=True,
     max_retries=2,
 )
-def publish_to_account(self, automation_id: int, account_id: int, video_key: str | None = None) -> dict:
+def publish_to_account(
+    self,
+    automation_id: int,
+    account_id: int,
+    video_key: str | None = None,
+    queue_index: int | None = None,
+) -> dict:
     with session_scope() as db:
         automation = db.get(Automation, automation_id)
         account = db.get(InstagramAccount, account_id)
@@ -175,6 +246,9 @@ def publish_to_account(self, automation_id: int, account_id: int, video_key: str
             return {"skipped": True}
 
         vk = video_key or resolve_video_key(automation)
+        posted_index = queue_index
+        if posted_index is None:
+            posted_index = int(automation.current_index or 0)
 
         return _execute_publish(
             automation_id=automation.id,
@@ -185,6 +259,7 @@ def publish_to_account(self, automation_id: int, account_id: int, video_key: str
             content_type=automation.content_type or "reel",
             story_link=automation.story_link,
             story_sticker_text=getattr(automation, "story_sticker_text", None),
+            playlist_index=posted_index,
         )
 
 
@@ -197,6 +272,7 @@ def _execute_publish(
     content_type: str,
     story_link: str | None = None,
     story_sticker_text: str | None = None,
+    playlist_index: int | None = None,
 ) -> dict:
     storage = get_storage()
 
@@ -454,6 +530,17 @@ def _execute_publish(
                         link="/logs",
                         is_read=False,
                     )
+                )
+
+        # Safety net: se o claim no execute falhou, avança aqui (estilo postagemIG)
+        if automation_id is not None and playlist_index is not None:
+            try:
+                _advance_playlist_after_success(automation_id, playlist_index)
+            except Exception:
+                log.exception(
+                    "Falha ao avançar playlist automation=%s index=%s",
+                    automation_id,
+                    playlist_index,
                 )
 
         # Push no celular (fora da TX — não pode bloquear o commit do log)
