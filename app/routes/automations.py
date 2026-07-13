@@ -538,11 +538,34 @@ def resume_automation(
 ):
     a = _get_owned(db, automation_id, user)
     from app.utils.automation_videos import playlist_items
+    from sqlalchemy import select as sa_select
+    from models.models import PublishLog
 
-    # Se a playlist tinha terminado, recomeça do primeiro vídeo
     items = playlist_items(a)
-    if a.status == "completed" or (len(items) > 1 and int(a.current_index or 0) >= len(items)):
+    keys = [it["video_key"] for it in items]
+
+    # Reposiciona pelo último vídeo publicado com sucesso (não volta pro 1º à toa)
+    last_key = db.scalar(
+        sa_select(PublishLog.video_key)
+        .where(
+            PublishLog.automation_id == a.id,
+            PublishLog.status == "success",
+            PublishLog.video_key.isnot(None),
+        )
+        .order_by(PublishLog.id.desc())
+        .limit(1)
+    )
+    if last_key and last_key in keys:
+        a.current_index = keys.index(last_key) + 1
+    elif a.status == "completed" or (len(items) > 1 and int(a.current_index or 0) >= len(items)):
         a.current_index = 0
+
+    if len(items) > 1 and int(a.current_index or 0) >= len(items):
+        a.status = "completed"
+        a.next_run_at = None
+        db.commit()
+        return RedirectResponse("/automations", status_code=status.HTTP_303_SEE_OTHER)
+
     a.status = "active"
     a.next_run_at = dt.datetime.utcnow()
     db.commit()
