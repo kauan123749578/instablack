@@ -21,6 +21,13 @@ celery_app = Celery(
     ],
 )
 
+# Import explícito: garante registro mesmo se o worker subir só com -Q parcial
+from celery_app.tasks import health as _health  # noqa: E402,F401
+from celery_app.tasks import insights as _insights  # noqa: E402,F401
+from celery_app.tasks import publish as _publish  # noqa: E402,F401
+from celery_app.tasks import warmup as _warmup  # noqa: E402,F401
+import celery_app.beat as _beat  # noqa: E402,F401
+
 celery_conf: dict = {
     "timezone": "UTC",
     "task_acks_late": True,
