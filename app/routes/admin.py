@@ -154,6 +154,45 @@ def set_account_limit(
     )
 
 
+@router.post("/users/{user_id}/toggle-admin")
+def toggle_user_admin(
+    user_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_admin_user),
+):
+    target = db.get(User, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+
+    if user_id == admin.id and target.is_admin:
+        return RedirectResponse(
+            "/admin?error=self_admin",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    if target.is_admin:
+        other_admins = db.scalar(
+            select(func.count(User.id)).where(
+                User.is_admin.is_(True),
+                User.id != target.id,
+            )
+        ) or 0
+        if other_admins < 1:
+            return RedirectResponse(
+                "/admin?error=last_admin",
+                status_code=status.HTTP_303_SEE_OTHER,
+            )
+        target.is_admin = False
+    else:
+        target.is_admin = True
+
+    db.commit()
+    return RedirectResponse(
+        "/admin?ok=admin",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
 @router.post("/users/{user_id}/delete")
 def delete_user(
     user_id: int,

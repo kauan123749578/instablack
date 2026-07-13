@@ -16,8 +16,9 @@ from app.deps import get_current_user
 from app.templating import templates
 from app.utils.calendar_schedule import days_to_json, next_calendar_run, parse_calendar_days
 from app.utils.automation_videos import (
-    all_video_keys,
     is_video_filename,
+    media_key_referenced_elsewhere,
+    media_keys_for_automation,
     videos_to_json,
 )
 from app.utils.intervals import ALLOWED_INTERVALS, interval_label
@@ -647,6 +648,58 @@ def reset_playlist(
     return RedirectResponse("/automations?reset=1", status_code=status.HTTP_303_SEE_OTHER)
 
 
+@router.post("/{automation_id}/duplicate")
+def duplicate_automation(
+    automation_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Clona a automação reusando as mesmas keys de vídeo/capa no storage."""
+    src = db.execute(
+        select(Automation)
+        .where(Automation.id == automation_id)
+        .options(selectinload(Automation.accounts))
+    ).scalar_one_or_none()
+    if not src or src.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Automação não encontrada")
+
+    base_name = (src.name or "Automação").strip()
+    copy_name = f"{base_name} (cópia)"
+    if len(copy_name) > 255:
+        copy_name = copy_name[:255]
+
+    now = dt.datetime.utcnow()
+    clone = Automation(
+        user_id=user.id,
+        name=copy_name,
+        content_type=src.content_type or "reel",
+        caption=src.caption or "",
+        story_link=src.story_link,
+        story_sticker_text=src.story_sticker_text,
+        video_key=src.video_key,
+        video_original_name=src.video_original_name,
+        thumb_key=src.thumb_key,
+        thumb_original_name=src.thumb_original_name,
+        videos_json=src.videos_json,
+        current_index=0,
+        interval_minutes=src.interval_minutes,
+        schedule_type=src.schedule_type or "interval",
+        calendar_days=src.calendar_days,
+        calendar_time=src.calendar_time,
+        status="active",
+        next_run_at=now,
+        last_run_at=None,
+        total_runs=0,
+    )
+    clone.accounts = list(src.accounts)
+    db.add(clone)
+    db.commit()
+    return RedirectResponse(
+        "/automations?ok=duplicated",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
 @router.post("/{automation_id}/edit")
 async def edit_automation(
     automation_id: int,
@@ -678,22 +731,27 @@ async def edit_automation(
 
     storage = get_storage()
     if remove_thumb and a.thumb_key:
-        try:
-            storage.delete(a.thumb_key)
-        except Exception:
-            pass
+        old_thumb = a.thumb_key
         a.thumb_key = None
         a.thumb_original_name = None
-
-    if thumb and thumb.filename:
-        if a.thumb_key:
+        if not media_key_referenced_elsewhere(db, old_thumb, exclude_automation_id=a.id):
             try:
-                storage.delete(a.thumb_key)
+                storage.delete(old_thumb)
             except Exception:
                 pass
+
+    if thumb and thumb.filename:
+        old_thumb = a.thumb_key
         thumb_ext = Path(thumb.filename).suffix or ".jpg"
         a.thumb_key = storage.save(thumb.file, suggested_ext=thumb_ext)
         a.thumb_original_name = thumb.filename
+        if old_thumb and not media_key_referenced_elsewhere(
+            db, old_thumb, exclude_automation_id=a.id
+        ):
+            try:
+                storage.delete(old_thumb)
+            except Exception:
+                pass
 
     a.caption = caption
     a.content_type = content_type
@@ -711,14 +769,13 @@ def delete_automation(
 ):
     a = _get_owned(db, automation_id, user)
     storage = get_storage()
-    for key in all_video_keys(a):
+    keys = media_keys_for_automation(a)
+    # Apaga do storage só keys que nenhuma outra automação ainda usa (cópias compartilham arquivo)
+    for key in keys:
+        if media_key_referenced_elsewhere(db, key, exclude_automation_id=a.id):
+            continue
         try:
             storage.delete(key)
-        except Exception:
-            pass
-    if a.thumb_key:
-        try:
-            storage.delete(a.thumb_key)
         except Exception:
             pass
     db.delete(a)

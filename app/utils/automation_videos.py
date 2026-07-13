@@ -102,3 +102,31 @@ def playlist_is_exhausted(automation: Automation) -> bool:
     if len(items) <= 1:
         return False
     return int(getattr(automation, "current_index", 0) or 0) >= len(items)
+
+
+def media_keys_for_automation(automation: Automation) -> list[str]:
+    """Todas as keys de mídia referenciadas (vídeos + capa)."""
+    keys = list(all_video_keys(automation))
+    thumb = getattr(automation, "thumb_key", None)
+    if thumb and thumb not in keys:
+        keys.append(str(thumb))
+    return [k for k in keys if k]
+
+
+def media_key_referenced_elsewhere(db, key: str, *, exclude_automation_id: int) -> bool:
+    """True se outra automação ainda usa esta key (evita apagar mídia compartilhada)."""
+    from sqlalchemy import or_, select
+
+    from models.models import Automation
+
+    if not key:
+        return False
+    q = select(Automation.id).where(
+        Automation.id != exclude_automation_id,
+        or_(
+            Automation.video_key == key,
+            Automation.thumb_key == key,
+            Automation.videos_json.contains(key),
+        ),
+    ).limit(1)
+    return db.scalar(q) is not None

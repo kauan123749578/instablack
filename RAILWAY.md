@@ -119,6 +119,12 @@ DEFAULT_PROXY=host:porta:user:senha
 BOOTSTRAP_ADMIN_USERNAME=admin
 BOOTSTRAP_ADMIN_PASSWORD=<senha-forte>
 BOOTSTRAP_ADMIN_IS_ADMIN=true
+
+# Web Push — MESMAS keys no web E no worker (cooperative-dream)
+# Sem isso no worker: sino funciona, celular não (ex.: "Conta fora do ar")
+VAPID_PUBLIC_KEY=<mesma do web>
+VAPID_PRIVATE_KEY=<mesma do web>
+VAPID_SUBJECT=mailto:seu-email@dominio.com
 ```
 
 O código converte `postgres://` para `postgresql+psycopg2://` automaticamente.
@@ -133,5 +139,6 @@ O código converte `postgres://` para `postgresql+psycopg2://` automaticamente.
 - [ ] **R2 configurado** (`STORAGE_BACKEND=s3` + 4 vars S3) **ou** Volume em `/data`
 - [ ] `/readyz` → `storage: s3:seu-bucket` ok
 - [ ] `SECRET_KEY` forte (32+ chars)
+- [ ] **VAPID no web e no worker** (push no celular com PC desligado)
 - [ ] Domínio público no web
 - [ ] `/healthz` retorna 200

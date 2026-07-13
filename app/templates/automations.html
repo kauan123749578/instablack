@@ -20,7 +20,13 @@
 <div class="alert alert-ok">Agendamento por calendário criado!</div>
 {% endif %}
 
-{% if request.query_params.get('ok') and request.query_params.get('ok') != 'calendar' %}
+{% if request.query_params.get('ok') == 'duplicated' %}
+<div class="alert alert-ok">
+  Automação duplicada — mesmos vídeos, sem reupload. Edite e troque as contas.
+</div>
+{% endif %}
+
+{% if request.query_params.get('ok') and request.query_params.get('ok') != 'calendar' and request.query_params.get('ok') != 'duplicated' %}
 <div class="alert alert-ok">
   Automação criada
   {% if request.query_params.get('n') %}com <strong>{{ request.query_params.get('n') }}</strong> vídeo(s) na playlist{% endif %}!
@@ -109,6 +115,10 @@
       </form>
       {% endif %}
       <a href="/automations/{{ a.id }}/logs" class="btn btn-sm" data-nav="/automations/{{ a.id }}/logs">Logs</a>
+      <form method="post" action="/automations/{{ a.id }}/duplicate" class="inline"
+            onsubmit="return confirm('Duplicar esta automação (mesmos vídeos, sem reenviar)?');">
+        <button type="submit" class="btn btn-sm">Duplicar</button>
+      </form>
       <details class="edit-panel">
         <summary>Editar</summary>
         <form method="post" action="/automations/{{ a.id }}/edit" enctype="multipart/form-data" class="form-grid">

@@ -31,7 +31,17 @@ router = APIRouter(tags=["notifications-warmup"])
 
 # Evita spam de push quando vários abas fazem poll do mesmo log
 _recent_push_log_ids: set[int] = set()
+_recent_push_notif_ids: set[int] = set()
 _RECENT_PUSH_MAX = 200
+_FALLBACK_PUSH_KINDS = frozenset({
+    "offline",
+    "account",
+    "warning",
+    "error",
+    "fail",
+    "warmup",
+    "publish",
+})
 
 
 class SubscriptionIn(BaseModel):
@@ -60,6 +70,48 @@ def _maybe_push_for_new_logs(user_id: int, rows: list[PublishLog]) -> None:
             notify_user_publish_success(user_id, uname, content_type=ct)
         except Exception:
             log.exception("Fallback push falhou log=%s user=%s", plog.id, user_id)
+
+
+def _maybe_push_for_inapp_notifications(user_id: int, rows: list[AppNotification]) -> None:
+    """Fallback de push para offline/erros/warmup se o worker não tinha VAPID."""
+    global _recent_push_notif_ids
+    if not rows:
+        return
+    from core.webpush import notify_user_push, vapid_configured
+
+    if not vapid_configured():
+        return
+
+    cutoff = dt.datetime.utcnow() - dt.timedelta(minutes=30)
+    for n in rows:
+        if n.id in _recent_push_notif_ids or n.is_read:
+            continue
+        kind = (n.kind or "").lower()
+        if kind not in _FALLBACK_PUSH_KINDS:
+            continue
+        created = n.created_at
+        if created is not None:
+            created_naive = created.replace(tzinfo=None) if created.tzinfo else created
+            if created_naive < cutoff:
+                continue
+
+        _recent_push_notif_ids.add(n.id)
+        if len(_recent_push_notif_ids) > _RECENT_PUSH_MAX:
+            _recent_push_notif_ids = set(list(_recent_push_notif_ids)[-_RECENT_PUSH_MAX:])
+        try:
+            notify_user_push(
+                user_id,
+                {
+                    "title": (n.title or "instablack")[:120],
+                    "body": (n.body or "")[:200],
+                    "url": n.link or "/",
+                    "tag": f"fallback-{kind}-{n.id}",
+                },
+                kind=kind,
+                force=False,
+            )
+        except Exception:
+            log.exception("Fallback push notif falhou id=%s user=%s", n.id, user_id)
 
 
 
@@ -251,12 +303,16 @@ def api_list_notifications(
     if synced:
         _maybe_push_for_new_logs(user.id, synced)
 
-    rows = db.scalars(
-        select(AppNotification)
-        .where(AppNotification.user_id == user.id)
-        .order_by(AppNotification.created_at.desc())
-        .limit(40)
-    ).all()
+    rows = list(
+        db.scalars(
+            select(AppNotification)
+            .where(AppNotification.user_id == user.id)
+            .order_by(AppNotification.created_at.desc())
+            .limit(40)
+        ).all()
+    )
+    # Fallback: offline/erro/warmup no sino → tenta push no web se worker não enviou
+    _maybe_push_for_inapp_notifications(user.id, rows)
     unread = db.scalar(
         select(func.count(AppNotification.id)).where(
             AppNotification.user_id == user.id,

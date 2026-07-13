@@ -24,8 +24,17 @@
 {% if ok == 'limit' %}
 <div class="alert alert-ok">Limite de contas atualizado.</div>
 {% endif %}
+{% if ok == 'admin' %}
+<div class="alert alert-ok">Permissão de admin atualizada.</div>
+{% endif %}
 {% if error == 'self' %}
 <div class="alert alert-error">Você não pode excluir sua própria conta.</div>
+{% endif %}
+{% if error == 'self_admin' %}
+<div class="alert alert-error">Você não pode remover o admin de si mesmo.</div>
+{% endif %}
+{% if error == 'last_admin' %}
+<div class="alert alert-error">Não é possível remover o último admin do sistema.</div>
 {% endif %}
 {% if error == 'limit_invalid' %}
 <div class="alert alert-error">Informe um número válido para o limite de contas.</div>
@@ -136,12 +145,20 @@
           <td class="og-muted">{{ u.created_at | localtime('%d/%m/%Y') }}</td>
           <td>
             {% if u.id != user.id %}
-            <form method="post" action="/admin/users/{{ u.id }}/delete"
-                  onsubmit="return confirm('Excluir @{{ u.username }}? Todas as contas IG e automações serão apagadas.');">
-              <button type="submit" class="btn btn-sm btn-danger">
-                <i data-lucide="trash-2"></i> Excluir
-              </button>
-            </form>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end">
+              <form method="post" action="/admin/users/{{ u.id }}/toggle-admin"
+                    onsubmit="return confirm('{% if u.is_admin %}Remover admin de @{{ u.username }}?{% else %}Tornar @{{ u.username }} admin? Essa conta terá o mesmo acesso ao painel.{% endif %}');">
+                <button type="submit" class="btn btn-sm {% if u.is_admin %}{% else %}btn-primary{% endif %}">
+                  {% if u.is_admin %}Remover admin{% else %}Tornar admin{% endif %}
+                </button>
+              </form>
+              <form method="post" action="/admin/users/{{ u.id }}/delete"
+                    onsubmit="return confirm('Excluir @{{ u.username }}? Todas as contas IG e automações serão apagadas.');">
+                <button type="submit" class="btn btn-sm btn-danger">
+                  <i data-lucide="trash-2"></i> Excluir
+                </button>
+              </form>
+            </div>
             {% else %}
             <span class="og-muted">você</span>
             {% endif %}
