@@ -27,8 +27,8 @@
 </div>
 {% endif %}
 
-{% if request.query_params.get('posted') %}
-<div class="alert alert-ok">Publicação enviada para a fila! Acompanhe no log de atividades.</div>
+{% if request.query_params.get('skipped') %}
+<div class="alert alert-ok">Vídeo pulado — próximo da playlist atualizado.</div>
 {% endif %}
 
 {% if automations %}
@@ -76,6 +76,12 @@
       {% else %}
       <form method="post" action="/automations/{{ a.id }}/resume" class="inline">
         <button type="submit" class="btn btn-sm btn-primary">Retomar</button>
+      </form>
+      {% endif %}
+      {% if automation_video_count(a) > 1 and a.status != 'completed' %}
+      <form method="post" action="/automations/{{ a.id }}/skip-video" class="inline"
+            onsubmit="return confirm('Pular para o próximo vídeo da playlist?');">
+        <button type="submit" class="btn btn-sm">Pular vídeo</button>
       </form>
       {% endif %}
       <a href="/automations/{{ a.id }}/logs" class="btn btn-sm" data-nav="/automations/{{ a.id }}/logs">Logs</a>

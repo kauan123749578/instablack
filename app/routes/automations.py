@@ -102,12 +102,26 @@ def list_automations(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    from app.utils.automation_videos import playlist_items, sync_playlist_cursor
+
     automations = db.scalars(
         select(Automation)
         .where(Automation.user_id == user.id)
         .options(selectinload(Automation.accounts))
         .order_by(desc(Automation.created_at))
     ).all()
+
+    # Corrige filas travadas na hora de abrir a página
+    dirty = False
+    for a in automations:
+        if len(playlist_items(a)) > 1 and a.status in ("active", "paused"):
+            before = int(a.current_index or 0)
+            after = sync_playlist_cursor(db, a)
+            if after != before:
+                dirty = True
+    if dirty:
+        db.commit()
+
     all_accounts = db.scalars(
         select(InstagramAccount).where(InstagramAccount.user_id == user.id)
     ).all()
@@ -537,30 +551,12 @@ def resume_automation(
     user: User = Depends(get_current_user),
 ):
     a = _get_owned(db, automation_id, user)
-    from app.utils.automation_videos import playlist_items
-    from sqlalchemy import select as sa_select
-    from models.models import PublishLog
+    from app.utils.automation_videos import playlist_items, sync_playlist_cursor
 
     items = playlist_items(a)
-    keys = [it["video_key"] for it in items]
+    next_idx = sync_playlist_cursor(db, a)
 
-    # Reposiciona pelo último vídeo publicado com sucesso (não volta pro 1º à toa)
-    last_key = db.scalar(
-        sa_select(PublishLog.video_key)
-        .where(
-            PublishLog.automation_id == a.id,
-            PublishLog.status == "success",
-            PublishLog.video_key.isnot(None),
-        )
-        .order_by(PublishLog.id.desc())
-        .limit(1)
-    )
-    if last_key and last_key in keys:
-        a.current_index = keys.index(last_key) + 1
-    elif a.status == "completed" or (len(items) > 1 and int(a.current_index or 0) >= len(items)):
-        a.current_index = 0
-
-    if len(items) > 1 and int(a.current_index or 0) >= len(items):
+    if len(items) > 1 and next_idx >= len(items):
         a.status = "completed"
         a.next_run_at = None
         db.commit()
@@ -570,6 +566,43 @@ def resume_automation(
     a.next_run_at = dt.datetime.utcnow()
     db.commit()
     return RedirectResponse("/automations", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/{automation_id}/skip-video")
+def skip_playlist_video(
+    automation_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Força pular o vídeo atual da playlist (emergência se estiver travado)."""
+    from sqlalchemy import text
+
+    from app.utils.automation_videos import playlist_items
+
+    a = _get_owned(db, automation_id, user)
+    items = playlist_items(a)
+    if len(items) <= 1:
+        return RedirectResponse("/automations", status_code=status.HTTP_303_SEE_OTHER)
+
+    cur = int(a.current_index or 0)
+    new_idx = min(cur + 1, len(items))
+    if new_idx >= len(items):
+        db.execute(
+            text(
+                "UPDATE automations SET current_index = :idx, status = 'completed', "
+                "next_run_at = NULL WHERE id = :id"
+            ),
+            {"idx": new_idx, "id": a.id},
+        )
+    else:
+        db.execute(
+            text("UPDATE automations SET current_index = :idx, status = 'active' WHERE id = :id"),
+            {"idx": new_idx, "id": a.id},
+        )
+        a.status = "active"
+        a.next_run_at = dt.datetime.utcnow()
+    db.commit()
+    return RedirectResponse("/automations?skipped=1", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/{automation_id}/edit")
