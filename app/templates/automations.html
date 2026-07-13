@@ -27,6 +27,13 @@
 </div>
 {% endif %}
 
+{% if request.query_params.get('warn') %}
+<div class="alert alert-error">
+  {{ request.query_params.get('warn') }} arquivo(s) foram ignorados por estarem <strong>vazios ou duplicados</strong>
+  (mesmo conteúdo de outro da lista). A playlist ficou só com os vídeos únicos.
+</div>
+{% endif %}
+
 {% if request.query_params.get('skipped') %}
 <div class="alert alert-ok">Vídeo pulado — próximo da playlist atualizado.</div>
 {% endif %}

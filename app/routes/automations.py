@@ -55,9 +55,12 @@ def _collect_upload_files(form, *, field_names: tuple[str, ...]) -> list[UploadF
     return out
 
 
-def _save_uploaded_videos(storage, files: list[UploadFile]) -> list[dict[str, str]]:
-    """Materializa cada upload em memória (evita stream consumido / só o 1º arquivo)."""
+def _save_uploaded_videos(
+    storage, files: list[UploadFile]
+) -> tuple[list[dict[str, str]], list[str]]:
+    """Materializa cada upload. Retorna (entries, avisos de vazios/duplicados)."""
     entries: list[dict[str, str]] = []
+    warnings: list[str] = []
     seen_hash: set[str] = set()
     for f in files:
         if not f.filename:
@@ -68,10 +71,12 @@ def _save_uploaded_videos(storage, files: list[UploadFile]) -> list[dict[str, st
             pass
         data = f.file.read()
         if not data:
+            warnings.append(f"“{f.filename}” estava vazio e foi ignorado")
             log.warning("Upload vazio ignorado: %s", f.filename)
             continue
         digest = hashlib.sha256(data).hexdigest()
         if digest in seen_hash:
+            warnings.append(f"“{f.filename}” é igual a outro arquivo da lista (duplicado) e foi ignorado")
             log.warning("Vídeo duplicado ignorado: %s", f.filename)
             continue
         seen_hash.add(digest)
@@ -81,8 +86,8 @@ def _save_uploaded_videos(storage, files: list[UploadFile]) -> list[dict[str, st
             "video_key": key,
             "video_original_name": f.filename,
         })
-        log.info("Vídeo salvo %s/%s: %s → %s (%s bytes)", len(entries), "?", f.filename, key, len(data))
-    return entries
+        log.info("Vídeo salvo %s: %s → %s (%s bytes)", len(entries), f.filename, key, len(data))
+    return entries, warnings
 
 
 def _save_thumb(storage, thumb: UploadFile | None) -> tuple[str | None, str | None]:
@@ -417,16 +422,35 @@ async def create_automation(
         )
 
     storage = get_storage()
-    video_entries = _save_uploaded_videos(storage, upload_files)
+    video_entries, upload_warnings = _save_uploaded_videos(storage, upload_files)
     if not video_entries:
-        raise HTTPException(status_code=400, detail="Falha ao salvar os vídeos.")
-    if content_type == "reel" and video_count > 1 and len(video_entries) < video_count:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"Só {len(video_entries)} de {video_count} vídeos foram salvos "
-                "(arquivos vazios ou duplicados). Selecione de novo."
-            ),
+        all_accounts = db.scalars(
+            select(InstagramAccount).where(InstagramAccount.user_id == user.id)
+        ).all()
+        msg = "Nenhum vídeo válido foi salvo. "
+        if upload_warnings:
+            msg += " ".join(upload_warnings)
+        else:
+            msg += "Selecione arquivos .mp4 de novo."
+        return templates.TemplateResponse(
+            "new_automation.html",
+            {
+                "request": request,
+                "user": user,
+                "accounts": all_accounts,
+                "intervals": ALLOWED_INTERVALS,
+                "content_types": CONTENT_TYPES,
+                "default_content_type": content_type if content_type in CONTENT_TYPES else "reel",
+                "error": msg,
+            },
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    if upload_warnings:
+        log.warning(
+            "Upload playlist avisos user=%s: %s (salvos=%s)",
+            user.id,
+            upload_warnings,
+            len(video_entries),
         )
     video_key = video_entries[0]["video_key"]
     if len(video_entries) == 1:
@@ -443,6 +467,7 @@ async def create_automation(
     )
 
     thumb_key, thumb_original_name = _save_thumb(storage, thumb)
+    warn_q = f"&warn={len(upload_warnings)}" if upload_warnings else ""
 
     if schedule_mode == "now":
         countdown = 0
@@ -463,7 +488,7 @@ async def create_automation(
                 # Espaça cada vídeo da fila (um por vez, sem repetir)
                 countdown += max(45, len(accounts) * 8)
         return RedirectResponse(
-            f"/logs?watch=1&n={len(video_entries)}",
+            f"/logs?watch=1&n={len(video_entries)}{warn_q}",
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
@@ -495,7 +520,7 @@ async def create_automation(
         db.add(automation)
         db.commit()
         return RedirectResponse(
-            f"/automations?ok=calendar&n={len(video_entries)}",
+            f"/automations?ok=calendar&n={len(video_entries)}{warn_q}",
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
@@ -520,7 +545,7 @@ async def create_automation(
     db.add(automation)
     db.commit()
     return RedirectResponse(
-        f"/automations?ok=1&n={len(video_entries)}",
+        f"/automations?ok=1&n={len(video_entries)}{warn_q}",
         status_code=status.HTTP_303_SEE_OTHER,
     )
 
