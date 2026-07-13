@@ -668,7 +668,6 @@ def duplicate_automation(
     if len(copy_name) > 255:
         copy_name = copy_name[:255]
 
-    now = dt.datetime.utcnow()
     clone = Automation(
         user_id=user.id,
         name=copy_name,
@@ -686,8 +685,8 @@ def duplicate_automation(
         schedule_type=src.schedule_type or "interval",
         calendar_days=src.calendar_days,
         calendar_time=src.calendar_time,
-        status="active",
-        next_run_at=now,
+        status="paused",
+        next_run_at=None,
         last_run_at=None,
         total_runs=0,
     )

@@ -527,9 +527,40 @@ a:hover { color: var(--primary-hover); }
 
 /* Auto cards */
 .auto-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
-.auto-card { background: var(--card-gradient); border: 1px solid var(--border-pink); border-radius: 0; padding: 18px; box-shadow: 0 8px 24px rgba(17, 97, 254, 0.08); }
-.auto-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
-.auto-meta { list-style: none; padding: 0; margin: 0 0 10px; font-size: 13px; color: var(--muted); }
+.auto-card {
+  background: var(--card-gradient);
+  border: 1px solid var(--border-pink);
+  border-radius: 0;
+  padding: 18px;
+  box-shadow: 0 8px 24px rgba(17, 97, 254, 0.08);
+  min-width: 0;
+  overflow: hidden;
+}
+.auto-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; gap: 10px; min-width: 0; }
+.auto-card-header h3 {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.auto-meta {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--muted);
+  min-width: 0;
+}
+.auto-meta li {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
+}
+.auto-caption {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
+}
 .auto-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .type-badge { font-size: 10px; padding: 2px 8px; border-radius: 99px; background: var(--primary-dim); color: var(--primary-hover); text-transform: uppercase; }
 
