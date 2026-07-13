@@ -525,7 +525,7 @@ def _execute_publish(
 
         return {
             "ok": True,
-            "code": PLAYLIST_CODE,
+            "playlist_code": PLAYLIST_CODE,
             "playlist_index": playlist_index,
             "video_key": video_key,
             **result,
