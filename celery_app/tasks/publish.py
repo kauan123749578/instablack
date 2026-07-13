@@ -1,4 +1,10 @@
-"""Tasks de publicação: orquestração por automação + uma task por conta."""
+"""Tasks de publicação: orquestração por automação + uma task por conta.
+
+Playlist (estilo postagemIG):
+  1) lê current_index
+  2) posta items[index]
+  3) SÓ após sucesso: current_index += 1
+"""
 from __future__ import annotations
 
 import datetime as dt
@@ -7,16 +13,11 @@ import random
 import tempfile
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import select, text
+from sqlalchemy.orm import selectinload
 
 from app.security import decrypt_secret
-from app.utils.automation_videos import (
-    compute_next_playlist_index,
-    playlist_items,
-    playlist_is_exhausted,
-    resolve_video_key,
-    sync_playlist_cursor,
-)
+from app.utils.automation_videos import playlist_items, playlist_is_exhausted, resolve_video_key
 from celery_app.config import celery_app
 from core.database import session_scope
 from core.instagram import (
@@ -38,28 +39,66 @@ from models.models import Automation, InstagramAccount, PublishLog
 log = logging.getLogger(__name__)
 
 
-def _advance_after_video_posted(automation_id: int, video_key: str) -> None:
-    """Após sucesso: recalcula cursor pelos logs (nunca republica o mesmo video_key)."""
+def _advance_after_success(automation_id: int, posted_index: int, video_key: str) -> None:
+    """Igual postagemIG: cycle_video_index += 1 só depois do publish OK."""
     notify = None
     with session_scope() as db:
-        automation = db.get(Automation, automation_id)
+        automation = db.execute(
+            select(Automation).where(Automation.id == automation_id).with_for_update()
+        ).scalar_one_or_none()
         if not automation:
             return
         items = playlist_items(automation)
         if len(items) <= 1:
             return
-        # Garante que o video_key deste sucesso já está visível nesta sessão
-        db.flush()
-        next_idx = sync_playlist_cursor(db, automation)
-        log.info(
-            "Playlist automation=%s após post key=%s → next_index=%s/%s",
-            automation_id,
-            video_key,
-            next_idx,
-            len(items),
-        )
-        if next_idx >= len(items) and automation.status == "completed":
+
+        cur = int(automation.current_index or 0)
+        # Já avançou (outra conta do mesmo ciclo postou o mesmo vídeo)
+        if cur != posted_index:
+            log.info(
+                "Playlist automation=%s skip advance (cur=%s posted=%s key=%s)",
+                automation_id,
+                cur,
+                posted_index,
+                video_key,
+            )
+            return
+
+        new_idx = posted_index + 1
+        if new_idx >= len(items):
+            db.execute(
+                text(
+                    "UPDATE automations SET current_index = :idx, status = 'completed', "
+                    "next_run_at = NULL WHERE id = :id"
+                ),
+                {"idx": new_idx, "id": automation_id},
+            )
+            automation.current_index = new_idx
+            automation.status = "completed"
+            automation.next_run_at = None
             notify = (automation.user_id, automation.name, len(items))
+            log.info(
+                "Playlist automation=%s CONCLUÍDA após vídeo %s/%s key=%s",
+                automation_id,
+                posted_index + 1,
+                len(items),
+                video_key,
+            )
+        else:
+            db.execute(
+                text("UPDATE automations SET current_index = :idx WHERE id = :id"),
+                {"idx": new_idx, "id": automation_id},
+            )
+            automation.current_index = new_idx
+            log.info(
+                "Playlist automation=%s avançou %s → %s/%s key=%s name=%s",
+                automation_id,
+                posted_index,
+                new_idx,
+                len(items),
+                video_key,
+                (items[posted_index].get("video_original_name") if posted_index < len(items) else ""),
+            )
 
     if notify:
         uid, name, total = notify
@@ -74,12 +113,12 @@ def _advance_after_video_posted(automation_id: int, video_key: str) -> None:
 
 @celery_app.task(name="celery_app.tasks.publish.execute_automation", bind=True, max_retries=0)
 def execute_automation(self, automation_id: int) -> dict:
-    done_notify = None
     with session_scope() as db:
-        from sqlalchemy import text
-
         automation = db.execute(
-            select(Automation).where(Automation.id == automation_id).with_for_update()
+            select(Automation)
+            .where(Automation.id == automation_id)
+            .options(selectinload(Automation.accounts))
+            .with_for_update()
         ).scalar_one_or_none()
         if not automation:
             return {"error": "automation_not_found", "id": automation_id}
@@ -90,43 +129,29 @@ def execute_automation(self, automation_id: int) -> dict:
         if not items:
             return {"error": "no_videos", "id": automation_id}
 
-        # Fonte da verdade = logs de sucesso, não o current_index quebrado
-        idx = sync_playlist_cursor(db, automation)
-        total_videos = len(items)
-
-        if idx >= len(items):
-            done_notify = (automation.user_id, automation.name, len(items))
-            account_ids = []
-            video_key = None
-            queue_index = None
-            playlist_done = True
+        if playlist_is_exhausted(automation):
+            automation.status = "completed"
+            automation.next_run_at = None
+            db.execute(
+                text(
+                    "UPDATE automations SET status = 'completed', next_run_at = NULL WHERE id = :id"
+                ),
+                {"id": automation.id},
+            )
+            done = (automation.user_id, automation.name, len(items))
         else:
+            done = None
+            idx = int(automation.current_index or 0)
+            if idx < 0:
+                idx = 0
+            if idx >= len(items):
+                idx = len(items) - 1
             entry = items[idx]
             video_key = entry["video_key"]
+            video_name = entry.get("video_original_name") or video_key
             queue_index = idx
-            playlist_done = False
-
-            # Reserva: marca este video_key como "em andamento" avançando o cursor
-            # (o sync pós-sucesso confirma; se falhar, o key ainda não está nos logs
-            #  e o próximo sync volta neste idx — por isso gravamos um "claim" via index)
-            claim_idx = idx + 1
-            if len(items) > 1:
-                db.execute(
-                    text("UPDATE automations SET current_index = :idx WHERE id = :id"),
-                    {"idx": claim_idx, "id": automation.id},
-                )
-                automation.current_index = claim_idx
-                if claim_idx >= len(items):
-                    db.execute(
-                        text(
-                            "UPDATE automations SET status = 'completed', next_run_at = NULL "
-                            "WHERE id = :id"
-                        ),
-                        {"id": automation.id},
-                    )
-                    automation.status = "completed"
-                    automation.next_run_at = None
-                    playlist_done = True
+            total_videos = len(items)
+            # NÃO avança aqui — só depois do sucesso (igual postagemIG)
 
             account_ids = [
                 acc.id
@@ -134,17 +159,17 @@ def execute_automation(self, automation_id: int) -> dict:
                 if acc.status not in ("banned", "proxy_down", "paused", "needs_login")
             ]
             log.info(
-                "execute_automation id=%s POSTAR %s/%s key=%s claim_index=%s accounts=%s",
+                "execute_automation id=%s POSTAR vídeo %s/%s name=%r key=%s accounts=%s",
                 automation_id,
                 idx + 1,
                 total_videos,
+                video_name,
                 video_key,
-                automation.current_index,
                 len(account_ids),
             )
 
-    if done_notify:
-        uid, name, total = done_notify
+    if done:
+        uid, name, total = done
         if total > 1:
             create_notification(
                 uid,
@@ -170,7 +195,8 @@ def execute_automation(self, automation_id: int) -> dict:
         "accounts_dispatched": len(account_ids),
         "queue_index": queue_index,
         "playlist_size": total_videos,
-        "playlist_done": playlist_done,
+        "video_key": video_key,
+        "video_name": video_name,
     }
 
 
@@ -226,7 +252,6 @@ def publish_to_account(
         if automation is None or account is None:
             return {"error": "not_found"}
 
-        # video_key explícito = já enfileirado (pode ser o último da playlist com status completed)
         if automation.status == "paused":
             db.add(PublishLog(
                 automation_id=automation.id,
@@ -235,6 +260,7 @@ def publish_to_account(
                 error="automation_paused",
             ))
             return {"skipped": True}
+        # video_key explícito = ciclo já escolhido (último da playlist pode estar completed)
         if video_key is None and automation.status != "active":
             db.add(PublishLog(
                 automation_id=automation.id,
@@ -244,10 +270,25 @@ def publish_to_account(
             ))
             return {"skipped": True}
 
-        vk = video_key or resolve_video_key(automation)
+        items = playlist_items(automation)
         posted_index = queue_index
         if posted_index is None:
             posted_index = int(automation.current_index or 0)
+
+        # Índice da fila é a fonte da verdade (postagemIG) — não confiar só no video_key passado
+        if items:
+            safe_idx = min(max(int(posted_index or 0), 0), len(items) - 1)
+            posted_index = safe_idx
+            video_key = items[safe_idx]["video_key"]
+        vk = video_key or resolve_video_key(automation)
+
+        log.info(
+            "publish_to_account automation=%s account=%s idx=%s key=%s",
+            automation_id,
+            account.username,
+            posted_index,
+            vk,
+        )
 
         return _execute_publish(
             automation_id=automation.id,
@@ -277,32 +318,11 @@ def _execute_publish(
         account = db.get(InstagramAccount, account_id)
         if account is None:
             return {"error": "account_not_found"}
-        if account.status == "paused":
-            db.add(PublishLog(
-                automation_id=automation_id,
-                account_id=account_id,
-                status="skipped",
-                content_type=content_type or "reel",
-                error="conta pausada",
-            ))
-            return {"skipped": True, "reason": "account_paused"}
-        settings_dict = deserialize_settings(account.session_json)
-        proxy = account.proxy
-        password = decrypt_secret(account.encrypted_password)
-        username = account.username
         owner_user_id = account.user_id
-
-    if not proxy:
-        _log_failure(
-            automation_id,
-            account_id,
-            "sem proxy — publicação bloqueada",
-            content_type=content_type,
-            owner_user_id=owner_user_id,
-            username=username,
-        )
-        _mark_account_proxy_down(account_id, "Conta sem proxy configurado")
-        return {"error": "no_proxy"}
+        username = account.username
+        password = decrypt_secret(account.password_enc) if account.password_enc else None
+        proxy = account.proxy_url
+        settings_dict = deserialize_settings(account.session_json) if account.session_json else None
 
     if not check_proxy(proxy):
         _log_failure(
@@ -336,9 +356,8 @@ def _execute_publish(
     clean_thumb_path: Path | None = None
 
     try:
+        log.info("Download mídia key=%s → %s", video_key, raw_path.name)
         storage.download_to(video_key, raw_path)
-
-        from core.notifications import create_notification
 
         create_notification(
             owner_user_id,
@@ -472,15 +491,15 @@ def _execute_publish(
             notify_user_id = acc.user_id if acc else owner_user_id
             notify_username = acc.username if acc else username
 
-        # Avança playlist DEPOIS do commit do log (recalcula pelos video_keys publicados)
-        if automation_id is not None and video_key:
+        # Avança fila SÓ após sucesso (postagemIG)
+        if automation_id is not None and playlist_index is not None:
             try:
-                _advance_after_video_posted(automation_id, video_key)
+                _advance_after_success(automation_id, int(playlist_index), video_key)
             except Exception:
                 log.exception(
-                    "Falha ao avançar playlist automation=%s key=%s",
+                    "Falha ao avançar playlist automation=%s idx=%s",
                     automation_id,
-                    video_key,
+                    playlist_index,
                 )
 
         uid = notify_user_id or owner_user_id

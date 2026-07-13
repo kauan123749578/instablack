@@ -5,12 +5,20 @@ import json
 
 from fastapi.templating import Jinja2Templates
 
-from app.utils.automation_videos import video_count as automation_video_count
+from app.utils.automation_videos import playlist_items, video_count as automation_video_count
 from app.utils.avatars import user_avatar_url, user_display_name
 from app.utils.proxy import account_proxy_ip, proxy_label, proxy_to_raw
 from app.utils.intervals import interval_label
 from app.utils.formatters import format_count, format_interval, status_badge_class, status_label
 from app.utils.timezone import brt_now, format_date_header, greeting_for_user, greeting_period, to_brt
+
+
+def automation_playlist_names(automation) -> list[str]:
+    return [
+        (it.get("video_original_name") or it.get("video_key") or "vídeo")
+        for it in playlist_items(automation)
+    ]
+
 
 templates = Jinja2Templates(directory="app/templates")
 templates.env.filters["localtime"] = to_brt
@@ -26,6 +34,7 @@ templates.env.globals["format_count"] = format_count
 templates.env.globals["status_label"] = status_label
 templates.env.globals["status_badge_class"] = status_badge_class
 templates.env.globals["automation_video_count"] = automation_video_count
+templates.env.globals["automation_playlist_names"] = automation_playlist_names
 templates.env.globals["proxy_label"] = proxy_label
 templates.env.globals["proxy_to_raw"] = proxy_to_raw
 templates.env.globals["account_proxy_ip"] = account_proxy_ip

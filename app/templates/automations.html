@@ -38,6 +38,10 @@
 <div class="alert alert-ok">Vídeo pulado — próximo da playlist atualizado.</div>
 {% endif %}
 
+{% if request.query_params.get('reset') %}
+<div class="alert alert-ok">Playlist reiniciada no vídeo 1.</div>
+{% endif %}
+
 {% if automations %}
 <div class="auto-grid">
   {% for a in automations %}
@@ -67,6 +71,13 @@
           {% endif %}
         </strong>
       </li>
+      <li class="muted" style="font-size:12px">
+        {% for name in automation_playlist_names(a) %}
+          <span {% if loop.index0 == (a.current_index or 0) and a.status != 'completed' %}style="color:var(--accent,#38bdf8);font-weight:600"{% endif %}>
+            {{ loop.index }}. {{ name }}{% if not loop.last %} · {% endif %}
+          </span>
+        {% endfor %}
+      </li>
       {% elif a.video_original_name and 'vídeos' in a.video_original_name %}
       <li><strong style="color:var(--red)">Playlist incompleta</strong> — só 1 vídeo salvo. Apague e recrie com todos os arquivos.</li>
       {% endif %}
@@ -89,6 +100,12 @@
       <form method="post" action="/automations/{{ a.id }}/skip-video" class="inline"
             onsubmit="return confirm('Pular para o próximo vídeo da playlist?');">
         <button type="submit" class="btn btn-sm">Pular vídeo</button>
+      </form>
+      {% endif %}
+      {% if automation_video_count(a) > 1 %}
+      <form method="post" action="/automations/{{ a.id }}/reset-playlist" class="inline"
+            onsubmit="return confirm('Reiniciar playlist do vídeo 1?');">
+        <button type="submit" class="btn btn-sm">Reiniciar playlist</button>
       </form>
       {% endif %}
       <a href="/automations/{{ a.id }}/logs" class="btn btn-sm" data-nav="/automations/{{ a.id }}/logs">Logs</a>

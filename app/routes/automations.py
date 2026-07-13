@@ -107,26 +107,12 @@ def list_automations(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    from app.utils.automation_videos import playlist_items, sync_playlist_cursor
-
     automations = db.scalars(
         select(Automation)
         .where(Automation.user_id == user.id)
         .options(selectinload(Automation.accounts))
         .order_by(desc(Automation.created_at))
     ).all()
-
-    # Corrige filas travadas na hora de abrir a página
-    dirty = False
-    for a in automations:
-        if len(playlist_items(a)) > 1 and a.status in ("active", "paused"):
-            before = int(a.current_index or 0)
-            after = sync_playlist_cursor(db, a)
-            if after != before:
-                dirty = True
-    if dirty:
-        db.commit()
-
     all_accounts = db.scalars(
         select(InstagramAccount).where(InstagramAccount.user_id == user.id)
     ).all()
@@ -575,17 +561,20 @@ def resume_automation(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    from sqlalchemy import text
+
+    from app.utils.automation_videos import playlist_items
+
     a = _get_owned(db, automation_id, user)
-    from app.utils.automation_videos import playlist_items, sync_playlist_cursor
-
     items = playlist_items(a)
-    next_idx = sync_playlist_cursor(db, a)
 
-    if len(items) > 1 and next_idx >= len(items):
-        a.status = "completed"
-        a.next_run_at = None
-        db.commit()
-        return RedirectResponse("/automations", status_code=status.HTTP_303_SEE_OTHER)
+    # Se terminou a playlist, recomeça do zero (como postagemIG ciclo novo)
+    if a.status == "completed" or (len(items) > 1 and int(a.current_index or 0) >= len(items)):
+        db.execute(
+            text("UPDATE automations SET current_index = 0, status = 'active' WHERE id = :id"),
+            {"id": a.id},
+        )
+        a.current_index = 0
 
     a.status = "active"
     a.next_run_at = dt.datetime.utcnow()
@@ -599,7 +588,7 @@ def skip_playlist_video(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Força pular o vídeo atual da playlist (emergência se estiver travado)."""
+    """Força pular o vídeo atual da playlist."""
     from sqlalchemy import text
 
     from app.utils.automation_videos import playlist_items
@@ -610,7 +599,7 @@ def skip_playlist_video(
         return RedirectResponse("/automations", status_code=status.HTTP_303_SEE_OTHER)
 
     cur = int(a.current_index or 0)
-    new_idx = min(cur + 1, len(items))
+    new_idx = cur + 1
     if new_idx >= len(items):
         db.execute(
             text(
@@ -621,13 +610,41 @@ def skip_playlist_video(
         )
     else:
         db.execute(
-            text("UPDATE automations SET current_index = :idx, status = 'active' WHERE id = :id"),
-            {"idx": new_idx, "id": a.id},
+            text(
+                "UPDATE automations SET current_index = :idx, status = 'active', "
+                "next_run_at = :nxt WHERE id = :id"
+            ),
+            {"idx": new_idx, "id": a.id, "nxt": dt.datetime.utcnow()},
         )
-        a.status = "active"
-        a.next_run_at = dt.datetime.utcnow()
     db.commit()
     return RedirectResponse("/automations?skipped=1", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/{automation_id}/reset-playlist")
+def reset_playlist(
+    automation_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Volta a playlist para o 1º vídeo (índice 0) e reativa."""
+    from sqlalchemy import text
+
+    from app.utils.automation_videos import playlist_items
+
+    a = _get_owned(db, automation_id, user)
+    items = playlist_items(a)
+    if len(items) <= 1:
+        return RedirectResponse("/automations", status_code=status.HTTP_303_SEE_OTHER)
+
+    db.execute(
+        text(
+            "UPDATE automations SET current_index = 0, status = 'active', "
+            "next_run_at = :nxt WHERE id = :id"
+        ),
+        {"id": a.id, "nxt": dt.datetime.utcnow()},
+    )
+    db.commit()
+    return RedirectResponse("/automations?reset=1", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/{automation_id}/edit")
