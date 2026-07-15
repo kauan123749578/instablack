@@ -239,19 +239,19 @@ body.premium-app .shark-content { padding: 24px 32px 80px; }
   grid-column: 3;
   grid-row: 1 / span 2;
 }
-.og-panel-accounts { grid-column: 1 / span 2; grid-row: 2; }
-.og-failed-panel { grid-column: 1 / span 2; grid-row: 3; }
+.og-panel-accounts { grid-column: 1; grid-row: 2; }
+.og-failed-panel { grid-column: 2; grid-row: 2; }
 .og-bottom-span-2 { grid-column: span 2; }
 
 /* Contas conectadas — lista vertical estilo ranking */
 .og-panel-accounts {
-  min-height: 380px;
+  min-height: 220px;
   display: flex;
   flex-direction: column;
 }
 .og-accounts-rank-list {
   flex: 1;
-  max-height: 310px;
+  max-height: 155px;
   overflow-y: auto;
   scrollbar-width: none !important;
   -ms-overflow-style: none !important;
@@ -259,6 +259,20 @@ body.premium-app .shark-content { padding: 24px 32px 80px; }
 .og-accounts-rank-list::-webkit-scrollbar { width: 0 !important; height: 0 !important; display: none !important; }
 .og-account-rank-row {
   width: 100%;
+  padding: 7px 9px;
+  gap: 8px;
+}
+.og-account-rank-row .og-rank-avatar {
+  width: 30px;
+  height: 30px;
+  font-size: 11px;
+}
+.og-account-rank-row .og-rank-info strong {
+  font-size: 11px;
+}
+.og-account-rank-row .og-rank-info span,
+.og-account-rank-row .og-rank-score {
+  font-size: 10px;
 }
 .og-account-rank-row:hover {
   background: rgba(17, 97, 254, 0.07);
