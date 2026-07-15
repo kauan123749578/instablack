@@ -324,20 +324,21 @@
         <a href="/accounts" class="og-link" data-nav="/accounts">Gerenciar</a>
       </div>
       {% if accounts_data %}
-      <div class="og-accounts-gallery">
+      <ol class="og-rank-list og-accounts-rank-list">
         {% for item in accounts_data[:18] %}
         {% set acc = item.account %}
-        <div class="og-acc-item" title="@{{ acc.username }} · {{ item.publish_count }} publicações">
-          <div class="og-acc-ring og-acc-ring--{{ acc.status }}">
-            <div class="og-acc-avatar">{{ acc.username[0]|upper }}</div>
+        <li class="og-rank-row og-account-rank-row" title="@{{ acc.username }} · {{ item.publish_count }} publicações">
+          <div class="og-rank-avatar og-account-avatar og-account-avatar--{{ acc.status }}">
+            {{ acc.username[0]|upper }}
           </div>
-          <div class="og-acc-meta">
-            <span class="og-acc-name">@{{ acc.username }}</span>
-            <span class="og-acc-sub">{{ status_label(acc.status) }} · {{ item.publish_count }} post{% if item.publish_count != 1 %}s{% endif %}</span>
+          <div class="og-rank-info">
+            <strong>@{{ acc.username }}</strong>
+            <span>{{ status_label(acc.status) }}</span>
           </div>
-        </div>
+          <span class="og-rank-score">{{ item.publish_count }} post{% if item.publish_count != 1 %}s{% endif %}</span>
+        </li>
         {% endfor %}
-      </div>
+      </ol>
       {% else %}
       <div class="og-empty">Nenhuma conta conectada.<br><a href="/accounts" data-nav="/accounts" class="og-link">Conectar agora</a></div>
       {% endif %}
