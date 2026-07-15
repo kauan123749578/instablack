@@ -76,12 +76,20 @@ def run_warmup_job(self, job_id: int) -> dict:
         target_cap = int(job.actions_target or 9999)
         done = int(job.actions_done or 0)
 
-    if not proxy or not check_proxy(proxy):
+    if not proxy or not proxy.strip():
         with session_scope() as db:
             job = db.get(WarmupJob, job_id)
             if job:
                 job.status = "failed"
-                job.last_error = "proxy inválida ou fora"
+                job.last_error = "proxy não configurada"
+        return {"error": "proxy_missing"}
+
+    if not check_proxy(proxy):
+        with session_scope() as db:
+            job = db.get(WarmupJob, job_id)
+            if job:
+                job.status = "failed"
+                job.last_error = "proxy vazando IP do servidor"
         return {"error": "proxy"}
 
     if not settings_dict:

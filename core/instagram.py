@@ -325,7 +325,10 @@ def check_proxy(proxy: str) -> bool:
     normalized = normalize_proxy(proxy)
     proxy_ip = get_public_ip(normalized)
     if not proxy_ip:
-        return False
+        # Falha no serviço externo de IP não prova vazamento. A publicação ainda
+        # usará o proxy no instagrapi; se a proxy estiver realmente fora, o upload/login falha.
+        log.warning("Não foi possível confirmar IP da proxy; seguindo sem marcar vazamento.")
+        return True
     server_ip = _server_public_ip()
     if server_ip and proxy_ip == server_ip:
         log.error("Proxy vazou IP do servidor (%s). Bloqueando.", server_ip)
@@ -347,7 +350,7 @@ def login_with_credentials(
     # Garante que a proxy está saindo com IP próprio (não vazando Railway)
     if proxy and not check_proxy(proxy):
         raise InstagramAuthError(
-            "Proxy fora do ar ou vazando IP do servidor. "
+            "Proxy vazando IP do servidor. "
             "Teste o proxy antes — formato: ip:porta:usuario:senha"
         )
 

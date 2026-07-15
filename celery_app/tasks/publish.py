@@ -350,16 +350,28 @@ def _execute_publish(
         proxy = account.proxy
         settings_dict = deserialize_settings(account.session_json) if account.session_json else None
 
-    if not check_proxy(proxy):
+    if not proxy or not proxy.strip():
         _log_failure(
             automation_id,
             account_id,
-            "proxy fora ou vazando IP do servidor",
+            "proxy não configurada",
             content_type=content_type,
             owner_user_id=owner_user_id,
             username=username,
         )
-        _mark_account_proxy_down(account_id, "Proxy inválido ou fora do ar")
+        _mark_account_proxy_down(account_id, "Proxy não configurada")
+        return {"error": "proxy_missing"}
+
+    if not check_proxy(proxy):
+        _log_failure(
+            automation_id,
+            account_id,
+            "proxy vazando IP do servidor",
+            content_type=content_type,
+            owner_user_id=owner_user_id,
+            username=username,
+        )
+        _mark_account_proxy_down(account_id, "Proxy vazando IP do servidor")
         return {"error": "proxy_down"}
 
     if not settings_dict:
