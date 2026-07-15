@@ -296,6 +296,7 @@ def _sync_notifications_from_logs(db: Session, user: User) -> list[PublishLog]:
 
 @router.get("/api/notifications")
 def api_list_notifications(
+    push_fallback: bool = False,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -311,8 +312,9 @@ def api_list_notifications(
             .limit(40)
         ).all()
     )
-    # Fallback: offline/erro/warmup no sino → tenta push no web se worker não enviou
-    _maybe_push_for_inapp_notifications(user.id, rows)
+    # Fallback opcional; o poll normal do sino deve continuar leve.
+    if push_fallback:
+        _maybe_push_for_inapp_notifications(user.id, rows)
     unread = db.scalar(
         select(func.count(AppNotification.id)).where(
             AppNotification.user_id == user.id,

@@ -66,11 +66,16 @@ def _count_logs(
     return db.scalar(q) or 0
 
 
-def _chart_performance(db: Session, user_id: int, days: int = 7) -> list[dict]:
-    days = _parse_chart_days(days)
-    today = brt_now().date()
-    day_list = [today - dt.timedelta(days=i) for i in range(days - 1, -1, -1)]
+def _status_counts_for_days(
+    db: Session,
+    user_id: int,
+    days: list[dt.date],
+) -> dict[dt.date, dict[str, int]]:
+    if not days:
+        return {}
 
+    first_start, _ = _brt_day_bounds(min(days))
+    _, last_end = _brt_day_bounds(max(days))
     rows = db.execute(
         select(
             func.date(PublishLog.created_at).label("day"),
@@ -80,22 +85,32 @@ def _chart_performance(db: Session, user_id: int, days: int = 7) -> list[dict]:
         .join(PublishLog.account)
         .where(
             InstagramAccount.user_id == user_id,
-            PublishLog.created_at >= _utc_naive(_brt_day_bounds(day_list[0])[0]),
+            PublishLog.created_at >= _utc_naive(first_start),
+            PublishLog.created_at < _utc_naive(last_end),
         )
         .group_by(func.date(PublishLog.created_at), PublishLog.status)
     ).all()
 
-    by_day: dict[str, dict[str, int]] = {}
-    for r in rows:
-        key = str(r.day)
-        by_day.setdefault(key, {"success": 0, "failed": 0, "skipped": 0})
-        by_day[key][r.status] = r.cnt
+    out = {d: {"success": 0, "failed": 0, "skipped": 0} for d in days}
+    by_iso = {d.isoformat(): d for d in days}
+    for row in rows:
+        day = by_iso.get(str(row.day))
+        if day is None:
+            continue
+        out[day][row.status] = int(row.cnt or 0)
+    return out
+
+
+def _chart_performance(db: Session, user_id: int, days: int = 7) -> list[dict]:
+    days = _parse_chart_days(days)
+    today = brt_now().date()
+    day_list = [today - dt.timedelta(days=i) for i in range(days - 1, -1, -1)]
+    by_day = _status_counts_for_days(db, user_id, day_list)
 
     max_val = 1
     chart = []
     for d in day_list:
-        key = str(d)
-        stats = by_day.get(key, {"success": 0, "failed": 0, "skipped": 0})
+        stats = by_day.get(d, {"success": 0, "failed": 0, "skipped": 0})
         pubs = stats["success"] + stats["failed"] + stats["skipped"]
         max_val = max(max_val, pubs, stats["success"], stats["failed"])
         # 7D: dia da semana; 15/30D: data curta para caber no eixo
@@ -116,6 +131,26 @@ def _chart_performance(db: Session, user_id: int, days: int = 7) -> list[dict]:
         pt["failed_pct"] = round(pt["failed"] / m * 100, 1)
 
     return chart
+
+
+def _dashboard_day_totals(db: Session, user_id: int, today: dt.date, yesterday: dt.date) -> dict:
+    counts = _status_counts_for_days(db, user_id, [yesterday, today])
+    today_counts = counts.get(today, {"success": 0, "failed": 0, "skipped": 0})
+    yesterday_counts = counts.get(yesterday, {"success": 0, "failed": 0, "skipped": 0})
+    pubs_today = sum(today_counts.values())
+    pubs_yesterday = sum(yesterday_counts.values())
+    success_today = today_counts.get("success", 0)
+    total_logs_today = pubs_today
+    success_yesterday = yesterday_counts.get("success", 0)
+    total_yesterday = sum(yesterday_counts.values())
+    return {
+        "pubs_today": pubs_today,
+        "pubs_yesterday": pubs_yesterday,
+        "success_today": success_today,
+        "total_logs_today": total_logs_today,
+        "success_yesterday": success_yesterday,
+        "total_yesterday": total_yesterday,
+    }
 
 
 def _chart_performance_7d(db: Session, user_id: int) -> list[dict]:
@@ -207,20 +242,17 @@ def home(
         select(func.count(Automation.id)).where(Automation.user_id == user.id)
     ) or 0
 
-    pubs_today = _count_logs(db, user.id, day=today)
-    pubs_yesterday = _count_logs(db, user.id, day=yesterday)
+    day_totals = _dashboard_day_totals(db, user.id, today, yesterday)
+    pubs_today = day_totals["pubs_today"]
+    pubs_yesterday = day_totals["pubs_yesterday"]
     pubs_growth = _growth_pct(pubs_today, pubs_yesterday)
 
-    success_today = _count_logs(db, user.id, status="success", day=today)
-    failed_today = _count_logs(db, user.id, status="failed", day=today)
-    total_logs_today = success_today + failed_today + _count_logs(
-        db, user.id, status="skipped", day=today
-    )
+    success_today = day_totals["success_today"]
+    total_logs_today = day_totals["total_logs_today"]
     success_rate = round(success_today / total_logs_today * 100, 1) if total_logs_today else 0.0
 
-    success_yesterday = _count_logs(db, user.id, status="success", day=yesterday)
-    failed_yesterday = _count_logs(db, user.id, status="failed", day=yesterday)
-    total_yesterday = success_yesterday + failed_yesterday
+    success_yesterday = day_totals["success_yesterday"]
+    total_yesterday = day_totals["total_yesterday"]
     rate_yesterday = round(success_yesterday / total_yesterday * 100, 1) if total_yesterday else 0.0
     rate_delta = round(success_rate - rate_yesterday, 1) if total_yesterday or total_logs_today else None
 
@@ -240,15 +272,23 @@ def home(
 
     automations = db.scalars(
         select(Automation)
-        .where(Automation.user_id == user.id)
+        .where(Automation.user_id == user.id, Automation.status == "active")
         .options(selectinload(Automation.accounts))
-        .order_by(desc(Automation.created_at))
+        .order_by(Automation.next_run_at.asc().nullslast(), desc(Automation.created_at))
+        .limit(8)
     ).all()
 
-    next_publications = sorted(
-        [a for a in automations if a.status == "active" and a.next_run_at],
-        key=lambda a: a.next_run_at or dt.datetime.max.replace(tzinfo=dt.timezone.utc),
-    )[:6]
+    next_publications = db.scalars(
+        select(Automation)
+        .where(
+            Automation.user_id == user.id,
+            Automation.status == "active",
+            Automation.next_run_at.is_not(None),
+        )
+        .options(selectinload(Automation.accounts))
+        .order_by(Automation.next_run_at.asc())
+        .limit(6)
+    ).all()
 
     account_publish_counts: dict[int, int] = dict(
         db.execute(
@@ -262,34 +302,10 @@ def home(
         ).all()
     )
 
-    account_views: dict[int, int] = dict(
-        db.execute(
-            select(PublishLog.account_id, func.coalesce(func.sum(PublishLog.play_count), 0))
-            .join(PublishLog.account)
-            .where(
-                InstagramAccount.user_id == user.id,
-                PublishLog.status == "success",
-                PublishLog.play_count.is_not(None),
-            )
-            .group_by(PublishLog.account_id)
-        ).all()
-    )
-
-    total_views = db.scalar(
-        select(func.coalesce(func.sum(PublishLog.play_count), 0))
-        .join(PublishLog.account)
-        .where(
-            InstagramAccount.user_id == user.id,
-            PublishLog.status == "success",
-            PublishLog.play_count.is_not(None),
-        )
-    ) or 0
-
     accounts_data = [
         {
             "account": acc,
             "publish_count": account_publish_counts.get(acc.id, 0),
-            "total_views": int(account_views.get(acc.id, 0) or 0),
         }
         for acc in accounts
     ]
@@ -300,19 +316,6 @@ def home(
     top_players_month = _top_platform_players(
         db, _brt_day_bounds(month_start)[0], _brt_day_bounds(today)[1]
     )
-
-    top_reels = db.scalars(
-        select(PublishLog)
-        .join(PublishLog.account)
-        .where(
-            InstagramAccount.user_id == user.id,
-            PublishLog.status == "success",
-            PublishLog.play_count.is_not(None),
-        )
-        .options(selectinload(PublishLog.account), selectinload(PublishLog.automation))
-        .order_by(desc(PublishLog.play_count))
-        .limit(8)
-    ).all()
 
     warming_jobs = db.scalars(
         select(WarmupJob)
@@ -336,24 +339,6 @@ def home(
         .order_by(desc(PublishLog.created_at))
         .limit(8)
     ).all()
-
-    pending_views = db.scalar(
-        select(func.count(PublishLog.id))
-        .join(PublishLog.account)
-        .where(
-            InstagramAccount.user_id == user.id,
-            PublishLog.status == "success",
-            PublishLog.media_id.is_not(None),
-            PublishLog.play_count.is_(None),
-            PublishLog.insights_fetched_at.is_(None),
-        )
-    ) or 0
-    if pending_views:
-        try:
-            from celery_app.tasks.insights import sync_all_views
-            sync_all_views.delay()
-        except Exception:
-            pass
 
     recent_logs = db.scalars(
         select(PublishLog)
@@ -397,13 +382,13 @@ def home(
             "chart_weekly": chart_weekly,
             "now_brt": brt_now(),
             "offline_accounts": offline,
-            "total_views": int(total_views),
+            "total_views": 0,
             "top_players": top_players,
             "top_players_month": top_players_month,
-            "top_reels": top_reels,
+            "top_reels": [],
             "warming_jobs": warming_jobs,
             "failed_videos": failed_videos,
-            "pending_views": int(pending_views),
+            "pending_views": 0,
         },
     )
 

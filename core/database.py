@@ -156,6 +156,14 @@ def _sqlite_migrate() -> None:
                 conn.execute(text("ALTER TABLE publish_logs ADD COLUMN content_type VARCHAR(16)"))
             if "video_key" not in pcols:
                 conn.execute(text("ALTER TABLE publish_logs ADD COLUMN video_key VARCHAR(512)"))
+            if "metadata_fingerprint" not in pcols:
+                conn.execute(text("ALTER TABLE publish_logs ADD COLUMN metadata_fingerprint VARCHAR(64)"))
+            if "raw_sha256" not in pcols:
+                conn.execute(text("ALTER TABLE publish_logs ADD COLUMN raw_sha256 VARCHAR(64)"))
+            if "clean_sha256" not in pcols:
+                conn.execute(text("ALTER TABLE publish_logs ADD COLUMN clean_sha256 VARCHAR(64)"))
+            if "clean_size" not in pcols:
+                conn.execute(text("ALTER TABLE publish_logs ADD COLUMN clean_size INTEGER"))
         if "app_notifications" in insp.get_table_names():
             ncols = {c["name"] for c in insp.get_columns("app_notifications")}
             if "publish_log_id" not in ncols:
@@ -226,6 +234,14 @@ def _postgres_migrate() -> None:
                 conn.execute(text("ALTER TABLE publish_logs ADD COLUMN content_type VARCHAR(16)"))
             if "video_key" not in pcols:
                 conn.execute(text("ALTER TABLE publish_logs ADD COLUMN video_key VARCHAR(512)"))
+            if "metadata_fingerprint" not in pcols:
+                conn.execute(text("ALTER TABLE publish_logs ADD COLUMN metadata_fingerprint VARCHAR(64)"))
+            if "raw_sha256" not in pcols:
+                conn.execute(text("ALTER TABLE publish_logs ADD COLUMN raw_sha256 VARCHAR(64)"))
+            if "clean_sha256" not in pcols:
+                conn.execute(text("ALTER TABLE publish_logs ADD COLUMN clean_sha256 VARCHAR(64)"))
+            if "clean_size" not in pcols:
+                conn.execute(text("ALTER TABLE publish_logs ADD COLUMN clean_size INTEGER"))
         if "app_notifications" in tables:
             ncols = {c["name"] for c in insp.get_columns("app_notifications")}
             if "publish_log_id" not in ncols:

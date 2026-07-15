@@ -239,26 +239,31 @@ body.premium-app .shark-content { padding: 24px 32px 80px; }
   grid-column: 3;
   grid-row: 1 / span 2;
 }
-.og-panel-accounts { grid-column: 1; grid-row: 2; }
-.og-failed-panel { grid-column: 2; grid-row: 2; }
+.og-panel-accounts { grid-column: 1 / span 2; grid-row: 2; }
+.og-failed-panel { grid-column: 1 / span 2; grid-row: 3; }
 .og-bottom-span-2 { grid-column: span 2; }
 
-/* Contas conectadas — galeria horizontal estilo Instagram */
-.og-panel-accounts { min-height: 220px; }
+/* Contas conectadas — grid maior e respirado */
+.og-panel-accounts { min-height: 340px; }
 .og-accounts-gallery {
-  display: flex; flex-wrap: nowrap; gap: 18px;
-  overflow-x: auto; padding: 12px 4px 8px;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(17, 97, 254, 0.3) transparent;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+  padding: 8px 2px 4px;
 }
-.og-accounts-gallery::-webkit-scrollbar { height: 4px; }
-.og-accounts-gallery::-webkit-scrollbar-thumb { background: rgba(17, 97, 254, 0.35); }
 .og-acc-item {
-  display: flex; flex-direction: column; align-items: center; gap: 6px;
-  min-width: 68px; flex-shrink: 0; text-align: center;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  text-align: left;
 }
 .og-acc-ring {
   width: 58px; height: 58px; padding: 3px; border-radius: 50%;
+  flex-shrink: 0;
   background: var(--og-ig-gradient);
   box-shadow: 0 0 16px rgba(17, 97, 254, 0.22);
 }
@@ -273,7 +278,18 @@ body.premium-app .shark-content { padding: 24px 32px 80px; }
   font-weight: 700; font-size: 17px; color: var(--og-text-sec);
   border: 2px solid #050505;
 }
-.og-acc-name { font-size: 10px; color: var(--og-text-sec); line-height: 1.2; max-width: 68px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.og-acc-meta { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.og-acc-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--og-text-sec);
+  line-height: 1.2;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.og-acc-sub { font-size: 10px; color: var(--og-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .og-acc-pubs { font-size: 9px; color: var(--og-muted); }
 
 /* Gráfico de barras — barras grossas roxas */

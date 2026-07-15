@@ -369,6 +369,7 @@ def _execute_publish(
     clean_path = tmp_dir / f"clean{ext}"
     thumb_path: Path | None = None
     clean_thumb_path: Path | None = None
+    meta_info: dict | None = None
 
     try:
         log.info("Download mídia key=%s → %s", video_key, raw_path.name)
@@ -391,6 +392,17 @@ def _execute_publish(
                 account_hint=username,
             )
             fp = (meta_info or {}).get("fingerprint", "ok")
+            raw_sha = (meta_info or {}).get("raw_sha256", "")
+            clean_sha = (meta_info or {}).get("clean_sha256", "")
+            log.info(
+                "METADATA CLEAN automation=%s account=%s fp=%s raw_sha=%s clean_sha=%s size=%s",
+                automation_id,
+                username,
+                fp,
+                raw_sha[:12],
+                clean_sha[:12],
+                (meta_info or {}).get("clean_size"),
+            )
             create_notification(
                 owner_user_id,
                 "Metadados limpos",
@@ -499,6 +511,10 @@ def _execute_publish(
                 media_id=result.get("id"),
                 media_url=result.get("url"),
                 video_key=video_key,
+                metadata_fingerprint=(meta_info or {}).get("fingerprint"),
+                raw_sha256=(meta_info or {}).get("raw_sha256"),
+                clean_sha256=(meta_info or {}).get("clean_sha256"),
+                clean_size=int((meta_info or {}).get("clean_size") or 0) or None,
             )
             db.add(plog)
             db.flush()

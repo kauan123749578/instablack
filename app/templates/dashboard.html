@@ -325,13 +325,16 @@
       </div>
       {% if accounts_data %}
       <div class="og-accounts-gallery">
-        {% for item in accounts_data[:12] %}
+        {% for item in accounts_data[:18] %}
         {% set acc = item.account %}
         <div class="og-acc-item" title="@{{ acc.username }} · {{ item.publish_count }} publicações">
           <div class="og-acc-ring og-acc-ring--{{ acc.status }}">
             <div class="og-acc-avatar">{{ acc.username[0]|upper }}</div>
           </div>
-          <span class="og-acc-name">@{{ acc.username[:9] }}{% if acc.username|length > 9 %}…{% endif %}</span>
+          <div class="og-acc-meta">
+            <span class="og-acc-name">@{{ acc.username }}</span>
+            <span class="og-acc-sub">{{ status_label(acc.status) }} · {{ item.publish_count }} post{% if item.publish_count != 1 %}s{% endif %}</span>
+          </div>
         </div>
         {% endfor %}
       </div>

@@ -184,6 +184,10 @@ class PublishLog(Base):
     )
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     video_key: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    metadata_fingerprint: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    raw_sha256: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    clean_sha256: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    clean_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True

@@ -6,6 +6,8 @@
   const drawerOpen = document.getElementById("drawer-open");
   const drawerBackdrop = document.getElementById("drawer-backdrop");
   const sidebar = document.getElementById("sidebar");
+  let notifPollTimer = null;
+  let dashActivityPollTimer = null;
 
   function closeDrawer() { drawer?.classList.remove("open"); }
 
@@ -28,6 +30,10 @@
   async function navigateTo(url, push = true) {
     if (!appContent) { window.location.href = url; return; }
     appContent.classList.add("content-loading");
+    if (dashActivityPollTimer) {
+      clearInterval(dashActivityPollTimer);
+      dashActivityPollTimer = null;
+    }
     try {
       const resp = await fetch(url, { headers: { "X-Partial": "1" } });
       if (!resp.ok) throw new Error(resp.status);
@@ -340,6 +346,10 @@
     const panel = document.getElementById("dash-activity-panel");
     const list = document.getElementById("dash-activity-list");
     if (!panel || !list || panel.dataset.pollBound === "1") return;
+    if (dashActivityPollTimer) {
+      clearInterval(dashActivityPollTimer);
+      dashActivityPollTimer = null;
+    }
     panel.dataset.pollBound = "1";
     let latest = Number(panel.dataset.latestId || 0);
 
@@ -356,6 +366,7 @@
     };
 
     async function poll() {
+      if (document.hidden) return;
       try {
         const res = await fetch("/api/logs/latest?since_id=" + latest);
         if (!res.ok) return;
@@ -389,7 +400,7 @@
     }
 
     poll();
-    setInterval(poll, 2500);
+    dashActivityPollTimer = setInterval(poll, 7000);
   }
 
   function initLogsWatchPoll() {
@@ -539,7 +550,11 @@
     });
 
     loadNotifications();
-    setInterval(loadNotifications, 10000);
+    if (!notifPollTimer) {
+      notifPollTimer = setInterval(() => {
+        if (!document.hidden) loadNotifications();
+      }, 15000);
+    }
   }
 
   function initContentTypeForm() {

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from core.metadata import MetadataStripError, strip_image_metadata, strip_metadata
+from core.metadata import MetadataStripError, sha256_file, strip_image_metadata, strip_metadata
 
 VIDEO_EXT = {".mp4", ".mov", ".webm", ".mkv", ".avi"}
 IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp", ".heic"}
@@ -23,11 +23,35 @@ def prepare_clean_media(
     ext = raw_path.suffix.lower()
     is_video = ext in VIDEO_EXT
 
-    if content_type == "photo" or (content_type == "story" and not is_video):
-        if ext not in IMAGE_EXT and ext not in VIDEO_EXT:
-            raise MetadataStripError(f"Formato não suportado: {ext}")
+    if content_type == "photo":
+        if ext not in IMAGE_EXT:
+            raise MetadataStripError(f"Foto no feed exige imagem, recebido: {ext}")
+        raw_sha = sha256_file(raw_path)
         strip_image_metadata(raw_path, clean_path)
-        return clean_path, {"fingerprint": f"img-{account_hint or 'x'}-{clean_path.stat().st_size}"}
+        clean_sha = sha256_file(clean_path)
+        if clean_sha == raw_sha:
+            raise MetadataStripError("Imagem limpa ficou idêntica ao original (hash igual).")
+        return clean_path, {
+            "fingerprint": clean_sha[:24],
+            "raw_sha256": raw_sha,
+            "clean_sha256": clean_sha,
+            "clean_size": str(clean_path.stat().st_size),
+        }
+
+    if content_type == "story" and not is_video:
+        if ext not in IMAGE_EXT:
+            raise MetadataStripError(f"Story sem vídeo exige imagem, recebido: {ext}")
+        raw_sha = sha256_file(raw_path)
+        strip_image_metadata(raw_path, clean_path)
+        clean_sha = sha256_file(clean_path)
+        if clean_sha == raw_sha:
+            raise MetadataStripError("Imagem limpa ficou idêntica ao original (hash igual).")
+        return clean_path, {
+            "fingerprint": clean_sha[:24],
+            "raw_sha256": raw_sha,
+            "clean_sha256": clean_sha,
+            "clean_size": str(clean_path.stat().st_size),
+        }
 
     if not is_video:
         raise MetadataStripError(f"Reels/Story em vídeo exige arquivo de vídeo, recebido: {ext}")
