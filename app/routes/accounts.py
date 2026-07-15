@@ -38,6 +38,7 @@ from core.instagram import (
 from models.models import InstagramAccount, User
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
+VISIBLE_ACCOUNT_STATUSES = ("active", "paused", "needs_login", "proxy_down", "banned")
 
 
 def _accounts_page_context(
@@ -94,7 +95,10 @@ def _backfill_proxy_meta(db: Session, accounts: list[InstagramAccount]) -> None:
 def _load_user_accounts(db: Session, user: User) -> list[InstagramAccount]:
     return db.scalars(
         select(InstagramAccount)
-        .where(InstagramAccount.user_id == user.id)
+        .where(
+            InstagramAccount.user_id == user.id,
+            InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
+        )
         .order_by(InstagramAccount.username.asc())
     ).all()
 
@@ -258,7 +262,10 @@ def add_account(
     )
     if not existing:
         current_count = db.scalar(
-            select(func.count(InstagramAccount.id)).where(InstagramAccount.user_id == user.id)
+            select(func.count(InstagramAccount.id)).where(
+                InstagramAccount.user_id == user.id,
+                InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
+            )
         ) or 0
         allowed, limit_msg = can_add_instagram_account(user, current_count)
         if not allowed:
@@ -295,7 +302,7 @@ def add_account(
 
 def _get_owned_account(db: Session, account_id: int, user: User) -> InstagramAccount:
     acc = db.get(InstagramAccount, account_id)
-    if not acc or acc.user_id != user.id:
+    if not acc or acc.user_id != user.id or acc.status == "deleted":
         raise HTTPException(status_code=404, detail="Conta não encontrada")
     return acc
 
@@ -373,8 +380,13 @@ def delete_account(
     user: User = Depends(get_current_user),
 ):
     acc = db.get(InstagramAccount, account_id)
-    if not acc or acc.user_id != user.id:
+    if not acc or acc.user_id != user.id or acc.status == "deleted":
         raise HTTPException(status_code=404, detail="Conta não encontrada")
-    db.delete(acc)
+    # Soft delete: some do painel/automações, mas preserva logs e gráficos históricos.
+    acc.status = "deleted"
+    acc.session_json = None
+    acc.encrypted_password = None
+    acc.last_error = "Conta removida do painel"
+    acc.automations.clear()
     db.commit()
     return RedirectResponse("/accounts", status_code=status.HTTP_303_SEE_OTHER)

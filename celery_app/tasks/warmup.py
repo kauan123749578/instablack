@@ -58,7 +58,7 @@ def run_warmup_job(self, job_id: int) -> dict:
             ends_at = ends_at.astimezone(dt.timezone.utc).replace(tzinfo=None)
 
         account = db.get(InstagramAccount, job.account_id)
-        if account is None:
+        if account is None or account.status == "deleted":
             job.status = "failed"
             job.last_error = "conta removida"
             return {"error": "account_missing"}
@@ -197,7 +197,7 @@ def run_warmup_job(self, job_id: int) -> dict:
                 )
             )
             acc = db.get(InstagramAccount, job.account_id)
-            if acc:
+            if acc and acc.status != "deleted":
                 try:
                     acc.session_json = serialize_settings(cl.get_settings())
                 except Exception:

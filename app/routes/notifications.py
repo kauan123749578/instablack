@@ -28,6 +28,7 @@ from models.models import (
 
 log = logging.getLogger(__name__)
 router = APIRouter(tags=["notifications-warmup"])
+VISIBLE_ACCOUNT_STATUSES = ("active", "paused", "needs_login", "proxy_down", "banned")
 
 # Evita spam de push quando vários abas fazem poll do mesmo log
 _recent_push_log_ids: set[int] = set()
@@ -383,7 +384,10 @@ def warmup_page(
         return RedirectResponse("/login", status_code=303)
     accounts = db.scalars(
         select(InstagramAccount)
-        .where(InstagramAccount.user_id == user.id)
+        .where(
+            InstagramAccount.user_id == user.id,
+            InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
+        )
         .order_by(InstagramAccount.username.asc())
     ).all()
     jobs = db.scalars(
@@ -420,7 +424,7 @@ def warmup_start(
     import datetime as dt
 
     acc = db.get(InstagramAccount, account_id)
-    if acc is None or acc.user_id != user.id:
+    if acc is None or acc.user_id != user.id or acc.status == "deleted":
         return RedirectResponse("/warmup?error=conta", status_code=303)
 
     names = []

@@ -144,6 +144,12 @@ def _sqlite_migrate() -> None:
                 conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN proxy_ip VARCHAR(45)"))
             if "proxy_geo" not in acols:
                 conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN proxy_geo VARCHAR(64)"))
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_instagram_accounts_user_status "
+                    "ON instagram_accounts (user_id, status)"
+                )
+            )
         if "publish_logs" in insp.get_table_names():
             pcols = {c["name"] for c in insp.get_columns("publish_logs")}
             if "play_count" not in pcols:
@@ -164,6 +170,24 @@ def _sqlite_migrate() -> None:
                 conn.execute(text("ALTER TABLE publish_logs ADD COLUMN clean_sha256 VARCHAR(64)"))
             if "clean_size" not in pcols:
                 conn.execute(text("ALTER TABLE publish_logs ADD COLUMN clean_size INTEGER"))
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_publish_logs_account_created "
+                    "ON publish_logs (account_id, created_at)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_publish_logs_account_status "
+                    "ON publish_logs (account_id, status)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_publish_logs_status_created "
+                    "ON publish_logs (status, created_at)"
+                )
+            )
         if "app_notifications" in insp.get_table_names():
             ncols = {c["name"] for c in insp.get_columns("app_notifications")}
             if "publish_log_id" not in ncols:
@@ -222,6 +246,12 @@ def _postgres_migrate() -> None:
                 conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN proxy_ip VARCHAR(45)"))
             if "proxy_geo" not in acols:
                 conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN proxy_geo VARCHAR(64)"))
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_instagram_accounts_user_status "
+                    "ON instagram_accounts (user_id, status)"
+                )
+            )
         if "publish_logs" in tables:
             pcols = {c["name"] for c in insp.get_columns("publish_logs")}
             if "play_count" not in pcols:
@@ -242,6 +272,24 @@ def _postgres_migrate() -> None:
                 conn.execute(text("ALTER TABLE publish_logs ADD COLUMN clean_sha256 VARCHAR(64)"))
             if "clean_size" not in pcols:
                 conn.execute(text("ALTER TABLE publish_logs ADD COLUMN clean_size INTEGER"))
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_publish_logs_account_created "
+                    "ON publish_logs (account_id, created_at)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_publish_logs_account_status "
+                    "ON publish_logs (account_id, status)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_publish_logs_status_created "
+                    "ON publish_logs (status, created_at)"
+                )
+            )
         if "app_notifications" in tables:
             ncols = {c["name"] for c in insp.get_columns("app_notifications")}
             if "publish_log_id" not in ncols:

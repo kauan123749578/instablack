@@ -49,11 +49,13 @@ def _notify_offline_if_changed(
 
 @celery_app.task(name="celery_app.tasks.health.check_all_accounts")
 def check_all_accounts() -> dict:
-    """Enfileira verificação de todas as contas (exceto pausadas manualmente)."""
+    """Enfileira verificação de todas as contas operacionais."""
     with session_scope() as db:
         account_ids = list(
             db.scalars(
-                select(InstagramAccount.id).where(InstagramAccount.status != "paused")
+                select(InstagramAccount.id).where(
+                    InstagramAccount.status.notin_(("paused", "deleted"))
+                )
             ).all()
         )
     for idx, account_id in enumerate(account_ids):
@@ -65,7 +67,7 @@ def check_all_accounts() -> dict:
 def check_account_health(account_id: int) -> dict:
     with session_scope() as db:
         account = db.get(InstagramAccount, account_id)
-        if account is None or account.status == "paused":
+        if account is None or account.status in ("paused", "deleted"):
             return {"skipped": True}
 
         proxy = account.proxy
@@ -78,7 +80,7 @@ def check_account_health(account_id: int) -> dict:
     if not proxy or not check_proxy(proxy):
         with session_scope() as db:
             acc = db.get(InstagramAccount, account_id)
-            if not acc or acc.status == "paused":
+            if not acc or acc.status in ("paused", "deleted"):
                 return {"account_id": account_id, "status": "proxy_down"}
             prev = acc.status
             acc.status = "proxy_down"
@@ -97,7 +99,7 @@ def check_account_health(account_id: int) -> dict:
     if not settings_dict:
         with session_scope() as db:
             acc = db.get(InstagramAccount, account_id)
-            if not acc or acc.status == "paused":
+            if not acc or acc.status in ("paused", "deleted"):
                 return {"account_id": account_id, "status": "needs_login"}
             prev = acc.status
             acc.status = "needs_login"
@@ -123,7 +125,7 @@ def check_account_health(account_id: int) -> dict:
         cl.account_info()
         with session_scope() as db:
             acc = db.get(InstagramAccount, account_id)
-            if acc and acc.status != "paused":
+            if acc and acc.status not in ("paused", "deleted"):
                 acc.session_json = serialize_settings(cl.get_settings())
                 if acc.status in OFFLINE_STATUSES:
                     acc.status = "active"
@@ -133,7 +135,7 @@ def check_account_health(account_id: int) -> dict:
     except InstagramAuthError as exc:
         with session_scope() as db:
             acc = db.get(InstagramAccount, account_id)
-            if not acc or acc.status == "paused":
+            if not acc or acc.status in ("paused", "deleted"):
                 return {"account_id": account_id, "status": "needs_login", "error": str(exc)}
             prev = acc.status
             acc.status = "needs_login"
@@ -152,7 +154,7 @@ def check_account_health(account_id: int) -> dict:
         log.warning("health check account %s: %s", account_id, exc)
         with session_scope() as db:
             acc = db.get(InstagramAccount, account_id)
-            if acc and acc.status != "paused":
+            if acc and acc.status not in ("paused", "deleted"):
                 acc.last_health_check_at = now
                 acc.last_error = str(exc)[:1000]
         return {"account_id": account_id, "status": "error", "error": str(exc)}

@@ -32,6 +32,7 @@ def status_label(status: str) -> str:
         "needs_login": "Sessão expirada",
         "proxy_down": "Proxy offline",
         "banned": "Banida",
+        "deleted": "Removida",
         "success": "Sucesso",
         "failed": "Erro",
         "skipped": "Ignorada",

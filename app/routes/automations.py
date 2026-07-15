@@ -31,6 +31,7 @@ router = APIRouter(prefix="/automations", tags=["automations"])
 log = logging.getLogger(__name__)
 
 CONTENT_TYPES = ["reel", "story", "photo"]
+VISIBLE_ACCOUNT_STATUSES = ("active", "paused", "needs_login", "proxy_down", "banned")
 
 
 def _story_link_value(content_type: str, story_link: str) -> str | None:
@@ -115,7 +116,10 @@ def list_automations(
         .order_by(desc(Automation.created_at))
     ).all()
     all_accounts = db.scalars(
-        select(InstagramAccount).where(InstagramAccount.user_id == user.id)
+        select(InstagramAccount).where(
+            InstagramAccount.user_id == user.id,
+            InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
+        )
     ).all()
     return templates.TemplateResponse(
         "automations.html",
@@ -137,7 +141,10 @@ def new_automation_page(
 ):
     accounts = db.scalars(
         select(InstagramAccount)
-        .where(InstagramAccount.user_id == user.id)
+        .where(
+            InstagramAccount.user_id == user.id,
+            InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
+        )
         .order_by(InstagramAccount.username.asc())
     ).all()
     default_type = request.query_params.get("type", "reel")
@@ -170,7 +177,10 @@ def new_story_page(
     """Atalho direto para criar automação de Story."""
     accounts = db.scalars(
         select(InstagramAccount)
-        .where(InstagramAccount.user_id == user.id)
+        .where(
+            InstagramAccount.user_id == user.id,
+            InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
+        )
         .order_by(InstagramAccount.username.asc())
     ).all()
     return templates.TemplateResponse(
@@ -212,7 +222,10 @@ def new_calendar_page(
 ):
     accounts = db.scalars(
         select(InstagramAccount)
-        .where(InstagramAccount.user_id == user.id)
+        .where(
+            InstagramAccount.user_id == user.id,
+            InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
+        )
         .order_by(InstagramAccount.username.asc())
     ).all()
     return templates.TemplateResponse(
@@ -262,6 +275,7 @@ async def create_calendar_automation(
             select(InstagramAccount).where(
                 InstagramAccount.user_id == user.id,
                 InstagramAccount.id.in_(account_ids),
+                InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
             )
         ).all())
         if len(accounts) != len(set(account_ids)):
@@ -269,7 +283,10 @@ async def create_calendar_automation(
 
     if error:
         all_accounts = db.scalars(
-            select(InstagramAccount).where(InstagramAccount.user_id == user.id)
+            select(InstagramAccount).where(
+                InstagramAccount.user_id == user.id,
+                InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
+            )
         ).all()
         return templates.TemplateResponse(
             "new_calendar_automation.html",
@@ -385,6 +402,7 @@ async def create_automation(
             select(InstagramAccount).where(
                 InstagramAccount.user_id == user.id,
                 InstagramAccount.id.in_(account_ids),
+                InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
             )
         ).all())
         if len(accounts) != len(set(account_ids)):
@@ -392,7 +410,10 @@ async def create_automation(
 
     if error:
         all_accounts = db.scalars(
-            select(InstagramAccount).where(InstagramAccount.user_id == user.id)
+            select(InstagramAccount).where(
+                InstagramAccount.user_id == user.id,
+                InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
+            )
         ).all()
         return templates.TemplateResponse(
             "new_automation.html",
@@ -412,7 +433,10 @@ async def create_automation(
     video_entries, upload_warnings = _save_uploaded_videos(storage, upload_files)
     if not video_entries:
         all_accounts = db.scalars(
-            select(InstagramAccount).where(InstagramAccount.user_id == user.id)
+            select(InstagramAccount).where(
+                InstagramAccount.user_id == user.id,
+                InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
+            )
         ).all()
         msg = "Nenhum vídeo válido foi salvo. "
         if upload_warnings:
@@ -723,6 +747,7 @@ async def edit_automation(
         select(InstagramAccount).where(
             InstagramAccount.user_id == user.id,
             InstagramAccount.id.in_(account_ids),
+            InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
         )
     ).all()
     if len(accounts) != len(set(account_ids)):

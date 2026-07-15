@@ -11,6 +11,7 @@ from core.database import get_db
 from models.models import InstagramAccount, PublishLog, User
 
 router = APIRouter(prefix="/logs", tags=["logs"])
+VISIBLE_ACCOUNT_STATUSES = ("active", "paused", "needs_login", "proxy_down", "banned")
 
 
 @router.get("")
@@ -38,7 +39,10 @@ def user_logs(
     logs = db.scalars(q).all()
     accounts = db.scalars(
         select(InstagramAccount)
-        .where(InstagramAccount.user_id == user.id)
+        .where(
+            InstagramAccount.user_id == user.id,
+            InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
+        )
         .order_by(InstagramAccount.username.asc())
     ).all()
 

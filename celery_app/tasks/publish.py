@@ -41,6 +41,17 @@ log = logging.getLogger(__name__)
 
 # Aparece nos logs do Railway — se não aparecer, o worker NÃO atualizou
 PLAYLIST_CODE = "claim-v4"
+AUTH_REQUIRED_MARKERS = (
+    "login_required",
+    "challenge_required",
+    "checkpoint_required",
+    "session expired",
+)
+
+
+def _looks_auth_required(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return any(marker in message for marker in AUTH_REQUIRED_MARKERS)
 
 
 def _claim_next_slot(db, automation: Automation, items: list[dict]) -> tuple[int, str, str] | None:
@@ -173,7 +184,7 @@ def execute_automation(self, automation_id: int) -> dict:
                 account_ids = [
                     acc.id
                     for acc in accounts
-                    if acc.status not in ("banned", "proxy_down", "paused", "needs_login")
+                    if acc.status not in ("banned", "proxy_down", "paused", "needs_login", "deleted")
                 ]
 
     if done:
@@ -475,6 +486,18 @@ def _execute_publish(
             else:
                 result = publish_reel(cl, clean_path, caption, thumbnail_path=thumb_path)
         except Exception as exc:
+            if _looks_auth_required(exc):
+                reason = f"Sessão expirada no upload: {exc}"
+                _mark_account_needs_login(account_id, reason)
+                _log_failure(
+                    automation_id,
+                    account_id,
+                    reason,
+                    content_type=content_type,
+                    owner_user_id=owner_user_id,
+                    username=username,
+                )
+                return {"error": "auth_upload"}
             _log_failure(
                 automation_id,
                 account_id,
@@ -607,7 +630,7 @@ def _mark_account_needs_login(account_id: int, reason: str) -> None:
 
     with session_scope() as db:
         acc = db.get(InstagramAccount, account_id)
-        if not acc:
+        if not acc or acc.status == "deleted":
             return
         prev = acc.status
         acc.status = "needs_login"

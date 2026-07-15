@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from models.models import InstagramAccount
 
 OFFLINE_STATUSES = ("needs_login", "proxy_down", "banned")
+VISIBLE_ACCOUNT_STATUSES = ("active", "paused", "needs_login", "proxy_down", "banned")
 
 
 def offline_accounts(db: Session, user_id: int) -> list[InstagramAccount]:
@@ -16,6 +17,7 @@ def offline_accounts(db: Session, user_id: int) -> list[InstagramAccount]:
             .where(
                 InstagramAccount.user_id == user_id,
                 InstagramAccount.status.in_(OFFLINE_STATUSES),
+                InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
             )
             .order_by(InstagramAccount.username.asc())
         ).all()

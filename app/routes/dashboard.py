@@ -21,6 +21,7 @@ router = APIRouter(tags=["dashboard"])
 BRT = ZoneInfo("America/Sao_Paulo")
 WEEKDAY_LABELS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
 ALLOWED_CHART_DAYS = {7, 15, 30}
+VISIBLE_ACCOUNT_STATUSES = ("active", "paused", "needs_login", "proxy_down", "banned")
 
 
 def _parse_chart_days(raw: str | int | None) -> int:
@@ -227,7 +228,10 @@ def home(
 
     accounts = db.scalars(
         select(InstagramAccount)
-        .where(InstagramAccount.user_id == user.id)
+        .where(
+            InstagramAccount.user_id == user.id,
+            InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
+        )
         .order_by(InstagramAccount.username.asc())
     ).all()
 
@@ -259,6 +263,7 @@ def home(
     new_accounts_month = db.scalar(
         select(func.count(InstagramAccount.id)).where(
             InstagramAccount.user_id == user.id,
+            InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
             InstagramAccount.created_at >= _utc_naive(_brt_day_bounds(month_start)[0]),
         )
     ) or 0
@@ -409,7 +414,10 @@ def analytics_page(
 
     accounts = db.scalars(
         select(InstagramAccount)
-        .where(InstagramAccount.user_id == user.id)
+        .where(
+            InstagramAccount.user_id == user.id,
+            InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
+        )
         .order_by(InstagramAccount.username.asc())
     ).all()
 

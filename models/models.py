@@ -8,6 +8,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Table,
@@ -82,7 +83,10 @@ class InviteCode(Base):
 
 class InstagramAccount(Base):
     __tablename__ = "instagram_accounts"
-    __table_args__ = (UniqueConstraint("user_id", "username", name="uq_user_ig_username"),)
+    __table_args__ = (
+        UniqueConstraint("user_id", "username", name="uq_user_ig_username"),
+        Index("ix_instagram_accounts_user_status", "user_id", "status"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
@@ -97,7 +101,7 @@ class InstagramAccount(Base):
     proxy_geo: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)  # ex: BR - Brasil
     session_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    status: Mapped[str] = mapped_column(String(32), default="active")  # active | paused | needs_login | proxy_down | banned
+    status: Mapped[str] = mapped_column(String(32), default="active")  # active | paused | needs_login | proxy_down | banned | deleted
     last_login_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     last_health_check_at: Mapped[Optional[dt.datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -164,6 +168,11 @@ class Automation(Base):
 
 class PublishLog(Base):
     __tablename__ = "publish_logs"
+    __table_args__ = (
+        Index("ix_publish_logs_account_created", "account_id", "created_at"),
+        Index("ix_publish_logs_account_status", "account_id", "status"),
+        Index("ix_publish_logs_status_created", "status", "created_at"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     automation_id: Mapped[Optional[int]] = mapped_column(
