@@ -135,10 +135,13 @@
       {% if automations %}
       <ul class="og-auto-list">
         {% for a in automations[:5] %}
+        {% set preview = automation_preview_media(a) %}
         <li class="og-auto-item">
           <div class="og-auto-thumb">
-            {% if a.thumb_key %}
-            <img src="/media/{{ a.thumb_key }}" alt="">
+            {% if preview and preview.kind == 'image' %}
+            <img src="{{ preview.url }}" alt="">
+            {% elif preview and preview.kind == 'video' %}
+            <video src="{{ preview.url }}#t=0.1" muted playsinline preload="metadata"></video>
             {% else %}
             <div class="og-auto-thumb-ph og-auto-thumb-ph--{{ a.content_type|default('reel') }}">
               {% if a.content_type == 'story' %}<i data-lucide="circle-dot"></i>{% elif a.content_type == 'photo' %}<i data-lucide="image"></i>{% else %}<i data-lucide="play"></i>{% endif %}
@@ -165,13 +168,18 @@
       {% if next_publications %}
       <ul class="og-next-list">
         {% for a in next_publications %}
+        {% set preview = automation_preview_media(a) %}
         <li class="og-next-item">
           <span class="og-next-time">{{ a.next_run_at | localtime('%H:%M') }}</span>
           <div class="og-auto-thumb og-auto-thumb--sm">
-            {% if a.thumb_key %}
-            <img src="/media/{{ a.thumb_key }}" alt="">
+            {% if preview and preview.kind == 'image' %}
+            <img src="{{ preview.url }}" alt="">
+            {% elif preview and preview.kind == 'video' %}
+            <video src="{{ preview.url }}#t=0.1" muted playsinline preload="metadata"></video>
             {% else %}
-            <div class="og-auto-thumb-ph"><i data-lucide="play"></i></div>
+            <div class="og-auto-thumb-ph og-auto-thumb-ph--{{ a.content_type|default('reel') }}">
+              {% if a.content_type == 'story' %}<i data-lucide="circle-dot"></i>{% elif a.content_type == 'photo' %}<i data-lucide="image"></i>{% else %}<i data-lucide="play"></i>{% endif %}
+            </div>
             {% endif %}
           </div>
           <div class="og-next-info">

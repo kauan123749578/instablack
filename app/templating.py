@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from fastapi.templating import Jinja2Templates
 
@@ -20,6 +21,37 @@ def automation_playlist_names(automation) -> list[str]:
     ]
 
 
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm", ".m4v"}
+
+
+def _media_suffix(*values: object) -> str:
+    for value in values:
+        if not value:
+            continue
+        suffix = Path(str(value).split("?", 1)[0]).suffix.lower()
+        if suffix:
+            return suffix
+    return ""
+
+
+def automation_preview_media(automation) -> dict[str, str] | None:
+    thumb_key = getattr(automation, "thumb_key", None)
+    if thumb_key:
+        return {"url": f"/media/{thumb_key}", "kind": "image"}
+
+    content_type = (getattr(automation, "content_type", None) or "reel").lower()
+    if content_type not in ("story", "photo"):
+        return None
+
+    media_key = getattr(automation, "video_key", None)
+    if not media_key:
+        return None
+    ext = _media_suffix(media_key, getattr(automation, "video_original_name", None))
+    kind = "video" if ext in VIDEO_EXTENSIONS else "image"
+    return {"url": f"/media/{media_key}", "kind": kind}
+
+
 templates = Jinja2Templates(directory="app/templates")
 templates.env.filters["localtime"] = to_brt
 templates.env.filters["tojson"] = lambda v: json.dumps(v)
@@ -35,6 +67,7 @@ templates.env.globals["status_label"] = status_label
 templates.env.globals["status_badge_class"] = status_badge_class
 templates.env.globals["automation_video_count"] = automation_video_count
 templates.env.globals["automation_playlist_names"] = automation_playlist_names
+templates.env.globals["automation_preview_media"] = automation_preview_media
 templates.env.globals["proxy_label"] = proxy_label
 templates.env.globals["proxy_to_raw"] = proxy_to_raw
 templates.env.globals["account_proxy_ip"] = account_proxy_ip

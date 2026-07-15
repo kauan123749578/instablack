@@ -18,6 +18,11 @@ from pathlib import Path
 from sqlalchemy import select, text
 
 from app.security import decrypt_secret
+from app.utils.auth_failures import (
+    auth_status_reason,
+    latest_auth_failure_reason,
+    looks_auth_required,
+)
 from app.utils.automation_videos import playlist_items, playlist_is_exhausted, resolve_video_key
 from celery_app.config import celery_app
 from core.database import session_scope
@@ -41,17 +46,6 @@ log = logging.getLogger(__name__)
 
 # Aparece nos logs do Railway — se não aparecer, o worker NÃO atualizou
 PLAYLIST_CODE = "claim-v4"
-AUTH_REQUIRED_MARKERS = (
-    "login_required",
-    "challenge_required",
-    "checkpoint_required",
-    "session expired",
-)
-
-
-def _looks_auth_required(exc: Exception) -> bool:
-    message = str(exc).lower()
-    return any(marker in message for marker in AUTH_REQUIRED_MARKERS)
 
 
 def _claim_next_slot(db, automation: Automation, items: list[dict]) -> tuple[int, str, str] | None:
@@ -340,6 +334,12 @@ def _execute_publish(
         account = db.get(InstagramAccount, account_id)
         if account is None:
             return {"error": "account_not_found"}
+        account_status = account.status
+        recent_auth_failure = latest_auth_failure_reason(db, account_id)
+        if recent_auth_failure and account_status not in ("deleted", "paused"):
+            account.status = "needs_login"
+            account.last_error = auth_status_reason(recent_auth_failure)
+            account_status = account.status
         owner_user_id = account.user_id
         username = account.username
         password = (
@@ -349,6 +349,9 @@ def _execute_publish(
         )
         proxy = account.proxy
         settings_dict = deserialize_settings(account.session_json) if account.session_json else None
+
+    if account_status in ("paused", "needs_login", "proxy_down", "banned", "deleted"):
+        return {"skipped": True, "reason": f"account_{account_status}"}
 
     if not proxy or not proxy.strip():
         _log_failure(
@@ -498,7 +501,7 @@ def _execute_publish(
             else:
                 result = publish_reel(cl, clean_path, caption, thumbnail_path=thumb_path)
         except Exception as exc:
-            if _looks_auth_required(exc):
+            if looks_auth_required(exc):
                 reason = f"Sessão expirada no upload: {exc}"
                 _mark_account_needs_login(account_id, reason)
                 _log_failure(

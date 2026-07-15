@@ -7,6 +7,7 @@ import logging
 from sqlalchemy import select
 
 from app.security import decrypt_secret
+from app.utils.auth_failures import auth_status_reason, latest_auth_failure_reason
 from celery_app.config import celery_app
 from core.database import session_scope
 from core.instagram import (
@@ -142,14 +143,32 @@ def check_account_health(account_id: int) -> dict:
             password=password,
         )
         cl.account_info()
+        needs_login_from_log: tuple[str, str | None, int | None, str | None] | None = None
         with session_scope() as db:
             acc = db.get(InstagramAccount, account_id)
             if acc and acc.status not in ("paused", "deleted"):
-                acc.session_json = serialize_settings(cl.get_settings())
-                if acc.status in OFFLINE_STATUSES:
-                    acc.status = "active"
-                acc.last_error = None
+                auth_reason = latest_auth_failure_reason(db, account_id)
+                if auth_reason:
+                    prev = acc.status
+                    acc.status = "needs_login"
+                    acc.last_error = auth_status_reason(auth_reason)
+                    needs_login_from_log = (acc.last_error, acc.username, acc.user_id, prev)
+                else:
+                    acc.session_json = serialize_settings(cl.get_settings())
+                    if acc.status in OFFLINE_STATUSES:
+                        acc.status = "active"
+                    acc.last_error = None
                 acc.last_health_check_at = now
+        if needs_login_from_log:
+            reason, uname, uid, prev = needs_login_from_log
+            _notify_offline_if_changed(
+                new_status="needs_login",
+                reason=reason,
+                prev_status=prev,
+                user_id=uid,
+                username=uname,
+            )
+            return {"account_id": account_id, "status": "needs_login", "error": reason}
         return {"account_id": account_id, "status": "active"}
     except InstagramAuthError as exc:
         with session_scope() as db:

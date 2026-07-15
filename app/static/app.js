@@ -739,7 +739,7 @@
     const radios = form.querySelectorAll('input[name="auth_method"]');
 
     function update() {
-      const method = form.querySelector('input[name="auth_method"]:checked')?.value || "sessionid";
+      const method = form.querySelector('input[name="auth_method"]:checked')?.value || "password";
       if (passwordInput) {
         passwordInput.required = method === "password";
       }

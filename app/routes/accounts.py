@@ -25,6 +25,7 @@ from app.utils.account_limits import (
     accounts_remaining,
     can_add_instagram_account,
 )
+from app.utils.auth_failures import mark_accounts_from_latest_auth_failures
 from core.database import get_db
 from core.instagram import (
     InstagramAuthError,
@@ -110,6 +111,8 @@ def list_accounts(
     user: User = Depends(get_current_user),
 ):
     accounts = _load_user_accounts(db, user)
+    if mark_accounts_from_latest_auth_failures(db, accounts):
+        db.commit()
     _backfill_proxy_meta(db, accounts)
     ok_key = request.query_params.get("ok")
     ok_msg = {

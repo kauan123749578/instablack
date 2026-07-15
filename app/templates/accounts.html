@@ -30,22 +30,22 @@
 <div class="form-card" style="margin-bottom:24px">
   <h3 style="margin-top:0">Adicionar nova conta</h3>
   <p class="muted" style="margin:0 0 16px;font-size:13px">
-    <strong>Proxy residencial ajuda, mas login por senha via API ainda falha bastante</strong>
-    (Instagram devolve “senha incorreta” mesmo com senha certa).
-    O caminho estável é o mesmo do PostagemIG: <strong>Session ID</strong> do Multilogin + a mesma proxy.
+    Você pode conectar direto pelo painel com <strong>usuário e senha</strong>; após o login, a sessão
+    (<code>session.json</code>) é salva no banco automaticamente. Se o Instagram recusar ou pedir challenge,
+    use Session ID/session.json do Multilogin com a mesma proxy.
   </p>
   {% if not can_add_account %}
   <div class="alert alert-error" style="margin-bottom:12px">
     Limite de contas atingido ({{ account_limit_label }}). Peça ao administrador para liberar mais vagas.
   </div>
   {% endif %}
-  {% set auth_method = form.get('auth_method', 'sessionid') %}
+  {% set auth_method = form.get('auth_method', 'password') %}
   <form method="post" action="/accounts/add" class="form-grid" id="account-add-form"{% if not can_add_account %} style="opacity:0.45;pointer-events:none"{% endif %}>
     <fieldset>
       <legend>Método de autenticação</legend>
       <div class="checkbox-row">
-        <label><input type="radio" name="auth_method" value="sessionid" {% if auth_method == 'sessionid' %}checked{% endif %}> Session ID (recomendado)</label>
         <label><input type="radio" name="auth_method" value="password" {% if auth_method == 'password' %}checked{% endif %}> Usuário e senha</label>
+        <label><input type="radio" name="auth_method" value="sessionid" {% if auth_method == 'sessionid' %}checked{% endif %}> Session ID</label>
         <label><input type="radio" name="auth_method" value="import" {% if auth_method == 'import' %}checked{% endif %}> Importar session.json</label>
       </div>
     </fieldset>

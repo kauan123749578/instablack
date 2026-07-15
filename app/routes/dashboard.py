@@ -44,6 +44,12 @@ def _utc_naive(d: dt.datetime) -> dt.datetime:
     return d.astimezone(dt.timezone.utc).replace(tzinfo=None)
 
 
+def _brt_date_from_db(value: dt.datetime) -> dt.date:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=dt.timezone.utc)
+    return value.astimezone(BRT).date()
+
+
 def _count_logs(
     db: Session,
     user_id: int,
@@ -79,9 +85,8 @@ def _status_counts_for_days(
     _, last_end = _brt_day_bounds(max(days))
     rows = db.execute(
         select(
-            func.date(PublishLog.created_at).label("day"),
+            PublishLog.created_at,
             PublishLog.status,
-            func.count(PublishLog.id).label("cnt"),
         )
         .join(PublishLog.account)
         .where(
@@ -89,16 +94,16 @@ def _status_counts_for_days(
             PublishLog.created_at >= _utc_naive(first_start),
             PublishLog.created_at < _utc_naive(last_end),
         )
-        .group_by(func.date(PublishLog.created_at), PublishLog.status)
     ).all()
 
     out = {d: {"success": 0, "failed": 0, "skipped": 0} for d in days}
-    by_iso = {d.isoformat(): d for d in days}
     for row in rows:
-        day = by_iso.get(str(row.day))
+        day = _brt_date_from_db(row.created_at)
         if day is None:
             continue
-        out[day][row.status] = int(row.cnt or 0)
+        if day not in out:
+            continue
+        out[day][row.status] = out[day].get(row.status, 0) + 1
     return out
 
 
@@ -112,7 +117,7 @@ def _chart_performance(db: Session, user_id: int, days: int = 7) -> list[dict]:
     chart = []
     for d in day_list:
         stats = by_day.get(d, {"success": 0, "failed": 0, "skipped": 0})
-        pubs = stats["success"] + stats["failed"] + stats["skipped"]
+        pubs = stats["success"]
         max_val = max(max_val, pubs, stats["success"], stats["failed"])
         # 7D: dia da semana; 15/30D: data curta para caber no eixo
         label = WEEKDAY_LABELS[d.weekday()] if days <= 7 else d.strftime("%d/%m")
@@ -138,11 +143,11 @@ def _dashboard_day_totals(db: Session, user_id: int, today: dt.date, yesterday: 
     counts = _status_counts_for_days(db, user_id, [yesterday, today])
     today_counts = counts.get(today, {"success": 0, "failed": 0, "skipped": 0})
     yesterday_counts = counts.get(yesterday, {"success": 0, "failed": 0, "skipped": 0})
-    pubs_today = sum(today_counts.values())
-    pubs_yesterday = sum(yesterday_counts.values())
     success_today = today_counts.get("success", 0)
-    total_logs_today = pubs_today
+    pubs_today = success_today
     success_yesterday = yesterday_counts.get("success", 0)
+    pubs_yesterday = success_yesterday
+    total_logs_today = sum(today_counts.values())
     total_yesterday = sum(yesterday_counts.values())
     return {
         "pubs_today": pubs_today,
