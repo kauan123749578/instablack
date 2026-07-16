@@ -1004,10 +1004,16 @@
     const videoInput = document.getElementById("video-input");
     const videoName = document.getElementById("video-file-name");
     const videoList = document.getElementById("video-file-list");
-    const accountBoxes = form.querySelectorAll('input[name="account_ids"]');
+    const submitBtn = document.getElementById("submit-btn");
 
     const videoExt = /\.(mp4|mov|webm|m4v|mkv)$/i;
     const imageExt = /\.(jpe?g|png|webp)$/i;
+    const maxReelFiles = 120;
+    const maxReelTotalMb = 800;
+
+    function filesTotalMb(files) {
+      return Math.round(files.reduce((s, f) => s + f.size, 0) / 1024 / 1024 * 10) / 10;
+    }
 
     function updateVideoLabel() {
       const files = videoInput?.files ? Array.from(videoInput.files) : [];
@@ -1028,9 +1034,15 @@
         if (bad.length) {
           videoName.textContent = "Arquivo inválido: " + bad.map((f) => f.name).join(", ") + " — use .mp4";
           videoName.style.color = "var(--red, #ef4444)";
+        } else if (files.length > maxReelFiles) {
+          videoName.textContent = "Muitos vídeos: envie no máximo " + maxReelFiles + " por criação para evitar timeout.";
+          videoName.style.color = "var(--red, #ef4444)";
+        } else if (filesTotalMb(files) > maxReelTotalMb) {
+          videoName.textContent = "Upload muito pesado: " + filesTotalMb(files) + " MB. Envie em lotes de até " + maxReelTotalMb + " MB.";
+          videoName.style.color = "var(--red, #ef4444)";
         } else {
-          const mb = Math.round(files.reduce((s, f) => s + f.size, 0) / 1024 / 1024 * 10) / 10;
-          videoName.textContent = files.length + " vídeo(s) — " + mb + " MB total";
+          const mb = filesTotalMb(files);
+          videoName.textContent = files.length + " vídeo(s) — " + mb + " MB total" + (files.length >= 80 ? " · pode demorar alguns minutos" : "");
           videoName.style.color = "var(--green, #22c55e)";
         }
         if (videoList) {
@@ -1060,6 +1072,16 @@
         return;
       }
       if (isReel) {
+        if (files.length > maxReelFiles) {
+          e.preventDefault();
+          alert("Selecione no máximo " + maxReelFiles + " vídeos por criação para evitar timeout do servidor.");
+          return;
+        }
+        if (filesTotalMb(files) > maxReelTotalMb) {
+          e.preventDefault();
+          alert("Esse envio tem " + filesTotalMb(files) + " MB. Para evitar upstream error, envie em lotes de até " + maxReelTotalMb + " MB.");
+          return;
+        }
         const bad = files.filter((f) => !videoExt.test(f.name));
         if (bad.length) {
           e.preventDefault();
@@ -1073,11 +1095,9 @@
           return;
         }
       }
-      const checked = Array.from(accountBoxes).some((cb) => cb.checked);
-      if (accountBoxes.length && !checked) {
-        e.preventDefault();
-        alert("Marque pelo menos uma conta para publicar.");
-        return;
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Criando automação…";
       }
     });
   }

@@ -4,7 +4,6 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import logging
-from io import BytesIO
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
@@ -32,6 +31,7 @@ log = logging.getLogger(__name__)
 
 CONTENT_TYPES = ["reel", "story", "photo"]
 VISIBLE_ACCOUNT_STATUSES = ("active", "paused", "needs_login", "proxy_down", "banned")
+MAX_REEL_UPLOAD_FILES = 120
 
 
 def _story_link_value(content_type: str, story_link: str) -> str | None:
@@ -60,7 +60,7 @@ def _collect_upload_files(form, *, field_names: tuple[str, ...]) -> list[UploadF
 def _save_uploaded_videos(
     storage, files: list[UploadFile]
 ) -> tuple[list[dict[str, str]], list[str]]:
-    """Materializa cada upload. Retorna (entries, avisos de vazios/duplicados)."""
+    """Materializa cada upload sem carregar o arquivo inteiro em RAM."""
     entries: list[dict[str, str]] = []
     warnings: list[str] = []
     seen_hash: set[str] = set()
@@ -71,24 +71,35 @@ def _save_uploaded_videos(
             f.file.seek(0)
         except Exception:
             pass
-        data = f.file.read()
-        if not data:
+        digest = hashlib.sha256()
+        total = 0
+        while True:
+            chunk = f.file.read(1024 * 1024)
+            if not chunk:
+                break
+            total += len(chunk)
+            digest.update(chunk)
+        if total <= 0:
             warnings.append(f"“{f.filename}” estava vazio e foi ignorado")
             log.warning("Upload vazio ignorado: %s", f.filename)
             continue
-        digest = hashlib.sha256(data).hexdigest()
-        if digest in seen_hash:
+        file_hash = digest.hexdigest()
+        if file_hash in seen_hash:
             warnings.append(f"“{f.filename}” é igual a outro arquivo da lista (duplicado) e foi ignorado")
             log.warning("Vídeo duplicado ignorado: %s", f.filename)
             continue
-        seen_hash.add(digest)
+        seen_hash.add(file_hash)
         ext = Path(f.filename).suffix.lower() or ".mp4"
-        key = storage.save(BytesIO(data), suggested_ext=ext)
+        try:
+            f.file.seek(0)
+        except Exception:
+            pass
+        key = storage.save(f.file, suggested_ext=ext)
         entries.append({
             "video_key": key,
             "video_original_name": f.filename,
         })
-        log.info("Vídeo salvo %s: %s → %s (%s bytes)", len(entries), f.filename, key, len(data))
+        log.info("Vídeo salvo %s: %s → %s (%s bytes)", len(entries), f.filename, key, total)
     return entries, warnings
 
 
@@ -101,6 +112,14 @@ def _save_thumb(storage, thumb: UploadFile | None) -> tuple[str | None, str | No
         pass
     thumb_ext = Path(thumb.filename).suffix or ".jpg"
     return storage.save(thumb.file, suggested_ext=thumb_ext), thumb.filename
+
+
+def _activation_next_run(automation: Automation) -> dt.datetime:
+    if automation.schedule_type == "calendar":
+        days = parse_calendar_days(automation.calendar_days or "[]")
+        nxt = next_calendar_run(days, automation.calendar_time or "")
+        return nxt or dt.datetime.utcnow()
+    return dt.datetime.utcnow()
 
 
 @router.get("")
@@ -264,8 +283,6 @@ async def create_calendar_automation(
         error = "Selecione pelo menos um dia do mês."
     elif not calendar_time:
         error = "Informe o horário de publicação."
-    elif not account_ids:
-        error = "Selecione pelo menos uma conta."
     elif not video or not video.filename:
         error = "Envie o arquivo de mídia."
 
@@ -299,6 +316,7 @@ async def create_calendar_automation(
             status_code=status.HTTP_400_BAD_REQUEST,
         )
 
+    has_accounts = bool(accounts)
     storage = get_storage()
     ext = Path(video.filename).suffix or ".mp4"
     video_key = storage.save(video.file, suggested_ext=ext)
@@ -326,13 +344,16 @@ async def create_calendar_automation(
         calendar_days=days_to_json(days),
         calendar_time=calendar_time,
         interval_minutes=1440,
-        status="active",
-        next_run_at=nxt,
+        status="active" if has_accounts else "paused",
+        next_run_at=nxt if has_accounts else None,
     )
     automation.accounts = accounts
     db.add(automation)
     db.commit()
-    return RedirectResponse("/automations?ok=calendar", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(
+        f"/automations?ok={'calendar' if has_accounts else 'draft'}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
 
 
 @router.post("/new")
@@ -369,9 +390,6 @@ async def create_automation(
             elif not calendar_time.strip():
                 error = "Informe o horário de publicação."
 
-    if not error and not account_ids:
-        error = "Selecione pelo menos uma conta."
-
     # Só via request.form() — evita perder arquivos do input multiple
     form = await request.form()
     upload_files: list[UploadFile] = []
@@ -380,6 +398,11 @@ async def create_automation(
             upload_files = _collect_upload_files(form, field_names=("videos", "video"))
             if not upload_files:
                 error = "Envie pelo menos um vídeo Reels (.mp4)."
+            elif len(upload_files) > MAX_REEL_UPLOAD_FILES:
+                error = (
+                    f"Selecione no máximo {MAX_REEL_UPLOAD_FILES} vídeos por criação. "
+                    "Crie em lotes menores para evitar timeout do servidor."
+                )
             else:
                 bad = [f.filename for f in upload_files if not is_video_filename(f.filename)]
                 if bad:
@@ -479,8 +502,9 @@ async def create_automation(
 
     thumb_key, thumb_original_name = _save_thumb(storage, thumb)
     warn_q = f"&warn={len(upload_warnings)}" if upload_warnings else ""
+    has_accounts = bool(accounts)
 
-    if schedule_mode == "now":
+    if schedule_mode == "now" and has_accounts:
         countdown = 0
         for v_idx, entry in enumerate(video_entries):
             for acc_idx, acc in enumerate(accounts):
@@ -524,14 +548,14 @@ async def create_automation(
             calendar_days=days_to_json(days),
             calendar_time=calendar_time.strip(),
             interval_minutes=1440,
-            status="active",
-            next_run_at=nxt,
+            status="active" if has_accounts else "paused",
+            next_run_at=nxt if has_accounts else None,
         )
         automation.accounts = accounts
         db.add(automation)
         db.commit()
         return RedirectResponse(
-            f"/automations?ok=calendar&n={len(video_entries)}{warn_q}",
+            f"/automations?ok={'calendar' if has_accounts else 'draft'}&n={len(video_entries)}{warn_q}",
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
@@ -549,14 +573,14 @@ async def create_automation(
         story_link=_story_link_value(content_type, story_link),
         schedule_type="interval",
         interval_minutes=interval_minutes,
-        status="active",
-        next_run_at=now,
+        status="active" if has_accounts else "paused",
+        next_run_at=now if has_accounts else None,
     )
     automation.accounts = accounts
     db.add(automation)
     db.commit()
     return RedirectResponse(
-        f"/automations?ok=1&n={len(video_entries)}{warn_q}",
+        f"/automations?ok={'1' if has_accounts else 'draft'}&n={len(video_entries)}{warn_q}",
         status_code=status.HTTP_303_SEE_OTHER,
     )
 
@@ -591,6 +615,8 @@ def resume_automation(
     from app.utils.automation_videos import playlist_items
 
     a = _get_owned(db, automation_id, user)
+    if not a.accounts:
+        return RedirectResponse("/automations?error=no_accounts", status_code=status.HTTP_303_SEE_OTHER)
     items = playlist_items(a)
 
     # Se terminou a playlist, recomeça do zero (como postagemIG ciclo novo)
@@ -602,7 +628,7 @@ def resume_automation(
         a.current_index = 0
 
     a.status = "active"
-    a.next_run_at = dt.datetime.utcnow()
+    a.next_run_at = _activation_next_run(a)
     db.commit()
     return RedirectResponse("/automations", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -740,8 +766,6 @@ async def edit_automation(
         raise HTTPException(status_code=400, detail="Tipo inválido")
     if interval_minutes not in ALLOWED_INTERVALS:
         raise HTTPException(status_code=400, detail="Intervalo inválido")
-    if not account_ids:
-        raise HTTPException(status_code=400, detail="Selecione ao menos uma conta")
 
     accounts = db.scalars(
         select(InstagramAccount).where(
@@ -781,6 +805,9 @@ async def edit_automation(
     a.content_type = content_type
     a.interval_minutes = interval_minutes
     a.accounts = list(accounts)
+    if not accounts:
+        a.status = "paused"
+        a.next_run_at = None
     db.commit()
     return RedirectResponse("/automations", status_code=status.HTTP_303_SEE_OTHER)
 

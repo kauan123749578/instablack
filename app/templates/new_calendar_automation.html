@@ -50,8 +50,11 @@
   </label>
 
   <fieldset>
-    <legend>Contas</legend>
+    <legend>Contas <span class="muted">(opcional)</span></legend>
     {% if accounts %}
+    <p class="muted" style="margin:0 0 8px;font-size:12px">
+      Sem contas selecionadas, o agendamento fica pausado para ativar depois.
+    </p>
     <div class="checkbox-row">
       {% for ac in accounts %}
       <label>
@@ -65,7 +68,7 @@
     {% endif %}
   </fieldset>
 
-  <button type="submit" class="btn btn-primary" {% if not accounts %}disabled{% endif %}>
+  <button type="submit" class="btn btn-primary">
     <i data-lucide="calendar-check"></i> Criar agendamento Reels
   </button>
 </form>

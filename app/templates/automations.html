@@ -26,7 +26,19 @@
 </div>
 {% endif %}
 
-{% if request.query_params.get('ok') and request.query_params.get('ok') != 'calendar' and request.query_params.get('ok') != 'duplicated' %}
+{% if request.query_params.get('ok') == 'draft' %}
+<div class="alert alert-ok">
+  Automação criada como rascunho/pausada. Selecione as contas quando quiser e clique em Ativar.
+</div>
+{% endif %}
+
+{% if request.query_params.get('error') == 'no_accounts' %}
+<div class="alert alert-error">
+  Selecione pelo menos uma conta na edição antes de ativar a automação.
+</div>
+{% endif %}
+
+{% if request.query_params.get('ok') and request.query_params.get('ok') != 'calendar' and request.query_params.get('ok') != 'duplicated' and request.query_params.get('ok') != 'draft' %}
 <div class="alert alert-ok">
   Automação criada
   {% if request.query_params.get('n') %}com <strong>{{ request.query_params.get('n') }}</strong> vídeo(s) na playlist{% endif %}!
@@ -57,12 +69,16 @@
         <span class="type-badge">{{ a.content_type|default('reel') }}</span>
         {% if a.schedule_type == 'calendar' %}<span class="type-badge type-badge--cal">calendário</span>{% endif %}
       </h3>
-      <span class="badge {{ a.status }}">{{ a.status }}</span>
+      <span class="badge {{ a.status }}">{{ status_label(a.status) }}</span>
     </div>
     <ul class="auto-meta">
       <li>A cada <strong>{% if a.schedule_type == 'calendar' %}dias {{ a.calendar_days }} às {{ a.calendar_time }}{% else %}{{ a.interval_minutes }} min{% endif %}</strong></li>
       <li>{{ a.accounts|length }} conta(s):
-        {% for ac in a.accounts %}@{{ ac.username }}{% if not loop.last %}, {% endif %}{% endfor %}
+        {% if a.accounts %}
+          {% for ac in a.accounts %}@{{ ac.username }}{% if not loop.last %}, {% endif %}{% endfor %}
+        {% else %}
+          <span class="muted">nenhuma selecionada ainda</span>
+        {% endif %}
       </li>
       <li>Próxima: <strong>{{ a.next_run_at | localtime('%d/%m %H:%M') }}</strong></li>
       <li>Última: {{ a.last_run_at | localtime('%d/%m %H:%M') }}</li>
@@ -99,7 +115,7 @@
       </form>
       {% else %}
       <form method="post" action="/automations/{{ a.id }}/resume" class="inline">
-        <button type="submit" class="btn btn-sm btn-primary">Retomar</button>
+        <button type="submit" class="btn btn-sm btn-primary">{% if a.status == 'paused' %}Ativar{% else %}Retomar{% endif %}</button>
       </form>
       {% endif %}
       {% if automation_video_count(a) > 1 and a.status != 'completed' %}
@@ -148,7 +164,7 @@
           </label>
           {% endif %}
           <fieldset>
-            <legend>Contas</legend>
+            <legend>Contas <span class="muted">(pode deixar vazio para rascunho)</span></legend>
             <div class="checkbox-row">
               {% set selected_ids = a.accounts|map(attribute='id')|list %}
               {% for ac in all_accounts %}

@@ -108,8 +108,11 @@
   </div>
 
   <fieldset>
-    <legend>Contas que vão receber</legend>
+    <legend>Contas que vão receber <span class="muted">(opcional)</span></legend>
     {% if accounts %}
+    <p class="muted" style="margin:0 0 8px;font-size:12px">
+      Se não selecionar nenhuma conta, a automação será criada pausada. Depois você edita, escolhe as contas e clica em Ativar.
+    </p>
     <div class="checkbox-row">
       {% for ac in accounts %}
       <label>
@@ -123,7 +126,7 @@
     {% endif %}
   </fieldset>
 
-  <button type="submit" class="btn btn-primary" id="submit-btn" {% if not accounts %}disabled{% endif %}>
+  <button type="submit" class="btn btn-primary" id="submit-btn">
     {% if default_content_type == 'story' %}Agendar Story{% else %}Criar automação{% endif %}
   </button>
 </form>
