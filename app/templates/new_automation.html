@@ -6,7 +6,7 @@
   {% if default_content_type == 'story' %}
   <p class="muted page-header-sub">Escolha os dias e o horário — ou publique imediatamente.</p>
   {% else %}
-  <p class="muted page-header-sub">Reels: selecione vários vídeos e uma capa única. Publica um por intervalo e <strong>para ao terminar a lista</strong> (sem loop).</p>
+  <p class="muted page-header-sub">Reels: selecione vários vídeos e uma capa única. O envio sobe em blocos para evitar upstream error.</p>
   {% endif %}
 </div>
 
@@ -29,6 +29,7 @@
   <label id="media-label">Vídeos Reels (.mp4) <strong style="color:var(--red)">*</strong>
     <input type="file" id="video-input" name="videos" accept="video/mp4,video/quicktime,video/webm" multiple>
     <span id="video-file-name" class="muted" style="display:block;margin-top:4px;font-size:12px">Nenhum vídeo selecionado</span>
+    <span class="muted" style="display:block;margin-top:4px;font-size:12px">Com vários vídeos, o rascunho é criado primeiro e os arquivos são enviados 1 por requisição.</span>
     <ul id="video-file-list" class="video-file-list muted" style="display:none;margin:6px 0 0;padding-left:18px;font-size:12px"></ul>
   </label>
 

@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -18,6 +18,7 @@ from app.utils.automation_videos import (
     is_video_filename,
     media_key_referenced_elsewhere,
     media_keys_for_automation,
+    parse_videos_json,
     videos_to_json,
 )
 from app.utils.intervals import ALLOWED_INTERVALS, interval_label
@@ -32,6 +33,7 @@ log = logging.getLogger(__name__)
 CONTENT_TYPES = ["reel", "story", "photo"]
 VISIBLE_ACCOUNT_STATUSES = ("active", "paused", "needs_login", "proxy_down", "banned")
 MAX_REEL_UPLOAD_FILES = 120
+BATCH_UPLOAD_REDIRECT = "/automations?ok=draft"
 
 
 def _story_link_value(content_type: str, story_link: str) -> str | None:
@@ -585,6 +587,122 @@ async def create_automation(
     )
 
 
+@router.post("/new/reel-draft")
+async def create_reel_upload_draft(
+    name: str = Form(...),
+    content_type: str = Form("reel"),
+    caption: str = Form(""),
+    story_link: str = Form(""),
+    schedule_mode: str = Form("recurring"),
+    interval_minutes: int = Form(60),
+    account_ids: list[int] = Form(default=[]),
+    thumb: UploadFile | None = File(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Cria primeiro o rascunho leve; os vídeos chegam depois em lotes."""
+    if content_type != "reel":
+        return JSONResponse({"error": "Upload em lotes disponível apenas para Reels."}, status_code=400)
+    if schedule_mode not in ("now", "recurring"):
+        return JSONResponse({"error": "Modo de publicação inválido."}, status_code=400)
+    if interval_minutes not in ALLOWED_INTERVALS:
+        return JSONResponse({"error": "Intervalo inválido."}, status_code=400)
+
+    accounts = list(db.scalars(
+        select(InstagramAccount).where(
+            InstagramAccount.user_id == user.id,
+            InstagramAccount.id.in_(account_ids),
+            InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
+        )
+    ).all())
+    if len(accounts) != len(set(account_ids)):
+        return JSONResponse({"error": "Alguma conta selecionada não existe."}, status_code=400)
+
+    storage = get_storage()
+    thumb_key, thumb_original_name = _save_thumb(storage, thumb)
+    automation = Automation(
+        user_id=user.id,
+        name=name.strip(),
+        content_type="reel",
+        caption=caption,
+        video_key="",
+        video_original_name="0 vídeos",
+        videos_json=videos_to_json([]),
+        current_index=0,
+        thumb_key=thumb_key,
+        thumb_original_name=thumb_original_name,
+        story_link=_story_link_value(content_type, story_link),
+        schedule_type="interval",
+        interval_minutes=interval_minutes,
+        status="paused",
+        next_run_at=None,
+    )
+    automation.accounts = accounts
+    db.add(automation)
+    db.commit()
+    return {"ok": True, "automation_id": automation.id}
+
+
+@router.post("/{automation_id}/upload-batch")
+async def upload_reel_batch(
+    automation_id: int,
+    videos: list[UploadFile] = File(default=[]),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    a = _get_owned(db, automation_id, user)
+    if a.content_type != "reel":
+        return JSONResponse({"error": "Esta automação não é de Reels."}, status_code=400)
+    if not videos:
+        return JSONResponse({"error": "Nenhum vídeo recebido neste lote."}, status_code=400)
+
+    bad = [f.filename for f in videos if not is_video_filename(f.filename)]
+    if bad:
+        return JSONResponse(
+            {"error": f"Arquivo inválido (precisa ser vídeo .mp4): {', '.join(bad)}"},
+            status_code=400,
+        )
+
+    storage = get_storage()
+    new_entries, upload_warnings = _save_uploaded_videos(storage, videos)
+    existing = parse_videos_json(a.videos_json)
+    existing.extend(new_entries)
+    a.videos_json = videos_to_json(existing)
+    if existing:
+        a.video_key = existing[0]["video_key"]
+        a.video_original_name = f"{len(existing)} vídeos" if len(existing) > 1 else existing[0]["video_original_name"]
+    db.commit()
+    return {
+        "ok": True,
+        "saved": len(new_entries),
+        "total": len(existing),
+        "warnings": upload_warnings,
+    }
+
+
+@router.post("/{automation_id}/upload-finish")
+def finish_reel_batch_upload(
+    automation_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    a = _get_owned(db, automation_id, user)
+    entries = parse_videos_json(a.videos_json)
+    if not entries:
+        return JSONResponse({"error": "Nenhum vídeo foi salvo nessa automação."}, status_code=400)
+    a.video_key = entries[0]["video_key"]
+    a.video_original_name = f"{len(entries)} vídeos" if len(entries) > 1 else entries[0]["video_original_name"]
+    a.current_index = 0
+    a.status = "paused"
+    a.next_run_at = None
+    db.commit()
+    return {
+        "ok": True,
+        "total": len(entries),
+        "redirect": f"{BATCH_UPLOAD_REDIRECT}&n={len(entries)}",
+    }
+
+
 def _get_owned(db: Session, automation_id: int, user: User) -> Automation:
     a = db.get(Automation, automation_id)
     if not a or a.user_id != user.id:
@@ -618,6 +736,8 @@ def resume_automation(
     if not a.accounts:
         return RedirectResponse("/automations?error=no_accounts", status_code=status.HTTP_303_SEE_OTHER)
     items = playlist_items(a)
+    if not items:
+        return RedirectResponse("/automations?error=no_videos", status_code=status.HTTP_303_SEE_OTHER)
 
     # Se terminou a playlist, recomeça do zero (como postagemIG ciclo novo)
     if a.status == "completed" or (len(items) > 1 and int(a.current_index or 0) >= len(items)):

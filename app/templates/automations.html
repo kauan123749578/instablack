@@ -4,13 +4,13 @@
 <div class="page-header">
   <h2>Automações</h2>
   <div class="page-header-actions">
-    <a href="/automations/new/calendar" class="btn btn-calendar-outline" data-nav="/automations/new/calendar">
+    <a href="/automations/new/calendar" class="btn btn-calendar-outline">
       <i data-lucide="calendar-days"></i> Calendário
     </a>
-    <a href="/automations/new/story" class="btn btn-story-outline" data-nav="/automations/new/story">
+    <a href="/automations/new/story" class="btn btn-story-outline">
       <i data-lucide="circle-dot"></i> Agendar Story
     </a>
-    <a href="/automations/new" class="btn btn-primary" data-nav="/automations/new">
+    <a href="/automations/new" class="btn btn-primary">
       <i data-lucide="plus"></i> Nova automação
     </a>
   </div>
@@ -32,9 +32,21 @@
 </div>
 {% endif %}
 
+{% if request.query_params.get('ok') == 'videos_added' %}
+<div class="alert alert-ok">
+  Vídeos adicionados à playlist{% if request.query_params.get('n') %}. Total agora: <strong>{{ request.query_params.get('n') }}</strong>{% endif %}.
+</div>
+{% endif %}
+
 {% if request.query_params.get('error') == 'no_accounts' %}
 <div class="alert alert-error">
   Selecione pelo menos uma conta na edição antes de ativar a automação.
+</div>
+{% endif %}
+
+{% if request.query_params.get('error') == 'no_videos' %}
+<div class="alert alert-error">
+  Essa automação ainda não tem vídeo salvo. Envie os vídeos antes de ativar.
 </div>
 {% endif %}
 
@@ -100,8 +112,8 @@
           </span>
         {% endfor %}
       </li>
-      {% elif a.video_original_name and 'vídeos' in a.video_original_name %}
-      <li><strong style="color:var(--red)">Playlist incompleta</strong> — só 1 vídeo salvo. Apague e recrie com todos os arquivos.</li>
+      {% elif automation_video_count(a) == 0 %}
+      <li><strong style="color:var(--red)">Rascunho sem vídeos</strong> — o upload em blocos não terminou.</li>
       {% endif %}
       {% if a.thumb_original_name %}<li>Capa: {{ a.thumb_original_name }}</li>{% endif %}
     </ul>
@@ -135,6 +147,30 @@
             onsubmit="return confirm('Duplicar esta automação (mesmos vídeos, sem reenviar)?');">
         <button type="submit" class="btn btn-sm">Duplicar</button>
       </form>
+      {% if a.content_type == 'reel' %}
+      <details class="edit-panel">
+        <summary>Adicionar vídeos</summary>
+        <form method="post"
+              action="/automations/{{ a.id }}/upload-batch"
+              enctype="multipart/form-data"
+              class="form-grid"
+              data-playlist-upload-form
+              data-automation-id="{{ a.id }}">
+          <label>Novos vídeos Reels (.mp4)
+            <input type="file"
+                   name="videos"
+                   accept="video/mp4,video/quicktime,video/webm"
+                   multiple
+                   data-playlist-upload-input>
+            <span class="muted" style="display:block;margin-top:4px;font-size:12px">
+              Pode selecionar 50 de uma vez. O sistema envia 1 por requisição para evitar upstream error.
+            </span>
+            <span class="muted" style="display:block;margin-top:4px;font-size:12px" data-playlist-upload-status></span>
+          </label>
+          <button type="submit" class="btn btn-primary btn-sm" data-playlist-upload-button>Adicionar à playlist</button>
+        </form>
+      </details>
+      {% endif %}
       <details class="edit-panel">
         <summary>Editar</summary>
         <form method="post" action="/automations/{{ a.id }}/edit" enctype="multipart/form-data" class="form-grid">
@@ -190,8 +226,8 @@
 {% else %}
 <div class="panel">
   <p class="muted">Nenhuma automação criada.
-    <a href="/automations/new" data-nav="/automations/new">Criar Reels</a> ou
-    <a href="/automations/new/story" data-nav="/automations/new/story">Agendar Story</a>.
+    <a href="/automations/new">Criar Reels</a> ou
+    <a href="/automations/new/story">Agendar Story</a>.
   </p>
 </div>
 {% endif %}

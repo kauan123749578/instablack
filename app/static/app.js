@@ -28,6 +28,10 @@
   setActiveNav(window.location.pathname);
 
   async function navigateTo(url, push = true) {
+    if (url.startsWith("/automations/new")) {
+      window.location.href = url;
+      return;
+    }
     if (!appContent) { window.location.href = url; return; }
     appContent.classList.add("content-loading");
     if (dashActivityPollTimer) {
@@ -1008,11 +1012,68 @@
 
     const videoExt = /\.(mp4|mov|webm|m4v|mkv)$/i;
     const imageExt = /\.(jpe?g|png|webp)$/i;
-    const maxReelFiles = 120;
-    const maxReelTotalMb = 800;
+    const maxReelFiles = 300;
+    const reelBatchSize = 1;
 
     function filesTotalMb(files) {
       return Math.round(files.reduce((s, f) => s + f.size, 0) / 1024 / 1024 * 10) / 10;
+    }
+
+    function setSubmitState(disabled, text) {
+      if (!submitBtn) return;
+      submitBtn.disabled = disabled;
+      submitBtn.textContent = text;
+    }
+
+    async function postForm(url, data) {
+      const res = await fetch(url, {
+        method: "POST",
+        body: data,
+        headers: { "X-Requested-With": "fetch" },
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || payload.error) {
+        throw new Error(payload.error || "Falha no envio. Tente novamente.");
+      }
+      return payload;
+    }
+
+    function draftFormData() {
+      const data = new FormData();
+      ["name", "content_type", "caption", "story_link", "interval_minutes"].forEach((name) => {
+        const field = form.querySelector(`[name="${name}"]`);
+        if (field) data.append(name, field.value || "");
+      });
+      const mode = form.querySelector('[name="schedule_mode"]:checked');
+      data.append("schedule_mode", mode ? mode.value : "recurring");
+      form.querySelectorAll('[name="account_ids"]:checked').forEach((field) => {
+        data.append("account_ids", field.value);
+      });
+      const thumb = form.querySelector('[name="thumb"]');
+      if (thumb?.files?.[0]) data.append("thumb", thumb.files[0]);
+      return data;
+    }
+
+    async function submitReelsInBatches(files) {
+      setSubmitState(true, "Criando rascunho…");
+      const draft = await postForm("/automations/new/reel-draft", draftFormData());
+      const automationId = draft.automation_id;
+      let sent = 0;
+      for (let i = 0; i < files.length; i += reelBatchSize) {
+        const batch = files.slice(i, i + reelBatchSize);
+        const data = new FormData();
+        batch.forEach((file) => data.append("videos", file));
+        setSubmitState(true, `Enviando vídeo ${i + 1} de ${files.length}…`);
+        const result = await postForm(`/automations/${automationId}/upload-batch`, data);
+        sent = result.total || sent + batch.length;
+        if (videoName) {
+          videoName.textContent = `Upload em blocos: ${sent}/${files.length} vídeo(s) salvos`;
+          videoName.style.color = "var(--green, #22c55e)";
+        }
+      }
+      setSubmitState(true, "Finalizando rascunho…");
+      const finished = await postForm(`/automations/${automationId}/upload-finish`, new FormData());
+      window.location.href = finished.redirect || "/automations?ok=draft";
     }
 
     function updateVideoLabel() {
@@ -1037,16 +1098,13 @@
         } else if (files.length > maxReelFiles) {
           videoName.textContent = "Muitos vídeos: envie no máximo " + maxReelFiles + " por criação para evitar timeout.";
           videoName.style.color = "var(--red, #ef4444)";
-        } else if (filesTotalMb(files) > maxReelTotalMb) {
-          videoName.textContent = "Upload muito pesado: " + filesTotalMb(files) + " MB. Envie em lotes de até " + maxReelTotalMb + " MB.";
-          videoName.style.color = "var(--red, #ef4444)";
         } else {
           const mb = filesTotalMb(files);
-          videoName.textContent = files.length + " vídeo(s) — " + mb + " MB total" + (files.length >= 80 ? " · pode demorar alguns minutos" : "");
+          videoName.textContent = files.length + " vídeo(s) — " + mb + " MB total · envio automático 1 por vez";
           videoName.style.color = "var(--green, #22c55e)";
         }
         if (videoList) {
-          videoList.innerHTML = files.map((f) => "<li>" + f.name + "</li>").join("");
+          videoList.innerHTML = files.map((f) => "<li>" + escapeHtml(f.name) + "</li>").join("");
           videoList.style.display = files.length > 1 ? "block" : "none";
         }
       } else {
@@ -1060,7 +1118,7 @@
     document.addEventListener("automation-media-changed", updateVideoLabel);
     updateVideoLabel();
 
-    form.addEventListener("submit", (e) => {
+    form.addEventListener("submit", async (e) => {
       const files = videoInput?.files ? Array.from(videoInput.files) : [];
       const isReel = contentType?.value === "reel";
       if (!files.length) {
@@ -1074,18 +1132,23 @@
       if (isReel) {
         if (files.length > maxReelFiles) {
           e.preventDefault();
-          alert("Selecione no máximo " + maxReelFiles + " vídeos por criação para evitar timeout do servidor.");
-          return;
-        }
-        if (filesTotalMb(files) > maxReelTotalMb) {
-          e.preventDefault();
-          alert("Esse envio tem " + filesTotalMb(files) + " MB. Para evitar upstream error, envie em lotes de até " + maxReelTotalMb + " MB.");
+          alert("Selecione no máximo " + maxReelFiles + " vídeos por automação. Depois você pode criar outra ou duplicar.");
           return;
         }
         const bad = files.filter((f) => !videoExt.test(f.name));
         if (bad.length) {
           e.preventDefault();
           alert("Estes arquivos não são vídeo: " + bad.map((f) => f.name).join(", "));
+          return;
+        }
+        if (files.length > 1) {
+          e.preventDefault();
+          try {
+            await submitReelsInBatches(files);
+          } catch (err) {
+            alert(err?.message || "Falha ao enviar os vídeos em blocos.");
+            setSubmitState(false, "Criar automação");
+          }
           return;
         }
       } else if (contentType?.value === "photo") {
@@ -1102,6 +1165,76 @@
     });
   }
 
+  function initAutomationPlaylistUploads() {
+    const forms = document.querySelectorAll("[data-playlist-upload-form]");
+    if (!forms.length) return;
+
+    const videoExt = /\.(mp4|mov|webm|m4v|mkv)$/i;
+
+    async function postForm(url, data) {
+      const res = await fetch(url, {
+        method: "POST",
+        body: data,
+        headers: { "X-Requested-With": "fetch" },
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || payload.error) {
+        throw new Error(payload.error || "Falha no envio. Tente novamente.");
+      }
+      return payload;
+    }
+
+    forms.forEach((form) => {
+      const input = form.querySelector("[data-playlist-upload-input]");
+      const button = form.querySelector("[data-playlist-upload-button]");
+      const statusEl = form.querySelector("[data-playlist-upload-status]");
+      const automationId = form.dataset.automationId;
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const files = input?.files ? Array.from(input.files) : [];
+        if (!files.length) {
+          alert("Selecione um ou mais vídeos para adicionar.");
+          return;
+        }
+        const bad = files.filter((f) => !videoExt.test(f.name));
+        if (bad.length) {
+          alert("Estes arquivos não são vídeo: " + bad.map((f) => f.name).join(", "));
+          return;
+        }
+        if (!automationId) {
+          alert("Automação inválida para upload.");
+          return;
+        }
+
+        const originalText = button?.textContent || "Adicionar vídeos";
+        if (button) {
+          button.disabled = true;
+          button.textContent = "Enviando…";
+        }
+        try {
+          let total = 0;
+          for (let i = 0; i < files.length; i += 1) {
+            const data = new FormData();
+            data.append("videos", files[i]);
+            if (statusEl) statusEl.textContent = `Enviando vídeo ${i + 1} de ${files.length}…`;
+            const result = await postForm(`/automations/${automationId}/upload-batch`, data);
+            total = result.total || total + 1;
+          }
+          if (statusEl) statusEl.textContent = `${files.length} vídeo(s) adicionados. Total na playlist: ${total}.`;
+          window.location.href = `/automations?ok=videos_added&n=${total}`;
+        } catch (err) {
+          alert(err?.message || "Falha ao adicionar vídeos.");
+          if (statusEl) statusEl.textContent = "Falha no envio. Tente novamente.";
+          if (button) {
+            button.disabled = false;
+            button.textContent = originalText;
+          }
+        }
+      });
+    });
+  }
+
   function initPage() {
     initLucide();
     initCharts();
@@ -1110,6 +1243,7 @@
     initThumbPreview();
     initScheduleMode();
     initAutomationForm();
+    initAutomationPlaylistUploads();
     initOgDashboard();
     initCalendarPicker();
     initAccountsConnect();

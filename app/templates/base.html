@@ -31,12 +31,12 @@
           </div>
         </div>
 
-        <a href="/automations/new/story" class="btn-story" data-nav="/automations/new/story">
+        <a href="/automations/new/story" class="btn-story">
           <span class="btn-new-icon"><i data-lucide="circle-dot"></i></span>
           <span class="btn-new-label">Agendar Story</span>
         </a>
 
-        <a href="/automations/new/calendar" class="btn-calendar" data-nav="/automations/new/calendar">
+        <a href="/automations/new/calendar" class="btn-calendar">
           <span class="btn-new-icon"><i data-lucide="calendar-days"></i></span>
           <span class="btn-new-label">Calendário Reels</span>
         </a>
@@ -61,7 +61,7 @@
             <i data-lucide="image" class="nav-icon"></i>
             <span class="nav-text">Biblioteca de Mídia</span>
           </a>
-          <a href="/automations/new/calendar" class="nav-link" data-nav="/automations/new/calendar">
+          <a href="/automations/new/calendar" class="nav-link">
             <i data-lucide="calendar-days" class="nav-icon"></i>
             <span class="nav-text">Calendário Reels</span>
           </a>
@@ -176,11 +176,11 @@
       <a href="/accounts" data-nav="/accounts">Contas</a>
       <a href="/automations" data-nav="/automations">Automações</a>
       <a href="/automations/media-library" data-nav="/automations/media-library">Biblioteca</a>
-      <a href="/automations/new/calendar" data-nav="/automations/new/calendar">Calendário Reels</a>
+      <a href="/automations/new/calendar">Calendário Reels</a>
       <a href="/warmup" data-nav="/warmup">Aquecer contas</a>
       <a href="/analytics" data-nav="/analytics">Analytics</a>
       <a href="/logs" data-nav="/logs">Logs</a>
-      <a href="/automations/new/story" data-nav="/automations/new/story">Agendar Story</a>
+      <a href="/automations/new/story">Agendar Story</a>
       {% if user.is_admin %}<a href="/admin" data-nav="/admin">Admin</a>{% endif %}
       <a href="/perfil" data-nav="/perfil">Configurações</a>
       <form action="/logout" method="post"><button type="submit">Sair</button></form>
@@ -202,7 +202,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/lucide@0.475.0/dist/umd/lucide.min.js" crossorigin="anonymous"></script>
-  <script src="/static/app.js?v=31"></script>
+  <script src="/static/app.js?v=34"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

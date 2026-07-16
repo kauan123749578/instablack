@@ -55,7 +55,7 @@ def playlist_items(automation: Automation) -> list[dict[str, str]]:
 
 
 def video_count(automation: Automation) -> int:
-    return max(1, len(playlist_items(automation)))
+    return len(playlist_items(automation))
 
 
 def resolve_video_key(automation: Automation) -> str:
