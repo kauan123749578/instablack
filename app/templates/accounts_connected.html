@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Contas conectadas — instablack{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Contas conectadas</h2>
+  {% if account_limit_label == 'Ilimitado' %}
+  <p class="muted page-header-sub">{{ accounts|length }} conectada(s) · limite ilimitado</p>
+  {% else %}
+  <p class="muted page-header-sub">{{ accounts|length }} / {{ account_limit_label }} conta(s) · {% if accounts_remaining == 0 %}sem vagas{% else %}{{ accounts_remaining }} vaga(s) restante(s){% endif %}</p>
+  {% endif %}
+</div>
+
+{% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
+{% if ok %}<div class="alert alert-ok">{{ ok }}</div>{% endif %}
+
+{% if offline_accounts %}
+<div class="alert alert-error offline-alert">
+  <strong>{{ offline_accounts|length }} perfil(is) fora do ar</strong> — verificação automática a cada 15 min.
+  <ul class="offline-list">
+    {% for acc in offline_accounts %}
+    <li>
+      <strong>@{{ acc.username }}</strong> · {{ status_label(acc.status) }}
+      {% if acc.last_error %}<span class="muted">— {{ acc.last_error[:120] }}</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<div class="page-header-actions" style="margin-bottom:16px">
+  <a href="/accounts" class="btn btn-primary" data-nav="/accounts">
+    <i data-lucide="plus"></i> Adicionar conta
+  </a>
+</div>
+
+<div class="panel">
+  <div class="panel-header">
+    <h3>Contas conectadas ({{ accounts|length }})</h3>
+  </div>
+  {% if accounts %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr><th>@</th><th>Status</th><th>Proxy</th><th>IP</th><th>Último login</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for acc in accounts %}
+        <tr>
+          <td>@{{ acc.username }}</td>
+          <td><span class="og-badge {{ status_badge_class(acc.status) }}">{{ status_label(acc.status) }}</span></td>
+          <td class="muted proxy-cell-auth" title="{{ proxy_to_raw(acc.proxy) }}">{{ proxy_label(acc.proxy) or '—' }}</td>
+          <td class="proxy-ip-cell">
+            {% set ip = account_proxy_ip(acc) %}
+            {% if ip %}
+            <div class="proxy-ip-stack">
+              <span class="proxy-ip-dot" aria-hidden="true"></span>
+              <div>
+                <span class="proxy-ip-value">{{ ip }}</span>
+                {% if acc.proxy_geo %}<span class="proxy-ip-geo muted">{{ acc.proxy_geo }}</span>{% endif %}
+              </div>
+            </div>
+            {% else %}<span class="muted">—</span>{% endif %}
+          </td>
+          <td>{{ acc.last_login_at | localtime }}</td>
+          <td class="account-actions">
+            <details class="proxy-update-panel">
+              <summary class="btn btn-sm">Atualizar proxy</summary>
+              <form method="post" action="/accounts/{{ acc.id }}/update-proxy" class="proxy-update-form" data-account="@{{ acc.username }}">
+                <input type="text" name="proxy" class="proxy-update-input" required
+                       value="{{ proxy_to_raw(acc.proxy) }}"
+                       placeholder="ip:porta:usuario:senha">
+                <div class="proxy-update-actions">
+                  <button type="button" class="btn btn-sm proxy-test-btn">Testar</button>
+                  <button type="submit" class="btn btn-sm btn-primary">Salvar</button>
+                </div>
+                <p class="proxy-test-result muted" aria-live="polite"></p>
+              </form>
+            </details>
+            {% if acc.status == 'paused' %}
+            <form method="post" action="/accounts/{{ acc.id }}/resume">
+              <button type="submit" class="btn btn-sm btn-primary">Retomar</button>
+            </form>
+            {% else %}
+            <form method="post" action="/accounts/{{ acc.id }}/pause"
+                  onsubmit="return confirm('Pausar @{{ acc.username }}? Automações não publicarão nesta conta.');">
+              <button type="submit" class="btn btn-sm">Pausar</button>
+            </form>
+            {% endif %}
+            <form method="post" action="/accounts/{{ acc.id }}/delete"
+                  onsubmit="return confirm('Remover @{{ acc.username }}?');">
+              <button type="submit" class="btn btn-sm btn-danger">Remover</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">Nenhuma conta conectada ainda. <a href="/accounts" data-nav="/accounts">Adicionar conta</a>.</p>
+  {% endif %}
+</div>
+{% endblock %}

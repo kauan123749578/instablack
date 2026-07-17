@@ -20,9 +20,15 @@
   });
 
   function setActiveNav(path) {
-    document.querySelectorAll("[data-nav]").forEach((el) => {
-      const href = el.getAttribute("data-nav") || el.getAttribute("href");
-      const isActive = path === href || (href !== "/" && path.startsWith(href));
+    const els = Array.from(document.querySelectorAll("[data-nav]"));
+    const hrefOf = (el) => el.getAttribute("data-nav") || el.getAttribute("href");
+    // Se houver match exato, só ele fica ativo (evita /accounts acender junto de /accounts/connected)
+    const hasExact = els.some((el) => hrefOf(el) === path);
+    els.forEach((el) => {
+      const href = hrefOf(el);
+      const isActive = hasExact
+        ? path === href
+        : path === href || (href !== "/" && path.startsWith(href));
       el.classList.toggle("active", isActive);
     });
   }

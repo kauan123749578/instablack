@@ -110,6 +110,24 @@ def list_accounts(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """Página de adicionar conta (só o formulário)."""
+    accounts = _load_user_accounts(db, user)
+    ok_msg = {
+        "account_added": "Conta conectada com sucesso!",
+    }.get(request.query_params.get("ok") or "")
+    return templates.TemplateResponse(
+        "accounts.html",
+        _accounts_page_context(request, user, accounts, ok=ok_msg),
+    )
+
+
+@router.get("/connected")
+def connected_accounts(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Página de gestão das contas já conectadas."""
     accounts = _load_user_accounts(db, user)
     if mark_accounts_from_latest_auth_failures(db, accounts):
         db.commit()
@@ -119,6 +137,7 @@ def list_accounts(
         "paused": "Conta pausada.",
         "resumed": "Conta retomada.",
         "proxy_updated": "Proxy atualizado com sucesso!",
+        "account_added": "Conta conectada com sucesso!",
     }.get(ok_key or "")
     err_key = request.query_params.get("error")
     err_msg = {
@@ -127,7 +146,7 @@ def list_accounts(
     }.get(err_key or "")
     offline = offline_accounts(db, user.id)
     return templates.TemplateResponse(
-        "accounts.html",
+        "accounts_connected.html",
         {
             **_accounts_page_context(request, user, accounts, ok=ok_msg, error=err_msg or None),
             "offline_accounts": offline,
@@ -300,7 +319,7 @@ def add_account(
         _set_account_proxy(new_acc, proxy, proxy_meta)
         db.add(new_acc)
     db.commit()
-    return RedirectResponse("/accounts", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse("/accounts/connected?ok=account_added", status_code=status.HTTP_303_SEE_OTHER)
 
 
 def _get_owned_account(db: Session, account_id: int, user: User) -> InstagramAccount:
@@ -328,13 +347,13 @@ def update_account_proxy(
     normalized = normalize_proxy(proxy)
     if not normalized:
         return RedirectResponse(
-            "/accounts?error=proxy_vazio",
+            "/accounts/connected?error=proxy_vazio",
             status_code=status.HTTP_303_SEE_OTHER,
         )
     diag = diagnose_proxy(proxy)
     if not diag["ok"]:
         return RedirectResponse(
-            "/accounts?error=proxy_invalid",
+            "/accounts/connected?error=proxy_invalid",
             status_code=status.HTTP_303_SEE_OTHER,
         )
     _set_account_proxy(acc, normalized, diag)
@@ -344,7 +363,7 @@ def update_account_proxy(
     acc.last_health_check_at = None
     db.commit()
     return RedirectResponse(
-        "/accounts?ok=proxy_updated",
+        "/accounts/connected?ok=proxy_updated",
         status_code=status.HTTP_303_SEE_OTHER,
     )
 
@@ -359,7 +378,7 @@ def pause_account(
     acc.status = "paused"
     acc.last_error = None
     db.commit()
-    return RedirectResponse("/accounts?ok=paused", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse("/accounts/connected?ok=paused", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/{account_id}/resume")
@@ -373,7 +392,7 @@ def resume_account(
         acc.status = "active"
         acc.last_error = None
     db.commit()
-    return RedirectResponse("/accounts?ok=resumed", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse("/accounts/connected?ok=resumed", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/{account_id}/delete")
@@ -392,4 +411,4 @@ def delete_account(
     acc.last_error = "Conta removida do painel"
     acc.automations.clear()
     db.commit()
-    return RedirectResponse("/accounts", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse("/accounts/connected", status_code=status.HTTP_303_SEE_OTHER)
