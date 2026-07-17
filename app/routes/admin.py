@@ -1,4 +1,4 @@
-"""Painel administrativo — gerenciar usuários do SaaS (só owner vê lista)."""
+"""Painel administrativo — lista de usuários com privacidade do owner."""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
@@ -17,29 +17,55 @@ from models.models import Automation, InstagramAccount, User
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
+def _is_owner(user: User) -> bool:
+    return bool(getattr(user, "is_owner", False))
+
+
+def _is_owner_private(user: User) -> bool:
+    return bool(getattr(user, "owner_private", False))
+
+
+def _admin_can_see(viewer: User, target: User) -> bool:
+    """Owner vê todos; outros admins não veem usuários marcados como privados do owner."""
+    if _is_owner(viewer):
+        return True
+    if _is_owner(target):
+        return False
+    return not _is_owner_private(target)
+
+
+def _require_visible(viewer: User, target: User | None) -> User:
+    if not target:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    if not _admin_can_see(viewer, target):
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    return target
+
+
 @router.get("")
 def admin_dashboard(
     request: Request,
     db: Session = Depends(get_db),
     admin: User = Depends(get_admin_user),
 ):
-    is_owner = bool(getattr(admin, "is_owner", False))
+    is_owner = _is_owner(admin)
+    users = db.scalars(select(User).order_by(User.created_at.desc())).all()
     rows = []
-    if is_owner:
-        users = db.scalars(select(User).order_by(User.created_at.desc())).all()
-        for u in users:
-            ig_count = db.scalar(
-                select(func.count(InstagramAccount.id)).where(InstagramAccount.user_id == u.id)
-            ) or 0
-            auto_count = db.scalar(
-                select(func.count(Automation.id)).where(Automation.user_id == u.id)
-            ) or 0
-            rows.append({
-                "user": u,
-                "ig_count": ig_count,
-                "auto_count": auto_count,
-                "limit_label": account_limit_label(u.account_limit),
-            })
+    for u in users:
+        if not _admin_can_see(admin, u):
+            continue
+        ig_count = db.scalar(
+            select(func.count(InstagramAccount.id)).where(InstagramAccount.user_id == u.id)
+        ) or 0
+        auto_count = db.scalar(
+            select(func.count(Automation.id)).where(Automation.user_id == u.id)
+        ) or 0
+        rows.append({
+            "user": u,
+            "ig_count": ig_count,
+            "auto_count": auto_count,
+            "limit_label": account_limit_label(u.account_limit),
+        })
 
     invite_configured = bool(normalize_invite_code(settings.invite_code or ""))
 
@@ -63,11 +89,9 @@ def set_account_limit(
     account_limit: str = Form("0"),
     unlimited: str = Form(""),
     db: Session = Depends(get_db),
-    admin: User = Depends(get_owner_user),
+    admin: User = Depends(get_admin_user),
 ):
-    target = db.get(User, user_id)
-    if not target:
-        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    target = _require_visible(admin, db.get(User, user_id))
 
     if unlimited == "1":
         target.account_limit = None
@@ -90,6 +114,29 @@ def set_account_limit(
     )
 
 
+@router.post("/users/{user_id}/toggle-private")
+def toggle_user_private(
+    user_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_owner_user),
+):
+    """Marca/desmarca usuário como 'meu' — outros admins não veem."""
+    target = db.get(User, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    if target.id == admin.id or _is_owner(target):
+        return RedirectResponse(
+            "/admin?error=private_self",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    target.owner_private = not _is_owner_private(target)
+    db.commit()
+    return RedirectResponse(
+        "/admin?ok=private",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
 @router.post("/users/{user_id}/toggle-admin")
 def toggle_user_admin(
     user_id: int,
@@ -106,7 +153,7 @@ def toggle_user_admin(
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
-    if getattr(target, "is_owner", False):
+    if _is_owner(target):
         return RedirectResponse(
             "/admin?error=owner_admin",
             status_code=status.HTTP_303_SEE_OTHER,
@@ -150,7 +197,7 @@ def delete_user(
     target = db.get(User, user_id)
     if not target:
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
-    if getattr(target, "is_owner", False):
+    if _is_owner(target):
         return RedirectResponse(
             "/admin?error=owner_delete",
             status_code=status.HTTP_303_SEE_OTHER,

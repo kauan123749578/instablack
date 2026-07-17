@@ -143,6 +143,8 @@ def _sqlite_migrate() -> None:
                 conn.execute(text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT 0"))
             if "is_owner" not in ucols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN is_owner BOOLEAN DEFAULT 0"))
+            if "owner_private" not in ucols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN owner_private BOOLEAN DEFAULT 0"))
             if "account_limit" not in ucols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN account_limit INTEGER"))
             if "notification_prefs_json" not in ucols:
@@ -258,6 +260,8 @@ def _postgres_migrate() -> None:
                 conn.execute(text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT FALSE"))
             if "is_owner" not in ucols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN is_owner BOOLEAN DEFAULT FALSE"))
+            if "owner_private" not in ucols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN owner_private BOOLEAN DEFAULT FALSE"))
             if "account_limit" not in ucols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN account_limit INTEGER"))
             if "notification_prefs_json" not in ucols:

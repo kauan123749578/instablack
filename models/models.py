@@ -40,7 +40,9 @@ class User(Base):
     display_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     avatar_key: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
-    is_owner: Mapped[bool] = mapped_column(Boolean, default=False)  # só owner vê/gerencia usuários
+    is_owner: Mapped[bool] = mapped_column(Boolean, default=False)  # dono da plataforma
+    # Se true, só o owner vê este usuário no /admin (outros admins não)
+    owner_private: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     account_limit: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=None)
     notification_prefs_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

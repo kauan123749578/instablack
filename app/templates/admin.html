@@ -4,7 +4,11 @@
 <div class="page-header">
   <h2><i data-lucide="shield" class="inline-icon"></i> Painel Admin</h2>
   <p class="muted page-header-sub">
-    {% if is_owner %}Gerencie usuários e limites de contas{% else %}Área administrativa{% endif %}
+    {% if is_owner %}
+      Gerencie usuários. Marque “Meu usuário” para esconder da lista dos outros admins.
+    {% else %}
+      Lista de usuários visíveis (sem os usuários privados do dono).
+    {% endif %}
   </p>
 </div>
 
@@ -16,6 +20,9 @@
 {% endif %}
 {% if ok == 'admin' %}
 <div class="alert alert-ok">Permissão de admin atualizada.</div>
+{% endif %}
+{% if ok == 'private' %}
+<div class="alert alert-ok">Visibilidade do usuário atualizada.</div>
 {% endif %}
 {% if error == 'self' %}
 <div class="alert alert-error">Você não pode excluir sua própria conta.</div>
@@ -31,6 +38,9 @@
 {% endif %}
 {% if error == 'owner_delete' %}
 <div class="alert alert-error">Não é possível excluir o dono da plataforma.</div>
+{% endif %}
+{% if error == 'private_self' %}
+<div class="alert alert-error">Não é possível marcar o dono como usuário privado.</div>
 {% endif %}
 {% if error == 'limit_invalid' %}
 <div class="alert alert-error">Informe um número válido para o limite de contas.</div>
@@ -50,7 +60,6 @@
   {% endif %}
 </div>
 
-{% if is_owner %}
 <div class="og-glass-card og-table-panel">
   <div class="og-table-wrap">
     <table class="og-table">
@@ -74,6 +83,9 @@
             <strong>@{{ u.username }}</strong>
             {% if u.is_owner %} <span class="og-badge badge-yellow">Owner</span>
             {% elif u.is_admin %} <span class="og-badge badge-yellow">Admin</span>{% endif %}
+            {% if is_owner and u.owner_private %}
+              <span class="og-badge badge-red">Meu</span>
+            {% endif %}
           </td>
           <td class="og-muted">{{ u.display_name or '—' }}</td>
           <td>{{ row.ig_count }}{% if u.account_limit is not none %} / {{ u.account_limit }}{% endif %}</td>
@@ -100,8 +112,18 @@
           </td>
           <td class="og-muted">{{ u.created_at | localtime('%d/%m/%Y') }}</td>
           <td>
-            {% if u.id != user.id and not u.is_owner %}
+            {% if u.id == user.id %}
+            <span class="og-muted">você</span>
+            {% elif u.is_owner %}
+            <span class="og-muted">owner</span>
+            {% elif is_owner %}
             <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end">
+              <form method="post" action="/admin/users/{{ u.id }}/toggle-private"
+                    onsubmit="return confirm('{% if u.owner_private %}Mostrar @{{ u.username }} para os outros admins?{% else %}Esconder @{{ u.username }} dos outros admins (ficar só na sua lista)?{% endif %}');">
+                <button type="submit" class="btn btn-sm">
+                  {% if u.owner_private %}Mostrar aos admins{% else %}Meu usuário{% endif %}
+                </button>
+              </form>
               <form method="post" action="/admin/users/{{ u.id }}/toggle-admin"
                     onsubmit="return confirm('{% if u.is_admin %}Remover admin de @{{ u.username }}?{% else %}Tornar @{{ u.username }} admin?{% endif %}');">
                 <button type="submit" class="btn btn-sm {% if u.is_admin %}{% else %}btn-primary{% endif %}">
@@ -115,23 +137,18 @@
                 </button>
               </form>
             </div>
-            {% elif u.id == user.id %}
-            <span class="og-muted">você</span>
             {% else %}
-            <span class="og-muted">owner</span>
+            <span class="og-muted">—</span>
             {% endif %}
           </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="8" class="og-muted">Nenhum usuário visível nesta lista.</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
 </div>
-{% else %}
-<div class="og-glass-card" style="padding:18px 20px">
-  <p class="muted" style="margin:0;font-size:13px">
-    Você é admin, mas só o dono da plataforma pode ver e gerenciar a lista de usuários.
-  </p>
-</div>
-{% endif %}
 {% endblock %}
