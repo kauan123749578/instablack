@@ -15,6 +15,12 @@ from sqlalchemy.orm import Session, selectinload
 from app.deps import get_current_user
 from app.templating import templates
 from app.utils.calendar_schedule import days_to_json, next_calendar_run, parse_calendar_days
+from app.utils.automation_schedule import (
+    parse_jitter_enabled,
+    parse_jitter_minutes,
+    parse_posts_per_batch,
+    parse_rest_minutes,
+)
 from app.utils.automation_videos import (
     is_video_filename,
     media_key_referenced_elsewhere,
@@ -130,6 +136,22 @@ def _activation_next_run(automation: Automation) -> dt.datetime:
         nxt = next_calendar_run(days, automation.calendar_time or "")
         return nxt or dt.datetime.utcnow()
     return dt.datetime.utcnow()
+
+
+def _schedule_humanize_fields(
+    *,
+    jitter_enabled: object = False,
+    jitter_minutes: object = 10,
+    posts_per_batch: object = 0,
+    rest_minutes: object = 0,
+) -> dict[str, object]:
+    return {
+        "jitter_enabled": parse_jitter_enabled(jitter_enabled),
+        "jitter_minutes": parse_jitter_minutes(jitter_minutes),
+        "posts_per_batch": parse_posts_per_batch(posts_per_batch),
+        "rest_minutes": parse_rest_minutes(rest_minutes),
+        "posts_in_batch": 0,
+    }
 
 
 @router.get("")
@@ -379,10 +401,20 @@ async def create_automation(
     calendar_time: str = Form("10:00"),
     account_ids: list[int] = Form(default=[]),
     video_count: int = Form(0),
+    jitter_enabled: str = Form(""),
+    jitter_minutes: int = Form(10),
+    posts_per_batch: int = Form(0),
+    rest_minutes: int = Form(0),
     thumb: UploadFile | None = File(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    humanize = _schedule_humanize_fields(
+        jitter_enabled=jitter_enabled,
+        jitter_minutes=jitter_minutes,
+        posts_per_batch=posts_per_batch,
+        rest_minutes=rest_minutes,
+    )
     error: str | None = None
     if content_type not in CONTENT_TYPES:
         error = "Tipo de conteúdo inválido."
@@ -560,6 +592,7 @@ async def create_automation(
             interval_minutes=1440,
             status="active" if has_accounts else "paused",
             next_run_at=nxt if has_accounts else None,
+            **humanize,
         )
         automation.accounts = accounts
         db.add(automation)
@@ -585,6 +618,7 @@ async def create_automation(
         interval_minutes=interval_minutes,
         status="active" if has_accounts else "paused",
         next_run_at=now if has_accounts else None,
+        **humanize,
     )
     automation.accounts = accounts
     db.add(automation)
@@ -604,6 +638,10 @@ async def create_reel_upload_draft(
     schedule_mode: str = Form("recurring"),
     interval_minutes: int = Form(60),
     account_ids: list[int] = Form(default=[]),
+    jitter_enabled: str = Form(""),
+    jitter_minutes: int = Form(10),
+    posts_per_batch: int = Form(0),
+    rest_minutes: int = Form(0),
     thumb: UploadFile | None = File(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -626,6 +664,12 @@ async def create_reel_upload_draft(
     if len(accounts) != len(set(account_ids)):
         return JSONResponse({"error": "Alguma conta selecionada não existe."}, status_code=400)
 
+    humanize = _schedule_humanize_fields(
+        jitter_enabled=jitter_enabled,
+        jitter_minutes=jitter_minutes,
+        posts_per_batch=posts_per_batch,
+        rest_minutes=rest_minutes,
+    )
     storage = get_storage()
     thumb_key, thumb_original_name = _save_thumb(storage, thumb)
     automation = Automation(
@@ -644,6 +688,7 @@ async def create_reel_upload_draft(
         interval_minutes=interval_minutes,
         status="paused",
         next_run_at=None,
+        **humanize,
     )
     automation.accounts = accounts
     db.add(automation)
@@ -989,6 +1034,11 @@ def duplicate_automation(
         schedule_type=src.schedule_type or "interval",
         calendar_days=src.calendar_days,
         calendar_time=src.calendar_time,
+        jitter_enabled=bool(getattr(src, "jitter_enabled", False)),
+        jitter_minutes=int(getattr(src, "jitter_minutes", 10) or 10),
+        posts_per_batch=int(getattr(src, "posts_per_batch", 0) or 0),
+        rest_minutes=int(getattr(src, "rest_minutes", 0) or 0),
+        posts_in_batch=0,
         status="paused",
         next_run_at=None,
         last_run_at=None,
@@ -1010,6 +1060,10 @@ async def edit_automation(
     content_type: str = Form("reel"),
     interval_minutes: int = Form(...),
     account_ids: list[int] = Form(default=[]),
+    jitter_enabled: str = Form(""),
+    jitter_minutes: int = Form(10),
+    posts_per_batch: int = Form(0),
+    rest_minutes: int = Form(0),
     thumb: UploadFile | None = File(None),
     remove_thumb: bool = Form(False),
     db: Session = Depends(get_db),
@@ -1055,9 +1109,19 @@ async def edit_automation(
             except Exception:
                 pass
 
+    humanize = _schedule_humanize_fields(
+        jitter_enabled=jitter_enabled,
+        jitter_minutes=jitter_minutes,
+        posts_per_batch=posts_per_batch,
+        rest_minutes=rest_minutes,
+    )
     a.caption = caption
     a.content_type = content_type
     a.interval_minutes = interval_minutes
+    a.jitter_enabled = bool(humanize["jitter_enabled"])
+    a.jitter_minutes = int(humanize["jitter_minutes"])  # type: ignore[arg-type]
+    a.posts_per_batch = int(humanize["posts_per_batch"])  # type: ignore[arg-type]
+    a.rest_minutes = int(humanize["rest_minutes"])  # type: ignore[arg-type]
     a.accounts = list(accounts)
     if not accounts:
         a.status = "paused"

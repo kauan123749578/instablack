@@ -3,21 +3,11 @@
 {% block content %}
 <div class="page-header">
   <h2><i data-lucide="shield" class="inline-icon"></i> Painel Admin</h2>
-  <p class="muted page-header-sub">Gerencie usuários, convites e limites de contas</p>
+  <p class="muted page-header-sub">
+    {% if is_owner %}Gerencie usuários e limites de contas{% else %}Área administrativa{% endif %}
+  </p>
 </div>
 
-{% if ok == 'invite' %}
-<div class="alert alert-ok">
-  Código(s) de convite criado(s):
-  {% for c in new_codes %}<strong>{{ c }}</strong>{% if not loop.last %}, {% endif %}{% endfor %}
-</div>
-{% endif %}
-{% if ok == 'invite_deleted' %}
-<div class="alert alert-ok">Convite removido.</div>
-{% endif %}
-{% if error == 'invite_failed' %}
-<div class="alert alert-error">Não foi possível gerar o convite. Tente novamente.</div>
-{% endif %}
 {% if ok == 'deleted' %}
 <div class="alert alert-ok">Usuário removido com sucesso.</div>
 {% endif %}
@@ -36,69 +26,31 @@
 {% if error == 'last_admin' %}
 <div class="alert alert-error">Não é possível remover o último admin do sistema.</div>
 {% endif %}
+{% if error == 'owner_admin' %}
+<div class="alert alert-error">Não é possível alterar o admin do dono da plataforma.</div>
+{% endif %}
+{% if error == 'owner_delete' %}
+<div class="alert alert-error">Não é possível excluir o dono da plataforma.</div>
+{% endif %}
 {% if error == 'limit_invalid' %}
 <div class="alert alert-error">Informe um número válido para o limite de contas.</div>
 {% endif %}
 
 <div class="og-glass-card" style="margin-bottom:20px;padding:18px 20px">
-  <h3 style="margin:0 0 12px;font-size:15px"><i data-lucide="ticket" class="inline-icon"></i> Códigos de convite</h3>
-  <p class="muted" style="margin:0 0 14px;font-size:13px">Novos usuários precisam de um convite para se cadastrar.</p>
-  <form method="post" action="/admin/invites/create" class="admin-invite-form">
-    <label>Quantidade
-      <input type="number" name="quantity" min="1" max="20" value="1" class="admin-limit-input" style="width:80px">
-    </label>
-    <label>Usos por código
-      <input type="number" name="max_uses" min="1" max="100" value="1" class="admin-limit-input" style="width:80px">
-    </label>
-    <label>Nota (opcional)
-      <input type="text" name="note" placeholder="Ex.: cliente João" style="min-width:160px">
-    </label>
-    <button type="submit" class="btn btn-sm btn-primary">Gerar convite(s)</button>
-  </form>
-
-  {% if invites %}
-  <div class="og-table-wrap" style="margin-top:16px">
-    <table class="og-table">
-      <thead>
-        <tr>
-          <th>Código</th>
-          <th>Usos</th>
-          <th>Status</th>
-          <th>Usado por</th>
-          <th>Criado</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for inv in invites %}
-        <tr>
-          <td><code class="invite-code-tag">{{ inv.code }}</code>{% if inv.note %} <span class="og-muted">· {{ inv.note }}</span>{% endif %}</td>
-          <td>{{ inv.use_count }} / {{ inv.max_uses }}</td>
-          <td>
-            {% if inv.is_active and inv.use_count < inv.max_uses %}
-            <span class="og-badge badge-green">Disponível</span>
-            {% else %}
-            <span class="og-badge badge-yellow">Esgotado</span>
-            {% endif %}
-          </td>
-          <td class="og-muted">{% if inv.used_by %}@{{ inv.used_by.username }}{% else %}—{% endif %}</td>
-          <td class="og-muted">{{ inv.created_at | localtime('%d/%m/%Y') }}</td>
-          <td>
-            <form method="post" action="/admin/invites/{{ inv.id }}/delete"
-                  onsubmit="return confirm('Remover convite {{ inv.code }}?');">
-              <button type="submit" class="btn btn-sm btn-danger">Remover</button>
-            </form>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+  <h3 style="margin:0 0 8px;font-size:15px"><i data-lucide="ticket" class="inline-icon"></i> Código de convite</h3>
+  {% if invite_configured %}
+  <p class="muted" style="margin:0;font-size:13px">
+    O cadastro usa o código fixo da variável <code>INVITE_CODE</code> no Railway.
+    Não há gerador de convites neste painel — troque o valor da variável para mudar o código.
+  </p>
   {% else %}
-  <p class="og-muted" style="margin:14px 0 0;font-size:13px">Nenhum convite gerado ainda.</p>
+  <p class="muted" style="margin:0;font-size:13px;color:var(--red,#ef4444)">
+    <code>INVITE_CODE</code> não está configurado. Defina essa variável no Railway para permitir novos cadastros.
+  </p>
   {% endif %}
 </div>
 
+{% if is_owner %}
 <div class="og-glass-card og-table-panel">
   <div class="og-table-wrap">
     <table class="og-table">
@@ -118,7 +70,11 @@
         {% for row in rows %}
         {% set u = row.user %}
         <tr>
-          <td><strong>@{{ u.username }}</strong>{% if u.is_admin %} <span class="og-badge badge-yellow">Admin</span>{% endif %}</td>
+          <td>
+            <strong>@{{ u.username }}</strong>
+            {% if u.is_owner %} <span class="og-badge badge-yellow">Owner</span>
+            {% elif u.is_admin %} <span class="og-badge badge-yellow">Admin</span>{% endif %}
+          </td>
           <td class="og-muted">{{ u.display_name or '—' }}</td>
           <td>{{ row.ig_count }}{% if u.account_limit is not none %} / {{ u.account_limit }}{% endif %}</td>
           <td>
@@ -144,10 +100,10 @@
           </td>
           <td class="og-muted">{{ u.created_at | localtime('%d/%m/%Y') }}</td>
           <td>
-            {% if u.id != user.id %}
+            {% if u.id != user.id and not u.is_owner %}
             <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end">
               <form method="post" action="/admin/users/{{ u.id }}/toggle-admin"
-                    onsubmit="return confirm('{% if u.is_admin %}Remover admin de @{{ u.username }}?{% else %}Tornar @{{ u.username }} admin? Essa conta terá o mesmo acesso ao painel.{% endif %}');">
+                    onsubmit="return confirm('{% if u.is_admin %}Remover admin de @{{ u.username }}?{% else %}Tornar @{{ u.username }} admin?{% endif %}');">
                 <button type="submit" class="btn btn-sm {% if u.is_admin %}{% else %}btn-primary{% endif %}">
                   {% if u.is_admin %}Remover admin{% else %}Tornar admin{% endif %}
                 </button>
@@ -159,8 +115,10 @@
                 </button>
               </form>
             </div>
-            {% else %}
+            {% elif u.id == user.id %}
             <span class="og-muted">você</span>
+            {% else %}
+            <span class="og-muted">owner</span>
             {% endif %}
           </td>
         </tr>
@@ -169,4 +127,11 @@
     </table>
   </div>
 </div>
+{% else %}
+<div class="og-glass-card" style="padding:18px 20px">
+  <p class="muted" style="margin:0;font-size:13px">
+    Você é admin, mas só o dono da plataforma pode ver e gerenciar a lista de usuários.
+  </p>
+</div>
+{% endif %}
 {% endblock %}

@@ -1146,12 +1146,14 @@
 
     function draftFormData() {
       const data = new FormData();
-      ["name", "content_type", "caption", "story_link", "interval_minutes"].forEach((name) => {
+      ["name", "content_type", "caption", "story_link", "interval_minutes", "jitter_minutes", "posts_per_batch", "rest_minutes"].forEach((name) => {
         const field = form.querySelector(`[name="${name}"]`);
         if (field) data.append(name, field.value || "");
       });
       const mode = form.querySelector('[name="schedule_mode"]:checked');
       data.append("schedule_mode", mode ? mode.value : "recurring");
+      const jitter = form.querySelector('[name="jitter_enabled"]');
+      if (jitter && jitter.checked) data.append("jitter_enabled", "1");
       form.querySelectorAll('[name="account_ids"]:checked').forEach((field) => {
         data.append("account_ids", field.value);
       });

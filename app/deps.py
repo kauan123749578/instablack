@@ -53,3 +53,15 @@ def get_admin_user(
             headers={"Location": "/"},
         )
     return user
+
+
+def get_owner_user(
+    user: User = Depends(get_current_user),
+) -> User:
+    """Só o dono (is_owner) gerencia a lista de usuários."""
+    if not user.is_admin or not getattr(user, "is_owner", False):
+        raise HTTPException(
+            status_code=status.HTTP_303_SEE_OTHER,
+            headers={"Location": "/admin" if user.is_admin else "/"},
+        )
+    return user

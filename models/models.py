@@ -40,6 +40,7 @@ class User(Base):
     display_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     avatar_key: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_owner: Mapped[bool] = mapped_column(Boolean, default=False)  # só owner vê/gerencia usuários
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     account_limit: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=None)
     notification_prefs_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -143,6 +144,14 @@ class Automation(Base):
     calendar_days: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON [1,5,15]
     calendar_time: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)  # HH:MM BRT
     status: Mapped[str] = mapped_column(String(16), default="active", index=True)  # active | paused | completed
+
+    # Variação de horário (± minutos) para não ficar intervalo exato
+    jitter_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    jitter_minutes: Mapped[int] = mapped_column(Integer, default=10)
+    # Posta N ciclos e descansa rest_minutes (0 = desligado)
+    posts_per_batch: Mapped[int] = mapped_column(Integer, default=0)
+    rest_minutes: Mapped[int] = mapped_column(Integer, default=0)
+    posts_in_batch: Mapped[int] = mapped_column(Integer, default=0)
 
     next_run_at: Mapped[Optional[dt.datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True

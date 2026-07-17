@@ -87,6 +87,32 @@
         {% endfor %}
       </select>
     </label>
+
+    <fieldset class="humanize-fieldset" style="margin-top:14px">
+      <legend>Variação de horário <span class="muted">(anti-ban)</span></legend>
+      <label class="checkbox-row" style="margin-bottom:8px">
+        <input type="checkbox" name="jitter_enabled" value="1" id="jitter-enabled">
+        Ativar variação aleatória no intervalo
+      </label>
+      <label>Variação máxima (minutos)
+        <input type="number" name="jitter_minutes" id="jitter-minutes" min="1" max="120" value="10">
+        <span class="muted" style="display:block;margin-top:4px;font-size:12px">
+          Ex.: intervalo 60 min + variação 10 → posta entre ~50 e ~70 minutos (para cima ou para baixo).
+        </span>
+      </label>
+    </fieldset>
+
+    <fieldset class="humanize-fieldset" style="margin-top:14px">
+      <legend>Descanso após lote</legend>
+      <label>Posts por ciclo
+        <input type="number" name="posts_per_batch" min="0" max="500" value="0">
+        <span class="muted" style="display:block;margin-top:4px;font-size:12px">0 = desligado. Ex.: 10 posts e depois descansa.</span>
+      </label>
+      <label>Minutos de descanso
+        <input type="number" name="rest_minutes" min="0" max="10080" value="0">
+        <span class="muted" style="display:block;margin-top:4px;font-size:12px">Após o lote, espera esse tempo e volta a postar.</span>
+      </label>
+    </fieldset>
   </div>
 
   <div id="calendar-wrap">

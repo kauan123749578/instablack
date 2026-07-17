@@ -1,17 +1,18 @@
-"""Painel administrativo — gerenciar usuários do SaaS."""
+"""Painel administrativo — gerenciar usuários do SaaS (só owner vê lista)."""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
-from app.deps import get_admin_user
+from app.config import settings
+from app.deps import get_admin_user, get_owner_user
 from app.templating import templates
 from app.utils.account_limits import account_limit_label
-from app.utils.invite_codes import generate_invite_code
+from app.utils.invite_codes import normalize_invite_code
 from core.database import get_db
-from models.models import Automation, InstagramAccount, InviteCode, User
+from models.models import Automation, InstagramAccount, User
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -22,102 +23,37 @@ def admin_dashboard(
     db: Session = Depends(get_db),
     admin: User = Depends(get_admin_user),
 ):
-    users = db.scalars(
-        select(User).order_by(User.created_at.desc())
-    ).all()
-
+    is_owner = bool(getattr(admin, "is_owner", False))
     rows = []
-    for u in users:
-        ig_count = db.scalar(
-            select(func.count(InstagramAccount.id)).where(InstagramAccount.user_id == u.id)
-        ) or 0
-        auto_count = db.scalar(
-            select(func.count(Automation.id)).where(Automation.user_id == u.id)
-        ) or 0
-        rows.append({
-            "user": u,
-            "ig_count": ig_count,
-            "auto_count": auto_count,
-            "limit_label": account_limit_label(u.account_limit),
-        })
+    if is_owner:
+        users = db.scalars(select(User).order_by(User.created_at.desc())).all()
+        for u in users:
+            ig_count = db.scalar(
+                select(func.count(InstagramAccount.id)).where(InstagramAccount.user_id == u.id)
+            ) or 0
+            auto_count = db.scalar(
+                select(func.count(Automation.id)).where(Automation.user_id == u.id)
+            ) or 0
+            rows.append({
+                "user": u,
+                "ig_count": ig_count,
+                "auto_count": auto_count,
+                "limit_label": account_limit_label(u.account_limit),
+            })
 
-    invites = db.scalars(
-        select(InviteCode)
-        .options(selectinload(InviteCode.used_by), selectinload(InviteCode.created_by))
-        .order_by(InviteCode.created_at.desc())
-        .limit(100)
-    ).all()
+    invite_configured = bool(normalize_invite_code(settings.invite_code or ""))
 
     return templates.TemplateResponse(
         "admin.html",
         {
             "request": request,
             "user": admin,
+            "is_owner": is_owner,
             "rows": rows,
-            "invites": invites,
+            "invite_configured": invite_configured,
             "ok": request.query_params.get("ok"),
             "error": request.query_params.get("error"),
-            "new_codes": request.query_params.getlist("code"),
         },
-    )
-
-
-@router.post("/invites/create")
-def create_invite_codes(
-    quantity: int = Form(1),
-    max_uses: int = Form(1),
-    note: str = Form(""),
-    db: Session = Depends(get_db),
-    admin: User = Depends(get_admin_user),
-):
-    qty = max(1, min(quantity, 20))
-    uses = max(1, min(max_uses, 100))
-    note_text = note.strip() or None
-    created_codes: list[str] = []
-
-    for _ in range(qty):
-        for _attempt in range(10):
-            code = generate_invite_code()
-            if db.scalar(select(InviteCode).where(InviteCode.code == code)) is not None:
-                continue
-            db.add(
-                InviteCode(
-                    code=code,
-                    created_by_id=admin.id,
-                    max_uses=uses,
-                    note=note_text,
-                )
-            )
-            created_codes.append(code)
-            break
-
-    if not created_codes:
-        return RedirectResponse(
-            "/admin?error=invite_failed",
-            status_code=status.HTTP_303_SEE_OTHER,
-        )
-
-    db.commit()
-    params = "&".join(f"code={c}" for c in created_codes)
-    return RedirectResponse(
-        f"/admin?ok=invite&{params}",
-        status_code=status.HTTP_303_SEE_OTHER,
-    )
-
-
-@router.post("/invites/{invite_id}/delete")
-def delete_invite_code(
-    invite_id: int,
-    db: Session = Depends(get_db),
-    admin: User = Depends(get_admin_user),
-):
-    invite = db.get(InviteCode, invite_id)
-    if invite:
-        db.delete(invite)
-        db.commit()
-    return RedirectResponse(
-        "/admin?ok=invite_deleted",
-        status_code=status.HTTP_303_SEE_OTHER,
     )
 
 
@@ -127,7 +63,7 @@ def set_account_limit(
     account_limit: str = Form("0"),
     unlimited: str = Form(""),
     db: Session = Depends(get_db),
-    admin: User = Depends(get_admin_user),
+    admin: User = Depends(get_owner_user),
 ):
     target = db.get(User, user_id)
     if not target:
@@ -158,7 +94,7 @@ def set_account_limit(
 def toggle_user_admin(
     user_id: int,
     db: Session = Depends(get_db),
-    admin: User = Depends(get_admin_user),
+    admin: User = Depends(get_owner_user),
 ):
     target = db.get(User, user_id)
     if not target:
@@ -167,6 +103,12 @@ def toggle_user_admin(
     if user_id == admin.id and target.is_admin:
         return RedirectResponse(
             "/admin?error=self_admin",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    if getattr(target, "is_owner", False):
+        return RedirectResponse(
+            "/admin?error=owner_admin",
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
@@ -197,7 +139,7 @@ def toggle_user_admin(
 def delete_user(
     user_id: int,
     db: Session = Depends(get_db),
-    admin: User = Depends(get_admin_user),
+    admin: User = Depends(get_owner_user),
 ):
     if user_id == admin.id:
         return RedirectResponse(
@@ -208,6 +150,11 @@ def delete_user(
     target = db.get(User, user_id)
     if not target:
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    if getattr(target, "is_owner", False):
+        return RedirectResponse(
+            "/admin?error=owner_delete",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
 
     db.delete(target)
     db.commit()

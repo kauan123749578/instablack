@@ -121,6 +121,7 @@ APP_ENV=production
 SECRET_KEY=<gere: python -c "import secrets; print(secrets.token_urlsafe(48))">
 
 ALLOW_REGISTRATION=false
+INVITE_CODE=<codigo-secreto-unico>
 
 DATABASE_URL=${{Postgres.DATABASE_URL}}
 REDIS_URL=${{Redis.REDIS_URL}}
@@ -168,6 +169,7 @@ O código converte `postgres://` para `postgresql+psycopg2://` automaticamente.
 - [ ] CORS do R2 permite `PUT` vindo do domínio público do `web`
 - [ ] `/readyz` → `storage: s3:seu-bucket` ok
 - [ ] `SECRET_KEY` forte (32+ chars)
+- [ ] `INVITE_CODE` definido (código único de cadastro)
 - [ ] **VAPID no web e no worker** (push no celular com PC desligado)
 - [ ] Domínio público no web
 - [ ] `/healthz` retorna 200

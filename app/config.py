@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     secret_key: str = "change-me"
     allow_registration: bool = True
     trust_proxy: bool = True
+    # Código único de convite (env). Se vazio, cadastro exige código inválido.
+    invite_code: str = ""
 
     database_url: str = "sqlite:///./app.db"
     redis_url: str = "redis://localhost:6379/0"

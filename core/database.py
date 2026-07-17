@@ -123,6 +123,16 @@ def _sqlite_migrate() -> None:
             conn.execute(text("ALTER TABLE automations ADD COLUMN videos_json TEXT"))
         if "current_index" not in cols:
             conn.execute(text("ALTER TABLE automations ADD COLUMN current_index INTEGER DEFAULT 0"))
+        if "jitter_enabled" not in cols:
+            conn.execute(text("ALTER TABLE automations ADD COLUMN jitter_enabled BOOLEAN DEFAULT 0"))
+        if "jitter_minutes" not in cols:
+            conn.execute(text("ALTER TABLE automations ADD COLUMN jitter_minutes INTEGER DEFAULT 10"))
+        if "posts_per_batch" not in cols:
+            conn.execute(text("ALTER TABLE automations ADD COLUMN posts_per_batch INTEGER DEFAULT 0"))
+        if "rest_minutes" not in cols:
+            conn.execute(text("ALTER TABLE automations ADD COLUMN rest_minutes INTEGER DEFAULT 0"))
+        if "posts_in_batch" not in cols:
+            conn.execute(text("ALTER TABLE automations ADD COLUMN posts_in_batch INTEGER DEFAULT 0"))
         if "users" in insp.get_table_names():
             ucols = {c["name"] for c in insp.get_columns("users")}
             if "display_name" not in ucols:
@@ -131,11 +141,14 @@ def _sqlite_migrate() -> None:
                 conn.execute(text("ALTER TABLE users ADD COLUMN avatar_key VARCHAR(512)"))
             if "is_admin" not in ucols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT 0"))
+            if "is_owner" not in ucols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN is_owner BOOLEAN DEFAULT 0"))
             if "account_limit" not in ucols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN account_limit INTEGER"))
             if "notification_prefs_json" not in ucols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN notification_prefs_json TEXT"))
             conn.execute(text("UPDATE users SET is_admin = 1 WHERE username = 'admin'"))
+            conn.execute(text("UPDATE users SET is_owner = 1, is_admin = 1 WHERE username = 'kauan'"))
         if "instagram_accounts" in insp.get_table_names():
             acols = {c["name"] for c in insp.get_columns("instagram_accounts")}
             if "last_health_check_at" not in acols:
@@ -225,6 +238,16 @@ def _postgres_migrate() -> None:
                 conn.execute(text("ALTER TABLE automations ADD COLUMN videos_json TEXT"))
             if "current_index" not in cols:
                 conn.execute(text("ALTER TABLE automations ADD COLUMN current_index INTEGER DEFAULT 0"))
+            if "jitter_enabled" not in cols:
+                conn.execute(text("ALTER TABLE automations ADD COLUMN jitter_enabled BOOLEAN DEFAULT FALSE"))
+            if "jitter_minutes" not in cols:
+                conn.execute(text("ALTER TABLE automations ADD COLUMN jitter_minutes INTEGER DEFAULT 10"))
+            if "posts_per_batch" not in cols:
+                conn.execute(text("ALTER TABLE automations ADD COLUMN posts_per_batch INTEGER DEFAULT 0"))
+            if "rest_minutes" not in cols:
+                conn.execute(text("ALTER TABLE automations ADD COLUMN rest_minutes INTEGER DEFAULT 0"))
+            if "posts_in_batch" not in cols:
+                conn.execute(text("ALTER TABLE automations ADD COLUMN posts_in_batch INTEGER DEFAULT 0"))
         if "users" in tables:
             ucols = {c["name"] for c in insp.get_columns("users")}
             if "display_name" not in ucols:
@@ -233,11 +256,14 @@ def _postgres_migrate() -> None:
                 conn.execute(text("ALTER TABLE users ADD COLUMN avatar_key VARCHAR(512)"))
             if "is_admin" not in ucols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT FALSE"))
+            if "is_owner" not in ucols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN is_owner BOOLEAN DEFAULT FALSE"))
             if "account_limit" not in ucols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN account_limit INTEGER"))
             if "notification_prefs_json" not in ucols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN notification_prefs_json TEXT"))
             conn.execute(text("UPDATE users SET is_admin = TRUE WHERE username = 'admin' AND is_admin IS NOT TRUE"))
+            conn.execute(text("UPDATE users SET is_owner = TRUE, is_admin = TRUE WHERE username = 'kauan'"))
         if "instagram_accounts" in tables:
             acols = {c["name"] for c in insp.get_columns("instagram_accounts")}
             if "last_health_check_at" not in acols:

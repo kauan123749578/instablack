@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.security import hash_password, verify_password
 from app.templating import templates
-from app.utils.invite_codes import consume_invite, get_valid_invite
+from app.utils.invite_codes import is_valid_invite_code
 from core.database import get_db
 from models.models import User
 
@@ -71,9 +71,8 @@ def register(
     username_norm = username.strip().lower()
     error: str | None = None
 
-    invite = get_valid_invite(db, invite_code)
-    if invite is None:
-        error = "Código de convite inválido, expirado ou já utilizado."
+    if not is_valid_invite_code(invite_code):
+        error = "Código de convite inválido."
 
     if not error:
         if not username_norm or len(username_norm) < 3:
@@ -98,8 +97,6 @@ def register(
         account_limit=settings.default_account_limit,
     )
     db.add(user)
-    db.flush()
-    consume_invite(db, invite, user.id)
     db.commit()
     request.session["user_id"] = user.id
     return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)

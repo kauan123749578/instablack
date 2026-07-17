@@ -84,7 +84,10 @@
       <span class="badge {{ a.status }}">{{ status_label(a.status) }}</span>
     </div>
     <ul class="auto-meta">
-      <li>A cada <strong>{% if a.schedule_type == 'calendar' %}dias {{ a.calendar_days }} às {{ a.calendar_time }}{% else %}{{ a.interval_minutes }} min{% endif %}</strong></li>
+      <li>A cada <strong>{% if a.schedule_type == 'calendar' %}dias {{ a.calendar_days }} às {{ a.calendar_time }}{% else %}{{ a.interval_minutes }} min{% endif %}</strong>
+        {% if a.jitter_enabled %} · variação ±{{ a.jitter_minutes or 10 }} min{% endif %}
+        {% if a.posts_per_batch and a.rest_minutes %} · {{ a.posts_per_batch }} posts / descanso {{ a.rest_minutes }} min{% endif %}
+      </li>
       <li>{{ a.accounts|length }} conta(s):
         {% if a.accounts %}
           {% for ac in a.accounts %}@{{ ac.username }}{% if not loop.last %}, {% endif %}{% endfor %}
@@ -188,6 +191,25 @@
               {% endfor %}
             </select>
           </label>
+          <fieldset>
+            <legend>Variação de horário</legend>
+            <label class="checkbox-row">
+              <input type="checkbox" name="jitter_enabled" value="1" {% if a.jitter_enabled %}checked{% endif %}>
+              Ativar variação aleatória (± minutos)
+            </label>
+            <label>Máximo (minutos)
+              <input type="number" name="jitter_minutes" min="1" max="120" value="{{ a.jitter_minutes or 10 }}">
+            </label>
+          </fieldset>
+          <fieldset>
+            <legend>Descanso após lote</legend>
+            <label>Posts por ciclo
+              <input type="number" name="posts_per_batch" min="0" max="500" value="{{ a.posts_per_batch or 0 }}">
+            </label>
+            <label>Minutos de descanso
+              <input type="number" name="rest_minutes" min="0" max="10080" value="{{ a.rest_minutes or 0 }}">
+            </label>
+          </fieldset>
           <label>Legenda
             <textarea name="caption" rows="3">{{ a.caption }}</textarea>
           </label>

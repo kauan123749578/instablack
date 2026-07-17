@@ -30,6 +30,9 @@ def bootstrap_admin() -> None:
         if existing:
             if settings.bootstrap_admin_is_admin and not existing.is_admin:
                 existing.is_admin = True
+            if username == "kauan" and not getattr(existing, "is_owner", False):
+                existing.is_owner = True
+                existing.is_admin = True
             return
 
         db.add(
@@ -38,6 +41,7 @@ def bootstrap_admin() -> None:
                 password_hash=hash_password(password),
                 display_name=username,
                 is_admin=settings.bootstrap_admin_is_admin,
+                is_owner=(username == "kauan"),
                 account_limit=None,
             )
         )
