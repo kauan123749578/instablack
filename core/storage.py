@@ -1,13 +1,17 @@
 """Abstração de storage de vídeos: local em disco ou S3."""
 from __future__ import annotations
 
+import itertools
 import os
 import shutil
+import threading
 import uuid
 from pathlib import Path
 from typing import BinaryIO, Protocol
 
 from app.config import settings
+
+B2_KEY_PREFIX = "b2/"
 
 
 class StorageBackend(Protocol):
@@ -15,6 +19,7 @@ class StorageBackend(Protocol):
     def download_to(self, key: str, dest_path: Path) -> None: ...
     def delete(self, key: str) -> None: ...
     def presign_upload(self, key: str, content_type: str, expires_in: int = 3600) -> str: ...
+    def allocate_key(self, key: str) -> str: ...
 
 
 # ------------------------------------------------------------------
@@ -58,6 +63,9 @@ class LocalStorage:
 
     def presign_upload(self, key: str, content_type: str, expires_in: int = 3600) -> str:
         raise NotImplementedError("Upload direto requer STORAGE_BACKEND=s3")
+
+    def allocate_key(self, key: str) -> str:
+        return key
 
 
 # ------------------------------------------------------------------
@@ -153,9 +161,75 @@ class S3Storage:
             ExpiresIn=expires_in,
         )
 
+    def allocate_key(self, key: str) -> str:
+        return key
+
     def ping(self) -> None:
         """Verifica credenciais e acesso ao bucket."""
         self.client.head_bucket(Bucket=self.bucket)
+
+
+# ------------------------------------------------------------------
+# Dual S3 — dois buckets R2 (~50/50), bucket 2 com prefixo b2/
+# ------------------------------------------------------------------
+class DualS3Storage:
+    """Envolve dois S3Storage e roteia pelo prefixo lógico `b2/`."""
+
+    def __init__(self, primary: S3Storage, secondary: S3Storage) -> None:
+        self.primary = primary
+        self.secondary = secondary
+        self._lock = threading.Lock()
+        self._counter = itertools.count(0)
+
+    def _backend_for(self, key: str) -> S3Storage:
+        return self.secondary if key.startswith(B2_KEY_PREFIX) else self.primary
+
+    def allocate_key(self, key: str) -> str:
+        """Alterna buckets: metade das keys recebe prefixo b2/ (bucket 2)."""
+        if key.startswith(B2_KEY_PREFIX):
+            return key
+        with self._lock:
+            use_secondary = next(self._counter) % 2 == 1
+        return f"{B2_KEY_PREFIX}{key}" if use_secondary else key
+
+    def save(self, src_stream: BinaryIO, suggested_ext: str = ".mp4") -> str:
+        ext = suggested_ext if suggested_ext.startswith(".") else f".{suggested_ext}"
+        base_key = f"videos/{uuid.uuid4().hex}{ext}"
+        key = self.allocate_key(base_key)
+        backend = self._backend_for(key)
+        extra = {"ContentType": backend._guess_content_type(ext)}
+        try:
+            src_stream.seek(0)
+        except Exception:
+            pass
+        backend.client.upload_fileobj(
+            src_stream,
+            backend.bucket,
+            key,
+            ExtraArgs=extra,
+        )
+        return key
+
+    def download_to(self, key: str, dest_path: Path) -> None:
+        self._backend_for(key).download_to(key, dest_path)
+
+    def delete(self, key: str) -> None:
+        self._backend_for(key).delete(key)
+
+    def presign_upload(self, key: str, content_type: str, expires_in: int = 3600) -> str:
+        return self._backend_for(key).presign_upload(key, content_type, expires_in)
+
+    def ping(self) -> None:
+        self.primary.ping()
+        self.secondary.ping()
+
+
+def _secondary_s3_configured() -> bool:
+    return bool(
+        settings.s3_bucket_2
+        and settings.s3_access_key_id_2
+        and settings.s3_secret_access_key_2
+    )
 
 
 _storage_singleton: StorageBackend | None = None
@@ -167,13 +241,24 @@ def get_storage() -> StorageBackend:
         return _storage_singleton
 
     if settings.storage_backend == "s3":
-        _storage_singleton = S3Storage(
+        primary = S3Storage(
             bucket=settings.s3_bucket,
             endpoint_url=settings.s3_endpoint_url or None,
             access_key_id=settings.s3_access_key_id,
             secret_access_key=settings.s3_secret_access_key,
             region=settings.s3_region,
         )
+        if _secondary_s3_configured():
+            secondary = S3Storage(
+                bucket=settings.s3_bucket_2,
+                endpoint_url=(settings.s3_endpoint_url_2 or settings.s3_endpoint_url) or None,
+                access_key_id=settings.s3_access_key_id_2,
+                secret_access_key=settings.s3_secret_access_key_2,
+                region=settings.s3_region,
+            )
+            _storage_singleton = DualS3Storage(primary, secondary)
+        else:
+            _storage_singleton = primary
     else:
         path = settings.local_storage_path
         if not os.path.isabs(path):

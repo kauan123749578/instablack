@@ -46,6 +46,12 @@ class Settings(BaseSettings):
     s3_secret_access_key: str = ""
     s3_region: str = "auto"
 
+    # Segunda conta R2 (opcional) — DualS3Storage distribui mídia ~50/50
+    s3_bucket_2: str = ""
+    s3_endpoint_url_2: str = ""
+    s3_access_key_id_2: str = ""
+    s3_secret_access_key_2: str = ""
+
     ffmpeg_bin: str = "ffmpeg"
     beat_tick_seconds: int = 60
 

@@ -12,51 +12,86 @@
 
 {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
 
-<form method="post" action="/automations/new" enctype="multipart/form-data" class="form-card form-grid" id="automation-form">
+<form method="post" action="/automations/new" enctype="multipart/form-data" class="form-card form-card--premium form-grid" id="automation-form">
   <input type="hidden" name="video_count" id="video-count-input" value="0">
-  <label>Nome da automação
-    <input type="text" name="name" required placeholder="{% if default_content_type == 'story' %}Ex.: Story dias 1, 15 e 30{% else %}Ex.: Reels a cada 1 hora{% endif %}">
-  </label>
 
-  <label>Tipo de conteúdo
-    <select name="content_type" id="content-type" required>
-      <option value="reel" {% if default_content_type == 'reel' %}selected{% endif %}>Reels (vídeo)</option>
-      <option value="story" {% if default_content_type == 'story' %}selected{% endif %}>Story (foto ou vídeo)</option>
-      <option value="photo" {% if default_content_type == 'photo' %}selected{% endif %}>Foto no feed</option>
-    </select>
-  </label>
-
-  <label id="media-label">Vídeos Reels (.mp4) <strong style="color:var(--red)">*</strong>
-    <input type="file" id="video-input" name="videos" accept="video/mp4,video/quicktime,video/webm" multiple>
-    <span id="video-file-name" class="muted" style="display:block;margin-top:4px;font-size:12px">Nenhum vídeo selecionado</span>
-    <span class="muted" style="display:block;margin-top:4px;font-size:12px">O rascunho é criado primeiro e os arquivos sobem direto ao R2 em paralelo.</span>
-    <ul id="video-file-list" class="video-file-list muted" style="display:none;margin:6px 0 0;padding-left:18px;font-size:12px"></ul>
-  </label>
-
-  <div id="thumb-wrap">
-    <label>Capa para <strong>todos</strong> os Reels (.jpg/.png — 9:16)
-      <input type="file" id="thumb-input" name="thumb" accept="image/jpeg,image/png,image/webp">
-      <span class="muted" style="display:block;margin-top:4px;font-size:12px">Mesma imagem de capa em cada vídeo do loop (opcional).</span>
-      <img id="thumb-preview" style="display:none;margin-top:8px;max-width:120px;border-radius:8px" alt="Preview">
+  <section class="form-section">
+    <header class="form-section-head">
+      <i data-lucide="file-text"></i>
+      <div>
+        <h3>Conteúdo</h3>
+        <p>Nome, tipo e legenda da publicação</p>
+      </div>
+    </header>
+    <label>Nome da automação
+      <input type="text" name="name" required placeholder="{% if default_content_type == 'story' %}Ex.: Story dias 1, 15 e 30{% else %}Ex.: Reels a cada 1 hora{% endif %}">
     </label>
-  </div>
 
-  <div id="caption-wrap">
-    <label>Legenda
-      <textarea name="caption" rows="4" placeholder="Escreva a legenda…"></textarea>
+    <label>Tipo de conteúdo
+      <select name="content_type" id="content-type" required>
+        <option value="reel" {% if default_content_type == 'reel' %}selected{% endif %}>Reels (vídeo)</option>
+        <option value="story" {% if default_content_type == 'story' %}selected{% endif %}>Story (foto ou vídeo)</option>
+        <option value="photo" {% if default_content_type == 'photo' %}selected{% endif %}>Foto no feed</option>
+      </select>
     </label>
-  </div>
 
-  <div id="story-link-wrap">
-    <label>Link do Story (opcional)
-      <input type="url" name="story_link" placeholder="https://seusite.com/pagina">
+    <div id="caption-wrap">
+      <label>Legenda
+        <textarea name="caption" rows="4" placeholder="Escreva a legenda…"></textarea>
+      </label>
+    </div>
+
+    <div id="story-link-wrap">
+      <label>Link do Story (opcional)
+        <input type="url" name="story_link" placeholder="https://seusite.com/pagina">
+      </label>
+      <p class="muted" style="margin:4px 0 0;font-size:12px">O Instagram cria o sticker de link nativo no story.</p>
+    </div>
+  </section>
+
+  <section class="form-section">
+    <header class="form-section-head">
+      <i data-lucide="clapperboard"></i>
+      <div>
+        <h3>Mídia</h3>
+        <p>Arquivos e capa enviados direto ao armazenamento</p>
+      </div>
+    </header>
+    <label id="media-label" class="dropzone-field">Vídeos Reels (.mp4) <strong style="color:var(--red)">*</strong>
+      <div class="dropzone">
+        <i data-lucide="upload-cloud"></i>
+        <span>Toque para selecionar ou arraste os vídeos</span>
+        <input type="file" id="video-input" name="videos" accept="video/mp4,video/quicktime,video/webm" multiple>
+      </div>
+      <span id="video-file-name" class="muted" style="display:block;margin-top:4px;font-size:12px">Nenhum vídeo selecionado</span>
+      <span class="muted" style="display:block;margin-top:4px;font-size:12px">O rascunho é criado primeiro e os arquivos sobem direto ao R2 em paralelo.</span>
+      <ul id="video-file-list" class="video-file-list muted" style="display:none;margin:6px 0 0;padding-left:18px;font-size:12px"></ul>
     </label>
-    <p class="muted" style="margin:4px 0 0;font-size:12px">O Instagram cria o sticker de link nativo no story.</p>
-  </div>
 
-  <fieldset class="schedule-mode-field">
-    <legend>Quando publicar?</legend>
-    <div class="radio-row">
+    <div id="thumb-wrap">
+      <label class="dropzone-field">Capa para <strong>todos</strong> os Reels (.jpg/.png — 9:16)
+        <div class="dropzone dropzone--sm">
+          <i data-lucide="image-plus"></i>
+          <span>Capa opcional (mesma imagem em todos os vídeos)</span>
+          <input type="file" id="thumb-input" name="thumb" accept="image/jpeg,image/png,image/webp">
+        </div>
+        <img id="thumb-preview" style="display:none;margin-top:8px;max-width:120px;border-radius:8px" alt="Preview">
+      </label>
+    </div>
+  </section>
+
+  <section class="form-section">
+    <header class="form-section-head">
+      <i data-lucide="clock-3"></i>
+      <div>
+        <h3>Agendamento</h3>
+        <p>Quando e com que frequência publicar</p>
+      </div>
+    </header>
+
+    <fieldset class="schedule-mode-field">
+      <legend>Quando publicar?</legend>
+      <div class="radio-row">
       {% if default_content_type == 'story' %}
       <label class="radio-pill">
         <input type="radio" name="schedule_mode" value="calendar" id="mode-calendar" checked>
@@ -76,92 +111,102 @@
         <span>Postar agora</span>
       </label>
       {% endif %}
-    </div>
-  </fieldset>
+      </div>
+    </fieldset>
 
-  <div id="interval-wrap">
-    <label>Publicar a cada
-      <select name="interval_minutes">
-        {% for m in intervals %}
-        <option value="{{ m }}">{{ interval_label(m) }}</option>
-        {% endfor %}
-      </select>
-    </label>
-
-    <fieldset class="humanize-fieldset" style="margin-top:14px">
-      <legend>Variação de horário <span class="muted">(anti-ban)</span></legend>
-      <label class="checkbox-row" style="margin-bottom:8px">
-        <input type="checkbox" name="jitter_enabled" value="1" id="jitter-enabled">
-        Ativar variação aleatória no intervalo
+    <div id="interval-wrap">
+      <label>Publicar a cada
+        <select name="interval_minutes">
+          {% for m in intervals %}
+          <option value="{{ m }}">{{ interval_label(m) }}</option>
+          {% endfor %}
+        </select>
       </label>
-      <label>Variação máxima (minutos)
-        <input type="number" name="jitter_minutes" id="jitter-minutes" min="1" max="120" value="10">
+
+      <fieldset class="humanize-fieldset" style="margin-top:14px">
+        <legend>Variação de horário <span class="muted">(anti-ban)</span></legend>
+        <label class="checkbox-row" style="margin-bottom:8px">
+          <input type="checkbox" name="jitter_enabled" value="1" id="jitter-enabled">
+          Ativar variação aleatória no intervalo
+        </label>
+        <label>Variação máxima (minutos)
+          <input type="number" name="jitter_minutes" id="jitter-minutes" min="1" max="120" value="10">
+          <span class="muted" style="display:block;margin-top:4px;font-size:12px">
+            Ex.: intervalo 60 min + variação 10 → posta entre ~50 e ~70 minutos (para cima ou para baixo).
+          </span>
+        </label>
+      </fieldset>
+
+      <fieldset class="humanize-fieldset" style="margin-top:14px">
+        <legend>Descanso após lote</legend>
+        <label>Posts por ciclo
+          <input type="number" name="posts_per_batch" min="0" max="500" value="0">
+          <span class="muted" style="display:block;margin-top:4px;font-size:12px">0 = desligado. Ex.: 10 posts e depois descansa.</span>
+        </label>
+        <label>Minutos de descanso
+          <input type="number" name="rest_minutes" min="0" max="10080" value="0">
+          <span class="muted" style="display:block;margin-top:4px;font-size:12px">Após o lote, espera esse tempo e volta a postar.</span>
+        </label>
+      </fieldset>
+    </div>
+
+    <div id="calendar-wrap">
+      <fieldset class="calendar-fieldset">
+        <legend>Dias do mês</legend>
+        <div class="calendar-toolbar">
+          <button type="button" class="btn btn-sm" id="cal-select-all">Selecionar todos</button>
+          <button type="button" class="btn btn-sm" id="cal-clear">Limpar</button>
+          <span class="muted" id="cal-count">0 dias selecionados</span>
+        </div>
+        <div class="calendar-weekdays">
+          <span>Dom</span><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span>
+        </div>
+        <div class="calendar-grid" id="calendar-grid"></div>
+        <input type="hidden" name="calendar_days" id="calendar-days-input" value="[]">
+      </fieldset>
+      <label>Horários de publicação (BRT)
+        <div id="calendar-times-list" class="calendar-times-list">
+          <div class="calendar-time-row">
+            <input type="time" name="calendar_times" value="10:00">
+          </div>
+        </div>
+        <button type="button" class="btn btn-sm" id="cal-add-time" style="margin-top:8px">+ Adicionar horário</button>
         <span class="muted" style="display:block;margin-top:4px;font-size:12px">
-          Ex.: intervalo 60 min + variação 10 → posta entre ~50 e ~70 minutos (para cima ou para baixo).
+          Vários horários no mesmo dia (ex.: 10:00, 15:00, 21:00).
         </span>
       </label>
-    </fieldset>
-
-    <fieldset class="humanize-fieldset" style="margin-top:14px">
-      <legend>Descanso após lote</legend>
-      <label>Posts por ciclo
-        <input type="number" name="posts_per_batch" min="0" max="500" value="0">
-        <span class="muted" style="display:block;margin-top:4px;font-size:12px">0 = desligado. Ex.: 10 posts e depois descansa.</span>
-      </label>
-      <label>Minutos de descanso
-        <input type="number" name="rest_minutes" min="0" max="10080" value="0">
-        <span class="muted" style="display:block;margin-top:4px;font-size:12px">Após o lote, espera esse tempo e volta a postar.</span>
-      </label>
-    </fieldset>
-  </div>
-
-  <div id="calendar-wrap">
-    <fieldset class="calendar-fieldset">
-      <legend>Dias do mês</legend>
-      <div class="calendar-toolbar">
-        <button type="button" class="btn btn-sm" id="cal-select-all">Selecionar todos</button>
-        <button type="button" class="btn btn-sm" id="cal-clear">Limpar</button>
-        <span class="muted" id="cal-count">0 dias selecionados</span>
-      </div>
-      <div class="calendar-weekdays">
-        <span>Dom</span><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span>
-      </div>
-      <div class="calendar-grid" id="calendar-grid"></div>
-      <input type="hidden" name="calendar_days" id="calendar-days-input" value="[]">
-    </fieldset>
-    <label>Horários de publicação (BRT)
-      <div id="calendar-times-list" class="calendar-times-list">
-        <div class="calendar-time-row">
-          <input type="time" name="calendar_times" value="10:00">
-        </div>
-      </div>
-      <button type="button" class="btn btn-sm" id="cal-add-time" style="margin-top:8px">+ Adicionar horário</button>
-      <span class="muted" style="display:block;margin-top:4px;font-size:12px">
-        Vários horários no mesmo dia (ex.: 10:00, 15:00, 21:00).
-      </span>
-    </label>
-  </div>
-
-  <fieldset>
-    <legend>Contas que vão receber <span class="muted">(opcional)</span></legend>
-    {% if accounts %}
-    <p class="muted" style="margin:0 0 8px;font-size:12px">
-      Se não selecionar nenhuma conta, a automação será criada pausada. Depois você edita, escolhe as contas e clica em Ativar.
-    </p>
-    <div class="checkbox-row">
-      {% for ac in accounts %}
-      <label>
-        <input type="checkbox" name="account_ids" value="{{ ac.id }}">
-        @{{ ac.username }} <span class="muted">({{ status_label(ac.status) }})</span>
-      </label>
-      {% endfor %}
     </div>
-    {% else %}
-    <p class="muted">Nenhuma conta conectada. <a href="/accounts" data-nav="/accounts">Conectar agora</a>.</p>
-    {% endif %}
-  </fieldset>
+  </section>
 
-  <button type="submit" class="btn btn-primary" id="submit-btn">
+  <section class="form-section">
+    <header class="form-section-head">
+      <i data-lucide="users"></i>
+      <div>
+        <h3>Contas</h3>
+        <p>Quem recebe as publicações (opcional no rascunho)</p>
+      </div>
+    </header>
+    <fieldset class="accounts-fieldset">
+      <legend>Contas que vão receber <span class="muted">(opcional)</span></legend>
+      {% if accounts %}
+      <p class="muted" style="margin:0 0 8px;font-size:12px">
+        Se não selecionar nenhuma conta, a automação será criada pausada. Depois você edita, escolhe as contas e clica em Ativar.
+      </p>
+      <div class="checkbox-row">
+        {% for ac in accounts %}
+        <label>
+          <input type="checkbox" name="account_ids" value="{{ ac.id }}">
+          @{{ ac.username }} <span class="muted">({{ status_label(ac.status) }})</span>
+        </label>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="muted">Nenhuma conta conectada. <a href="/accounts" data-nav="/accounts">Conectar agora</a>.</p>
+      {% endif %}
+    </fieldset>
+  </section>
+
+  <button type="submit" class="btn btn-primary btn-gradient-lg" id="submit-btn">
     {% if default_content_type == 'story' %}Agendar Story{% else %}Criar automação{% endif %}
   </button>
 </form>

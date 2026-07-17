@@ -99,21 +99,32 @@
       <li>Última: {{ a.last_run_at | localtime('%d/%m %H:%M') }}</li>
       <li>Total publicado: <strong>{{ a.total_runs }}</strong></li>
       {% if automation_video_count(a) > 1 %}
+      {% set playlist_names = automation_playlist_names(a) %}
+      {% set playlist_total = automation_video_count(a) %}
+      {% set playlist_next = (a.current_index or 0) + 1 %}
       <li>Playlist:
         <strong>
           {% if a.status == 'completed' %}
-            {{ automation_video_count(a) }}/{{ automation_video_count(a) }} · concluída
+            {{ playlist_total }}/{{ playlist_total }} · concluída
           {% else %}
-            próximo {{ (a.current_index or 0) + 1 }}/{{ automation_video_count(a) }}
+            próximo {{ playlist_next }}/{{ playlist_total }}
           {% endif %}
         </strong>
       </li>
-      <li class="muted" style="font-size:12px">
-        {% for name in automation_playlist_names(a) %}
-          <span {% if loop.index0 == (a.current_index or 0) and a.status != 'completed' %}style="color:var(--accent,#38bdf8);font-weight:600"{% endif %}>
-            {{ loop.index }}. {{ name }}{% if not loop.last %} · {% endif %}
-          </span>
-        {% endfor %}
+      <li class="auto-playlist-details">
+        <details>
+          <summary>Ver vídeos <span class="muted">({{ playlist_total }})</span></summary>
+          <ol class="auto-playlist-preview">
+            {% for name in playlist_names[:5] %}
+            <li {% if loop.index0 == (a.current_index or 0) and a.status != 'completed' %}class="is-current"{% endif %}>
+              {{ name }}
+            </li>
+            {% endfor %}
+          </ol>
+          {% if playlist_total > 5 %}
+          <p class="muted auto-playlist-more">+ {{ playlist_total - 5 }} vídeo(s) restantes na playlist</p>
+          {% endif %}
+        </details>
       </li>
       {% elif automation_video_count(a) == 0 %}
       <li><strong style="color:var(--red)">Rascunho sem vídeos</strong> — o upload em blocos não terminou.</li>

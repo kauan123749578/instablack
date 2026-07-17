@@ -103,6 +103,24 @@ Troque a origem pelo domínio público exato do service `web` (sem barra no fina
 Se usar domínio próprio, adicione-o também em `AllowedOrigins`. Sem essa política,
 o navegador bloqueia o envio direto mesmo que as credenciais S3 estejam corretas.
 
+### 3.5 Segunda conta R2 (opcional, ~20 GB no total)
+
+Para somar espaço de outra conta Cloudflare, crie um segundo bucket + token de API
+e configure as mesmas variáveis com sufixo `_2`. Aplique a **mesma política CORS**
+do item 3.4 nesse bucket.
+
+```env
+S3_BUCKET_2=instablack-media-2
+S3_ENDPOINT_URL_2=https://OUTRO_ACCOUNT_ID.r2.cloudflarestorage.com
+S3_ACCESS_KEY_ID_2=sua_access_key_2
+S3_SECRET_ACCESS_KEY_2=sua_secret_key_2
+```
+
+Com as quatro variáveis preenchidas, o app usa `DualS3Storage`: uploads novos
+alternam ~50/50 entre os buckets; objetos no bucket 2 ficam com prefixo lógico
+`b2/` (ex.: `b2/videos/...`). Download/delete/presign roteiam por esse prefixo.
+Se `_2` estiver vazio, o comportamento continua só com o bucket principal.
+
 ### 3b. Alternativa: Volume Railway
 
 Se não usar R2:
@@ -133,6 +151,12 @@ S3_ENDPOINT_URL=https://SEU_ACCOUNT_ID.r2.cloudflarestorage.com
 S3_ACCESS_KEY_ID=sua_access_key
 S3_SECRET_ACCESS_KEY=sua_secret_key
 S3_REGION=auto
+
+# Segunda conta R2 (opcional) — ver seção 3.5
+# S3_BUCKET_2=
+# S3_ENDPOINT_URL_2=
+# S3_ACCESS_KEY_ID_2=
+# S3_SECRET_ACCESS_KEY_2=
 
 # Alternativa sem R2:
 # STORAGE_BACKEND=local

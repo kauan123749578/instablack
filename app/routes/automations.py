@@ -805,7 +805,7 @@ async def create_direct_upload_urls(
             return JSONResponse({"error": f"Arquivo vazio: {name}"}, status_code=400)
 
         content_type = DIRECT_UPLOAD_CONTENT_TYPES[ext]
-        key = f"{prefix}{uuid.uuid4().hex}{ext}"
+        key = storage.allocate_key(f"{prefix}{uuid.uuid4().hex}{ext}")
         try:
             url = storage.presign_upload(key, content_type, expires_in=3600)
         except NotImplementedError:
@@ -844,6 +844,7 @@ async def register_direct_uploads(
         return JSONResponse({"error": "Quantidade de vídeos inválida."}, status_code=400)
 
     prefix = f"videos/direct/{user.id}/{a.id}/"
+    allowed_prefixes = (prefix, f"b2/{prefix}")
     new_entries: list[dict[str, str]] = []
     seen: set[str] = set()
     for item in items:
@@ -851,7 +852,11 @@ async def register_direct_uploads(
             return JSONResponse({"error": "Lista de uploads inválida."}, status_code=400)
         key = str(item.get("key") or "")
         name = str(item.get("name") or "").strip()
-        if not key.startswith(prefix) or key in seen or not is_video_filename(name):
+        if (
+            not any(key.startswith(p) for p in allowed_prefixes)
+            or key in seen
+            or not is_video_filename(name)
+        ):
             return JSONResponse({"error": "Referência de upload inválida."}, status_code=400)
         seen.add(key)
         new_entries.append({"video_key": key, "video_original_name": name})

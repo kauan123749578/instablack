@@ -14,8 +14,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bricolage+Grotesque:wght@600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=25" />
-  <link rel="stylesheet" href="/static/dashboard.css?v=25" />
+  <link rel="stylesheet" href="/static/style.css?v=26" />
+  <link rel="stylesheet" href="/static/dashboard.css?v=26" />
   {% block head %}{% endblock %}
 </head>
 <body class="app-body premium-app">
@@ -29,6 +29,30 @@
             <span class="brand-icon brand-icon--ig"><i data-lucide="instagram"></i></span>
             <span class="brand-text">insta<span class="brand-accent">black</span></span>
           </div>
+        </div>
+
+        <div class="sidebar-user-card">
+          <div class="sidebar-user-row">
+            <a href="/perfil" class="sidebar-user-avatar" data-nav="/perfil" title="Minha conta">
+              {% if user_avatar_url(user) %}
+              <img src="{{ user_avatar_url(user) }}" alt="" class="sidebar-user-avatar-img">
+              {% else %}
+              <span>{{ user.username[0]|upper }}</span>
+              {% endif %}
+            </a>
+            <div class="sidebar-user-meta">
+              <strong class="sidebar-user-name">{{ user_display_name(user) }}</strong>
+            </div>
+            <form action="/logout" method="post" class="sidebar-power-form">
+              <button type="submit" class="sidebar-power-btn" title="Sair" aria-label="Sair">
+                <i data-lucide="power"></i>
+              </button>
+            </form>
+          </div>
+          <a href="/accounts" class="sidebar-manage-btn" data-nav="/accounts">
+            <span>Gerenciar contas</span>
+            <i data-lucide="chevron-down"></i>
+          </a>
         </div>
       </div>
 
@@ -82,21 +106,6 @@
           </a>
           {% endif %}
         </nav>
-      </div>
-
-      <div class="sidebar-bottom">
-        <div class="sidebar-plan">
-          <strong>{{ user_display_name(user) }}</strong>
-          <span>Plano Pro · multi-conta</span>
-          <div class="plan-bar"><div class="plan-bar-fill" style="width:72%"></div></div>
-        </div>
-
-        <form action="/logout" method="post" class="sidebar-logout">
-          <button type="submit" class="nav-link nav-btn">
-            <i data-lucide="log-out" class="nav-icon"></i>
-            <span class="nav-text">Sair</span>
-          </button>
-        </form>
       </div>
     </aside>
 
@@ -161,19 +170,41 @@
   <div class="mobile-drawer" id="mobile-drawer">
     <div class="drawer-backdrop" id="drawer-backdrop"></div>
     <div class="drawer-panel">
-      <h3>Menu</h3>
-      <a href="/" data-nav="/">Dashboard</a>
-      <a href="/accounts" data-nav="/accounts">Contas</a>
-      <a href="/automations" data-nav="/automations">Automações</a>
-      <a href="/automations/media-library" data-nav="/automations/media-library">Biblioteca</a>
-      <a href="/automations/new/calendar">Calendário Reels</a>
-      <a href="/warmup" data-nav="/warmup">Aquecer contas</a>
-      <a href="/analytics" data-nav="/analytics">Analytics</a>
-      <a href="/logs" data-nav="/logs">Logs</a>
-      <a href="/automations/new/story">Agendar Story</a>
-      {% if user.is_admin %}<a href="/admin" data-nav="/admin">Admin</a>{% endif %}
-      <a href="/perfil" data-nav="/perfil">Configurações</a>
-      <form action="/logout" method="post"><button type="submit">Sair</button></form>
+      <div class="drawer-head">
+        <div class="drawer-user">
+          {% if user_avatar_url(user) %}
+          <img src="{{ user_avatar_url(user) }}" alt="" class="drawer-user-avatar">
+          {% else %}
+          <span class="drawer-user-avatar drawer-user-avatar--letter">{{ user.username[0]|upper }}</span>
+          {% endif %}
+          <div>
+            <strong>{{ user_display_name(user) }}</strong>
+            <span>@{{ user.username }}</span>
+          </div>
+        </div>
+        <button type="button" class="drawer-close" id="drawer-close" aria-label="Fechar menu">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+      <nav class="drawer-nav">
+        <a href="/" data-nav="/"><i data-lucide="layout-dashboard"></i><span>Dashboard</span></a>
+        <a href="/accounts" data-nav="/accounts"><i data-lucide="instagram"></i><span>Contas</span></a>
+        <a href="/automations" data-nav="/automations"><i data-lucide="refresh-cw"></i><span>Automações</span></a>
+        <a href="/automations/media-library" data-nav="/automations/media-library"><i data-lucide="image"></i><span>Biblioteca</span></a>
+        <a href="/automations/new/calendar"><i data-lucide="calendar-days"></i><span>Calendário Reels</span></a>
+        <a href="/automations/new/story"><i data-lucide="circle-dot"></i><span>Agendar Story</span></a>
+        <a href="/warmup" data-nav="/warmup"><i data-lucide="flame"></i><span>Aquecer contas</span></a>
+        <div class="drawer-divider"></div>
+        <a href="/analytics" data-nav="/analytics"><i data-lucide="chart-no-axes-combined"></i><span>Analytics</span></a>
+        <a href="/logs" data-nav="/logs"><i data-lucide="scroll-text"></i><span>Logs</span></a>
+        <a href="/perfil" data-nav="/perfil"><i data-lucide="settings"></i><span>Configurações</span></a>
+        {% if user.is_admin %}
+        <a href="/admin" data-nav="/admin"><i data-lucide="shield"></i><span>Admin</span></a>
+        {% endif %}
+      </nav>
+      <form action="/logout" method="post" class="drawer-logout">
+        <button type="submit"><i data-lucide="log-out"></i><span>Sair</span></button>
+      </form>
     </div>
   </div>
 
@@ -192,7 +223,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/lucide@0.475.0/dist/umd/lucide.min.js" crossorigin="anonymous"></script>
-  <script src="/static/app.js?v=38"></script>
+  <script src="/static/app.js?v=39"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

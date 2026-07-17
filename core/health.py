@@ -58,12 +58,14 @@ def check_storage() -> tuple[bool, str]:
         return False, f"variáveis faltando: {', '.join(missing)}"
 
     try:
-        from core.storage import get_storage
+        from core.storage import DualS3Storage, get_storage
 
         storage = get_storage()
         ping = getattr(storage, "ping", None)
         if callable(ping):
             ping()
+        if isinstance(storage, DualS3Storage):
+            return True, f"s3:{settings.s3_bucket}+{settings.s3_bucket_2}"
         return True, f"s3:{settings.s3_bucket}"
     except Exception as exc:
         return False, str(exc)[:200]

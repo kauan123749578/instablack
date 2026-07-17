@@ -13,6 +13,7 @@
 
   drawerOpen?.addEventListener("click", () => drawer?.classList.add("open"));
   drawerBackdrop?.addEventListener("click", closeDrawer);
+  document.getElementById("drawer-close")?.addEventListener("click", closeDrawer);
 
   document.getElementById("mobile-menu-btn")?.addEventListener("click", () => {
     sidebar?.classList.toggle("mobile-open");

@@ -8,42 +8,76 @@
 
 {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
 
-<form method="post" action="/automations/new/calendar" enctype="multipart/form-data" class="form-card form-grid">
+<form method="post" action="/automations/new/calendar" enctype="multipart/form-data" class="form-card form-card--premium form-grid">
   <input type="hidden" name="content_type" value="reel">
 
-  <label>Nome
-    <input type="text" name="name" required placeholder="Ex.: Reels dias 1, 15 e 30">
-  </label>
-
-  <label id="media-label-cal">Vídeo Reels (.mp4)
-    <input type="file" name="video" accept="video/mp4,video/quicktime" required>
-  </label>
-
-  <div id="thumb-wrap-cal">
-    <label>Capa do Reel (.jpg — 9:16)
-      <input type="file" name="thumb" accept="image/jpeg,image/png,image/webp">
+  <section class="form-section">
+    <header class="form-section-head">
+      <i data-lucide="file-text"></i>
+      <div>
+        <h3>Conteúdo</h3>
+        <p>Nome e legenda do Reel</p>
+      </div>
+    </header>
+    <label>Nome
+      <input type="text" name="name" required placeholder="Ex.: Reels dias 1, 15 e 30">
     </label>
-  </div>
 
-  <div id="caption-wrap-cal">
-    <label>Legenda
-      <textarea name="caption" rows="3" placeholder="Legenda do Reel"></textarea>
+    <div id="caption-wrap-cal">
+      <label>Legenda
+        <textarea name="caption" rows="3" placeholder="Legenda do Reel"></textarea>
+      </label>
+    </div>
+  </section>
+
+  <section class="form-section">
+    <header class="form-section-head">
+      <i data-lucide="clapperboard"></i>
+      <div>
+        <h3>Mídia</h3>
+        <p>Vídeo e capa do agendamento</p>
+      </div>
+    </header>
+    <label id="media-label-cal" class="dropzone-field">Vídeo Reels (.mp4)
+      <div class="dropzone">
+        <i data-lucide="upload-cloud"></i>
+        <span>Selecionar vídeo .mp4</span>
+        <input type="file" name="video" accept="video/mp4,video/quicktime" required>
+      </div>
     </label>
-  </div>
 
-  <fieldset class="calendar-fieldset">
-    <legend>Dias do mês</legend>
-    <div class="calendar-toolbar">
-      <button type="button" class="btn btn-sm" id="cal-select-all">Selecionar todos</button>
-      <button type="button" class="btn btn-sm" id="cal-clear">Limpar</button>
-      <span class="muted" id="cal-count">0 dias selecionados</span>
+    <div id="thumb-wrap-cal">
+      <label class="dropzone-field">Capa do Reel (.jpg — 9:16)
+        <div class="dropzone dropzone--sm">
+          <i data-lucide="image-plus"></i>
+          <span>Capa opcional</span>
+          <input type="file" name="thumb" accept="image/jpeg,image/png,image/webp">
+        </div>
+      </label>
     </div>
-    <div class="calendar-weekdays">
-      <span>Dom</span><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span>
-    </div>
-    <div class="calendar-grid" id="calendar-grid"></div>
-    <input type="hidden" name="calendar_days" id="calendar-days-input" value="[]">
-  </fieldset>
+  </section>
+
+  <section class="form-section">
+    <header class="form-section-head">
+      <i data-lucide="calendar-clock"></i>
+      <div>
+        <h3>Agendamento</h3>
+        <p>Dias do mês e horários em BRT</p>
+      </div>
+    </header>
+    <fieldset class="calendar-fieldset">
+      <legend>Dias do mês</legend>
+      <div class="calendar-toolbar">
+        <button type="button" class="btn btn-sm" id="cal-select-all">Selecionar todos</button>
+        <button type="button" class="btn btn-sm" id="cal-clear">Limpar</button>
+        <span class="muted" id="cal-count">0 dias selecionados</span>
+      </div>
+      <div class="calendar-weekdays">
+        <span>Dom</span><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span>
+      </div>
+      <div class="calendar-grid" id="calendar-grid"></div>
+      <input type="hidden" name="calendar_days" id="calendar-days-input" value="[]">
+    </fieldset>
 
     <label>Horários de publicação (BRT)
       <div id="calendar-times-list" class="calendar-times-list">
@@ -56,27 +90,37 @@
         Pode marcar vários horários no mesmo dia (ex.: 10:00, 14:00 e 20:00).
       </span>
     </label>
+  </section>
 
-  <fieldset>
-    <legend>Contas <span class="muted">(opcional)</span></legend>
-    {% if accounts %}
-    <p class="muted" style="margin:0 0 8px;font-size:12px">
-      Sem contas selecionadas, o agendamento fica pausado para ativar depois.
-    </p>
-    <div class="checkbox-row">
-      {% for ac in accounts %}
-      <label>
-        <input type="checkbox" name="account_ids" value="{{ ac.id }}">
-        @{{ ac.username }} <span class="muted">({{ status_label(ac.status) }})</span>
-      </label>
-      {% endfor %}
-    </div>
-    {% else %}
-    <p class="muted">Nenhuma conta. <a href="/accounts" data-nav="/accounts">Conectar</a>.</p>
-    {% endif %}
-  </fieldset>
+  <section class="form-section">
+    <header class="form-section-head">
+      <i data-lucide="users"></i>
+      <div>
+        <h3>Contas</h3>
+        <p>Opcional — pode ativar depois</p>
+      </div>
+    </header>
+    <fieldset class="accounts-fieldset">
+      <legend>Contas <span class="muted">(opcional)</span></legend>
+      {% if accounts %}
+      <p class="muted" style="margin:0 0 8px;font-size:12px">
+        Sem contas selecionadas, o agendamento fica pausado para ativar depois.
+      </p>
+      <div class="checkbox-row">
+        {% for ac in accounts %}
+        <label>
+          <input type="checkbox" name="account_ids" value="{{ ac.id }}">
+          @{{ ac.username }} <span class="muted">({{ status_label(ac.status) }})</span>
+        </label>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="muted">Nenhuma conta. <a href="/accounts" data-nav="/accounts">Conectar</a>.</p>
+      {% endif %}
+    </fieldset>
+  </section>
 
-  <button type="submit" class="btn btn-primary">
+  <button type="submit" class="btn btn-primary btn-gradient-lg">
     <i data-lucide="calendar-check"></i> Criar agendamento Reels
   </button>
 </form>
