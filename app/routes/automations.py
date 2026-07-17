@@ -14,7 +14,14 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.deps import get_current_user
 from app.templating import templates
-from app.utils.calendar_schedule import days_to_json, next_calendar_run, parse_calendar_days
+from app.utils.calendar_schedule import (
+    days_to_json,
+    format_calendar_times_label,
+    next_calendar_run,
+    parse_calendar_days,
+    parse_calendar_times,
+    times_to_storage,
+)
 from app.utils.automation_schedule import (
     parse_jitter_enabled,
     parse_jitter_minutes,
@@ -298,7 +305,8 @@ async def create_calendar_automation(
     caption: str = Form(""),
     story_link: str = Form(""),
     calendar_days: str = Form(""),
-    calendar_time: str = Form(...),
+    calendar_time: str = Form(""),
+    calendar_times: list[str] = Form(default=[]),
     account_ids: list[int] = Form(default=[]),
     video: UploadFile = File(...),
     thumb: UploadFile | None = File(None),
@@ -306,6 +314,8 @@ async def create_calendar_automation(
     user: User = Depends(get_current_user),
 ):
     days = parse_calendar_days(calendar_days)
+    times = parse_calendar_times(",".join(calendar_times) if calendar_times else calendar_time)
+    time_stored = times_to_storage(times)
     error: str | None = None
     if content_type not in CONTENT_TYPES:
         error = "Tipo de conteúdo inválido."
@@ -313,8 +323,8 @@ async def create_calendar_automation(
         error = "Agendamento por calendário é apenas para Reels."
     elif not days:
         error = "Selecione pelo menos um dia do mês."
-    elif not calendar_time:
-        error = "Informe o horário de publicação."
+    elif not times:
+        error = "Informe pelo menos um horário de publicação."
     elif not video or not video.filename:
         error = "Envie o arquivo de mídia."
 
@@ -360,7 +370,7 @@ async def create_calendar_automation(
         thumb_key = storage.save(thumb.file, suggested_ext=thumb_ext)
         thumb_original_name = thumb.filename
 
-    nxt = next_calendar_run(days, calendar_time) or dt.datetime.utcnow()
+    nxt = next_calendar_run(days, time_stored) or dt.datetime.utcnow()
 
     automation = Automation(
         user_id=user.id,
@@ -374,7 +384,7 @@ async def create_calendar_automation(
         story_link=_story_link_value(content_type, story_link),
         schedule_type="calendar",
         calendar_days=days_to_json(days),
-        calendar_time=calendar_time,
+        calendar_time=time_stored,
         interval_minutes=1440,
         status="active" if has_accounts else "paused",
         next_run_at=nxt if has_accounts else None,
@@ -399,6 +409,7 @@ async def create_automation(
     interval_minutes: int = Form(60),
     calendar_days: str = Form(""),
     calendar_time: str = Form("10:00"),
+    calendar_times: list[str] = Form(default=[]),
     account_ids: list[int] = Form(default=[]),
     video_count: int = Form(0),
     jitter_enabled: str = Form(""),
@@ -415,6 +426,8 @@ async def create_automation(
         posts_per_batch=posts_per_batch,
         rest_minutes=rest_minutes,
     )
+    cal_times = parse_calendar_times(",".join(calendar_times) if calendar_times else calendar_time)
+    cal_time_stored = times_to_storage(cal_times)
     error: str | None = None
     if content_type not in CONTENT_TYPES:
         error = "Tipo de conteúdo inválido."
@@ -429,8 +442,8 @@ async def create_automation(
             days = parse_calendar_days(calendar_days)
             if not days:
                 error = "Selecione pelo menos um dia do mês."
-            elif not calendar_time.strip():
-                error = "Informe o horário de publicação."
+            elif not cal_times:
+                error = "Informe pelo menos um horário de publicação."
 
     # Só via request.form() — evita perder arquivos do input multiple
     form = await request.form()
@@ -573,7 +586,7 @@ async def create_automation(
 
     if schedule_mode == "calendar":
         days = parse_calendar_days(calendar_days)
-        nxt = next_calendar_run(days, calendar_time.strip()) or now
+        nxt = next_calendar_run(days, cal_time_stored) or now
         automation = Automation(
             user_id=user.id,
             name=name.strip(),
@@ -588,7 +601,7 @@ async def create_automation(
             story_link=_story_link_value(content_type, story_link),
             schedule_type="calendar",
             calendar_days=days_to_json(days),
-            calendar_time=calendar_time.strip(),
+            calendar_time=cal_time_stored,
             interval_minutes=1440,
             status="active" if has_accounts else "paused",
             next_run_at=nxt if has_accounts else None,

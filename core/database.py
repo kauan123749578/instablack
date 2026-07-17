@@ -249,6 +249,12 @@ def _postgres_migrate() -> None:
                 conn.execute(text("ALTER TABLE automations ADD COLUMN rest_minutes INTEGER DEFAULT 0"))
             if "posts_in_batch" not in cols:
                 conn.execute(text("ALTER TABLE automations ADD COLUMN posts_in_batch INTEGER DEFAULT 0"))
+            try:
+                conn.execute(text(
+                    "ALTER TABLE automations ALTER COLUMN calendar_time TYPE TEXT"
+                ))
+            except Exception:
+                pass
         if "users" in tables:
             ucols = {c["name"] for c in insp.get_columns("users")}
             if "display_name" not in ucols:

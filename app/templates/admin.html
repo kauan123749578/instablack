@@ -46,20 +46,6 @@
 <div class="alert alert-error">Informe um número válido para o limite de contas.</div>
 {% endif %}
 
-<div class="og-glass-card" style="margin-bottom:20px;padding:18px 20px">
-  <h3 style="margin:0 0 8px;font-size:15px"><i data-lucide="ticket" class="inline-icon"></i> Código de convite</h3>
-  {% if invite_configured %}
-  <p class="muted" style="margin:0;font-size:13px">
-    O cadastro usa o código fixo da variável <code>INVITE_CODE</code> no Railway.
-    Não há gerador de convites neste painel — troque o valor da variável para mudar o código.
-  </p>
-  {% else %}
-  <p class="muted" style="margin:0;font-size:13px;color:var(--red,#ef4444)">
-    <code>INVITE_CODE</code> não está configurado. Defina essa variável no Railway para permitir novos cadastros.
-  </p>
-  {% endif %}
-</div>
-
 <div class="og-glass-card og-table-panel">
   <div class="og-table-wrap">
     <table class="og-table">

@@ -129,8 +129,16 @@
       <div class="calendar-grid" id="calendar-grid"></div>
       <input type="hidden" name="calendar_days" id="calendar-days-input" value="[]">
     </fieldset>
-    <label>Horário de publicação (BRT)
-      <input type="time" name="calendar_time" value="10:00">
+    <label>Horários de publicação (BRT)
+      <div id="calendar-times-list" class="calendar-times-list">
+        <div class="calendar-time-row">
+          <input type="time" name="calendar_times" value="10:00">
+        </div>
+      </div>
+      <button type="button" class="btn btn-sm" id="cal-add-time" style="margin-top:8px">+ Adicionar horário</button>
+      <span class="muted" style="display:block;margin-top:4px;font-size:12px">
+        Vários horários no mesmo dia (ex.: 10:00, 15:00, 21:00).
+      </span>
     </label>
   </div>
 

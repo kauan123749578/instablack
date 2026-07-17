@@ -144,7 +144,7 @@ class Automation(Base):
     interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
     schedule_type: Mapped[str] = mapped_column(String(16), default="interval")  # interval | calendar
     calendar_days: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON [1,5,15]
-    calendar_time: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)  # HH:MM BRT
+    calendar_time: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # HH:MM ou JSON ["10:00","14:00"]
     status: Mapped[str] = mapped_column(String(16), default="active", index=True)  # active | paused | completed
 
     # Variação de horário (± minutos) para não ficar intervalo exato

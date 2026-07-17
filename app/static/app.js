@@ -952,6 +952,54 @@
     if (storyLinkWrap) storyLinkWrap.remove();
   }
 
+  function initCalendarTimes() {
+    const list = document.getElementById("calendar-times-list");
+    const addBtn = document.getElementById("cal-add-time");
+    if (!list || !addBtn) return;
+
+    function syncRemoveButtons() {
+      const rows = list.querySelectorAll(".calendar-time-row");
+      rows.forEach((row) => {
+        let btn = row.querySelector("[data-remove-time]");
+        if (rows.length <= 1) {
+          if (btn) btn.remove();
+          return;
+        }
+        if (!btn) {
+          btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "btn btn-sm";
+          btn.dataset.removeTime = "1";
+          btn.textContent = "Remover";
+          btn.addEventListener("click", () => {
+            row.remove();
+            syncRemoveButtons();
+          });
+          row.appendChild(btn);
+        }
+      });
+    }
+
+    addBtn.addEventListener("click", () => {
+      const row = document.createElement("div");
+      row.className = "calendar-time-row";
+      row.style.display = "flex";
+      row.style.gap = "8px";
+      row.style.alignItems = "center";
+      row.style.marginTop = "6px";
+      row.innerHTML = '<input type="time" name="calendar_times" value="14:00">';
+      list.appendChild(row);
+      syncRemoveButtons();
+    });
+
+    list.querySelectorAll(".calendar-time-row").forEach((row) => {
+      row.style.display = "flex";
+      row.style.gap = "8px";
+      row.style.alignItems = "center";
+    });
+    syncRemoveButtons();
+  }
+
   function initLucide() {
     if (typeof lucide !== "undefined") {
       lucide.createIcons();
@@ -1374,6 +1422,7 @@
     initAutomationPlaylistUploads();
     initOgDashboard();
     initCalendarPicker();
+    initCalendarTimes();
     initAccountsConnect();
     initAuthMethodForm();
     initProxyInput();

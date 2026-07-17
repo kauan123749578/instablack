@@ -6,11 +6,9 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.deps import get_admin_user, get_owner_user
 from app.templating import templates
 from app.utils.account_limits import account_limit_label
-from app.utils.invite_codes import normalize_invite_code
 from core.database import get_db
 from models.models import Automation, InstagramAccount, User
 
@@ -67,8 +65,6 @@ def admin_dashboard(
             "limit_label": account_limit_label(u.account_limit),
         })
 
-    invite_configured = bool(normalize_invite_code(settings.invite_code or ""))
-
     return templates.TemplateResponse(
         "admin.html",
         {
@@ -76,7 +72,6 @@ def admin_dashboard(
             "user": admin,
             "is_owner": is_owner,
             "rows": rows,
-            "invite_configured": invite_configured,
             "ok": request.query_params.get("ok"),
             "error": request.query_params.get("error"),
         },

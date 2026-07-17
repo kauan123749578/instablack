@@ -4,18 +4,6 @@
 {% block content %}
 <div class="og-dash">
 
-  {% if offline_accounts %}
-  <div class="alert alert-error offline-alert">
-    <strong><i data-lucide="alert-triangle" class="inline-icon"></i> {{ offline_accounts|length }} conta(s) offline</strong>
-    —
-    {% for acc in offline_accounts[:8] %}
-      @{{ acc.username }} ({{ status_label(acc.status) }}){% if not loop.last %}, {% endif %}
-    {% endfor %}
-    {% if offline_accounts|length > 8 %}…{% endif %}
-    <a href="/accounts" class="og-link" data-nav="/accounts" style="margin-left:8px">Ver contas</a>
-  </div>
-  {% endif %}
-
   <div class="og-kpi-row">
     <article class="og-glass-card og-kpi-card">
       <div class="og-kpi-top">

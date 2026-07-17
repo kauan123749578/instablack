@@ -84,7 +84,7 @@
       <span class="badge {{ a.status }}">{{ status_label(a.status) }}</span>
     </div>
     <ul class="auto-meta">
-      <li>A cada <strong>{% if a.schedule_type == 'calendar' %}dias {{ a.calendar_days }} às {{ a.calendar_time }}{% else %}{{ a.interval_minutes }} min{% endif %}</strong>
+      <li>A cada <strong>{% if a.schedule_type == 'calendar' %}dias {{ a.calendar_days }} às {{ format_calendar_times(a.calendar_time) }}{% else %}{{ a.interval_minutes }} min{% endif %}</strong>
         {% if a.jitter_enabled %} · variação ±{{ a.jitter_minutes or 10 }} min{% endif %}
         {% if a.posts_per_batch and a.rest_minutes %} · {{ a.posts_per_batch }} posts / descanso {{ a.rest_minutes }} min{% endif %}
       </li>

@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-header">
   <h2><i data-lucide="calendar-days" class="inline-icon"></i> Calendário Reels</h2>
-  <p class="muted page-header-sub">Escolha os dias do mês e o horário — só para Reels. Stories usam Agendar Story.</p>
+  <p class="muted page-header-sub">Escolha os dias do mês e um ou mais horários — só para Reels. Stories usam Agendar Story.</p>
 </div>
 
 {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
@@ -45,9 +45,17 @@
     <input type="hidden" name="calendar_days" id="calendar-days-input" value="[]">
   </fieldset>
 
-  <label>Horário de publicação (BRT)
-    <input type="time" name="calendar_time" required value="10:00">
-  </label>
+    <label>Horários de publicação (BRT)
+      <div id="calendar-times-list" class="calendar-times-list">
+        <div class="calendar-time-row">
+          <input type="time" name="calendar_times" value="10:00" required>
+        </div>
+      </div>
+      <button type="button" class="btn btn-sm" id="cal-add-time" style="margin-top:8px">+ Adicionar horário</button>
+      <span class="muted" style="display:block;margin-top:4px;font-size:12px">
+        Pode marcar vários horários no mesmo dia (ex.: 10:00, 14:00 e 20:00).
+      </span>
+    </label>
 
   <fieldset>
     <legend>Contas <span class="muted">(opcional)</span></legend>
