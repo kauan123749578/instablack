@@ -177,9 +177,18 @@ def _growth_pct(current: int, previous: int) -> float | None:
     return round((current - previous) / previous * 100, 1)
 
 
-def _top_platform_players(db: Session, start: dt.datetime, end: dt.datetime) -> list[dict]:
-    """Top 5 usuários da plataforma por publicações no período."""
-    rows = db.execute(
+def _top_platform_players(
+    db: Session,
+    start: dt.datetime,
+    end: dt.datetime,
+    viewer: User | None = None,
+) -> list[dict]:
+    """Top 5 usuários da plataforma por publicações no período.
+
+    Usuários marcados como privados do owner só aparecem no rank para o
+    próprio owner e para os outros usuários privados dele.
+    """
+    query = (
         select(
             User.id,
             User.username,
@@ -194,6 +203,15 @@ def _top_platform_players(db: Session, start: dt.datetime, end: dt.datetime) -> 
             PublishLog.created_at >= _utc_naive(start),
             PublishLog.created_at < _utc_naive(end),
         )
+    )
+    viewer_sees_private = bool(
+        viewer is not None
+        and (getattr(viewer, "is_owner", False) or getattr(viewer, "owner_private", False))
+    )
+    if not viewer_sees_private:
+        query = query.where(User.owner_private.isnot(True))
+    rows = db.execute(
+        query
         .group_by(User.id, User.username, User.display_name, User.avatar_key)
         .order_by(desc(func.count(PublishLog.id)))
         .limit(5)
@@ -210,12 +228,12 @@ def _top_platform_players(db: Session, start: dt.datetime, end: dt.datetime) -> 
     ]
 
 
-def _top_platform_players_week(db: Session, day: dt.date) -> list[dict]:
+def _top_platform_players_week(db: Session, day: dt.date, viewer: User | None = None) -> list[dict]:
     """Top 5 dos últimos 7 dias (BRT) — não zera à meia-noite."""
     start_day = day - dt.timedelta(days=6)
     start, _ = _brt_day_bounds(start_day)
     _, end = _brt_day_bounds(day)
-    items = _top_platform_players(db, start, end)
+    items = _top_platform_players(db, start, end, viewer=viewer)
     return [{**item, "posts_today": item["post_count"]} for item in items]
 
 
@@ -324,10 +342,10 @@ def home(
     ]
     accounts_data.sort(key=lambda x: x["publish_count"], reverse=True)
 
-    top_players = _top_platform_players_week(db, today)
+    top_players = _top_platform_players_week(db, today, viewer=user)
     month_start = today.replace(day=1)
     top_players_month = _top_platform_players(
-        db, _brt_day_bounds(month_start)[0], _brt_day_bounds(today)[1]
+        db, _brt_day_bounds(month_start)[0], _brt_day_bounds(today)[1], viewer=user
     )
 
     warming_jobs = db.scalars(

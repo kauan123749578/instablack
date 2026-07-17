@@ -78,6 +78,45 @@ def admin_dashboard(
     )
 
 
+@router.post("/broadcast")
+def broadcast_notification(
+    title: str = Form(""),
+    message: str = Form(...),
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_owner_user),
+):
+    """Envia uma notificação (sino + push) para todos os usuários ativos."""
+    from core.notifications import create_notification
+
+    body = message.strip()
+    if not body:
+        return RedirectResponse(
+            "/admin?error=broadcast_empty",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    heading = title.strip() or "Aviso da plataforma"
+
+    user_ids = db.scalars(
+        select(User.id).where(User.is_active.is_(True))
+    ).all()
+    sent = 0
+    for uid in user_ids:
+        if create_notification(
+            uid,
+            heading[:255],
+            body[:1000],
+            kind="announce",
+            force=True,
+            send_push=True,
+        ):
+            sent += 1
+
+    return RedirectResponse(
+        f"/admin?ok=broadcast&n={sent}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
 @router.post("/users/{user_id}/limit")
 def set_account_limit(
     user_id: int,

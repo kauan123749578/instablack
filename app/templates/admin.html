@@ -24,6 +24,12 @@
 {% if ok == 'private' %}
 <div class="alert alert-ok">Visibilidade do usuário atualizada.</div>
 {% endif %}
+{% if ok == 'broadcast' %}
+<div class="alert alert-ok">Notificação enviada para {{ request.query_params.get('n') or 'todos os' }} usuário(s).</div>
+{% endif %}
+{% if error == 'broadcast_empty' %}
+<div class="alert alert-error">Escreva a mensagem antes de enviar.</div>
+{% endif %}
 {% if error == 'self' %}
 <div class="alert alert-error">Você não pode excluir sua própria conta.</div>
 {% endif %}
@@ -44,6 +50,29 @@
 {% endif %}
 {% if error == 'limit_invalid' %}
 <div class="alert alert-error">Informe um número válido para o limite de contas.</div>
+{% endif %}
+
+{% if is_owner %}
+<div class="og-glass-card" style="margin-bottom:16px;padding:18px">
+  <h3 style="margin:0 0 4px;font-size:15px">
+    <i data-lucide="megaphone" class="inline-icon"></i> Notificação para todos
+  </h3>
+  <p class="muted" style="margin:0 0 12px;font-size:12px">
+    Envia para o sino e o push de todos os usuários ativos. Ex.: "Novas atualizações hoje".
+  </p>
+  <form method="post" action="/admin/broadcast" class="form-grid"
+        onsubmit="return confirm('Enviar esta notificação para TODOS os usuários?');">
+    <label>Título (opcional)
+      <input type="text" name="title" maxlength="120" placeholder="Aviso da plataforma">
+    </label>
+    <label>Mensagem
+      <textarea name="message" rows="3" required maxlength="1000" placeholder="Ex.: Novas atualizações hoje — confira o painel!"></textarea>
+    </label>
+    <button type="submit" class="btn btn-primary" style="align-self:flex-start">
+      <i data-lucide="send"></i> Enviar para todos
+    </button>
+  </form>
+</div>
 {% endif %}
 
 <div class="og-glass-card og-table-panel">
