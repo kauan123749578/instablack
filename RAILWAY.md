@@ -75,6 +75,34 @@ https://instablack-production.up.railway.app/readyz
 
 Deve retornar `"storage": "s3:instablack-media"` e `"status": "ok"`.
 
+### 3.4 CORS do bucket (obrigatório para upload direto)
+
+No bucket R2, abra **Settings → CORS Policy** e salve:
+
+```json
+[
+  {
+    "AllowedOrigins": [
+      "https://SEU-DOMINIO.up.railway.app"
+    ],
+    "AllowedMethods": [
+      "PUT"
+    ],
+    "AllowedHeaders": [
+      "*"
+    ],
+    "ExposeHeaders": [
+      "ETag"
+    ],
+    "MaxAgeSeconds": 3600
+  }
+]
+```
+
+Troque a origem pelo domínio público exato do service `web` (sem barra no final).
+Se usar domínio próprio, adicione-o também em `AllowedOrigins`. Sem essa política,
+o navegador bloqueia o envio direto mesmo que as credenciais S3 estejam corretas.
+
 ### 3b. Alternativa: Volume Railway
 
 Se não usar R2:
@@ -137,6 +165,7 @@ O código converte `postgres://` para `postgresql+psycopg2://` automaticamente.
 - [ ] 3 services (web, worker, beat)
 - [ ] PostgreSQL + Redis
 - [ ] **R2 configurado** (`STORAGE_BACKEND=s3` + 4 vars S3) **ou** Volume em `/data`
+- [ ] CORS do R2 permite `PUT` vindo do domínio público do `web`
 - [ ] `/readyz` → `storage: s3:seu-bucket` ok
 - [ ] `SECRET_KEY` forte (32+ chars)
 - [ ] **VAPID no web e no worker** (push no celular com PC desligado)

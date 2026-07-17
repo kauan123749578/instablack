@@ -14,6 +14,7 @@ class StorageBackend(Protocol):
     def save(self, src_stream: BinaryIO, suggested_ext: str = ".mp4") -> str: ...
     def download_to(self, key: str, dest_path: Path) -> None: ...
     def delete(self, key: str) -> None: ...
+    def presign_upload(self, key: str, content_type: str, expires_in: int = 3600) -> str: ...
 
 
 # ------------------------------------------------------------------
@@ -54,6 +55,9 @@ class LocalStorage:
                 path.unlink()
             except OSError:
                 pass
+
+    def presign_upload(self, key: str, content_type: str, expires_in: int = 3600) -> str:
+        raise NotImplementedError("Upload direto requer STORAGE_BACKEND=s3")
 
 
 # ------------------------------------------------------------------
@@ -136,6 +140,18 @@ class S3Storage:
             self.client.delete_object(Bucket=self.bucket, Key=key)
         except Exception:
             pass
+
+    def presign_upload(self, key: str, content_type: str, expires_in: int = 3600) -> str:
+        """Gera PUT temporário para o navegador enviar direto ao R2/S3."""
+        return self.client.generate_presigned_url(
+            "put_object",
+            Params={
+                "Bucket": self.bucket,
+                "Key": key,
+                "ContentType": content_type,
+            },
+            ExpiresIn=expires_in,
+        )
 
     def ping(self) -> None:
         """Verifica credenciais e acesso ao bucket."""

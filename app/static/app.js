@@ -1000,6 +1000,88 @@
     });
   }
 
+  const directUploadConcurrency = 6;
+
+  async function uploadDirectToR2(automationId, files, onProgress, serverFallback) {
+    const presignResponse = await fetch(`/automations/${automationId}/direct-upload-urls`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "fetch",
+      },
+      body: JSON.stringify({
+        files: files.map((file) => ({
+          name: file.name,
+          size: file.size,
+          type: file.type,
+        })),
+      }),
+    });
+    const presign = await presignResponse.json().catch(() => ({}));
+    if (presignResponse.status === 409 && presign.fallback && serverFallback) {
+      return serverFallback();
+    }
+    if (!presignResponse.ok || presign.error || !Array.isArray(presign.uploads)) {
+      throw new Error(presign.error || "Não foi possível preparar o upload direto ao R2.");
+    }
+
+    let nextIndex = 0;
+    let done = 0;
+    async function putWithRetry(upload, file) {
+      let lastError;
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        try {
+          const response = await fetch(upload.url, {
+            method: "PUT",
+            headers: { "Content-Type": upload.content_type },
+            body: file,
+          });
+          if (response.ok) return;
+          lastError = new Error(`R2 respondeu HTTP ${response.status}`);
+        } catch (err) {
+          lastError = err;
+        }
+        if (attempt < 3) {
+          await new Promise((resolve) => setTimeout(resolve, attempt * 700));
+        }
+      }
+      throw lastError || new Error(`Falha ao enviar ${file.name} ao R2.`);
+    }
+
+    const workers = Array.from(
+      { length: Math.min(directUploadConcurrency, files.length) },
+      async () => {
+        while (nextIndex < files.length) {
+          const index = nextIndex;
+          nextIndex += 1;
+          await putWithRetry(presign.uploads[index], files[index]);
+          done += 1;
+          if (onProgress) onProgress(done, files.length);
+        }
+      }
+    );
+    await Promise.all(workers);
+
+    const registerResponse = await fetch(`/automations/${automationId}/register-direct-uploads`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "fetch",
+      },
+      body: JSON.stringify({
+        uploads: presign.uploads.map((upload) => ({
+          key: upload.key,
+          name: upload.name,
+        })),
+      }),
+    });
+    const registered = await registerResponse.json().catch(() => ({}));
+    if (!registerResponse.ok || registered.error) {
+      throw new Error(registered.error || "Vídeos chegaram ao R2, mas não foi possível registrar a playlist.");
+    }
+    return registered.total || files.length;
+  }
+
   function initAutomationForm() {
     const form = document.getElementById("automation-form");
     if (!form) return;
@@ -1013,7 +1095,8 @@
     const videoExt = /\.(mp4|mov|webm|m4v|mkv)$/i;
     const imageExt = /\.(jpe?g|png|webp)$/i;
     const maxReelFiles = 300;
-    const reelBatchSize = 1;
+    // Fallback local: no R2, o navegador envia direto sem passar pela Railway.
+    const reelUploadConcurrency = 4;
 
     function filesTotalMb(files) {
       return Math.round(files.reduce((s, f) => s + f.size, 0) / 1024 / 1024 * 10) / 10;
@@ -1038,6 +1121,29 @@
       return payload;
     }
 
+    async function uploadFilesInParallel(automationId, files, onProgress) {
+      let nextIndex = 0;
+      let done = 0;
+      let total = 0;
+      const workers = Array.from(
+        { length: Math.min(reelUploadConcurrency, files.length) },
+        async () => {
+          while (nextIndex < files.length) {
+            const i = nextIndex;
+            nextIndex += 1;
+            const data = new FormData();
+            data.append("videos", files[i]);
+            const result = await postForm(`/automations/${automationId}/upload-batch`, data);
+            done += 1;
+            total = result.total || total + 1;
+            if (onProgress) onProgress(done, files.length, total);
+          }
+        }
+      );
+      await Promise.all(workers);
+      return total;
+    }
+
     function draftFormData() {
       const data = new FormData();
       ["name", "content_type", "caption", "story_link", "interval_minutes"].forEach((name) => {
@@ -1058,19 +1164,15 @@
       setSubmitState(true, "Criando rascunho…");
       const draft = await postForm("/automations/new/reel-draft", draftFormData());
       const automationId = draft.automation_id;
-      let sent = 0;
-      for (let i = 0; i < files.length; i += reelBatchSize) {
-        const batch = files.slice(i, i + reelBatchSize);
-        const data = new FormData();
-        batch.forEach((file) => data.append("videos", file));
-        setSubmitState(true, `Enviando vídeo ${i + 1} de ${files.length}…`);
-        const result = await postForm(`/automations/${automationId}/upload-batch`, data);
-        sent = result.total || sent + batch.length;
+      await uploadDirectToR2(automationId, files, (done, totalFiles) => {
+        setSubmitState(true, `Enviando direto ao R2: ${done}/${totalFiles}…`);
         if (videoName) {
-          videoName.textContent = `Upload em blocos: ${sent}/${files.length} vídeo(s) salvos`;
+          videoName.textContent = `Upload direto ao R2: ${done}/${totalFiles}`;
           videoName.style.color = "var(--green, #22c55e)";
         }
-      }
+      }, () => uploadFilesInParallel(automationId, files, (done, totalFiles) => {
+        setSubmitState(true, `Enviando ${done}/${totalFiles} pelo servidor…`);
+      }));
       setSubmitState(true, "Finalizando rascunho…");
       const finished = await postForm(`/automations/${automationId}/upload-finish`, new FormData());
       window.location.href = finished.redirect || "/automations?ok=draft";
@@ -1100,7 +1202,7 @@
           videoName.style.color = "var(--red, #ef4444)";
         } else {
           const mb = filesTotalMb(files);
-          videoName.textContent = files.length + " vídeo(s) — " + mb + " MB total · envio automático 1 por vez";
+          videoName.textContent = files.length + " vídeo(s) — " + mb + " MB total · upload direto ao R2";
           videoName.style.color = "var(--green, #22c55e)";
         }
         if (videoList) {
@@ -1141,7 +1243,7 @@
           alert("Estes arquivos não são vídeo: " + bad.map((f) => f.name).join(", "));
           return;
         }
-        if (files.length > 1) {
+        if (files.length > 0) {
           e.preventDefault();
           try {
             await submitReelsInBatches(files);
@@ -1213,14 +1315,38 @@
           button.textContent = "Enviando…";
         }
         try {
-          let total = 0;
-          for (let i = 0; i < files.length; i += 1) {
-            const data = new FormData();
-            data.append("videos", files[i]);
-            if (statusEl) statusEl.textContent = `Enviando vídeo ${i + 1} de ${files.length}…`;
-            const result = await postForm(`/automations/${automationId}/upload-batch`, data);
-            total = result.total || total + 1;
-          }
+          const serverFallback = async () => {
+            let nextIndex = 0;
+            let done = 0;
+            let fallbackTotal = 0;
+            const workers = Array.from(
+              { length: Math.min(4, files.length) },
+              async () => {
+                while (nextIndex < files.length) {
+                  const i = nextIndex;
+                  nextIndex += 1;
+                  const data = new FormData();
+                  data.append("videos", files[i]);
+                  const result = await postForm(`/automations/${automationId}/upload-batch`, data);
+                  done += 1;
+                  fallbackTotal = result.total || fallbackTotal + 1;
+                  if (statusEl) statusEl.textContent = `Enviando ${done}/${files.length} pelo servidor…`;
+                  if (button) button.textContent = `Enviando ${done}/${files.length}…`;
+                }
+              }
+            );
+            await Promise.all(workers);
+            return fallbackTotal;
+          };
+          const total = await uploadDirectToR2(
+            automationId,
+            files,
+            (done, count) => {
+              if (statusEl) statusEl.textContent = `Direto ao R2: ${done}/${count}…`;
+              if (button) button.textContent = `Enviando ${done}/${count}…`;
+            },
+            serverFallback
+          );
           if (statusEl) statusEl.textContent = `${files.length} vídeo(s) adicionados. Total na playlist: ${total}.`;
           window.location.href = `/automations?ok=videos_added&n=${total}`;
         } catch (err) {

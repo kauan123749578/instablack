@@ -4,6 +4,7 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import logging
+import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
@@ -32,8 +33,15 @@ log = logging.getLogger(__name__)
 
 CONTENT_TYPES = ["reel", "story", "photo"]
 VISIBLE_ACCOUNT_STATUSES = ("active", "paused", "needs_login", "proxy_down", "banned")
-MAX_REEL_UPLOAD_FILES = 120
+MAX_REEL_UPLOAD_FILES = 300
 BATCH_UPLOAD_REDIRECT = "/automations?ok=draft"
+DIRECT_UPLOAD_CONTENT_TYPES = {
+    ".mp4": "video/mp4",
+    ".mov": "video/quicktime",
+    ".webm": "video/webm",
+    ".m4v": "video/x-m4v",
+    ".mkv": "video/x-matroska",
+}
 
 
 def _story_link_value(content_type: str, story_link: str) -> str | None:
@@ -663,14 +671,30 @@ async def upload_reel_batch(
             status_code=400,
         )
 
+    # Salva no R2/disco antes do lock — uploads paralelos não se pisam no storage.
     storage = get_storage()
     new_entries, upload_warnings = _save_uploaded_videos(storage, videos)
-    existing = parse_videos_json(a.videos_json)
+    if not new_entries:
+        return {
+            "ok": True,
+            "saved": 0,
+            "total": len(parse_videos_json(a.videos_json)),
+            "warnings": upload_warnings,
+        }
+
+    # Lock na linha: vários uploads ao mesmo tempo não sobrescrevem a playlist.
+    locked = db.execute(
+        select(Automation)
+        .where(Automation.id == automation_id, Automation.user_id == user.id)
+        .with_for_update()
+    ).scalar_one()
+    existing = parse_videos_json(locked.videos_json)
     existing.extend(new_entries)
-    a.videos_json = videos_to_json(existing)
-    if existing:
-        a.video_key = existing[0]["video_key"]
-        a.video_original_name = f"{len(existing)} vídeos" if len(existing) > 1 else existing[0]["video_original_name"]
+    locked.videos_json = videos_to_json(existing)
+    locked.video_key = existing[0]["video_key"]
+    locked.video_original_name = (
+        f"{len(existing)} vídeos" if len(existing) > 1 else existing[0]["video_original_name"]
+    )
     db.commit()
     return {
         "ok": True,
@@ -678,6 +702,116 @@ async def upload_reel_batch(
         "total": len(existing),
         "warnings": upload_warnings,
     }
+
+
+@router.post("/{automation_id}/direct-upload-urls")
+async def create_direct_upload_urls(
+    automation_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Cria URLs temporárias para o navegador enviar os vídeos direto ao R2."""
+    a = _get_owned(db, automation_id, user)
+    if a.content_type != "reel":
+        return JSONResponse({"error": "Esta automação não é de Reels."}, status_code=400)
+
+    try:
+        payload = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Dados do upload inválidos."}, status_code=400)
+    files = payload.get("files") if isinstance(payload, dict) else None
+    if not isinstance(files, list) or not files:
+        return JSONResponse({"error": "Nenhum vídeo informado."}, status_code=400)
+    if len(files) > MAX_REEL_UPLOAD_FILES:
+        return JSONResponse(
+            {"error": f"Envie no máximo {MAX_REEL_UPLOAD_FILES} vídeos por seleção."},
+            status_code=400,
+        )
+
+    storage = get_storage()
+    prefix = f"videos/direct/{user.id}/{a.id}/"
+    uploads: list[dict[str, object]] = []
+    for item in files:
+        if not isinstance(item, dict):
+            return JSONResponse({"error": "Lista de arquivos inválida."}, status_code=400)
+        name = str(item.get("name") or "").strip()
+        ext = Path(name).suffix.lower()
+        if not name or ext not in DIRECT_UPLOAD_CONTENT_TYPES:
+            return JSONResponse({"error": f"Arquivo de vídeo inválido: {name or '?'}"}, status_code=400)
+        try:
+            size = int(item.get("size") or 0)
+        except (TypeError, ValueError):
+            size = 0
+        if size <= 0:
+            return JSONResponse({"error": f"Arquivo vazio: {name}"}, status_code=400)
+
+        content_type = DIRECT_UPLOAD_CONTENT_TYPES[ext]
+        key = f"{prefix}{uuid.uuid4().hex}{ext}"
+        try:
+            url = storage.presign_upload(key, content_type, expires_in=3600)
+        except NotImplementedError:
+            return JSONResponse(
+                {"error": "Upload direto requer STORAGE_BACKEND=s3.", "fallback": True},
+                status_code=409,
+            )
+        uploads.append({
+            "key": key,
+            "name": name,
+            "content_type": content_type,
+            "url": url,
+        })
+    return {"ok": True, "uploads": uploads}
+
+
+@router.post("/{automation_id}/register-direct-uploads")
+async def register_direct_uploads(
+    automation_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Registra, na ordem selecionada, os objetos já enviados diretamente ao R2."""
+    a = _get_owned(db, automation_id, user)
+    if a.content_type != "reel":
+        return JSONResponse({"error": "Esta automação não é de Reels."}, status_code=400)
+    try:
+        payload = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Dados do upload inválidos."}, status_code=400)
+    items = payload.get("uploads") if isinstance(payload, dict) else None
+    if not isinstance(items, list) or not items:
+        return JSONResponse({"error": "Nenhum vídeo enviado para registrar."}, status_code=400)
+    if len(items) > MAX_REEL_UPLOAD_FILES:
+        return JSONResponse({"error": "Quantidade de vídeos inválida."}, status_code=400)
+
+    prefix = f"videos/direct/{user.id}/{a.id}/"
+    new_entries: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in items:
+        if not isinstance(item, dict):
+            return JSONResponse({"error": "Lista de uploads inválida."}, status_code=400)
+        key = str(item.get("key") or "")
+        name = str(item.get("name") or "").strip()
+        if not key.startswith(prefix) or key in seen or not is_video_filename(name):
+            return JSONResponse({"error": "Referência de upload inválida."}, status_code=400)
+        seen.add(key)
+        new_entries.append({"video_key": key, "video_original_name": name})
+
+    locked = db.execute(
+        select(Automation)
+        .where(Automation.id == automation_id, Automation.user_id == user.id)
+        .with_for_update()
+    ).scalar_one()
+    existing = parse_videos_json(locked.videos_json)
+    existing.extend(new_entries)
+    locked.videos_json = videos_to_json(existing)
+    locked.video_key = existing[0]["video_key"]
+    locked.video_original_name = (
+        f"{len(existing)} vídeos" if len(existing) > 1 else existing[0]["video_original_name"]
+    )
+    db.commit()
+    return {"ok": True, "saved": len(new_entries), "total": len(existing)}
 
 
 @router.post("/{automation_id}/upload-finish")
