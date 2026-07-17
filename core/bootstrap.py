@@ -33,6 +33,14 @@ def bootstrap_admin() -> None:
             if username == "kauan" and not getattr(existing, "is_owner", False):
                 existing.is_owner = True
                 existing.is_admin = True
+            if settings.bootstrap_admin_reset:
+                existing.password_hash = hash_password(password)
+                existing.is_active = True
+                log.warning(
+                    "Senha do usuário '%s' foi RESETADA via BOOTSTRAP_ADMIN_RESET. "
+                    "Desligue essa variável após recuperar o acesso.",
+                    username,
+                )
             return
 
         db.add(

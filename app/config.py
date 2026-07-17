@@ -52,6 +52,8 @@ class Settings(BaseSettings):
     bootstrap_admin_username: str = ""
     bootstrap_admin_password: str = ""
     bootstrap_admin_is_admin: bool = True
+    # Se true, reseta a senha do usuário bootstrap já existente (recuperação de acesso).
+    bootstrap_admin_reset: bool = False
     default_account_limit: int = 0
     default_proxy: str = ""
 
