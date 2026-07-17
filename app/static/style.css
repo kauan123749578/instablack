@@ -743,20 +743,22 @@ a:hover { color: var(--primary-hover); }
 .modal-card h3 { margin: 0; font-size: 18px; }
 .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px; }
 
-/* Calendário de agendamento */
-.calendar-fieldset { border: 1px solid var(--border); padding: 14px; margin: 0; }
-.calendar-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+/* Calendário de agendamento — compacto, não ocupa a tela inteira */
+.calendar-fieldset { border: 1px solid var(--border); padding: 12px; margin: 0; max-width: 360px; }
+.calendar-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
 .calendar-weekdays {
-  display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;
-  margin-bottom: 6px; font-size: 11px; color: var(--muted); text-align: center;
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px;
+  margin-bottom: 4px; font-size: 10px; color: var(--muted); text-align: center;
 }
 .calendar-grid {
-  display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px;
+  max-width: 336px;
 }
 .cal-day {
-  aspect-ratio: 1; border: 1px solid rgba(255, 255, 255, 0.06);
-  background: #050505; color: var(--text); font-size: 13px; cursor: pointer;
+  height: 32px; border: 1px solid rgba(255, 255, 255, 0.06);
+  background: #050505; color: var(--text); font-size: 12px; cursor: pointer;
   display: flex; align-items: center; justify-content: center; transition: background 0.15s;
+  padding: 0;
 }
 .cal-day:hover { border-color: rgba(17, 97, 254, 0.35); }
 .cal-day--today { border-color: rgba(17, 97, 254, 0.5); font-weight: 700; }

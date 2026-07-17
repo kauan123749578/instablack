@@ -401,15 +401,7 @@ def _execute_publish(
         log.info("Download mídia key=%s → %s", video_key, raw_path.name)
         storage.download_to(video_key, raw_path)
 
-        create_notification(
-            owner_user_id,
-            "Limpando metadados",
-            f"Gerando metadados únicos para @{username} antes de publicar…",
-            kind="metadata",
-            link="/logs",
-            send_push=False,
-        )
-
+        # Limpeza de metadados é silenciosa no sino — só avisa se falhar.
         try:
             clean_path, meta_info = prepare_clean_media(
                 raw_path,
@@ -428,14 +420,6 @@ def _execute_publish(
                 raw_sha[:12],
                 clean_sha[:12],
                 (meta_info or {}).get("clean_size"),
-            )
-            create_notification(
-                owner_user_id,
-                "Metadados limpos",
-                f"@{username}: fingerprint {fp} — pronto para postar.",
-                kind="metadata",
-                link="/logs",
-                send_push=False,
             )
         except MetadataStripError as exc:
             create_notification(

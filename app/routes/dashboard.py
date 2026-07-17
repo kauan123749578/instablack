@@ -210,8 +210,11 @@ def _top_platform_players(db: Session, start: dt.datetime, end: dt.datetime) -> 
     ]
 
 
-def _top_platform_players_today(db: Session, day: dt.date) -> list[dict]:
-    start, end = _brt_day_bounds(day)
+def _top_platform_players_week(db: Session, day: dt.date) -> list[dict]:
+    """Top 5 dos últimos 7 dias (BRT) — não zera à meia-noite."""
+    start_day = day - dt.timedelta(days=6)
+    start, _ = _brt_day_bounds(start_day)
+    _, end = _brt_day_bounds(day)
     items = _top_platform_players(db, start, end)
     return [{**item, "posts_today": item["post_count"]} for item in items]
 
@@ -321,7 +324,7 @@ def home(
     ]
     accounts_data.sort(key=lambda x: x["publish_count"], reverse=True)
 
-    top_players = _top_platform_players_today(db, today)
+    top_players = _top_platform_players_week(db, today)
     month_start = today.replace(day=1)
     top_players_month = _top_platform_players(
         db, _brt_day_bounds(month_start)[0], _brt_day_bounds(today)[1]
