@@ -54,6 +54,8 @@ class Settings(BaseSettings):
     bootstrap_admin_is_admin: bool = True
     # Se true, reseta a senha do usuário bootstrap já existente (recuperação de acesso).
     bootstrap_admin_reset: bool = False
+    # Username do dono da plataforma (único que vê/gerencia usuários no /admin).
+    owner_username: str = "kauan"
     default_account_limit: int = 0
     default_proxy: str = ""
 
