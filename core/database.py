@@ -150,7 +150,6 @@ def _sqlite_migrate() -> None:
             if "notification_prefs_json" not in ucols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN notification_prefs_json TEXT"))
             conn.execute(text("UPDATE users SET is_admin = 1 WHERE username = 'admin'"))
-            conn.execute(text("UPDATE users SET is_owner = 1, is_admin = 1 WHERE username = 'kauan'"))
         if "instagram_accounts" in insp.get_table_names():
             acols = {c["name"] for c in insp.get_columns("instagram_accounts")}
             if "last_health_check_at" not in acols:
@@ -267,7 +266,6 @@ def _postgres_migrate() -> None:
             if "notification_prefs_json" not in ucols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN notification_prefs_json TEXT"))
             conn.execute(text("UPDATE users SET is_admin = TRUE WHERE username = 'admin' AND is_admin IS NOT TRUE"))
-            conn.execute(text("UPDATE users SET is_owner = TRUE, is_admin = TRUE WHERE username = 'kauan'"))
         if "instagram_accounts" in tables:
             acols = {c["name"] for c in insp.get_columns("instagram_accounts")}
             if "last_health_check_at" not in acols:

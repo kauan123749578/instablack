@@ -19,11 +19,17 @@ def _owner_username() -> str:
 
 
 def sync_owner() -> None:
-    """Garante que o usuário de OWNER_USERNAME seja owner/admin (se existir)."""
+    """OWNER_USERNAME é o único owner: marca ele e desmarca qualquer outro."""
     owner = _owner_username()
     if not owner:
         return
     with session_scope() as db:
+        others = db.scalars(
+            select(User).where(User.is_owner.is_(True), User.username != owner)
+        ).all()
+        for u in others:
+            u.is_owner = False
+            log.info("Flag de owner removida de '%s' (owner atual: '%s').", u.username, owner)
         user = db.scalar(select(User).where(User.username == owner))
         if user and (not getattr(user, "is_owner", False) or not user.is_admin):
             user.is_owner = True
