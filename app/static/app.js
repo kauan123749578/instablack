@@ -657,7 +657,7 @@
       const storyMode = isStory || pathStory;
       const showInterval = Boolean(modeRecurring?.checked) || (!storyMode && !isNow && !isCalendar);
       if (intervalWrap) intervalWrap.style.display = showInterval ? "" : "none";
-      if (calendarWrap) calendarWrap.style.display = (isCalendar && storyMode) ? "" : "none";
+      if (calendarWrap) calendarWrap.style.display = isCalendar ? "" : "none";
       if (submitBtn) {
         if (isNow) {
           submitBtn.textContent = isStory ? "Postar Story agora" : "Publicar agora";
@@ -1207,6 +1207,13 @@
       });
       const mode = form.querySelector('[name="schedule_mode"]:checked');
       data.append("schedule_mode", mode ? mode.value : "recurring");
+      if (mode && mode.value === "calendar") {
+        const calDays = form.querySelector('[name="calendar_days"]');
+        data.append("calendar_days", calDays ? calDays.value || "[]" : "[]");
+        form.querySelectorAll('[name="calendar_times"]').forEach((field) => {
+          if (field.value) data.append("calendar_times", field.value);
+        });
+      }
       const jitter = form.querySelector('[name="jitter_enabled"]');
       if (jitter && jitter.checked) data.append("jitter_enabled", "1");
       form.querySelectorAll('[name="account_ids"]:checked').forEach((field) => {
@@ -1222,9 +1229,9 @@
       const draft = await postForm("/automations/new/reel-draft", draftFormData());
       const automationId = draft.automation_id;
       await uploadDirectToR2(automationId, files, (done, totalFiles) => {
-        setSubmitState(true, `Enviando direto ao R2: ${done}/${totalFiles}…`);
+        setSubmitState(true, `Enviando vídeos: ${done}/${totalFiles}…`);
         if (videoName) {
-          videoName.textContent = `Upload direto ao R2: ${done}/${totalFiles}`;
+          videoName.textContent = `Enviando vídeos: ${done}/${totalFiles}`;
           videoName.style.color = "var(--green, #22c55e)";
         }
       }, () => uploadFilesInParallel(automationId, files, (done, totalFiles) => {
@@ -1259,7 +1266,7 @@
           videoName.style.color = "var(--red, #ef4444)";
         } else {
           const mb = filesTotalMb(files);
-          videoName.textContent = files.length + " vídeo(s) — " + mb + " MB total · upload direto ao R2";
+          videoName.textContent = files.length + " vídeo(s) — " + mb + " MB total";
           videoName.style.color = "var(--green, #22c55e)";
         }
         if (videoList) {

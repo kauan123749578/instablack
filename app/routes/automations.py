@@ -436,14 +436,11 @@ async def create_automation(
     elif schedule_mode == "recurring" and interval_minutes not in ALLOWED_INTERVALS:
         error = "Intervalo inválido."
     elif schedule_mode == "calendar":
-        if content_type != "story":
-            error = "Calendário com horário é apenas para Story. Reels usam intervalo ou calendário de Reels."
-        else:
-            days = parse_calendar_days(calendar_days)
-            if not days:
-                error = "Selecione pelo menos um dia do mês."
-            elif not cal_times:
-                error = "Informe pelo menos um horário de publicação."
+        days = parse_calendar_days(calendar_days)
+        if not days:
+            error = "Selecione pelo menos um dia do mês."
+        elif not cal_times:
+            error = "Informe pelo menos um horário de publicação."
 
     # Só via request.form() — evita perder arquivos do input multiple
     form = await request.form()
@@ -650,6 +647,8 @@ async def create_reel_upload_draft(
     story_link: str = Form(""),
     schedule_mode: str = Form("recurring"),
     interval_minutes: int = Form(60),
+    calendar_days: str = Form(""),
+    calendar_times: list[str] = Form(default=[]),
     account_ids: list[int] = Form(default=[]),
     jitter_enabled: str = Form(""),
     jitter_minutes: int = Form(10),
@@ -662,10 +661,19 @@ async def create_reel_upload_draft(
     """Cria primeiro o rascunho leve; os vídeos chegam depois em lotes."""
     if content_type != "reel":
         return JSONResponse({"error": "Upload em lotes disponível apenas para Reels."}, status_code=400)
-    if schedule_mode not in ("now", "recurring"):
+    if schedule_mode not in ("now", "recurring", "calendar"):
         return JSONResponse({"error": "Modo de publicação inválido."}, status_code=400)
-    if interval_minutes not in ALLOWED_INTERVALS:
+    if schedule_mode == "recurring" and interval_minutes not in ALLOWED_INTERVALS:
         return JSONResponse({"error": "Intervalo inválido."}, status_code=400)
+
+    cal_days: list[int] = []
+    cal_time_stored = ""
+    if schedule_mode == "calendar":
+        cal_days = parse_calendar_days(calendar_days)
+        if not cal_days:
+            return JSONResponse({"error": "Selecione pelo menos um dia do mês."}, status_code=400)
+        cal_times = parse_calendar_times(",".join(calendar_times) if calendar_times else "10:00")
+        cal_time_stored = times_to_storage(cal_times)
 
     accounts = list(db.scalars(
         select(InstagramAccount).where(
@@ -697,8 +705,10 @@ async def create_reel_upload_draft(
         thumb_key=thumb_key,
         thumb_original_name=thumb_original_name,
         story_link=_story_link_value(content_type, story_link),
-        schedule_type="interval",
-        interval_minutes=interval_minutes,
+        schedule_type="calendar" if schedule_mode == "calendar" else "interval",
+        calendar_days=days_to_json(cal_days) if schedule_mode == "calendar" else None,
+        calendar_time=cal_time_stored or None,
+        interval_minutes=1440 if schedule_mode == "calendar" else interval_minutes,
         status="paused",
         next_run_at=None,
         **humanize,
