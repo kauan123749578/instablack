@@ -387,6 +387,7 @@ def warmup_page(
         .where(
             InstagramAccount.user_id == user.id,
             InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
+            InstagramAccount.provider == "instagrapi",
         )
         .order_by(InstagramAccount.username.asc())
     ).all()
@@ -424,7 +425,12 @@ def warmup_start(
     import datetime as dt
 
     acc = db.get(InstagramAccount, account_id)
-    if acc is None or acc.user_id != user.id or acc.status == "deleted":
+    if (
+        acc is None
+        or acc.user_id != user.id
+        or acc.status == "deleted"
+        or (acc.provider or "instagrapi") != "instagrapi"
+    ):
         return RedirectResponse("/warmup?error=conta", status_code=303)
 
     names = []

@@ -13,8 +13,26 @@
 {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
 {% if ok %}<div class="alert alert-ok">{{ ok }}</div>{% endif %}
 
+<div class="form-card official-api-card" style="margin-bottom:16px">
+  <div>
+    <span class="og-badge badge-green">OFICIAL</span>
+    <h3>Conectar com Instagram</h3>
+    <p class="muted">
+      Alternativa oficial da Meta para contas profissionais (Business ou Creator).
+      Não usa senha, sessionid nem proxy.
+    </p>
+  </div>
+  {% if meta_configured %}
+  <a href="/accounts/meta/connect" class="btn btn-primary">
+    <i data-lucide="instagram"></i> Continuar com Instagram
+  </a>
+  {% elif not meta_configured %}
+  <button type="button" class="btn" disabled>Configuração da Meta pendente</button>
+  {% endif %}
+</div>
+
 <div class="form-card" style="margin-bottom:24px">
-  <h3 style="margin-top:0">Adicionar nova conta</h3>
+  <h3 style="margin-top:0">Conectar via Instagrapi</h3>
   <p class="muted" style="margin:0 0 16px;font-size:13px">
     Você pode conectar direto pelo painel com <strong>usuário e senha</strong>; após o login, a sessão
     (<code>session.json</code>) é salva no banco automaticamente. Se o Instagram recusar ou pedir challenge,

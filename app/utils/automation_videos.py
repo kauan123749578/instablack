@@ -101,6 +101,10 @@ def playlist_is_exhausted(automation: Automation) -> bool:
     items = playlist_items(automation)
     if len(items) <= 1:
         return False
+    # Stories em calendário formam um ciclo contínuo: cada horário publica o
+    # próximo arquivo e, ao terminar a lista, recomeça no primeiro.
+    if (getattr(automation, "content_type", "") or "").lower() == "story":
+        return False
     return int(getattr(automation, "current_index", 0) or 0) >= len(items)
 
 

@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}Loja de Proxies — instablack{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2><i data-lucide="shopping-bag" class="inline-icon"></i> Loja de Proxies</h2>
+  <p class="muted page-header-sub">Compre proxies IPv4 automaticamente e pague por PIX.</p>
+</div>
+
+{% if ok == 'created' %}<div class="alert alert-ok">Pedido criado. Pague o PIX abaixo para liberar os proxies.</div>{% endif %}
+{% if error %}<div class="alert alert-error">
+  {% if error == 'quantity' %}Quantidade inválida (1 a 500).
+  {% elif error == 'type' %}Tipo de proxy inválido.
+  {% elif error == 'response' %}A loja retornou um pedido sem identificação.
+  {% else %}Não foi possível criar o pedido na GBProxies. Tente novamente.{% endif %}
+</div>{% endif %}
+
+<div class="proxy-store-layout">
+  <section class="form-card form-grid">
+    <h3 style="margin:0">Criar pedido PIX</h3>
+    <p class="muted" style="margin:0;font-size:12px">Os proxies aparecem automaticamente após a confirmação do pagamento.</p>
+    {% if store_configured %}
+    <form method="post" action="/proxy-store/orders" class="form-grid">
+      <label>Tipo
+        <select name="proxy_type">
+          <option value="ipv4">IPv4</option>
+        </select>
+      </label>
+      <label>País
+        <select name="country_id">
+          <option value="1">Brasil</option>
+        </select>
+      </label>
+      <label>Quantidade
+        <input type="number" name="quantity" min="1" max="500" value="10" required>
+      </label>
+      <button type="submit" class="btn btn-primary">
+        <i data-lucide="qr-code"></i> Gerar PIX
+      </button>
+    </form>
+    {% else %}
+    <div class="alert alert-error">A loja aguarda a configuração do token da GBProxies.</div>
+    {% endif %}
+  </section>
+
+  <section class="proxy-orders">
+    <h3>Meus pedidos</h3>
+    {% for row in order_rows %}
+    {% set order = row.order %}
+    <article class="og-glass-card proxy-order-card" id="order-{{ order.id }}"
+             data-proxy-order="{{ order.id }}"
+             data-paid="{{ '1' if order.paid else '0' }}"
+             data-complete="{{ '1' if row.proxies else '0' }}">
+      <div class="proxy-order-head">
+        <div>
+          <strong>Pedido #{{ order.provider_order_id }}</strong>
+          <span class="muted">{{ order.quantity }} proxy(s) IPv4 · {{ order.created_at | localtime }}</span>
+        </div>
+        <span class="og-badge {% if order.paid %}badge-green{% else %}badge-yellow{% endif %}" data-order-status>
+          {{ 'Pago' if order.paid else order.status|upper }}
+        </span>
+      </div>
+      {% if not order.paid and order.pix_code %}
+      <label>PIX copia e cola
+        <textarea rows="3" readonly data-pix-code>{{ order.pix_code }}</textarea>
+      </label>
+      <button type="button" class="btn btn-sm" onclick="navigator.clipboard.writeText(this.previousElementSibling.querySelector('textarea').value)">
+        <i data-lucide="copy"></i> Copiar PIX
+      </button>
+      {% endif %}
+      {% if not order.paid and order.qr_code %}
+      <img src="{{ order.qr_code }}" alt="QR Code PIX" class="proxy-pix-qr">
+      {% endif %}
+      <div data-order-proxies>
+        {% if row.proxies %}
+        <label>Proxies liberadas
+          <textarea rows="{{ [row.proxies|length + 1, 10]|min }}" readonly>{{ row.proxies|join('\n') }}</textarea>
+        </label>
+        <button type="button" class="btn btn-sm" onclick="navigator.clipboard.writeText(this.previousElementSibling.querySelector('textarea').value)">
+          <i data-lucide="copy"></i> Copiar proxies
+        </button>
+        {% else %}
+        <p class="muted" data-order-wait>
+          {% if order.paid %}Pagamento confirmado; aguardando liberação dos proxies…
+          {% else %}Aguardando pagamento… esta página consulta o pedido automaticamente.{% endif %}
+        </p>
+        {% endif %}
+      </div>
+    </article>
+    {% else %}
+    <div class="og-glass-card og-empty">Você ainda não criou nenhum pedido.</div>
+    {% endfor %}
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(() => {
+  const cards = [...document.querySelectorAll('[data-proxy-order][data-complete="0"]')];
+  if (!cards.length) return;
+  const poll = async () => {
+    let pending = false;
+    for (const card of cards) {
+      if (card.dataset.complete === "1") continue;
+      pending = true;
+      try {
+        const res = await fetch(`/proxy-store/orders/${card.dataset.proxyOrder}/status`);
+        const data = await res.json();
+        if (data.paid) {
+          card.dataset.paid = "1";
+          card.querySelector("[data-order-status]").textContent = "Pago";
+          card.querySelector("[data-order-status]").classList.add("badge-green");
+          const proxies = data.proxies || [];
+          const box = card.querySelector("[data-order-proxies]");
+          if (proxies.length) {
+            card.dataset.complete = "1";
+            box.innerHTML = `<label>Proxies liberadas<textarea rows="8" readonly></textarea></label><button type="button" class="btn btn-sm">Copiar proxies</button>`;
+            box.querySelector("textarea").value = proxies.join("\n");
+            box.querySelector("button").onclick = () => navigator.clipboard.writeText(box.querySelector("textarea").value);
+          } else {
+            box.innerHTML = '<p class="muted" data-order-wait>Pagamento confirmado; aguardando liberação dos proxies…</p>';
+          }
+        }
+      } catch (_) {}
+    }
+    if (pending) window.setTimeout(poll, 10000);
+  };
+  window.setTimeout(poll, 3000);
+})();
+</script>
+{% endblock %}

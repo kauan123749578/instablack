@@ -152,6 +152,14 @@ def _sqlite_migrate() -> None:
             conn.execute(text("UPDATE users SET is_admin = 1 WHERE username = 'admin'"))
         if "instagram_accounts" in insp.get_table_names():
             acols = {c["name"] for c in insp.get_columns("instagram_accounts")}
+            if "provider" not in acols:
+                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN provider VARCHAR(24) DEFAULT 'instagrapi'"))
+            if "meta_ig_user_id" not in acols:
+                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN meta_ig_user_id VARCHAR(64)"))
+            if "encrypted_meta_access_token" not in acols:
+                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN encrypted_meta_access_token TEXT"))
+            if "meta_token_expires_at" not in acols:
+                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN meta_token_expires_at DATETIME"))
             if "last_health_check_at" not in acols:
                 conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN last_health_check_at DATETIME"))
             if "proxy_ip" not in acols:
@@ -274,6 +282,14 @@ def _postgres_migrate() -> None:
             conn.execute(text("UPDATE users SET is_admin = TRUE WHERE username = 'admin' AND is_admin IS NOT TRUE"))
         if "instagram_accounts" in tables:
             acols = {c["name"] for c in insp.get_columns("instagram_accounts")}
+            if "provider" not in acols:
+                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN provider VARCHAR(24) DEFAULT 'instagrapi'"))
+            if "meta_ig_user_id" not in acols:
+                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN meta_ig_user_id VARCHAR(64)"))
+            if "encrypted_meta_access_token" not in acols:
+                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN encrypted_meta_access_token TEXT"))
+            if "meta_token_expires_at" not in acols:
+                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN meta_token_expires_at TIMESTAMPTZ"))
             if "last_health_check_at" not in acols:
                 conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN last_health_check_at TIMESTAMPTZ"))
             if "proxy_ip" not in acols:

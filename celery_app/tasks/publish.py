@@ -36,7 +36,8 @@ from core.instagram import (
     publish_story,
     serialize_settings,
 )
-from core.media_prepare import prepare_clean_media, prepare_clean_thumb
+from core.media_prepare import generate_video_thumbnail, prepare_clean_media, prepare_clean_thumb
+from core.meta_instagram import MetaInstagramError, publish_media as publish_meta_media
 from core.metadata import MetadataStripError
 from core.notifications import create_notification, notify_publish_success
 from core.storage import get_storage
@@ -73,7 +74,22 @@ def _claim_next_slot(db, automation: Automation, items: list[dict]) -> tuple[int
     video_name = entry.get("video_original_name") or video_key
     new_idx = idx + 1
 
-    if new_idx >= len(items):
+    if new_idx >= len(items) and automation.content_type == "story":
+        db.execute(
+            text("UPDATE automations SET current_index = 0 WHERE id = :id"),
+            {"id": automation.id},
+        )
+        automation.current_index = 0
+        log.info(
+            "PLAYLIST %s STORY LOOP automation=%s postar %s/%s e voltar ao primeiro key=%s name=%r",
+            PLAYLIST_CODE,
+            automation.id,
+            idx + 1,
+            len(items),
+            video_key,
+            video_name,
+        )
+    elif new_idx >= len(items):
         db.execute(
             text(
                 "UPDATE automations SET current_index = :idx, status = 'completed', "
@@ -334,8 +350,13 @@ def _execute_publish(
         account = db.get(InstagramAccount, account_id)
         if account is None:
             return {"error": "account_not_found"}
+        provider = account.provider or "instagrapi"
         account_status = account.status
-        recent_auth_failure = latest_auth_failure_reason(db, account_id)
+        recent_auth_failure = (
+            latest_auth_failure_reason(db, account_id)
+            if provider != "meta"
+            else None
+        )
         if recent_auth_failure and account_status not in ("deleted", "paused"):
             account.status = "needs_login"
             account.last_error = auth_status_reason(recent_auth_failure)
@@ -349,9 +370,77 @@ def _execute_publish(
         )
         proxy = account.proxy
         settings_dict = deserialize_settings(account.session_json) if account.session_json else None
+        meta_access_token = decrypt_secret(account.encrypted_meta_access_token)
+        meta_ig_user_id = account.meta_ig_user_id
 
     if account_status in ("paused", "needs_login", "proxy_down", "banned", "deleted"):
         return {"skipped": True, "reason": f"account_{account_status}"}
+
+    if provider == "meta":
+        if not meta_access_token or not meta_ig_user_id:
+            _mark_account_needs_login(account_id, "Token da API oficial ausente. Reconecte a conta.")
+            return {"error": "meta_token_missing"}
+        try:
+            result = publish_meta_media(
+                access_token=meta_access_token,
+                ig_user_id=meta_ig_user_id,
+                media_key=video_key,
+                content_type=content_type,
+                caption=caption,
+            )
+        except MetaInstagramError as exc:
+            _log_failure(
+                automation_id,
+                account_id,
+                f"API oficial: {exc}",
+                content_type=content_type,
+                owner_user_id=owner_user_id,
+                username=username,
+            )
+            if "token" in str(exc).lower() or "oauth" in str(exc).lower():
+                _mark_account_needs_login(account_id, str(exc))
+                return {"error": "meta_auth"}
+            raise
+
+        publish_log_id: int | None = None
+        with session_scope() as db:
+            acc = db.get(InstagramAccount, account_id)
+            if acc:
+                acc.last_login_at = dt.datetime.utcnow()
+                acc.status = "active"
+                acc.last_error = None
+            if automation_id is not None:
+                auto = db.get(Automation, automation_id)
+                if auto:
+                    auto.last_run_at = dt.datetime.utcnow()
+                    auto.total_runs = (auto.total_runs or 0) + 1
+            plog = PublishLog(
+                automation_id=automation_id,
+                account_id=account_id,
+                status="success",
+                content_type=content_type or "reel",
+                media_id=result.get("id"),
+                media_url=result.get("url"),
+                video_key=video_key,
+            )
+            db.add(plog)
+            db.flush()
+            publish_log_id = plog.id
+
+        notify_publish_success(
+            owner_user_id,
+            username,
+            content_type=content_type or "reel",
+            publish_log_id=publish_log_id,
+        )
+        return {
+            "ok": True,
+            "provider": "meta",
+            "playlist_code": PLAYLIST_CODE,
+            "playlist_index": playlist_index,
+            "video_key": video_key,
+            **result,
+        }
 
     if not proxy or not proxy.strip():
         _log_failure(
@@ -457,6 +546,19 @@ def _execute_publish(
                     username=username,
                 )
                 return {"error": "metadata_strip_thumb"}
+        elif publish_path.suffix.lower() in (".mp4", ".mov", ".webm", ".mkv", ".avi"):
+            # Instagrapi 2.16.x é mais estável quando o worker fornece um
+            # thumbnail explícito (evita MoviePy/FFmpeg interno no upload).
+            clean_thumb_path = tmp_dir / "generated_thumb.jpg"
+            try:
+                thumb_path = generate_video_thumbnail(publish_path, clean_thumb_path)
+            except MetadataStripError as exc:
+                log.warning(
+                    "Thumbnail automático falhou automation=%s account=%s: %s",
+                    automation_id,
+                    username,
+                    exc,
+                )
 
         try:
             cl = get_ready_client(
@@ -479,7 +581,12 @@ def _execute_publish(
 
         try:
             if content_type == "story":
-                result = publish_story(cl, publish_path, link_url=story_link)
+                result = publish_story(
+                    cl,
+                    publish_path,
+                    link_url=story_link,
+                    thumbnail_path=thumb_path,
+                )
             elif content_type == "photo":
                 result = publish_photo_feed(cl, clean_path, caption)
             else:

@@ -1,8 +1,10 @@
 """Prepara mídia sem metadados — obrigatório antes de publicar."""
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
+from app.config import settings
 from core.metadata import MetadataStripError, sha256_file, strip_image_metadata, strip_metadata
 
 VIDEO_EXT = {".mp4", ".mov", ".webm", ".mkv", ".avi"}
@@ -64,3 +66,38 @@ def prepare_clean_thumb(raw_path: Path, clean_path: Path) -> Path:
     """Remove EXIF da capa do Reel (sempre único)."""
     strip_image_metadata(raw_path, clean_path)
     return clean_path
+
+
+def generate_video_thumbnail(video_path: Path, output_path: Path) -> Path:
+    """Extrai um frame JPEG para evitar geração interna frágil do Instagrapi."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        proc = subprocess.run(
+            [
+                settings.ffmpeg_bin,
+                "-y",
+                "-ss",
+                "0.5",
+                "-i",
+                str(video_path),
+                "-frames:v",
+                "1",
+                "-q:v",
+                "2",
+                str(output_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        raise MetadataStripError(
+            f"FFmpeg não encontrado (FFMPEG_BIN={settings.ffmpeg_bin})."
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise MetadataStripError("FFmpeg excedeu 60 segundos ao gerar thumbnail.") from exc
+    if proc.returncode != 0 or not output_path.exists() or output_path.stat().st_size <= 0:
+        detail = (proc.stderr or proc.stdout or "erro desconhecido")[-500:]
+        raise MetadataStripError(f"Não foi possível gerar thumbnail do vídeo: {detail}")
+    return output_path

@@ -16,7 +16,17 @@ from starlette.middleware.sessions import SessionMiddleware
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app.config import settings
-from app.routes import accounts, admin, auth, automations, dashboard, logs, notifications, profile
+from app.routes import (
+    accounts,
+    admin,
+    auth,
+    automations,
+    dashboard,
+    logs,
+    notifications,
+    profile,
+    proxy_store,
+)
 from core.database import init_db
 from core.health import check_database, check_redis, check_storage
 from core.storage import get_storage
@@ -65,6 +75,7 @@ def create_app() -> FastAPI:
     app.include_router(profile.router)
     app.include_router(admin.router)
     app.include_router(notifications.router)
+    app.include_router(proxy_store.router)
 
     @app.get("/sw.js", include_in_schema=False)
     def service_worker():
@@ -139,7 +150,6 @@ def create_app() -> FastAPI:
 
         return FileResponse(
             tmp_path,
-            filename=Path(file_key).name,
             background=BackgroundTask(lambda: shutil.rmtree(tmp_dir, ignore_errors=True)),
         )
 

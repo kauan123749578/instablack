@@ -56,6 +56,9 @@ class User(Base):
     automations: Mapped[List["Automation"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    proxy_orders: Mapped[List["ProxyOrder"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class InviteCode(Base):
@@ -95,6 +98,13 @@ class InstagramAccount(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
 
     username: Mapped[str] = mapped_column(String(255))
+    # instagrapi = sessão privada/proxy; meta = Instagram API oficial.
+    provider: Mapped[str] = mapped_column(String(24), default="instagrapi")
+    meta_ig_user_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    encrypted_meta_access_token: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    meta_token_expires_at: Mapped[Optional[dt.datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # password \u00e9 opcional: se vier null, n\u00e3o conseguimos re-logar automaticamente.
     encrypted_password: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
@@ -257,6 +267,36 @@ class AppNotification(Base):
     )
 
     user: Mapped["User"] = relationship()
+
+
+class ProxyOrder(Base):
+    """Pedido PIX criado na GBProxies para um usuário do painel."""
+
+    __tablename__ = "proxy_orders"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    provider_order_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    proxy_type: Mapped[str] = mapped_column(String(32), default="ipv4")
+    country_id: Mapped[int] = mapped_column(Integer)
+    quantity: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
+    paid: Mapped[bool] = mapped_column(Boolean, default=False)
+    amount: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    pix_code: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    qr_code: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    proxies_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    response_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    user: Mapped["User"] = relationship(back_populates="proxy_orders")
 
 
 class WarmupJob(Base):

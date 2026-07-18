@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import secrets
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -27,6 +28,13 @@ from app.utils.account_limits import (
 )
 from app.utils.auth_failures import mark_accounts_from_latest_auth_failures
 from core.database import get_db
+from core.meta_instagram import (
+    MetaInstagramError,
+    account_profile,
+    authorization_url,
+    exchange_code,
+    is_configured as meta_is_configured,
+)
 from core.instagram import (
     InstagramAuthError,
     InstagramTwoFactorRequired,
@@ -115,9 +123,117 @@ def list_accounts(
     ok_msg = {
         "account_added": "Conta conectada com sucesso!",
     }.get(request.query_params.get("ok") or "")
+    error_msg = {
+        "meta_not_configured": "A API oficial ainda não foi configurada pelo administrador.",
+        "meta_denied": "A autorização do Instagram foi cancelada.",
+        "meta_state": "A sessão de autorização expirou. Tente conectar novamente.",
+        "meta_exchange": "A Meta recusou a conexão. Confira o app e tente novamente.",
+        "account_limit": "Seu limite de contas foi atingido.",
+    }.get(request.query_params.get("error") or "")
     return templates.TemplateResponse(
         "accounts.html",
-        _accounts_page_context(request, user, accounts, ok=ok_msg),
+        {
+            **_accounts_page_context(request, user, accounts, ok=ok_msg, error=error_msg),
+            "meta_configured": meta_is_configured(),
+        },
+    )
+
+
+@router.get("/meta/connect")
+def connect_meta_account(
+    request: Request,
+    user: User = Depends(get_current_user),
+):
+    """Inicia o Business Login oficial do Instagram."""
+    if not meta_is_configured():
+        return RedirectResponse(
+            "/accounts?error=meta_not_configured",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    state = secrets.token_urlsafe(32)
+    request.session["meta_oauth_state"] = state
+    request.session["meta_oauth_user_id"] = user.id
+    return RedirectResponse(authorization_url(state), status_code=status.HTTP_302_FOUND)
+
+
+@router.get("/meta/callback")
+def meta_oauth_callback(
+    request: Request,
+    code: str = "",
+    state: str = "",
+    error: str = "",
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Conclui OAuth e cria/atualiza uma conta com provider=meta."""
+    expected_state = str(request.session.pop("meta_oauth_state", "") or "")
+    expected_user_id = request.session.pop("meta_oauth_user_id", None)
+    if error:
+        return RedirectResponse(
+            "/accounts?error=meta_denied",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    if not code or not state or not secrets.compare_digest(state, expected_state):
+        return RedirectResponse(
+            "/accounts?error=meta_state",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    if expected_user_id != user.id:
+        raise HTTPException(status_code=403, detail="Sessão OAuth inválida")
+
+    try:
+        token, expires_at = exchange_code(code)
+        profile = account_profile(token)
+    except MetaInstagramError:
+        return RedirectResponse(
+            "/accounts?error=meta_exchange",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    existing = db.scalar(
+        select(InstagramAccount).where(
+            InstagramAccount.user_id == user.id,
+            InstagramAccount.meta_ig_user_id == profile["id"],
+        )
+    )
+    if existing is None:
+        existing = db.scalar(
+            select(InstagramAccount).where(
+                InstagramAccount.user_id == user.id,
+                InstagramAccount.username == profile["username"],
+            )
+        )
+    if existing is None:
+        current_count = len(_load_user_accounts(db, user))
+        allowed, _ = can_add_instagram_account(user, current_count)
+        if not allowed:
+            return RedirectResponse(
+                "/accounts?error=account_limit",
+                status_code=status.HTTP_303_SEE_OTHER,
+            )
+        existing = InstagramAccount(
+            user_id=user.id,
+            username=profile["username"],
+        )
+        db.add(existing)
+
+    existing.provider = "meta"
+    existing.meta_ig_user_id = profile["id"]
+    existing.encrypted_meta_access_token = encrypt_secret(token)
+    existing.meta_token_expires_at = expires_at
+    existing.username = profile["username"]
+    existing.encrypted_password = None
+    existing.session_json = None
+    existing.proxy = None
+    existing.proxy_ip = None
+    existing.proxy_geo = None
+    existing.status = "active"
+    existing.last_error = None
+    existing.last_login_at = dt.datetime.utcnow()
+    db.commit()
+    return RedirectResponse(
+        "/accounts/connected?ok=meta_connected",
+        status_code=status.HTTP_303_SEE_OTHER,
     )
 
 
@@ -138,6 +254,7 @@ def connected_accounts(
         "resumed": "Conta retomada.",
         "proxy_updated": "Proxy atualizado com sucesso!",
         "account_added": "Conta conectada com sucesso!",
+        "meta_connected": "Conta conectada pela API oficial da Meta!",
     }.get(ok_key or "")
     err_key = request.query_params.get("error")
     err_msg = {
@@ -299,9 +416,13 @@ def add_account(
             )
 
     if existing:
+        existing.provider = "instagrapi"
         existing.session_json = serialize_settings(settings_dict)
         if encrypted_pw:
             existing.encrypted_password = encrypted_pw
+        existing.meta_ig_user_id = None
+        existing.encrypted_meta_access_token = None
+        existing.meta_token_expires_at = None
         _set_account_proxy(existing, proxy, proxy_meta)
         existing.status = "active"
         existing.last_login_at = dt.datetime.utcnow()
@@ -310,6 +431,7 @@ def add_account(
         new_acc = InstagramAccount(
             user_id=user.id,
             username=username,
+            provider="instagrapi",
             encrypted_password=encrypted_pw,
             proxy=proxy,
             session_json=serialize_settings(settings_dict),
@@ -408,6 +530,8 @@ def delete_account(
     acc.status = "deleted"
     acc.session_json = None
     acc.encrypted_password = None
+    acc.encrypted_meta_access_token = None
+    acc.meta_token_expires_at = None
     acc.last_error = "Conta removida do painel"
     acc.automations.clear()
     db.commit()

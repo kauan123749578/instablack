@@ -576,6 +576,7 @@
     const storyLinkWrap = document.getElementById("story-link-wrap");
     const videoInput = document.getElementById("video-input");
     const videoList = document.getElementById("video-file-list");
+    const reelUploadHelp = document.getElementById("reel-upload-help");
     if (!sel) return;
 
     const params = new URLSearchParams(window.location.search);
@@ -585,16 +586,16 @@
     function update() {
       const t = sel.value;
       if (t === "story") {
-        if (mediaLabel) mediaLabel.firstChild.textContent = "Mídia do Story (foto ou vídeo) ";
+        if (mediaLabel) mediaLabel.firstChild.textContent = "Mídias dos Stories (fotos ou vídeos) ";
         if (videoInput) {
           videoInput.name = "video";
-          videoInput.removeAttribute("multiple");
+          videoInput.setAttribute("multiple", "multiple");
           videoInput.accept = "image/jpeg,image/png,image/webp,video/mp4,video/quicktime";
         }
-        if (videoList) videoList.style.display = "none";
         if (captionWrap) captionWrap.style.display = "none";
         if (thumbWrap) thumbWrap.style.display = "none";
         if (storyLinkWrap) storyLinkWrap.style.display = "";
+        if (reelUploadHelp) reelUploadHelp.style.display = "none";
       } else if (t === "photo") {
         if (mediaLabel) mediaLabel.firstChild.textContent = "Foto para o feed (.jpg/.png) ";
         if (videoInput) {
@@ -606,6 +607,7 @@
         if (captionWrap) captionWrap.style.display = "";
         if (thumbWrap) thumbWrap.style.display = "none";
         if (storyLinkWrap) storyLinkWrap.style.display = "none";
+        if (reelUploadHelp) reelUploadHelp.style.display = "none";
       } else {
         if (mediaLabel) mediaLabel.firstChild.textContent = "Vídeos Reels (.mp4) ";
         if (videoInput) {
@@ -616,6 +618,7 @@
         if (captionWrap) captionWrap.style.display = "";
         if (thumbWrap) thumbWrap.style.display = "";
         if (storyLinkWrap) storyLinkWrap.style.display = "none";
+        if (reelUploadHelp) reelUploadHelp.style.display = "block";
       }
       document.dispatchEvent(new CustomEvent("automation-media-changed"));
     }
@@ -1276,7 +1279,15 @@
       } else {
         videoName.textContent = files[0].name;
         videoName.style.color = "var(--green, #22c55e)";
-        if (videoList) videoList.style.display = "none";
+        if (videoList && contentType?.value === "story") {
+          videoName.textContent = files.length === 1
+            ? files[0].name
+            : files.length + " Stories selecionados — um por horário";
+          videoList.innerHTML = files.map((f) => "<li>" + escapeHtml(f.name) + "</li>").join("");
+          videoList.style.display = files.length > 1 ? "block" : "none";
+        } else if (videoList) {
+          videoList.style.display = "none";
+        }
       }
     }
 

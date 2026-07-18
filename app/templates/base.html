@@ -14,8 +14,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bricolage+Grotesque:wght@600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=29" />
-  <link rel="stylesheet" href="/static/dashboard.css?v=29" />
+  <link rel="stylesheet" href="/static/style.css?v=30" />
+  <link rel="stylesheet" href="/static/dashboard.css?v=30" />
   {% block head %}{% endblock %}
 </head>
 <body class="app-body premium-app">
@@ -86,6 +86,10 @@
           <a href="/warmup" class="nav-link" data-nav="/warmup">
             <i data-lucide="flame" class="nav-icon"></i>
             <span class="nav-text">Aquecer contas</span>
+          </a>
+          <a href="/proxy-store" class="nav-link" data-nav="/proxy-store">
+            <i data-lucide="shopping-bag" class="nav-icon"></i>
+            <span class="nav-text">Loja de Proxies</span>
           </a>
 
           <div class="nav-section-label">Relatórios</div>
@@ -199,6 +203,7 @@
         <a href="/automations/new/calendar"><i data-lucide="calendar-days"></i><span>Calendário Reels</span></a>
         <a href="/automations/new/story"><i data-lucide="circle-dot"></i><span>Agendar Story</span></a>
         <a href="/warmup" data-nav="/warmup"><i data-lucide="flame"></i><span>Aquecer contas</span></a>
+        <a href="/proxy-store" data-nav="/proxy-store"><i data-lucide="shopping-bag"></i><span>Loja de Proxies</span></a>
         <div class="drawer-divider"></div>
         <a href="/analytics" data-nav="/analytics"><i data-lucide="chart-no-axes-combined"></i><span>Analytics</span></a>
         <a href="/logs" data-nav="/logs"><i data-lucide="scroll-text"></i><span>Logs</span></a>
@@ -228,7 +233,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/lucide@0.475.0/dist/umd/lucide.min.js" crossorigin="anonymous"></script>
-  <script src="/static/app.js?v=41"></script>
+  <script src="/static/app.js?v=42"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

@@ -557,6 +557,7 @@ def publish_story(
     cl: Client,
     media_path: Path,
     link_url: str | None = None,
+    thumbnail_path: Path | None = None,
 ) -> dict:
     if not media_path.exists():
         raise FileNotFoundError(f"Mídia não encontrada: {media_path}")
@@ -574,6 +575,8 @@ def publish_story(
     def _upload(use_links: list) -> object:
         kwargs: dict = {"links": use_links} if use_links else {}
         if is_video:
+            if thumbnail_path is not None:
+                kwargs["thumbnail"] = thumbnail_path
             return cl.video_upload_to_story(media_path, **kwargs)
         return cl.photo_upload_to_story(media_path, **kwargs)
 

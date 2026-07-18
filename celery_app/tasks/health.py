@@ -6,7 +6,7 @@ import logging
 
 from sqlalchemy import select
 
-from app.security import decrypt_secret
+from app.security import decrypt_secret, encrypt_secret
 from app.utils.auth_failures import auth_status_reason, latest_auth_failure_reason
 from celery_app.config import celery_app
 from core.database import session_scope
@@ -16,6 +16,11 @@ from core.instagram import (
     deserialize_settings,
     get_ready_client,
     serialize_settings,
+)
+from core.meta_instagram import (
+    MetaInstagramError,
+    refresh_access_token as refresh_meta_token,
+    validate_token as validate_meta_token,
 )
 from core.notifications import create_notification
 from models.models import InstagramAccount
@@ -74,9 +79,56 @@ def check_account_health(account_id: int) -> dict:
         proxy = account.proxy
         settings_dict = deserialize_settings(account.session_json)
         password = decrypt_secret(account.encrypted_password)
+        provider = account.provider or "instagrapi"
+        meta_token = decrypt_secret(account.encrypted_meta_access_token)
+        meta_token_expires_at = account.meta_token_expires_at
         username = account.username
 
     now = dt.datetime.utcnow()
+
+    if provider == "meta":
+        try:
+            if not meta_token:
+                raise MetaInstagramError("Token oficial ausente")
+            validate_meta_token(meta_token)
+            refreshed_token = None
+            refreshed_expires_at = meta_token_expires_at
+            expires_cmp = meta_token_expires_at
+            if expires_cmp is not None and expires_cmp.tzinfo is not None:
+                expires_cmp = expires_cmp.astimezone(dt.timezone.utc).replace(tzinfo=None)
+            if (
+                expires_cmp is not None
+                and expires_cmp <= now + dt.timedelta(days=7)
+            ):
+                refreshed_token, refreshed_expires_at = refresh_meta_token(meta_token)
+            with session_scope() as db:
+                acc = db.get(InstagramAccount, account_id)
+                if acc and acc.status not in ("paused", "deleted"):
+                    if refreshed_token:
+                        acc.encrypted_meta_access_token = encrypt_secret(refreshed_token)
+                        acc.meta_token_expires_at = refreshed_expires_at
+                    acc.status = "active"
+                    acc.last_error = None
+                    acc.last_health_check_at = now
+            return {"account_id": account_id, "status": "active", "provider": "meta"}
+        except MetaInstagramError as exc:
+            with session_scope() as db:
+                acc = db.get(InstagramAccount, account_id)
+                if not acc or acc.status in ("paused", "deleted"):
+                    return {"account_id": account_id, "status": "needs_login"}
+                prev = acc.status
+                acc.status = "needs_login"
+                acc.last_error = str(exc)[:1000]
+                acc.last_health_check_at = now
+                uid, uname = acc.user_id, acc.username
+            _notify_offline_if_changed(
+                new_status="needs_login",
+                reason=str(exc),
+                prev_status=prev,
+                user_id=uid,
+                username=uname,
+            )
+            return {"account_id": account_id, "status": "needs_login", "provider": "meta"}
 
     if not proxy or not proxy.strip():
         with session_scope() as db:

@@ -58,6 +58,8 @@ def latest_auth_failure_reason(
 def mark_account_from_latest_auth_failure(db: Session, account: InstagramAccount) -> bool:
     if account.status in ("deleted", "paused"):
         return False
+    if (getattr(account, "provider", "instagrapi") or "instagrapi") == "meta":
+        return False
     reason = latest_auth_failure_reason(db, account.id)
     if not reason:
         return False

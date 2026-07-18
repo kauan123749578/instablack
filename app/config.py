@@ -52,6 +52,17 @@ class Settings(BaseSettings):
     s3_access_key_id_2: str = ""
     s3_secret_access_key_2: str = ""
 
+    # Instagram API oficial (Business Login for Instagram)
+    meta_instagram_app_id: str = ""
+    meta_instagram_app_secret: str = ""
+    meta_instagram_redirect_uri: str = ""
+    meta_instagram_graph_version: str = "v25.0"
+    public_base_url: str = ""
+
+    # Loja de proxies GBProxies
+    gbproxies_api_token: str = ""
+    gbproxies_api_base_url: str = "https://gbproxys.com.br/api/client"
+
     ffmpeg_bin: str = "ffmpeg"
     beat_tick_seconds: int = 60
 

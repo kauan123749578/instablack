@@ -121,6 +121,27 @@ alternam ~50/50 entre os buckets; objetos no bucket 2 ficam com prefixo lógico
 `b2/` (ex.: `b2/videos/...`). Download/delete/presign roteiam por esse prefixo.
 Se `_2` estiver vazio, o comportamento continua só com o bucket principal.
 
+### 3.6 Instagram API oficial (opcional)
+
+Crie um app em **Meta for Developers**, habilite **Business Login for Instagram**
+e cadastre exatamente a URL de callback configurada em
+`META_INSTAGRAM_REDIRECT_URI`. Para publicar, solicite:
+
+- `instagram_business_basic`
+- `instagram_business_content_publish`
+
+Em produção, o app precisa de Advanced Access/App Review. Somente contas
+Instagram profissionais (Business ou Creator) podem usar esta conexão. A URL
+`PUBLIC_BASE_URL` precisa ser HTTPS e publicamente acessível, porque a Meta baixa
+o arquivo antes de criar o container. O fluxo implementado cria o container,
+aguarda `FINISHED` e chama `media_publish`.
+
+### 3.7 Loja GBProxies (opcional)
+
+Gere o token no painel da GBProxies e configure `GBPROXIES_API_TOKEN`. O token
+fica apenas nas variáveis do Railway; nunca é enviado ao navegador. O painel
+cria o pedido PIX no servidor e consulta o status até os proxies serem liberados.
+
 ### 3b. Alternativa: Volume Railway
 
 Se não usar R2:
@@ -157,6 +178,17 @@ S3_REGION=auto
 # S3_ENDPOINT_URL_2=
 # S3_ACCESS_KEY_ID_2=
 # S3_SECRET_ACCESS_KEY_2=
+
+# Instagram API oficial (opcional)
+META_INSTAGRAM_APP_ID=
+META_INSTAGRAM_APP_SECRET=
+META_INSTAGRAM_REDIRECT_URI=https://SEU-DOMINIO.up.railway.app/accounts/meta/callback
+META_INSTAGRAM_GRAPH_VERSION=v25.0
+PUBLIC_BASE_URL=https://SEU-DOMINIO.up.railway.app
+
+# Loja GBProxies (opcional)
+GBPROXIES_API_TOKEN=
+GBPROXIES_API_BASE_URL=https://gbproxys.com.br/api/client
 
 # Alternativa sem R2:
 # STORAGE_BACKEND=local

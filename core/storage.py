@@ -19,6 +19,7 @@ class StorageBackend(Protocol):
     def download_to(self, key: str, dest_path: Path) -> None: ...
     def delete(self, key: str) -> None: ...
     def presign_upload(self, key: str, content_type: str, expires_in: int = 3600) -> str: ...
+    def presign_download(self, key: str, expires_in: int = 3600) -> str: ...
     def allocate_key(self, key: str) -> str: ...
 
 
@@ -63,6 +64,9 @@ class LocalStorage:
 
     def presign_upload(self, key: str, content_type: str, expires_in: int = 3600) -> str:
         raise NotImplementedError("Upload direto requer STORAGE_BACKEND=s3")
+
+    def presign_download(self, key: str, expires_in: int = 3600) -> str:
+        raise NotImplementedError("URL assinada requer STORAGE_BACKEND=s3")
 
     def allocate_key(self, key: str) -> str:
         return key
@@ -161,6 +165,13 @@ class S3Storage:
             ExpiresIn=expires_in,
         )
 
+    def presign_download(self, key: str, expires_in: int = 3600) -> str:
+        return self.client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": self.bucket, "Key": key},
+            ExpiresIn=expires_in,
+        )
+
     def allocate_key(self, key: str) -> str:
         return key
 
@@ -218,6 +229,9 @@ class DualS3Storage:
 
     def presign_upload(self, key: str, content_type: str, expires_in: int = 3600) -> str:
         return self._backend_for(key).presign_upload(key, content_type, expires_in)
+
+    def presign_download(self, key: str, expires_in: int = 3600) -> str:
+        return self._backend_for(key).presign_download(key, expires_in)
 
     def ping(self) -> None:
         self.primary.ping()

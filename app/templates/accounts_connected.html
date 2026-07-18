@@ -41,16 +41,25 @@
   <div class="table-wrap">
     <table class="table">
       <thead>
-        <tr><th>@</th><th>Status</th><th>Proxy</th><th>IP</th><th>Último login</th><th></th></tr>
+        <tr><th>@</th><th>Conexão</th><th>Status</th><th>Proxy</th><th>IP</th><th>Último login</th><th></th></tr>
       </thead>
       <tbody>
         {% for acc in accounts %}
         <tr>
           <td>@{{ acc.username }}</td>
+          <td>
+            {% if acc.provider == 'meta' %}
+            <span class="og-badge badge-green">API oficial</span>
+            {% else %}
+            <span class="og-badge">Instagrapi</span>
+            {% endif %}
+          </td>
           <td><span class="og-badge {{ status_badge_class(acc.status) }}">{{ status_label(acc.status) }}</span></td>
-          <td class="muted proxy-cell-auth" title="{{ proxy_to_raw(acc.proxy) }}">{{ proxy_label(acc.proxy) or '—' }}</td>
+          <td class="muted proxy-cell-auth" title="{{ proxy_to_raw(acc.proxy) }}">
+            {% if acc.provider == 'meta' %}não utiliza{% else %}{{ proxy_label(acc.proxy) or '—' }}{% endif %}
+          </td>
           <td class="proxy-ip-cell">
-            {% set ip = account_proxy_ip(acc) %}
+            {% set ip = account_proxy_ip(acc) if acc.provider != 'meta' else none %}
             {% if ip %}
             <div class="proxy-ip-stack">
               <span class="proxy-ip-dot" aria-hidden="true"></span>
@@ -63,6 +72,7 @@
           </td>
           <td>{{ acc.last_login_at | localtime }}</td>
           <td class="account-actions">
+            {% if acc.provider != 'meta' %}
             <details class="proxy-update-panel">
               <summary class="btn btn-sm">Atualizar proxy</summary>
               <form method="post" action="/accounts/{{ acc.id }}/update-proxy" class="proxy-update-form" data-account="@{{ acc.username }}">
@@ -76,6 +86,7 @@
                 <p class="proxy-test-result muted" aria-live="polite"></p>
               </form>
             </details>
+            {% endif %}
             {% if acc.status == 'paused' %}
             <form method="post" action="/accounts/{{ acc.id }}/resume">
               <button type="submit" class="btn btn-sm btn-primary">Retomar</button>

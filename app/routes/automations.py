@@ -339,6 +339,28 @@ async def create_calendar_automation(
         ).all())
         if len(accounts) != len(set(account_ids)):
             error = "Alguma conta selecionada não existe."
+        elif any((acc.provider or "instagrapi") == "meta" for acc in accounts):
+            # A Content Publishing API oficial é mais restritiva que o
+            # Instagrapi. Validamos antes de salvar para evitar falha tardia.
+            if content_type == "reel":
+                bad = [
+                    f.filename for f in upload_files
+                    if Path(f.filename or "").suffix.lower() != ".mp4"
+                ]
+                if bad:
+                    error = "A API oficial aceita Reels em MP4: " + ", ".join(bad)
+            elif content_type == "story":
+                meta_story_ext = {".jpg", ".jpeg", ".mp4"}
+                bad = [
+                    f.filename for f in upload_files
+                    if Path(f.filename or "").suffix.lower() not in meta_story_ext
+                ]
+                if bad:
+                    error = "Para contas oficiais, Stories devem ser JPG ou MP4: " + ", ".join(bad)
+            elif content_type == "photo":
+                ext = Path(upload_files[0].filename or "").suffix.lower()
+                if ext not in {".jpg", ".jpeg"}:
+                    error = "A API oficial aceita fotos em JPG."
 
     if error:
         all_accounts = db.scalars(
@@ -468,8 +490,22 @@ async def create_automation(
             upload_files = _collect_upload_files(form, field_names=("video", "videos"))
             if not upload_files:
                 error = "Envie o arquivo de mídia."
-            else:
+            elif content_type == "photo":
                 upload_files = upload_files[:1]
+            elif content_type == "story" and len(upload_files) > 30:
+                error = "Selecione no máximo 30 mídias por automação de Stories."
+            elif content_type == "story":
+                allowed_story_ext = {
+                    ".jpg", ".jpeg", ".png", ".webp", ".heic",
+                    ".mp4", ".mov", ".webm",
+                }
+                bad = [
+                    f.filename
+                    for f in upload_files
+                    if Path(f.filename or "").suffix.lower() not in allowed_story_ext
+                ]
+                if bad:
+                    error = f"Formato inválido para Story: {', '.join(bad)}"
 
     accounts: list[InstagramAccount] = []
     if not error:
@@ -733,9 +769,15 @@ async def upload_reel_batch(
         return JSONResponse({"error": "Nenhum vídeo recebido neste lote."}, status_code=400)
 
     bad = [f.filename for f in videos if not is_video_filename(f.filename)]
+    if any((acc.provider or "instagrapi") == "meta" for acc in a.accounts):
+        bad.extend(
+            f.filename
+            for f in videos
+            if Path(f.filename or "").suffix.lower() != ".mp4"
+        )
     if bad:
         return JSONResponse(
-            {"error": f"Arquivo inválido (precisa ser vídeo .mp4): {', '.join(bad)}"},
+            {"error": f"Arquivo inválido (use vídeo .mp4): {', '.join(dict.fromkeys(bad))}"},
             status_code=400,
         )
 
@@ -807,6 +849,14 @@ async def create_direct_upload_urls(
         ext = Path(name).suffix.lower()
         if not name or ext not in DIRECT_UPLOAD_CONTENT_TYPES:
             return JSONResponse({"error": f"Arquivo de vídeo inválido: {name or '?'}"}, status_code=400)
+        if (
+            any((acc.provider or "instagrapi") == "meta" for acc in a.accounts)
+            and ext != ".mp4"
+        ):
+            return JSONResponse(
+                {"error": f"A API oficial aceita Reels em MP4: {name}"},
+                status_code=400,
+            )
         try:
             size = int(item.get("size") or 0)
         except (TypeError, ValueError):
