@@ -708,32 +708,6 @@ a:hover { color: var(--primary-hover); }
 }
 .official-api-card h3 { margin: 8px 0 4px; }
 .official-api-card p { margin: 0; max-width: 680px; font-size: 13px; }
-.proxy-store-layout {
-  display: grid;
-  grid-template-columns: minmax(280px, 0.75fr) minmax(0, 1.4fr);
-  gap: 16px;
-  align-items: start;
-}
-.proxy-orders { display: flex; flex-direction: column; gap: 12px; }
-.proxy-orders > h3 { margin: 0 0 2px; }
-.proxy-order-card { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
-.proxy-order-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
-.proxy-order-head > div { display: flex; flex-direction: column; gap: 3px; }
-.proxy-order-card label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--muted); }
-.proxy-order-card textarea {
-  width: 100%; box-sizing: border-box; resize: vertical; padding: 10px;
-  border-radius: 10px; border: 1px solid var(--border);
-  background: #050505; color: var(--text); font: 12px/1.5 ui-monospace, monospace;
-}
-.proxy-pix-qr {
-  width: min(220px, 100%);
-  aspect-ratio: 1;
-  object-fit: contain;
-  align-self: center;
-  border-radius: 12px;
-  background: #fff;
-  padding: 8px;
-}
 .checkbox-row { display: flex; flex-wrap: wrap; gap: 10px; }
 .checkbox-row label { flex-direction: row; align-items: center; color: var(--text); cursor: pointer; }
 
@@ -1173,7 +1147,6 @@ input[type="checkbox"]:checked::after {
 }
 @media (max-width: 640px) {
   .official-api-card { flex-direction: column; align-items: stretch; }
-  .proxy-store-layout { grid-template-columns: 1fr; }
   .form-card, .form-card--premium, .panel {
     padding: 14px;
     max-width: 100%;

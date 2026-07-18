@@ -14,9 +14,12 @@ import logging
 import random
 import tempfile
 from pathlib import Path
+from urllib.parse import quote
 
+import requests
 from sqlalchemy import select, text
 
+from app.config import settings
 from app.security import decrypt_secret
 from app.utils.auth_failures import (
     auth_status_reason,
@@ -52,7 +55,52 @@ from models.models import Automation, InstagramAccount, PublishLog
 log = logging.getLogger(__name__)
 
 # Aparece nos logs do Railway — se não aparecer, o worker NÃO atualizou
-PLAYLIST_CODE = "claim-v4"
+PLAYLIST_CODE = "claim-v5-storage-fallback"
+
+
+def _download_media(storage, key: str, dest_path: Path) -> None:
+    """Baixa do storage do worker e usa o web como recuperação.
+
+    Web e worker podem acabar com variáveis R2 diferentes no Railway. O fallback
+    mantém a publicação funcionando porque o serviço web acessa o bucket usado
+    no upload. Ele só é utilizado quando o download direto falha.
+    """
+    try:
+        storage.download_to(key, dest_path)
+        return
+    except Exception as storage_exc:
+        base_url = settings.public_base_url.strip().rstrip("/")
+        if not base_url:
+            raise RuntimeError(
+                f"Worker não conseguiu baixar a mídia do storage: {storage_exc}"
+            ) from storage_exc
+
+        media_url = f"{base_url}/media/{quote(key, safe='/')}"
+        log.warning(
+            "Download direto do storage falhou para key=%s; tentando serviço web: %s",
+            key,
+            storage_exc,
+        )
+        try:
+            with requests.get(media_url, stream=True, timeout=(15, 300)) as response:
+                response.raise_for_status()
+                dest_path.parent.mkdir(parents=True, exist_ok=True)
+                with dest_path.open("wb") as output:
+                    for chunk in response.iter_content(chunk_size=1024 * 1024):
+                        if chunk:
+                            output.write(chunk)
+            if not dest_path.exists() or dest_path.stat().st_size <= 0:
+                raise RuntimeError("serviço web retornou um arquivo vazio")
+            log.info(
+                "Mídia recuperada pelo serviço web key=%s bytes=%s",
+                key,
+                dest_path.stat().st_size,
+            )
+        except Exception as web_exc:
+            raise RuntimeError(
+                "Não foi possível baixar a mídia. "
+                f"Storage do worker: {storage_exc}; serviço web: {web_exc}"
+            ) from web_exc
 
 
 def _claim_next_slot(db, automation: Automation, items: list[dict]) -> tuple[int, str, str] | None:
@@ -517,7 +565,18 @@ def _execute_publish(
 
     try:
         log.info("Download mídia key=%s → %s", video_key, raw_path.name)
-        storage.download_to(video_key, raw_path)
+        try:
+            _download_media(storage, video_key, raw_path)
+        except Exception as exc:
+            _log_failure(
+                automation_id,
+                account_id,
+                f"storage: {exc}",
+                content_type=content_type,
+                owner_user_id=owner_user_id,
+                username=username,
+            )
+            raise
 
         # Limpeza de metadados é silenciosa no sino — só avisa se falhar.
         try:
@@ -562,19 +621,19 @@ def _execute_publish(
         if content_type == "reel" and thumb_key:
             raw_thumb = tmp_dir / "raw_thumb.jpg"
             clean_thumb_path = tmp_dir / "clean_thumb.jpg"
-            storage.download_to(thumb_key, raw_thumb)
             try:
+                _download_media(storage, thumb_key, raw_thumb)
                 thumb_path = prepare_clean_thumb(raw_thumb, clean_thumb_path)
             except Exception as exc:
                 _log_failure(
                     automation_id,
                     account_id,
-                    f"metadados capa: {exc}",
+                    f"capa: {exc}",
                     content_type=content_type,
                     owner_user_id=owner_user_id,
                     username=username,
                 )
-                return {"error": "metadata_strip_thumb"}
+                return {"error": "thumb_prepare"}
         elif publish_path.suffix.lower() in (".mp4", ".mov", ".webm", ".mkv", ".avi"):
             # Instagrapi 2.16.x é mais estável quando o worker fornece um
             # thumbnail explícito (evita MoviePy/FFmpeg interno no upload).

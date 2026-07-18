@@ -10,7 +10,7 @@ import requests
 
 from app.config import settings
 
-OAUTH_AUTHORIZE_URL = "https://www.instagram.com/oauth/authorize"
+OAUTH_AUTHORIZE_URL = "https://api.instagram.com/oauth/authorize"
 OAUTH_TOKEN_URL = "https://api.instagram.com/oauth/access_token"
 GRAPH_BASE_URL = "https://graph.instagram.com"
 META_SCOPES = (
@@ -42,8 +42,6 @@ def authorization_url(state: str) -> str:
     if not is_configured():
         raise MetaInstagramError("Instagram API oficial ainda não foi configurada.")
     params = {
-        "enable_fb_login": "0",
-        "force_authentication": "1",
         "client_id": settings.meta_instagram_app_id,
         "redirect_uri": settings.meta_instagram_redirect_uri,
         "response_type": "code",

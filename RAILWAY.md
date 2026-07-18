@@ -136,12 +136,6 @@ Instagram profissionais (Business ou Creator) podem usar esta conexão. A URL
 o arquivo antes de criar o container. O fluxo implementado cria o container,
 aguarda `FINISHED` e chama `media_publish`.
 
-### 3.7 Loja GBProxies (opcional)
-
-Gere o token no painel da GBProxies e configure `GBPROXIES_API_TOKEN`. O token
-fica apenas nas variáveis do Railway; nunca é enviado ao navegador. O painel
-cria o pedido PIX no servidor e consulta o status até os proxies serem liberados.
-
 ### 3b. Alternativa: Volume Railway
 
 Se não usar R2:
@@ -185,10 +179,6 @@ META_INSTAGRAM_APP_SECRET=
 META_INSTAGRAM_REDIRECT_URI=https://SEU-DOMINIO.up.railway.app/accounts/meta/callback
 META_INSTAGRAM_GRAPH_VERSION=v25.0
 PUBLIC_BASE_URL=https://SEU-DOMINIO.up.railway.app
-
-# Loja GBProxies (opcional)
-GBPROXIES_API_TOKEN=
-GBPROXIES_API_BASE_URL=https://gbproxys.com.br/api/client
 
 # Alternativa sem R2:
 # STORAGE_BACKEND=local

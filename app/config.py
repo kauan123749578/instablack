@@ -59,10 +59,6 @@ class Settings(BaseSettings):
     meta_instagram_graph_version: str = "v25.0"
     public_base_url: str = ""
 
-    # Loja de proxies GBProxies
-    gbproxies_api_token: str = ""
-    gbproxies_api_base_url: str = "https://gbproxys.com.br/api/client"
-
     ffmpeg_bin: str = "ffmpeg"
     beat_tick_seconds: int = 60
 
