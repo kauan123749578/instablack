@@ -168,15 +168,19 @@
         <div class="calendar-grid" id="calendar-grid"></div>
         <input type="hidden" name="calendar_days" id="calendar-days-input" value="[]">
       </fieldset>
-      <label>Horários de publicação (BRT)
+      <label>{% if default_content_type == 'story' %}Um horário para cada Story (BRT){% else %}Horários de publicação (BRT){% endif %}
         <div id="calendar-times-list" class="calendar-times-list">
           <div class="calendar-time-row">
             <input type="time" name="calendar_times" value="10:00">
           </div>
         </div>
         <button type="button" class="btn btn-sm" id="cal-add-time" style="margin-top:8px">+ Adicionar horário</button>
-        <span class="muted" style="display:block;margin-top:4px;font-size:12px">
+        <span class="muted" id="calendar-times-help" style="display:block;margin-top:4px;font-size:12px">
+          {% if default_content_type == 'story' %}
+          Selecione as mídias acima. Será criado um horário separado para cada uma (ex.: Story 1 às 12:00 e Story 2 às 18:00).
+          {% else %}
           Vários horários no mesmo dia (ex.: 10:00, 15:00, 21:00).
+          {% endif %}
         </span>
       </label>
     </div>

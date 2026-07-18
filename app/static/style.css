@@ -1041,6 +1041,26 @@ input[type="checkbox"]:checked::after {
   display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px;
   max-width: 336px;
 }
+.calendar-time-row--story {
+  justify-content: space-between;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.025);
+}
+.calendar-story-media {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: 12px;
+}
+.calendar-time-row--story input[type="time"] {
+  width: 140px;
+  flex: 0 0 140px;
+}
 .cal-day {
   height: 32px; border: 1px solid rgba(255, 255, 255, 0.06);
   background: #050505; color: var(--text); font-size: 12px; cursor: pointer;
@@ -1167,6 +1187,11 @@ input[type="checkbox"]:checked::after {
     box-sizing: border-box;
   }
   .calendar-times-list input[type=time] { width: 100%; max-width: 100%; }
+  .calendar-time-row--story {
+    align-items: stretch !important;
+    flex-direction: column;
+  }
+  .calendar-time-row--story input[type=time] { width: 100%; flex-basis: auto; }
   .dropzone { min-height: 96px; padding: 14px 12px; }
 }
 @media (max-width: 420px) {

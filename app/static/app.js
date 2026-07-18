@@ -965,12 +965,31 @@
   function initCalendarTimes() {
     const list = document.getElementById("calendar-times-list");
     const addBtn = document.getElementById("cal-add-time");
+    const contentType = document.getElementById("content-type");
+    const videoInput = document.getElementById("video-input");
+    const help = document.getElementById("calendar-times-help");
+    const modeCalendar = document.getElementById("mode-calendar");
     if (!list || !addBtn) return;
+
+    function styleRow(row) {
+      row.style.display = "flex";
+      row.style.gap = "8px";
+      row.style.alignItems = "center";
+      row.style.marginTop = "6px";
+    }
+
+    function isStory() {
+      return contentType?.value === "story";
+    }
 
     function syncRemoveButtons() {
       const rows = list.querySelectorAll(".calendar-time-row");
       rows.forEach((row) => {
         let btn = row.querySelector("[data-remove-time]");
+        if (isStory()) {
+          if (btn) btn.remove();
+          return;
+        }
         if (rows.length <= 1) {
           if (btn) btn.remove();
           return;
@@ -991,23 +1010,75 @@
     }
 
     addBtn.addEventListener("click", () => {
+      if (isStory()) return;
       const row = document.createElement("div");
       row.className = "calendar-time-row";
-      row.style.display = "flex";
-      row.style.gap = "8px";
-      row.style.alignItems = "center";
-      row.style.marginTop = "6px";
+      styleRow(row);
       row.innerHTML = '<input type="time" name="calendar_times" value="14:00">';
       list.appendChild(row);
       syncRemoveButtons();
     });
 
-    list.querySelectorAll(".calendar-time-row").forEach((row) => {
-      row.style.display = "flex";
-      row.style.gap = "8px";
-      row.style.alignItems = "center";
+    function syncStoryTimes() {
+      if (!isStory()) {
+        addBtn.hidden = false;
+        if (help) help.textContent = "Vários horários no mesmo dia (ex.: 10:00, 15:00, 21:00).";
+        list.querySelectorAll(".calendar-time-row").forEach(styleRow);
+        syncRemoveButtons();
+        return;
+      }
+
+      addBtn.hidden = true;
+      const files = videoInput?.files ? Array.from(videoInput.files) : [];
+      const previousTimes = Array.from(
+        list.querySelectorAll('input[name="calendar_times"]')
+      ).map((input) => input.value);
+      list.innerHTML = "";
+
+      if (!files.length) {
+        const empty = document.createElement("p");
+        empty.className = "muted";
+        empty.style.margin = "6px 0 0";
+        empty.textContent = "Selecione as mídias para definir um horário para cada Story.";
+        list.appendChild(empty);
+      } else {
+        files.forEach((file, index) => {
+          const row = document.createElement("div");
+          row.className = "calendar-time-row calendar-time-row--story";
+          styleRow(row);
+
+          const media = document.createElement("span");
+          media.className = "calendar-story-media";
+          media.textContent = `Story ${index + 1}: ${file.name}`;
+
+          const input = document.createElement("input");
+          input.type = "time";
+          input.name = "calendar_times";
+          input.required = Boolean(modeCalendar?.checked);
+          input.value = previousTimes[index] || (index === 0 ? "10:00" : "");
+
+          row.append(media, input);
+          list.appendChild(row);
+        });
+      }
+
+      if (help) {
+        help.textContent = files.length
+          ? `${files.length} mídia(s): escolha um horário diferente para cada Story.`
+          : "Ex.: Story 1 às 12:00 e Story 2 às 18:00.";
+      }
+    }
+
+    videoInput?.addEventListener("change", syncStoryTimes);
+    contentType?.addEventListener("change", syncStoryTimes);
+    document.querySelectorAll('input[name="schedule_mode"]').forEach((radio) => {
+      radio.addEventListener("change", () => {
+        list.querySelectorAll('input[name="calendar_times"]').forEach((input) => {
+          input.required = Boolean(isStory() && modeCalendar?.checked);
+        });
+      });
     });
-    syncRemoveButtons();
+    syncStoryTimes();
   }
 
   function initLucide() {

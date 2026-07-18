@@ -80,7 +80,10 @@ def _collect_upload_files(form, *, field_names: tuple[str, ...]) -> list[UploadF
 
 
 def _save_uploaded_videos(
-    storage, files: list[UploadFile]
+    storage,
+    files: list[UploadFile],
+    *,
+    allow_duplicates: bool = False,
 ) -> tuple[list[dict[str, str]], list[str]]:
     """Materializa cada upload sem carregar o arquivo inteiro em RAM."""
     entries: list[dict[str, str]] = []
@@ -106,7 +109,7 @@ def _save_uploaded_videos(
             log.warning("Upload vazio ignorado: %s", f.filename)
             continue
         file_hash = digest.hexdigest()
-        if file_hash in seen_hash:
+        if not allow_duplicates and file_hash in seen_hash:
             warnings.append(f"“{f.filename}” é igual a outro arquivo da lista (duplicado) e foi ignorado")
             log.warning("Vídeo duplicado ignorado: %s", f.filename)
             continue
@@ -448,7 +451,10 @@ async def create_automation(
         posts_per_batch=posts_per_batch,
         rest_minutes=rest_minutes,
     )
-    cal_times = parse_calendar_times(",".join(calendar_times) if calendar_times else calendar_time)
+    submitted_cal_times: list[str] = []
+    for raw_time in (calendar_times or [calendar_time]):
+        submitted_cal_times.extend(parse_calendar_times(raw_time))
+    cal_times = sorted(set(submitted_cal_times))
     cal_time_stored = times_to_storage(cal_times)
     error: str | None = None
     if content_type not in CONTENT_TYPES:
@@ -507,6 +513,25 @@ async def create_automation(
                 if bad:
                     error = f"Formato inválido para Story: {', '.join(bad)}"
 
+    if not error and content_type == "story" and schedule_mode == "calendar":
+        if len(submitted_cal_times) != len(upload_files):
+            error = (
+                "Escolha um horário para cada mídia do Story "
+                f"({len(upload_files)} mídia(s), {len(submitted_cal_times)} horário(s))."
+            )
+        elif len(cal_times) != len(submitted_cal_times):
+            error = "Cada Story precisa de um horário diferente."
+        else:
+            # O scheduler percorre horários em ordem crescente. Mantém a mídia
+            # correspondente na mesma ordem para Story 1→12h, Story 2→18h etc.
+            ordered = sorted(
+                zip(submitted_cal_times, upload_files),
+                key=lambda pair: pair[0],
+            )
+            cal_times = [pair[0] for pair in ordered]
+            upload_files = [pair[1] for pair in ordered]
+            cal_time_stored = times_to_storage(cal_times)
+
     accounts: list[InstagramAccount] = []
     if not error:
         accounts = list(db.scalars(
@@ -541,7 +566,11 @@ async def create_automation(
         )
 
     storage = get_storage()
-    video_entries, upload_warnings = _save_uploaded_videos(storage, upload_files)
+    video_entries, upload_warnings = _save_uploaded_videos(
+        storage,
+        upload_files,
+        allow_duplicates=content_type == "story",
+    )
     if not video_entries:
         all_accounts = db.scalars(
             select(InstagramAccount).where(
