@@ -39,6 +39,13 @@ def latest_auth_failure_reason(
     max_age_hours: int = 24,
 ) -> str | None:
     since = dt.datetime.utcnow() - dt.timedelta(hours=max_age_hours)
+    account = db.get(InstagramAccount, account_id)
+    if account and account.last_login_at:
+        last_login = account.last_login_at
+        if last_login.tzinfo is not None:
+            last_login = last_login.astimezone(dt.timezone.utc).replace(tzinfo=None)
+        if last_login > since:
+            since = last_login
     latest = db.scalar(
         select(PublishLog)
         .where(

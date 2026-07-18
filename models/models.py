@@ -153,6 +153,7 @@ class Automation(Base):
 
     interval_minutes: Mapped[int] = mapped_column(Integer, default=60)
     schedule_type: Mapped[str] = mapped_column(String(16), default="interval")  # interval | calendar
+    start_mode: Mapped[str] = mapped_column(String(16), default="recurring")  # now | recurring | calendar
     calendar_days: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON [1,5,15]
     calendar_time: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # HH:MM ou JSON ["10:00","14:00"]
     status: Mapped[str] = mapped_column(String(16), default="active", index=True)  # active | paused | completed

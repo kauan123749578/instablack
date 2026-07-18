@@ -7,7 +7,7 @@ from pathlib import Path
 from app.config import settings
 from core.metadata import MetadataStripError, sha256_file, strip_image_metadata, strip_metadata
 
-VIDEO_EXT = {".mp4", ".mov", ".webm", ".mkv", ".avi"}
+VIDEO_EXT = {".mp4", ".mov", ".webm", ".m4v", ".mkv", ".avi"}
 IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp", ".heic"}
 
 

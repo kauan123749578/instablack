@@ -111,6 +111,8 @@ def _sqlite_migrate() -> None:
             conn.execute(text("ALTER TABLE automations ADD COLUMN content_type VARCHAR(16) DEFAULT 'reel'"))
         if "schedule_type" not in cols:
             conn.execute(text("ALTER TABLE automations ADD COLUMN schedule_type VARCHAR(16) DEFAULT 'interval'"))
+        if "start_mode" not in cols:
+            conn.execute(text("ALTER TABLE automations ADD COLUMN start_mode VARCHAR(16) DEFAULT 'recurring'"))
         if "calendar_days" not in cols:
             conn.execute(text("ALTER TABLE automations ADD COLUMN calendar_days TEXT"))
         if "calendar_time" not in cols:
@@ -235,6 +237,8 @@ def _postgres_migrate() -> None:
                 conn.execute(text("ALTER TABLE automations ADD COLUMN content_type VARCHAR(16) DEFAULT 'reel'"))
             if "schedule_type" not in cols:
                 conn.execute(text("ALTER TABLE automations ADD COLUMN schedule_type VARCHAR(16) DEFAULT 'interval'"))
+            if "start_mode" not in cols:
+                conn.execute(text("ALTER TABLE automations ADD COLUMN start_mode VARCHAR(16) DEFAULT 'recurring'"))
             if "calendar_days" not in cols:
                 conn.execute(text("ALTER TABLE automations ADD COLUMN calendar_days TEXT"))
             if "calendar_time" not in cols:

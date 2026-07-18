@@ -36,7 +36,7 @@ from app.utils.automation_videos import (
     videos_to_json,
 )
 from app.utils.intervals import ALLOWED_INTERVALS, interval_label
-from celery_app.tasks.publish import publish_once
+from celery_app.tasks.publish import publish_once, publish_to_account
 from core.database import get_db
 from core.storage import get_storage
 from models.models import Automation, InstagramAccount, PublishLog, User
@@ -47,7 +47,6 @@ log = logging.getLogger(__name__)
 CONTENT_TYPES = ["reel", "story", "photo"]
 VISIBLE_ACCOUNT_STATUSES = ("active", "paused", "needs_login", "proxy_down", "banned")
 MAX_REEL_UPLOAD_FILES = 300
-BATCH_UPLOAD_REDIRECT = "/automations?ok=draft"
 DIRECT_UPLOAD_CONTENT_TYPES = {
     ".mp4": "video/mp4",
     ".mov": "video/quicktime",
@@ -405,6 +404,7 @@ async def create_calendar_automation(
         thumb_original_name=thumb_original_name,
         story_link=_story_link_value(content_type, story_link),
         schedule_type="calendar",
+        start_mode="calendar",
         calendar_days=days_to_json(days),
         calendar_time=time_stored,
         interval_minutes=1440,
@@ -633,6 +633,7 @@ async def create_automation(
             thumb_original_name=thumb_original_name,
             story_link=_story_link_value(content_type, story_link),
             schedule_type="calendar",
+            start_mode="calendar",
             calendar_days=days_to_json(days),
             calendar_time=cal_time_stored,
             interval_minutes=1440,
@@ -661,6 +662,7 @@ async def create_automation(
         thumb_original_name=thumb_original_name,
         story_link=_story_link_value(content_type, story_link),
         schedule_type="interval",
+        start_mode="recurring",
         interval_minutes=interval_minutes,
         status="active" if has_accounts else "paused",
         next_run_at=now if has_accounts else None,
@@ -742,6 +744,7 @@ async def create_reel_upload_draft(
         thumb_original_name=thumb_original_name,
         story_link=_story_link_value(content_type, story_link),
         schedule_type="calendar" if schedule_mode == "calendar" else "interval",
+        start_mode=schedule_mode,
         calendar_days=days_to_json(cal_days) if schedule_mode == "calendar" else None,
         calendar_time=cal_time_stored or None,
         interval_minutes=1440 if schedule_mode == "calendar" else interval_minutes,
@@ -950,13 +953,48 @@ def finish_reel_batch_upload(
     a.video_key = entries[0]["video_key"]
     a.video_original_name = f"{len(entries)} vídeos" if len(entries) > 1 else entries[0]["video_original_name"]
     a.current_index = 0
-    a.status = "paused"
-    a.next_run_at = None
+    accounts = list(a.accounts)
+    start_mode = a.start_mode or (
+        "calendar" if a.schedule_type == "calendar" else "recurring"
+    )
+
+    if not accounts:
+        a.status = "paused"
+        a.next_run_at = None
+    elif start_mode == "now":
+        # O upload terminou: despacha cada item uma única vez e mantém o
+        # registro como concluído para histórico, sem transformar em loop.
+        a.status = "completed"
+        a.next_run_at = None
+    elif start_mode == "calendar":
+        a.status = "active"
+        a.next_run_at = next_calendar_run(
+            parse_calendar_days(a.calendar_days or "[]"),
+            a.calendar_time or "",
+        ) or dt.datetime.utcnow()
+    else:
+        a.status = "active"
+        a.next_run_at = dt.datetime.utcnow()
     db.commit()
+
+    if accounts and start_mode == "now":
+        countdown = 0
+        for index, entry in enumerate(entries):
+            for account_index, account in enumerate(accounts):
+                publish_to_account.apply_async(
+                    args=[a.id, account.id, entry["video_key"], index],
+                    countdown=countdown + account_index * 5,
+                )
+            countdown += max(45, len(accounts) * 8)
+        redirect = f"/logs?watch=1&n={len(entries)}"
+    else:
+        state = "1" if accounts else "draft"
+        redirect = f"/automations?ok={state}&n={len(entries)}"
+
     return {
         "ok": True,
         "total": len(entries),
-        "redirect": f"{BATCH_UPLOAD_REDIRECT}&n={len(entries)}",
+        "redirect": redirect,
     }
 
 
@@ -1110,6 +1148,7 @@ def duplicate_automation(
         current_index=0,
         interval_minutes=src.interval_minutes,
         schedule_type=src.schedule_type or "interval",
+        start_mode=src.start_mode or "recurring",
         calendar_days=src.calendar_days,
         calendar_time=src.calendar_time,
         jitter_enabled=bool(getattr(src, "jitter_enabled", False)),

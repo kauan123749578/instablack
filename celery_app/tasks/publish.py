@@ -36,7 +36,13 @@ from core.instagram import (
     publish_story,
     serialize_settings,
 )
-from core.media_prepare import generate_video_thumbnail, prepare_clean_media, prepare_clean_thumb
+from core.media_prepare import (
+    IMAGE_EXT,
+    VIDEO_EXT,
+    generate_video_thumbnail,
+    prepare_clean_media,
+    prepare_clean_thumb,
+)
 from core.meta_instagram import MetaInstagramError, publish_media as publish_meta_media
 from core.metadata import MetadataStripError
 from core.notifications import create_notification, notify_publish_success
@@ -150,6 +156,26 @@ def execute_automation(self, automation_id: int) -> dict:
 
         # Dispara lazy-load das contas ainda com o row lock
         accounts = list(automation.accounts)
+        account_ids = [
+            acc.id
+            for acc in accounts
+            if acc.status not in ("banned", "proxy_down", "paused", "needs_login", "deleted")
+        ]
+        if not account_ids:
+            # Não consome mídia se nenhuma conta pode publicar.
+            automation.status = "paused"
+            automation.next_run_at = None
+            log.warning(
+                "PLAYLIST %s PAUSED automation=%s sem conta elegível; índice preservado=%s",
+                PLAYLIST_CODE,
+                automation_id,
+                automation.current_index,
+            )
+            return {
+                "error": "no_eligible_accounts",
+                "id": automation_id,
+                "code": PLAYLIST_CODE,
+            }
 
         items = playlist_items(automation)
         total_videos = len(items)
@@ -191,11 +217,6 @@ def execute_automation(self, automation_id: int) -> dict:
                 done = (automation.user_id, automation.name, len(items))
             else:
                 queue_index, video_key, video_name = claimed
-                account_ids = [
-                    acc.id
-                    for acc in accounts
-                    if acc.status not in ("banned", "proxy_down", "paused", "needs_login", "deleted")
-                ]
 
     if done:
         uid, name, total = done
@@ -481,7 +502,15 @@ def _execute_publish(
     tmp_dir = Path(tempfile.mkdtemp(prefix="pub_"))
     ext = Path(video_key).suffix or ".mp4"
     raw_path = tmp_dir / f"raw{ext}"
-    clean_path = tmp_dir / f"clean{ext}"
+    ext_lower = ext.lower()
+    if ext_lower in VIDEO_EXT:
+        clean_ext = ".mp4"
+    elif ext_lower in IMAGE_EXT:
+        # strip_image_metadata sempre produz JPEG.
+        clean_ext = ".jpg"
+    else:
+        clean_ext = ext
+    clean_path = tmp_dir / f"clean{clean_ext}"
     thumb_path: Path | None = None
     clean_thumb_path: Path | None = None
     meta_info: dict | None = None
