@@ -1012,9 +1012,9 @@ def finish_reel_batch_upload(
         a.status = "paused"
         a.next_run_at = None
     elif start_mode == "now":
-        # O upload terminou: despacha cada item uma única vez e mantém o
-        # registro como concluído para histórico, sem transformar em loop.
-        a.status = "completed"
+        # Upload concluído não significa publicação concluída. A task só muda
+        # para completed depois de todas as respostas de sucesso das contas.
+        a.status = "active"
         a.next_run_at = None
     elif start_mode == "calendar":
         a.status = "active"

@@ -332,10 +332,6 @@ def publish_once(
 @celery_app.task(
     name="celery_app.tasks.publish.publish_to_account",
     bind=True,
-    autoretry_for=(Exception,),
-    retry_backoff=True,
-    retry_backoff_max=600,
-    retry_jitter=True,
     max_retries=2,
 )
 def publish_to_account(
@@ -391,16 +387,23 @@ def publish_to_account(
             vk,
         )
 
-        return _execute_publish(
-            automation_id=automation.id,
-            account_id=account.id,
-            video_key=vk,
-            thumb_key=automation.thumb_key,
-            caption=automation.caption or "",
-            content_type=automation.content_type or "reel",
-            story_link=automation.story_link,
-            playlist_index=int(posted_index),
-        )
+        try:
+            return _execute_publish(
+                automation_id=automation.id,
+                account_id=account.id,
+                video_key=vk,
+                thumb_key=automation.thumb_key,
+                caption=automation.caption or "",
+                content_type=automation.content_type or "reel",
+                story_link=automation.story_link,
+                playlist_index=int(posted_index),
+            )
+        except Exception as exc:
+            if self.request.retries < self.max_retries:
+                countdown = min(60 * (2 ** self.request.retries), 600)
+                raise self.retry(exc=exc, countdown=countdown)
+            _mark_now_automation_failed(automation.id)
+            return {"error": "publish_failed", "detail": str(exc)[:500]}
 
 
 def _execute_publish(
@@ -441,6 +444,16 @@ def _execute_publish(
         settings_dict = deserialize_settings(account.session_json) if account.session_json else None
         meta_access_token = decrypt_secret(account.encrypted_meta_access_token)
         meta_ig_user_id = account.meta_ig_user_id
+        if (
+            provider == "meta"
+            and account_status == "needs_login"
+            and "code=2" in (account.last_error or "").lower()
+        ):
+            # Versões anteriores confundiam OAuthException code=2 (temporário)
+            # com token inválido. Repara automaticamente essas contas.
+            account.status = "active"
+            account.last_error = None
+            account_status = "active"
 
     if account_status in ("paused", "needs_login", "proxy_down", "banned", "deleted"):
         return {"skipped": True, "reason": f"account_{account_status}"}
@@ -467,7 +480,7 @@ def _execute_publish(
                 owner_user_id=owner_user_id,
                 username=username,
             )
-            if "token" in str(exc).lower() or "oauth" in str(exc).lower():
+            if exc.code in (102, 190):
                 _mark_account_needs_login(account_id, str(exc))
                 return {"error": "meta_auth"}
             raise
@@ -495,6 +508,7 @@ def _execute_publish(
                 acc.last_login_at = dt.datetime.utcnow()
                 acc.status = "active"
                 acc.last_error = None
+            auto = None
             if automation_id is not None:
                 auto = db.get(Automation, automation_id)
                 if auto:
@@ -512,6 +526,8 @@ def _execute_publish(
             db.add(plog)
             db.flush()
             publish_log_id = plog.id
+            if auto and (auto.start_mode or "") == "now":
+                _complete_now_automation_if_ready(db, auto)
 
         notify_publish_success(
             owner_user_id,
@@ -794,6 +810,41 @@ def _execute_publish(
             tmp_dir.rmdir()
         except OSError:
             pass
+
+
+def _complete_now_automation_if_ready(db, automation: Automation) -> None:
+    entries = playlist_items(automation)
+    expected = {
+        (account.id, entry["video_key"])
+        for account in automation.accounts
+        for entry in entries
+    }
+    if not expected:
+        return
+    successful = set(
+        db.execute(
+            select(PublishLog.account_id, PublishLog.video_key).where(
+                PublishLog.automation_id == automation.id,
+                PublishLog.status == "success",
+            )
+        ).all()
+    )
+    if expected.issubset(successful):
+        automation.status = "completed"
+        automation.next_run_at = None
+        automation.current_index = len(entries)
+
+
+def _mark_now_automation_failed(automation_id: int) -> None:
+    with session_scope() as db:
+        automation = db.get(Automation, automation_id)
+        if (
+            automation
+            and (automation.start_mode or "") == "now"
+            and automation.status != "completed"
+        ):
+            automation.status = "paused"
+            automation.next_run_at = None
 
 
 def _log_failure(

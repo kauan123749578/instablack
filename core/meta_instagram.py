@@ -21,7 +21,18 @@ VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm", ".m4v"}
 
 
 class MetaInstagramError(RuntimeError):
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: int | None = None,
+        subcode: int | None = None,
+        error_type: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.subcode = subcode
+        self.error_type = error_type
 
 
 def _graph_url(path: str) -> str:
@@ -76,7 +87,22 @@ def _json_or_error(response: requests.Response, action: str) -> dict:
         else:
             detail = str(error)
         detail = detail or response.text[:500]
-        raise MetaInstagramError(f"{action}: {detail}")
+        code = error.get("code") if isinstance(error, dict) else None
+        subcode = error.get("error_subcode") if isinstance(error, dict) else None
+        raise MetaInstagramError(
+            f"{action}: {detail}",
+            code=int(code) if isinstance(code, int) or str(code).isdigit() else None,
+            subcode=(
+                int(subcode)
+                if isinstance(subcode, int) or str(subcode).isdigit()
+                else None
+            ),
+            error_type=(
+                str(error.get("type") or "") or None
+                if isinstance(error, dict)
+                else None
+            ),
+        )
     return payload
 
 
@@ -236,7 +262,12 @@ def publish_media(
         )
         created = _json_or_error(create_response, "Falha ao criar container da Meta")
     except MetaInstagramError as exc:
-        if not payload.get("cover_url"):
+        detail = str(exc).lower()
+        cover_rejected = any(
+            marker in detail
+            for marker in ("cover_url", "cover photo", "thumbnail", "thumb image")
+        )
+        if not payload.get("cover_url") or not cover_rejected:
             raise
         # A capa nunca deve impedir o Reel inteiro. Repete sem cover_url para
         # preservar a publicação e devolve o erro para aviso ao usuário.

@@ -17,6 +17,7 @@ B2_KEY_PREFIX = "b2/"
 class StorageBackend(Protocol):
     def save(self, src_stream: BinaryIO, suggested_ext: str = ".mp4") -> str: ...
     def download_to(self, key: str, dest_path: Path) -> None: ...
+    def open_download(self, key: str, byte_range: str | None = None) -> dict: ...
     def delete(self, key: str) -> None: ...
     def presign_upload(self, key: str, content_type: str, expires_in: int = 3600) -> str: ...
     def presign_download(self, key: str, expires_in: int = 3600) -> str: ...
@@ -147,6 +148,13 @@ class S3Storage:
                 raise FileNotFoundError(f"Arquivo não encontrado no R2/S3: {key}") from exc
             raise
 
+    def open_download(self, key: str, byte_range: str | None = None) -> dict:
+        """Abre o objeto para streaming sem copiá-lo antes ao disco."""
+        params = {"Bucket": self.bucket, "Key": key}
+        if byte_range:
+            params["Range"] = byte_range
+        return self.client.get_object(**params)
+
     def delete(self, key: str) -> None:
         try:
             self.client.delete_object(Bucket=self.bucket, Key=key)
@@ -223,6 +231,9 @@ class DualS3Storage:
 
     def download_to(self, key: str, dest_path: Path) -> None:
         self._backend_for(key).download_to(key, dest_path)
+
+    def open_download(self, key: str, byte_range: str | None = None) -> dict:
+        return self._backend_for(key).open_download(key, byte_range)
 
     def delete(self, key: str) -> None:
         self._backend_for(key).delete(key)

@@ -2,16 +2,19 @@
 from __future__ import annotations
 
 import logging
-import shutil
-import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
-from starlette.background import BackgroundTask
 from starlette.middleware.sessions import SessionMiddleware
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
@@ -122,7 +125,7 @@ def create_app() -> FastAPI:
         return JSONResponse(status_code=422, content={"detail": exc.errors()})
 
     @app.get("/media/{file_key:path}", include_in_schema=False)
-    def serve_media(file_key: str):
+    def serve_media(file_key: str, request: Request):
         if ".." in file_key or file_key.startswith("/"):
             raise HTTPException(status_code=400, detail="Chave inválida")
 
@@ -139,26 +142,39 @@ def create_app() -> FastAPI:
                 },
             )
 
-        storage = get_storage()
-        suffix = Path(file_key).suffix or ""
-        tmp_dir = Path(tempfile.mkdtemp(prefix="media_"))
-        tmp_path = tmp_dir / f"file{suffix}"
         try:
-            storage.download_to(file_key, tmp_path)
-        except FileNotFoundError:
-            shutil.rmtree(tmp_dir, ignore_errors=True)
-            raise HTTPException(status_code=404, detail="Arquivo não encontrado")
+            obj = get_storage().open_download(
+                file_key,
+                request.headers.get("range"),
+            )
         except Exception:
-            shutil.rmtree(tmp_dir, ignore_errors=True)
             raise HTTPException(status_code=404, detail="Arquivo não encontrado")
 
-        return FileResponse(
-            tmp_path,
-            headers={
-                "Accept-Ranges": "bytes",
-                "Cache-Control": "public, max-age=3600",
-            },
-            background=BackgroundTask(lambda: shutil.rmtree(tmp_dir, ignore_errors=True)),
+        body = obj["Body"]
+
+        def stream_body():
+            try:
+                while chunk := body.read(1024 * 1024):
+                    yield chunk
+            finally:
+                body.close()
+
+        headers = {
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "public, max-age=3600",
+        }
+        if obj.get("ContentLength") is not None:
+            headers["Content-Length"] = str(obj["ContentLength"])
+        if obj.get("ContentRange"):
+            headers["Content-Range"] = str(obj["ContentRange"])
+        if obj.get("ETag"):
+            headers["ETag"] = str(obj["ETag"])
+
+        return StreamingResponse(
+            stream_body(),
+            status_code=206 if obj.get("ContentRange") else 200,
+            media_type=obj.get("ContentType") or "application/octet-stream",
+            headers=headers,
         )
 
     @app.get("/healthz", include_in_schema=False)
