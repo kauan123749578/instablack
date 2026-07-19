@@ -159,7 +159,20 @@ def refresh_access_token(access_token: str) -> tuple[str, dt.datetime | None]:
     return token, expires_at
 
 
-def public_media_url(key: str) -> str:
+def _app_media_url(key: str) -> str | None:
+    base = settings.public_base_url.strip().rstrip("/")
+    if not base:
+        return None
+    return f"{base}/media/{quote(key, safe='/')}"
+
+
+def public_media_url(key: str, *, prefer_app: bool = False) -> str:
+    # Capas são pequenas e a Meta é mais confiável com uma URL curta, sem a
+    # assinatura extensa do R2. O endpoint web continua lendo o mesmo bucket.
+    app_url = _app_media_url(key)
+    if prefer_app and app_url:
+        return app_url
+
     # Em R2/S3 a Meta baixa direto do bucket, sem atravessar a Railway.
     try:
         from core.storage import get_storage
@@ -182,12 +195,11 @@ def public_media_url(key: str) -> str:
     except (NotImplementedError, RuntimeError, ValueError):
         pass
 
-    base = settings.public_base_url.strip().rstrip("/")
-    if not base:
+    if not app_url:
         raise MetaInstagramError(
             "PUBLIC_BASE_URL não configurada; a Meta precisa acessar a mídia por HTTPS."
         )
-    return f"{base}/media/{quote(key, safe='/')}"
+    return app_url
 
 
 def _wait_container(container_id: str, access_token: str) -> None:
@@ -215,7 +227,7 @@ def publish_media(
     content_type: str,
     caption: str = "",
     cover_key: str | None = None,
-) -> dict[str, str | None]:
+) -> dict[str, object]:
     """Cria container, aguarda o processamento e publica."""
     media_url = public_media_url(media_key)
     is_video = Path(media_key).suffix.lower() in VIDEO_EXTENSIONS
@@ -226,7 +238,7 @@ def publish_media(
         if caption:
             payload["caption"] = caption
         if cover_key:
-            payload["cover_url"] = public_media_url(cover_key)
+            payload["cover_url"] = public_media_url(cover_key, prefer_app=True)
     elif content_type == "story":
         payload["media_type"] = "STORIES"
         payload["video_url" if is_video else "image_url"] = media_url
@@ -237,12 +249,32 @@ def publish_media(
     else:
         raise MetaInstagramError(f"Tipo de conteúdo não suportado: {content_type}")
 
-    create_response = requests.post(
-        _graph_url(f"{ig_user_id}/media"),
-        data=payload,
-        timeout=60,
-    )
-    created = _json_or_error(create_response, "Falha ao criar container da Meta")
+    cover_error: str | None = None
+    try:
+        create_response = requests.post(
+            _graph_url(f"{ig_user_id}/media"),
+            data=payload,
+            timeout=60,
+        )
+        created = _json_or_error(create_response, "Falha ao criar container da Meta")
+    except MetaInstagramError as exc:
+        if not payload.get("cover_url"):
+            raise
+        # A capa nunca deve impedir o Reel inteiro. Repete sem cover_url para
+        # preservar a publicação e devolve o erro para aviso ao usuário.
+        cover_error = str(exc)
+        fallback_payload = dict(payload)
+        fallback_payload.pop("cover_url", None)
+        fallback_payload["thumb_offset"] = "0"
+        fallback_response = requests.post(
+            _graph_url(f"{ig_user_id}/media"),
+            data=fallback_payload,
+            timeout=60,
+        )
+        created = _json_or_error(
+            fallback_response,
+            f"{exc}; tentativa sem capa também falhou",
+        )
     container_id = str(created.get("id") or "")
     if not container_id:
         raise MetaInstagramError("A Meta não retornou o ID do container.")
@@ -259,4 +291,10 @@ def publish_media(
     media_id = str(published.get("id") or "")
     if not media_id:
         raise MetaInstagramError("A Meta não retornou o ID da publicação.")
-    return {"id": media_id, "code": None, "url": None}
+    return {
+        "id": media_id,
+        "code": None,
+        "url": None,
+        "cover_applied": bool(cover_key and not cover_error),
+        "cover_error": cover_error,
+    }

@@ -472,6 +472,22 @@ def _execute_publish(
                 return {"error": "meta_auth"}
             raise
 
+        cover_error = str(result.get("cover_error") or "")
+        if cover_error:
+            log.warning(
+                "META REEL publicado sem capa account=%s key=%s erro=%s",
+                username,
+                thumb_key,
+                cover_error,
+            )
+            create_notification(
+                owner_user_id,
+                "Reel publicado sem a capa personalizada",
+                f"@{username}: a Meta recusou a capa, mas o Reel foi publicado. {cover_error[:140]}",
+                kind="warning",
+                link="/logs",
+            )
+
         publish_log_id: int | None = None
         with session_scope() as db:
             acc = db.get(InstagramAccount, account_id)
