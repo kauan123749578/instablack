@@ -166,35 +166,13 @@ def _app_media_url(key: str) -> str | None:
     return f"{base}/media/{quote(key, safe='/')}"
 
 
-def public_media_url(key: str, *, prefer_app: bool = False) -> str:
-    # Capas são pequenas e a Meta é mais confiável com uma URL curta, sem a
-    # assinatura extensa do R2. O endpoint web continua lendo o mesmo bucket.
+def public_media_url(key: str) -> str:
+    """URL HTTPS estável para a Meta baixar a mídia pelo Instablack.
+
+    O R2 continua sendo apenas o armazenamento interno. Não entregamos sua URL
+    assinada à Meta, pois ela pode expirar ou ser recusada durante o container.
+    """
     app_url = _app_media_url(key)
-    if prefer_app and app_url:
-        return app_url
-
-    # Em R2/S3 a Meta baixa direto do bucket, sem atravessar a Railway.
-    try:
-        from core.storage import get_storage
-
-        signed_url = get_storage().presign_download(key, expires_in=3600)
-        # Confirma que o worker assinou o bucket correto. Se web e worker
-        # estiverem com configuração R2 diferente, a URL pode ser válida mas
-        # apontar para um objeto inexistente (comum no segundo bucket).
-        try:
-            with requests.get(
-                signed_url,
-                headers={"Range": "bytes=0-0"},
-                stream=True,
-                timeout=(10, 30),
-            ) as probe:
-                if probe.status_code in (200, 206):
-                    return signed_url
-        except requests.RequestException:
-            pass
-    except (NotImplementedError, RuntimeError, ValueError):
-        pass
-
     if not app_url:
         raise MetaInstagramError(
             "PUBLIC_BASE_URL não configurada; a Meta precisa acessar a mídia por HTTPS."
@@ -238,7 +216,7 @@ def publish_media(
         if caption:
             payload["caption"] = caption
         if cover_key:
-            payload["cover_url"] = public_media_url(cover_key, prefer_app=True)
+            payload["cover_url"] = public_media_url(cover_key)
     elif content_type == "story":
         payload["media_type"] = "STORIES"
         payload["video_url" if is_video else "image_url"] = media_url

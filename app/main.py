@@ -131,7 +131,13 @@ def create_app() -> FastAPI:
             path = (base / file_key).resolve()
             if not str(path).startswith(str(base)) or not path.is_file():
                 raise HTTPException(status_code=404, detail="Arquivo não encontrado")
-            return FileResponse(path)
+            return FileResponse(
+                path,
+                headers={
+                    "Accept-Ranges": "bytes",
+                    "Cache-Control": "public, max-age=3600",
+                },
+            )
 
         storage = get_storage()
         suffix = Path(file_key).suffix or ""
@@ -148,6 +154,10 @@ def create_app() -> FastAPI:
 
         return FileResponse(
             tmp_path,
+            headers={
+                "Accept-Ranges": "bytes",
+                "Cache-Control": "public, max-age=3600",
+            },
             background=BackgroundTask(lambda: shutil.rmtree(tmp_dir, ignore_errors=True)),
         )
 
