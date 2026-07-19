@@ -58,11 +58,24 @@ def _json_or_error(response: requests.Response, action: str) -> dict:
         payload = {}
     if not response.ok or payload.get("error"):
         error = payload.get("error") or {}
-        detail = (
-            error.get("message")
-            if isinstance(error, dict)
-            else str(error)
-        ) or response.text[:500]
+        if isinstance(error, dict):
+            parts = [
+                str(error.get("message") or "").strip(),
+                f"type={error['type']}" if error.get("type") else "",
+                f"code={error['code']}" if error.get("code") is not None else "",
+                (
+                    f"subcode={error['error_subcode']}"
+                    if error.get("error_subcode") is not None
+                    else ""
+                ),
+                str(error.get("error_user_title") or "").strip(),
+                str(error.get("error_user_msg") or "").strip(),
+                f"trace={error['fbtrace_id']}" if error.get("fbtrace_id") else "",
+            ]
+            detail = " | ".join(part for part in parts if part)
+        else:
+            detail = str(error)
+        detail = detail or response.text[:500]
         raise MetaInstagramError(f"{action}: {detail}")
     return payload
 
@@ -151,8 +164,22 @@ def public_media_url(key: str) -> str:
     try:
         from core.storage import get_storage
 
-        return get_storage().presign_download(key, expires_in=3600)
-    except NotImplementedError:
+        signed_url = get_storage().presign_download(key, expires_in=3600)
+        # Confirma que o worker assinou o bucket correto. Se web e worker
+        # estiverem com configuração R2 diferente, a URL pode ser válida mas
+        # apontar para um objeto inexistente (comum no segundo bucket).
+        try:
+            with requests.get(
+                signed_url,
+                headers={"Range": "bytes=0-0"},
+                stream=True,
+                timeout=(10, 30),
+            ) as probe:
+                if probe.status_code in (200, 206):
+                    return signed_url
+        except requests.RequestException:
+            pass
+    except (NotImplementedError, RuntimeError, ValueError):
         pass
 
     base = settings.public_base_url.strip().rstrip("/")
@@ -195,11 +222,7 @@ def publish_media(
     payload: dict[str, str] = {"access_token": access_token}
 
     if content_type == "reel":
-        payload.update({
-            "media_type": "REELS",
-            "video_url": media_url,
-            "share_to_feed": "true",
-        })
+        payload.update({"media_type": "REELS", "video_url": media_url})
         if caption:
             payload["caption"] = caption
         if cover_key:

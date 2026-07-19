@@ -152,7 +152,7 @@ def _save_thumb(storage, thumb: UploadFile | None) -> tuple[str | None, str | No
                 format="JPEG",
                 quality=92,
                 optimize=True,
-                progressive=True,
+                progressive=False,
             )
             output.seek(0)
             return storage.save(output, suggested_ext=".jpg"), thumb.filename
