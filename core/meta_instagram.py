@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import datetime as dt
+import os
 import time
 from pathlib import Path
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlsplit
 
 import requests
 
@@ -18,6 +19,7 @@ META_SCOPES = (
     "instagram_business_content_publish",
 )
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm", ".m4v"}
+DEFAULT_PUBLIC_BASE_URL = "https://instablack-production.up.railway.app"
 
 
 class MetaInstagramError(RuntimeError):
@@ -185,10 +187,20 @@ def refresh_access_token(access_token: str) -> tuple[str, dt.datetime | None]:
     return token, expires_at
 
 
-def _app_media_url(key: str) -> str | None:
-    base = settings.public_base_url.strip().rstrip("/")
+def _app_media_url(key: str) -> str:
+    base = settings.public_base_url.strip()
     if not base:
-        return None
+        callback = settings.meta_instagram_redirect_uri.strip()
+        parsed = urlsplit(callback)
+        if parsed.scheme == "https" and parsed.netloc:
+            base = f"{parsed.scheme}://{parsed.netloc}"
+    if not base:
+        railway_url = os.getenv("RAILWAY_STATIC_URL", "").strip()
+        railway_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "").strip()
+        base = railway_url or (f"https://{railway_domain}" if railway_domain else "")
+    if not base:
+        base = DEFAULT_PUBLIC_BASE_URL
+    base = base.rstrip("/")
     return f"{base}/media/{quote(key, safe='/')}"
 
 
@@ -198,12 +210,7 @@ def public_media_url(key: str) -> str:
     O R2 continua sendo apenas o armazenamento interno. Não entregamos sua URL
     assinada à Meta, pois ela pode expirar ou ser recusada durante o container.
     """
-    app_url = _app_media_url(key)
-    if not app_url:
-        raise MetaInstagramError(
-            "PUBLIC_BASE_URL não configurada; a Meta precisa acessar a mídia por HTTPS."
-        )
-    return app_url
+    return _app_media_url(key)
 
 
 def _wait_container(container_id: str, access_token: str) -> None:
