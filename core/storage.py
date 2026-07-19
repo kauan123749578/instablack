@@ -18,6 +18,7 @@ class StorageBackend(Protocol):
     def save(self, src_stream: BinaryIO, suggested_ext: str = ".mp4") -> str: ...
     def download_to(self, key: str, dest_path: Path) -> None: ...
     def open_download(self, key: str, byte_range: str | None = None) -> dict: ...
+    def head_download(self, key: str) -> dict: ...
     def delete(self, key: str) -> None: ...
     def presign_upload(self, key: str, content_type: str, expires_in: int = 3600) -> str: ...
     def presign_download(self, key: str, expires_in: int = 3600) -> str: ...
@@ -155,6 +156,9 @@ class S3Storage:
             params["Range"] = byte_range
         return self.client.get_object(**params)
 
+    def head_download(self, key: str) -> dict:
+        return self.client.head_object(Bucket=self.bucket, Key=key)
+
     def delete(self, key: str) -> None:
         try:
             self.client.delete_object(Bucket=self.bucket, Key=key)
@@ -234,6 +238,9 @@ class DualS3Storage:
 
     def open_download(self, key: str, byte_range: str | None = None) -> dict:
         return self._backend_for(key).open_download(key, byte_range)
+
+    def head_download(self, key: str) -> dict:
+        return self._backend_for(key).head_download(key)
 
     def delete(self, key: str) -> None:
         self._backend_for(key).delete(key)

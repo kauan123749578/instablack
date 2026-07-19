@@ -213,6 +213,48 @@ def public_media_url(key: str) -> str:
     return _app_media_url(key)
 
 
+def _validate_public_media_url(
+    url: str,
+    *,
+    expected_prefix: str,
+    label: str,
+) -> None:
+    """Confirma que a mesma URL entregue à Meta aceita HEAD e Range GET."""
+    try:
+        head = requests.head(url, allow_redirects=True, timeout=(15, 60))
+        if head.status_code != 200:
+            raise MetaInstagramError(
+                f"{label} não está acessível por HTTPS: HEAD retornou HTTP {head.status_code}."
+            )
+        content_type = (head.headers.get("Content-Type") or "").lower()
+        if expected_prefix and not content_type.startswith(expected_prefix):
+            raise MetaInstagramError(
+                f"{label} retornou Content-Type {content_type or 'ausente'}; "
+                f"esperado {expected_prefix}."
+            )
+        content_length = int(head.headers.get("Content-Length") or 0)
+        if content_length <= 0:
+            raise MetaInstagramError(f"{label} público está vazio.")
+
+        with requests.get(
+            url,
+            headers={"Range": "bytes=0-0"},
+            allow_redirects=True,
+            stream=True,
+            timeout=(15, 60),
+        ) as probe:
+            if probe.status_code not in (200, 206):
+                raise MetaInstagramError(
+                    f"{label} não aceita download: GET retornou HTTP {probe.status_code}."
+                )
+    except MetaInstagramError:
+        raise
+    except (OSError, ValueError, requests.RequestException) as exc:
+        raise MetaInstagramError(
+            f"Não foi possível validar o download público de {label}: {exc}"
+        ) from exc
+
+
 def _wait_container(container_id: str, access_token: str) -> None:
     for _ in range(60):
         response = requests.get(
@@ -242,6 +284,11 @@ def publish_media(
     """Cria container, aguarda o processamento e publica."""
     media_url = public_media_url(media_key)
     is_video = Path(media_key).suffix.lower() in VIDEO_EXTENSIONS
+    _validate_public_media_url(
+        media_url,
+        expected_prefix="video/" if is_video else "image/",
+        label="Vídeo" if is_video else "Imagem",
+    )
     payload: dict[str, str] = {"access_token": access_token}
 
     if content_type == "reel":
@@ -249,7 +296,13 @@ def publish_media(
         if caption:
             payload["caption"] = caption
         if cover_key:
-            payload["cover_url"] = public_media_url(cover_key)
+            cover_url = public_media_url(cover_key)
+            _validate_public_media_url(
+                cover_url,
+                expected_prefix="image/jpeg",
+                label="Capa",
+            )
+            payload["cover_url"] = cover_url
     elif content_type == "story":
         payload["media_type"] = "STORIES"
         payload["video_url" if is_video else "image_url"] = media_url

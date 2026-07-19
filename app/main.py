@@ -5,7 +5,7 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import (
     FileResponse,
@@ -124,7 +124,11 @@ def create_app() -> FastAPI:
                 )
         return JSONResponse(status_code=422, content={"detail": exc.errors()})
 
-    @app.get("/media/{file_key:path}", include_in_schema=False)
+    @app.api_route(
+        "/media/{file_key:path}",
+        methods=["GET", "HEAD"],
+        include_in_schema=False,
+    )
     def serve_media(file_key: str, request: Request):
         if ".." in file_key or file_key.startswith("/"):
             raise HTTPException(status_code=400, detail="Chave inválida")
@@ -142,22 +146,17 @@ def create_app() -> FastAPI:
                 },
             )
 
+        storage = get_storage()
         try:
-            obj = get_storage().open_download(
-                file_key,
-                request.headers.get("range"),
-            )
+            if request.method == "HEAD":
+                obj = storage.head_download(file_key)
+            else:
+                obj = storage.open_download(
+                    file_key,
+                    request.headers.get("range"),
+                )
         except Exception:
             raise HTTPException(status_code=404, detail="Arquivo não encontrado")
-
-        body = obj["Body"]
-
-        def stream_body():
-            try:
-                while chunk := body.read(1024 * 1024):
-                    yield chunk
-            finally:
-                body.close()
 
         headers = {
             "Accept-Ranges": "bytes",
@@ -169,11 +168,31 @@ def create_app() -> FastAPI:
             headers["Content-Range"] = str(obj["ContentRange"])
         if obj.get("ETag"):
             headers["ETag"] = str(obj["ETag"])
+        media_type = obj.get("ContentType") or "application/octet-stream"
+
+        if request.method == "HEAD":
+            return Response(
+                status_code=200,
+                media_type=media_type,
+                headers=headers,
+            )
+
+        try:
+            body = obj["Body"]
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Arquivo não encontrado")
+
+        def stream_body():
+            try:
+                while chunk := body.read(1024 * 1024):
+                    yield chunk
+            finally:
+                body.close()
 
         return StreamingResponse(
             stream_body(),
             status_code=206 if obj.get("ContentRange") else 200,
-            media_type=obj.get("ContentType") or "application/octet-stream",
+            media_type=media_type,
             headers=headers,
         )
 
