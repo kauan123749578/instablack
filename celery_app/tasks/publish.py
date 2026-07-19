@@ -456,6 +456,7 @@ def _execute_publish(
                 media_key=video_key,
                 content_type=content_type,
                 caption=caption,
+                cover_key=thumb_key if content_type == "reel" else None,
             )
         except MetaInstagramError as exc:
             _log_failure(

@@ -187,6 +187,7 @@ def publish_media(
     media_key: str,
     content_type: str,
     caption: str = "",
+    cover_key: str | None = None,
 ) -> dict[str, str | None]:
     """Cria container, aguarda o processamento e publica."""
     media_url = public_media_url(media_key)
@@ -197,6 +198,8 @@ def publish_media(
         payload.update({"media_type": "REELS", "video_url": media_url})
         if caption:
             payload["caption"] = caption
+        if cover_key:
+            payload["cover_url"] = public_media_url(cover_key)
     elif content_type == "story":
         payload["media_type"] = "STORIES"
         payload["video_url" if is_video else "image_url"] = media_url
