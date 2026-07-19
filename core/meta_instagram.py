@@ -195,7 +195,11 @@ def publish_media(
     payload: dict[str, str] = {"access_token": access_token}
 
     if content_type == "reel":
-        payload.update({"media_type": "REELS", "video_url": media_url})
+        payload.update({
+            "media_type": "REELS",
+            "video_url": media_url,
+            "share_to_feed": "true",
+        })
         if caption:
             payload["caption"] = caption
         if cover_key:

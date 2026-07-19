@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
+import io
 import logging
 import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import JSONResponse, RedirectResponse
+from PIL import Image, ImageOps
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -135,8 +137,27 @@ def _save_thumb(storage, thumb: UploadFile | None) -> tuple[str | None, str | No
         thumb.file.seek(0)
     except Exception:
         pass
-    thumb_ext = Path(thumb.filename).suffix or ".jpg"
-    return storage.save(thumb.file, suggested_ext=thumb_ext), thumb.filename
+    try:
+        with Image.open(thumb.file) as source:
+            normalized = ImageOps.exif_transpose(source).convert("RGB")
+            normalized = ImageOps.fit(
+                normalized,
+                (1080, 1920),
+                method=Image.Resampling.LANCZOS,
+                centering=(0.5, 0.5),
+            )
+            output = io.BytesIO()
+            normalized.save(
+                output,
+                format="JPEG",
+                quality=92,
+                optimize=True,
+                progressive=True,
+            )
+            output.seek(0)
+            return storage.save(output, suggested_ext=".jpg"), thumb.filename
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="A capa enviada não é uma imagem válida.") from exc
 
 
 def _activation_next_run(automation: Automation) -> dt.datetime:
