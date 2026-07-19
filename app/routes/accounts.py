@@ -112,6 +112,56 @@ def _load_user_accounts(db: Session, user: User) -> list[InstagramAccount]:
     ).all()
 
 
+def _store_meta_account(
+    db: Session,
+    user: User,
+    *,
+    token: str,
+    expires_at: dt.datetime | None,
+    profile: dict[str, str],
+) -> str | None:
+    """Cria/atualiza a conta oficial sem registrar o token em logs."""
+    existing = db.scalar(
+        select(InstagramAccount).where(
+            InstagramAccount.user_id == user.id,
+            InstagramAccount.meta_ig_user_id == profile["id"],
+        )
+    )
+    if existing is None:
+        existing = db.scalar(
+            select(InstagramAccount).where(
+                InstagramAccount.user_id == user.id,
+                InstagramAccount.username == profile["username"],
+            )
+        )
+    if existing is None:
+        current_count = len(_load_user_accounts(db, user))
+        allowed, _ = can_add_instagram_account(user, current_count)
+        if not allowed:
+            return "account_limit"
+        existing = InstagramAccount(
+            user_id=user.id,
+            username=profile["username"],
+        )
+        db.add(existing)
+
+    existing.provider = "meta"
+    existing.meta_ig_user_id = profile["id"]
+    existing.encrypted_meta_access_token = encrypt_secret(token)
+    existing.meta_token_expires_at = expires_at
+    existing.username = profile["username"]
+    existing.encrypted_password = None
+    existing.session_json = None
+    existing.proxy = None
+    existing.proxy_ip = None
+    existing.proxy_geo = None
+    existing.status = "active"
+    existing.last_error = None
+    existing.last_login_at = dt.datetime.utcnow()
+    db.commit()
+    return None
+
+
 @router.get("")
 def list_accounts(
     request: Request,
@@ -128,6 +178,7 @@ def list_accounts(
         "meta_denied": "A autorização do Instagram foi cancelada.",
         "meta_state": "A sessão de autorização expirou. Tente conectar novamente.",
         "meta_exchange": "A Meta recusou a conexão. Confira o app e tente novamente.",
+        "meta_token_invalid": "Token oficial inválido ou sem acesso à conta.",
         "account_limit": "Seu limite de contas foi atingido.",
     }.get(request.query_params.get("error") or "")
     return templates.TemplateResponse(
@@ -154,6 +205,46 @@ def connect_meta_account(
     request.session["meta_oauth_state"] = state
     request.session["meta_oauth_user_id"] = user.id
     return RedirectResponse(authorization_url(state), status_code=status.HTTP_302_FOUND)
+
+
+@router.post("/meta/connect-token")
+def connect_meta_account_with_token(
+    access_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Conexão de diagnóstico para o owner quando o login web da Meta retorna 429."""
+    if not user.is_owner:
+        raise HTTPException(status_code=403, detail="Disponível apenas para o proprietário")
+    token = access_token.strip()
+    if len(token) < 20:
+        return RedirectResponse(
+            "/accounts?error=meta_token_invalid",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    try:
+        profile = account_profile(token)
+    except MetaInstagramError:
+        return RedirectResponse(
+            "/accounts?error=meta_token_invalid",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    error = _store_meta_account(
+        db,
+        user,
+        token=token,
+        expires_at=None,
+        profile=profile,
+    )
+    if error:
+        return RedirectResponse(
+            f"/accounts?error={error}",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    return RedirectResponse(
+        "/accounts/connected?ok=meta_connected",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
 
 
 @router.get("/meta/callback")
@@ -190,47 +281,18 @@ def meta_oauth_callback(
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
-    existing = db.scalar(
-        select(InstagramAccount).where(
-            InstagramAccount.user_id == user.id,
-            InstagramAccount.meta_ig_user_id == profile["id"],
-        )
+    store_error = _store_meta_account(
+        db,
+        user,
+        token=token,
+        expires_at=expires_at,
+        profile=profile,
     )
-    if existing is None:
-        existing = db.scalar(
-            select(InstagramAccount).where(
-                InstagramAccount.user_id == user.id,
-                InstagramAccount.username == profile["username"],
-            )
+    if store_error:
+        return RedirectResponse(
+            f"/accounts?error={store_error}",
+            status_code=status.HTTP_303_SEE_OTHER,
         )
-    if existing is None:
-        current_count = len(_load_user_accounts(db, user))
-        allowed, _ = can_add_instagram_account(user, current_count)
-        if not allowed:
-            return RedirectResponse(
-                "/accounts?error=account_limit",
-                status_code=status.HTTP_303_SEE_OTHER,
-            )
-        existing = InstagramAccount(
-            user_id=user.id,
-            username=profile["username"],
-        )
-        db.add(existing)
-
-    existing.provider = "meta"
-    existing.meta_ig_user_id = profile["id"]
-    existing.encrypted_meta_access_token = encrypt_secret(token)
-    existing.meta_token_expires_at = expires_at
-    existing.username = profile["username"]
-    existing.encrypted_password = None
-    existing.session_json = None
-    existing.proxy = None
-    existing.proxy_ip = None
-    existing.proxy_geo = None
-    existing.status = "active"
-    existing.last_error = None
-    existing.last_login_at = dt.datetime.utcnow()
-    db.commit()
     return RedirectResponse(
         "/accounts/connected?ok=meta_connected",
         status_code=status.HTTP_303_SEE_OTHER,

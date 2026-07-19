@@ -22,13 +22,28 @@
       Não usa senha, sessionid nem proxy.
     </p>
   </div>
-  {% if meta_configured %}
-  <a href="/accounts/meta/connect" class="btn btn-primary">
-    <i data-lucide="instagram"></i> Continuar com Instagram
-  </a>
-  {% elif not meta_configured %}
-  <button type="button" class="btn" disabled>Configuração da Meta pendente</button>
-  {% endif %}
+  <div class="official-api-actions">
+    {% if meta_configured %}
+    <a href="/accounts/meta/connect" class="btn btn-primary">
+      <i data-lucide="instagram"></i> Continuar com Instagram
+    </a>
+    {% elif not meta_configured %}
+    <button type="button" class="btn" disabled>Configuração da Meta pendente</button>
+    {% endif %}
+    {% if user.is_owner %}
+    <details class="meta-token-connect">
+      <summary class="btn btn-sm">Usar token de teste</summary>
+      <form method="post" action="/accounts/meta/connect-token" class="form-grid">
+        <label>Token gerado no painel da Meta
+          <input type="password" name="access_token" required minlength="20"
+                 autocomplete="off" placeholder="Cole o token sem compartilhar com ninguém">
+        </label>
+        <p class="muted">Uso temporário enquanto o login do Instagram estiver bloqueado com HTTP 429.</p>
+        <button type="submit" class="btn btn-primary btn-sm">Conectar token oficial</button>
+      </form>
+    </details>
+    {% endif %}
+  </div>
 </div>
 
 <div class="form-card" style="margin-bottom:24px">
