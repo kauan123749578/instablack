@@ -41,6 +41,7 @@ from app.utils.intervals import ALLOWED_INTERVALS, interval_label
 from celery_app.tasks.publish import publish_once, publish_to_account
 from core.database import get_db
 from core.storage import get_storage
+from core.web_cookies import web_cookies_status
 from models.models import Automation, InstagramAccount, PublishLog, User
 
 router = APIRouter(prefix="/automations", tags=["automations"])
@@ -333,7 +334,7 @@ def story_studio_page(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Editor visual de Story com link (INSSIST/Opalite)."""
+    """Editor visual de Story com link."""
     accounts = db.scalars(
         select(InstagramAccount)
         .where(
@@ -342,12 +343,16 @@ def story_studio_page(
         )
         .order_by(InstagramAccount.username.asc())
     ).all()
+    cookie_flags = {
+        acc.id: web_cookies_status(acc.encrypted_web_cookies) for acc in accounts
+    }
     return templates.TemplateResponse(
         "story_studio.html",
         {
             "request": request,
             "user": user,
             "accounts": accounts,
+            "cookie_flags": cookie_flags,
         },
     )
 
@@ -460,7 +465,7 @@ async def story_studio_publish(
     if (account.provider or "instagrapi") == "meta":
         raise HTTPException(
             400,
-            detail="Story com link visual exige conta Instagrapi (sessionid), não Meta oficial.",
+            detail="Story com link visual exige conta com cookies web (não API oficial Meta).",
         )
 
     raw = await image.read()

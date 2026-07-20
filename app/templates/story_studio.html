@@ -1,22 +1,22 @@
 {% extends "base.html" %}
 {% block title %}Story Link Studio{% endblock %}
 {% block head %}
-<link rel="stylesheet" href="/static/story-studio.css?v=2" />
+<link rel="stylesheet" href="/static/story-studio.css?v=3" />
 {% endblock %}
 {% block content %}
 <div class="page-header">
   <h2>Story Link Studio</h2>
-  <p class="muted page-header-sub">Editor visual estilo INSSIST/Opalite — arraste, redimensione e publique.</p>
+  <p class="muted page-header-sub">Arraste o sticker, escolha a conta e publique.</p>
 </div>
 
-<div class="studio-shell">
+<div class="studio-shell mode-custom" id="studioShell">
   <section class="studio-workspace">
     <div class="phone-shell">
       <div class="story-canvas" id="canvas">
         <img id="storyImage" alt="">
         <div class="empty-state" id="emptyState">Escolha uma foto para começar</div>
-        <div class="sticker default selected" id="sticker">
-          <svg class="sticker-icon" viewBox="0 0 24 24" fill="none">
+        <div class="sticker default selected" id="sticker" hidden>
+          <svg class="sticker-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path d="M12.7076 18.3639L11.2933 19.7781C9.34072 21.7308 6.1749 21.7308 4.22228 19.7781C2.26966 17.8255 2.26966 14.6597 4.22228 12.7071L5.63649 11.2929M18.3644 12.7071L19.7786 11.2929C21.7312 9.34024 21.7312 6.17441 19.7786 4.22179C17.826 2.26917 14.6602 2.26917 12.7076 4.22179L11.2933 5.636M8.50045 15.4999L15.5005 8.49994" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
           <span class="sticker-text" id="stickerText">GOOGLE.COM</span>
@@ -27,19 +27,14 @@
   </section>
 
   <aside class="studio-panel">
-    <p class="studio-note">
-      <strong>Importante:</strong> Story com link <em>não</em> usa upload do Instagrapi
-      (sticker fica invisível). Publicamos com os <strong>cookies da sessão</strong> via
-      API web, igual à extensão INSSIST/Opalite. Conta precisa ser Instagrapi (sessionid).
-    </p>
-
     <div class="field">
       <label for="accountInput">Conta Instagram</label>
       <select id="accountInput" required>
         <option value="">Selecione…</option>
         {% for acc in accounts %}
-        <option value="{{ acc.id }}" data-provider="{{ acc.provider or 'instagrapi' }}">
-          @{{ acc.username }}{% if (acc.provider or 'instagrapi') == 'meta' %} · Meta{% else %} · Instagrapi{% endif %}
+        {% set flag = cookie_flags.get(acc.id, {}) %}
+        <option value="{{ acc.id }}">
+          @{{ acc.username }}{% if acc.provider == 'meta' %} · API oficial{% elif flag.has_csrftoken %} · Cookies web{% endif %}
         </option>
         {% endfor %}
       </select>
@@ -52,21 +47,21 @@
     <div class="field">
       <label for="modeInput">Tipo de sticker</label>
       <select id="modeInput">
-        <option value="native" selected>Nativo Instagram (Acessar link ›)</option>
-        <option value="custom">Botão customizado (estilo Opalite)</option>
+        <option value="custom" selected>Botão com link (ícone de corrente)</option>
+        <option value="native">Nativo Instagram (Acessar link ›)</option>
       </select>
-      <p class="field-hint">Nativo = Instagram desenha o sticker preto. Custom = pintamos o botão na foto.</p>
+      <p class="field-hint">Use o botão com corrente para o visual da referência. Nativo deixa o Instagram desenhar (pode mostrar o ícone do site).</p>
     </div>
     <div class="field">
       <label for="urlInput">URL do link</label>
       <input id="urlInput" value="https://google.com">
     </div>
     <div class="field" id="textField">
-      <label for="textInput">Texto do sticker (só no modo custom)</label>
+      <label for="textInput">Texto do sticker</label>
       <input id="textInput" value="GOOGLE.COM" maxlength="60">
     </div>
     <div class="row" id="styleRow">
-      <div class="field">
+      <div class="field" id="variantField">
         <label for="variantInput">Estilo</label>
         <select id="variantInput">
           <option value="default">Default</option>
@@ -86,11 +81,11 @@
         </select>
       </div>
     </div>
-    <div class="field">
+    <div class="field" id="sizeField">
       <label for="sizeInput">Tamanho <span id="sizeValue">100%</span></label>
       <input id="sizeInput" type="range" min="30" max="160" value="100">
     </div>
-    <div class="field">
+    <div class="field" id="rotationField">
       <label for="rotationInput">Rotação <span id="rotationValue">0°</span></label>
       <input id="rotationInput" type="range" min="-180" max="180" value="0">
     </div>
@@ -116,5 +111,5 @@
 </dialog>
 {% endblock %}
 {% block scripts %}
-<script src="/static/story-studio.js?v=2"></script>
+<script src="/static/story-studio.js?v=3"></script>
 {% endblock %}

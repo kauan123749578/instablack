@@ -71,6 +71,32 @@ def default_sticker_text(url: str) -> str:
     return text if len(text) <= 60 else text[:57] + "..."
 
 
+def _paste_chain_link_icon(
+    overlay: Image.Image,
+    x: int,
+    y: int,
+    size: int,
+    *,
+    color: tuple[int, int, int, int],
+) -> None:
+    """Ícone de corrente azul (dois elos diagonais), estilo Instagram/Opalite."""
+    stroke = max(2, round(size * 0.16))
+    icon = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    ink = ImageDraw.Draw(icon)
+    ink.ellipse(
+        (int(size * 0.05), int(size * 0.28), int(size * 0.55), int(size * 0.78)),
+        outline=color,
+        width=stroke,
+    )
+    ink.ellipse(
+        (int(size * 0.45), int(size * 0.22), int(size * 0.95), int(size * 0.72)),
+        outline=color,
+        width=stroke,
+    )
+    rotated = icon.rotate(-35, resample=Image.Resampling.BICUBIC, expand=False)
+    overlay.alpha_composite(rotated, (max(0, x), max(0, y)))
+
+
 def cookies_from_client(cl: Any, *, require_csrf: bool = True) -> dict[str, str]:
     cookies: dict[str, str] = {}
     raw = getattr(cl, "cookie_dict", None) or {}
@@ -338,20 +364,12 @@ def draw_link_sticker(
     content_w = icon_size + gap + text_w
     start_x = left + max(12, (box_w - content_w) // 2)
     icon_y = top + (box_h - icon_size) // 2
-    draw.ellipse(
-        (start_x, icon_y, start_x + icon_size, icon_y + icon_size),
-        outline=style["icon"],
-        width=max(2, icon_size // 8),
-    )
-    draw.ellipse(
-        (
-            start_x + icon_size // 3,
-            icon_y + icon_size // 3,
-            start_x + icon_size,
-            icon_y + icon_size,
-        ),
-        outline=style["icon"],
-        width=max(2, icon_size // 8),
+    _paste_chain_link_icon(
+        overlay,
+        start_x,
+        icon_y,
+        icon_size,
+        color=style["icon"],
     )
     text_x = start_x + icon_size + gap
     text_y = top + (box_h - text_h) // 2 - 1

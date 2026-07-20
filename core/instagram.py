@@ -598,9 +598,13 @@ def publish_story(
             rotation=float(layout.get("rotation", DEFAULT_STICKER["rotation"])),
             cover=bool(layout.get("cover", False)),
             variant=str(layout.get("variant") or "default"),
-            # False = Instagram desenha "Acessar link >" (nativo).
-            # True = botão customizado pintado na foto (estilo Opalite).
-            draw_sticker=bool(layout.get("draw_sticker", False)),
+            # Explicit layout wins; otherwise draw custom button when text was given
+            # (visual de corrente). Sem texto = sticker nativo do Instagram.
+            draw_sticker=(
+                bool(layout["draw_sticker"])
+                if "draw_sticker" in layout
+                else bool((sticker_text or "").strip())
+            ),
             web_cookies=web_cookies,
         )
 

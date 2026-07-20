@@ -9,10 +9,11 @@
   const statusBox = $("status");
   const previewDialog = $("previewDialog");
   const accountInput = $("accountInput");
+  const studioShell = $("studioShell");
 
   const BASE_WIDTH = 0.6;
   const BASE_HEIGHT = 0.068625;
-  const state = { x: 0.5, y: 0.8, scale: 1, rotation: 0, variant: "default", mode: "native" };
+  const state = { x: 0.5, y: 0.8, scale: 1, rotation: 0, variant: "default", mode: "custom" };
   let imageFile = null;
   let interaction = null;
 
@@ -36,11 +37,13 @@
 
   function syncModeUi() {
     const custom = isCustom();
-    sticker.style.display = custom ? "flex" : "none";
+    studioShell.classList.toggle("mode-custom", custom);
+    studioShell.classList.toggle("mode-native", !custom);
+    sticker.hidden = !custom;
     $("textField").style.display = custom ? "block" : "none";
-    $("variantInput").closest(".field").style.display = custom ? "block" : "none";
-    $("sizeInput").closest(".field").style.display = custom ? "block" : "none";
-    $("rotationInput").closest(".field").style.display = custom ? "block" : "none";
+    $("variantField").style.display = custom ? "block" : "none";
+    $("sizeField").style.display = custom ? "block" : "none";
+    $("rotationField").style.display = custom ? "block" : "none";
   }
 
   function updateSticker() {
@@ -103,7 +106,7 @@
   }
 
   sticker.addEventListener("pointerdown", (event) => {
-    if (event.target === handle) return;
+    if (event.target === handle || !isCustom()) return;
     const p = point(event);
     interaction = { type: "drag", dx: state.x - p.x, dy: state.y - p.y };
     sticker.setPointerCapture(event.pointerId);
@@ -111,6 +114,7 @@
 
   handle.addEventListener("pointerdown", (event) => {
     event.stopPropagation();
+    if (!isCustom()) return;
     const p = point(event);
     interaction = { type: "resize", startX: p.x, startScale: state.scale };
     handle.setPointerCapture(event.pointerId);
@@ -218,6 +222,12 @@
       button.disabled = false;
     }
   });
+
+  // Prefer first Cookies web account if none selected via template.
+  if (!accountInput.value) {
+    const webOpt = [...accountInput.options].find((o) => o.text.includes("Cookies web"));
+    if (webOpt) accountInput.value = webOpt.value;
+  }
 
   updateSticker();
 })();
