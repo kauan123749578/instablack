@@ -79,22 +79,21 @@ def _paste_chain_link_icon(
     *,
     color: tuple[int, int, int, int],
 ) -> None:
-    """Ícone de corrente azul (dois elos diagonais), estilo Instagram/Opalite."""
-    stroke = max(2, round(size * 0.16))
-    icon = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    ink = ImageDraw.Draw(icon)
+    """Ícone de corrente (dois elos), alinhado ao preview SVG."""
+    stroke = max(2, round(size * 0.12))
+    layer = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    ink = ImageDraw.Draw(layer)
     ink.ellipse(
-        (int(size * 0.05), int(size * 0.28), int(size * 0.55), int(size * 0.78)),
+        (int(size * 0.06), int(size * 0.36), int(size * 0.48), int(size * 0.78)),
         outline=color,
         width=stroke,
     )
     ink.ellipse(
-        (int(size * 0.45), int(size * 0.22), int(size * 0.95), int(size * 0.72)),
+        (int(size * 0.52), int(size * 0.22), int(size * 0.94), int(size * 0.64)),
         outline=color,
         width=stroke,
     )
-    rotated = icon.rotate(-35, resample=Image.Resampling.BICUBIC, expand=False)
-    overlay.alpha_composite(rotated, (max(0, x), max(0, y)))
+    overlay.alpha_composite(layer, (max(0, x), max(0, y)))
 
 
 def cookies_from_client(cl: Any, *, require_csrf: bool = True) -> dict[str, str]:
@@ -332,13 +331,24 @@ def draw_link_sticker(
     overlay = Image.new("RGBA", image.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
 
-    box_w = max(40, int(width * image.width))
     box_h = max(28, int(height * image.height))
-    left = int((x - width / 2) * image.width)
-    top = int((y - height / 2) * image.height)
+    label = (text or "LINK").replace("\n", " ").strip()
+    if len(label) > 50:
+        label = label[:50] + "..."
+    font = _load_font(max(18, int(box_h * 0.44)))
+    text_bbox = draw.textbbox((0, 0), label, font=font)
+    text_w = text_bbox[2] - text_bbox[0]
+    text_h = text_bbox[3] - text_bbox[1]
+    icon_size = max(14, int(box_h * 0.48))
+    gap = max(6, int(box_h * 0.14))
+    pad_x = max(10, int(box_h * 0.36))
+    content_w = icon_size + gap + text_w
+    box_w = max(40, content_w + pad_x * 2)
+    left = int(x * image.width - box_w / 2)
+    top = int(y * image.height - box_h / 2)
     right = left + box_w
     bottom = top + box_h
-    radius = max(12, int(min(box_w, box_h) * 0.45))
+    radius = max(10, int(box_h * 0.48))
 
     draw.rounded_rectangle(
         (left + 2, top + 3, right + 2, bottom + 3),
@@ -352,17 +362,7 @@ def draw_link_sticker(
             fill=style["bg"],
         )
 
-    label = (text or "LINK").replace("\n", " ").strip()
-    if len(label) > 50:
-        label = label[:50] + "..."
-    font = _load_font(max(18, int(box_h * 0.42)))
-    text_bbox = draw.textbbox((0, 0), label, font=font)
-    text_w = text_bbox[2] - text_bbox[0]
-    text_h = text_bbox[3] - text_bbox[1]
-    icon_size = max(14, int(box_h * 0.38))
-    gap = max(8, int(box_w * 0.03))
-    content_w = icon_size + gap + text_w
-    start_x = left + max(12, (box_w - content_w) // 2)
+    start_x = left + pad_x
     icon_y = top + (box_h - icon_size) // 2
     _paste_chain_link_icon(
         overlay,

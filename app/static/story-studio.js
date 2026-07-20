@@ -10,24 +10,42 @@
   const previewDialog = $("previewDialog");
   const accountInput = $("accountInput");
   const studioShell = $("studioShell");
+  const publishThumbImg = $("publishThumbImg");
+  const fileDropLabel = $("fileDropLabel");
 
   const BASE_WIDTH = 0.6;
   const BASE_HEIGHT = 0.068625;
-  const state = { x: 0.5, y: 0.8, scale: 1, rotation: 0, variant: "default", mode: "custom" };
+  const state = {
+    x: 0.5,
+    y: 0.8,
+    scale: 1,
+    rotation: 0,
+    variant: "default",
+    mode: "custom",
+    measuredWidth: BASE_WIDTH,
+  };
   let imageFile = null;
   let interaction = null;
 
   function clamp(min, value, max) {
     return Math.max(min, Math.min(max, value));
   }
-  function width() {
-    return BASE_WIDTH * state.scale;
-  }
-  function height() {
+
+  function heightFrac() {
     return BASE_HEIGHT * state.scale;
   }
+
+  function widthFrac() {
+    if (!isCustom()) return BASE_WIDTH * state.scale;
+    return state.measuredWidth;
+  }
+
   function isCustom() {
     return state.mode === "custom";
+  }
+
+  function labelText() {
+    return ($("textInput").value || domainText()).replace(/\n/g, " ").slice(0, 53);
   }
 
   function setStatus(message, kind = "") {
@@ -40,32 +58,41 @@
     studioShell.classList.toggle("mode-custom", custom);
     studioShell.classList.toggle("mode-native", !custom);
     sticker.hidden = !custom;
-    $("textField").style.display = custom ? "block" : "none";
-    $("variantField").style.display = custom ? "block" : "none";
-    $("sizeField").style.display = custom ? "block" : "none";
-    $("rotationField").style.display = custom ? "block" : "none";
+  }
+
+  function measureStickerWidth() {
+    if (!isCustom() || canvas.clientWidth < 1) {
+      state.measuredWidth = BASE_WIDTH * state.scale;
+      return;
+    }
+    const ratio = sticker.offsetWidth / canvas.clientWidth;
+    state.measuredWidth = clamp(0.14, ratio || BASE_WIDTH * state.scale, 0.9);
   }
 
   function updateSticker() {
-    state.x = clamp(width() / 2 + 0.02, state.x, 1 - width() / 2 - 0.02);
-    state.y = clamp(height() / 2 + 0.02, state.y, 1 - height() / 2 - 0.02);
+    syncModeUi();
+    if (!isCustom()) return;
+
+    const h = heightFrac();
+    const canvasH = canvas.clientHeight || 1;
+    sticker.style.height = `${h * 100}%`;
+    sticker.style.width = "auto";
+    sticker.style.fontSize = `${canvasH * h}px`;
     sticker.style.left = `${state.x * 100}%`;
     sticker.style.top = `${state.y * 100}%`;
-    sticker.style.width = `${width() * 100}%`;
-    sticker.style.height = `${height() * 100}%`;
     sticker.style.transform = `translate(-50%, -50%) rotate(${state.rotation}turn)`;
-    sticker.style.setProperty("--scale", state.scale);
     sticker.className = `sticker ${state.variant} selected`;
-    $("stickerText").textContent = ($("textInput").value || domainText())
-      .replace(/\n/g, " ")
-      .slice(0, 53);
+    $("stickerText").textContent = labelText();
+
+    measureStickerWidth();
+    const w = widthFrac();
+    state.x = clamp(w / 2 + 0.02, state.x, 1 - w / 2 - 0.02);
+    state.y = clamp(h / 2 + 0.02, state.y, 1 - h / 2 - 0.02);
+    sticker.style.left = `${state.x * 100}%`;
+    sticker.style.top = `${state.y * 100}%`;
+
     $("sizeValue").textContent = `${Math.round(state.scale * 100)}%`;
     $("rotationValue").textContent = `${Math.round(state.rotation * 360)}°`;
-    $("metricX").textContent = state.x.toFixed(3);
-    $("metricY").textContent = state.y.toFixed(3);
-    $("metricW").textContent = width().toFixed(3);
-    $("metricH").textContent = height().toFixed(3);
-    syncModeUi();
   }
 
   function domainText() {
@@ -89,6 +116,7 @@
   function formData() {
     if (!imageFile) throw new Error("Escolha uma foto");
     if (!accountInput.value) throw new Error("Selecione uma conta Instagram");
+    updateSticker();
     const form = new FormData();
     form.append("image", imageFile);
     form.append("account_id", accountInput.value);
@@ -96,14 +124,30 @@
     form.append("text", $("textInput").value);
     form.append("x", String(state.x));
     form.append("y", String(state.y));
-    form.append("width", String(width()));
-    form.append("height", String(height()));
+    form.append("width", String(widthFrac()));
+    form.append("height", String(heightFrac()));
     form.append("rotation", String(state.rotation));
     form.append("variant", state.variant);
     form.append("cover", $("fitInput").value === "cover" ? "true" : "false");
     form.append("draw_sticker", isCustom() ? "true" : "false");
     return form;
   }
+
+  document.querySelectorAll(".studio-tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      const name = tab.dataset.tab;
+      document.querySelectorAll(".studio-tab").forEach((t) => t.classList.toggle("active", t === tab));
+      document.querySelectorAll(".studio-tab-panel").forEach((panel) => {
+        panel.classList.toggle("active", panel.id === `tab-${name}`);
+      });
+    });
+  });
+
+  $("clearUrl").addEventListener("click", () => {
+    $("urlInput").value = "";
+    $("urlInput").focus();
+    if (!$("textInput").value.trim()) updateSticker();
+  });
 
   sticker.addEventListener("pointerdown", (event) => {
     if (event.target === handle || !isCustom()) return;
@@ -128,7 +172,7 @@
       state.y = p.y + interaction.dy;
     } else {
       const delta = (p.x - interaction.startX) * 2;
-      state.scale = clamp(0.3, interaction.startScale + delta, 1.6);
+      state.scale = clamp(0.7, interaction.startScale + delta, 1.4);
       $("sizeInput").value = Math.round(state.scale * 100);
     }
     updateSticker();
@@ -140,9 +184,16 @@
   imageInput.addEventListener("change", () => {
     imageFile = imageInput.files[0] || null;
     if (!imageFile) return;
-    storyImage.src = URL.createObjectURL(imageFile);
+    const url = URL.createObjectURL(imageFile);
+    storyImage.src = url;
     storyImage.style.display = "block";
     emptyState.style.display = "none";
+    fileDropLabel.textContent = imageFile.name;
+    publishThumbImg.src = url;
+    publishThumbImg.hidden = false;
+    const empty = $("publishThumb")?.querySelector(".publish-thumb-empty");
+    if (empty) empty.hidden = true;
+    updateSticker();
   });
 
   $("fitInput").addEventListener("change", (event) => {
@@ -170,10 +221,12 @@
   });
   $("closePreview").addEventListener("click", () => previewDialog.close());
 
+  window.addEventListener("resize", () => updateSticker());
+
   $("renderButton").addEventListener("click", async () => {
     const button = $("renderButton");
     button.disabled = true;
-    setStatus("Gerando prévia final...");
+    setStatus("Gerando prévia…");
     try {
       const response = await fetch("/automations/story-studio/preview", {
         method: "POST",
@@ -189,7 +242,7 @@
       }
       const blob = await response.blob();
       $("finalPreview").src = URL.createObjectURL(blob);
-      setStatus("Prévia final gerada.", "ok");
+      setStatus("Prévia pronta.", "ok");
       previewDialog.showModal();
     } catch (error) {
       setStatus(error.message, "error");
@@ -199,10 +252,10 @@
   });
 
   $("publishButton").addEventListener("click", async () => {
-    if (!confirm("Publicar este Story de verdade no Instagram?")) return;
+    if (!confirm("Publicar este Story no Instagram?")) return;
     const button = $("publishButton");
     button.disabled = true;
-    setStatus("Enfileirando publicação...");
+    setStatus("Enfileirando…");
     try {
       const response = await fetch("/automations/story-studio/publish", {
         method: "POST",
@@ -212,10 +265,8 @@
       if (!response.ok) {
         throw new Error(payload.detail || payload.error || `HTTP ${response.status}`);
       }
-      setStatus(payload.message || "Publicação enfileirada.", "ok");
-      if (payload.redirect) {
-        window.location.href = payload.redirect;
-      }
+      setStatus(payload.message || "Enfileirado.", "ok");
+      if (payload.redirect) window.location.href = payload.redirect;
     } catch (error) {
       setStatus(error.message, "error");
     } finally {
@@ -223,10 +274,13 @@
     }
   });
 
-  // Prefer first Cookies web account if none selected via template.
   if (!accountInput.value) {
     const webOpt = [...accountInput.options].find((o) => o.text.includes("Cookies web"));
     if (webOpt) accountInput.value = webOpt.value;
+  }
+
+  if (window.lucide && typeof window.lucide.createIcons === "function") {
+    window.lucide.createIcons();
   }
 
   updateSticker();
