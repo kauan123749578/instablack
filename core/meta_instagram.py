@@ -17,6 +17,7 @@ GRAPH_BASE_URL = "https://graph.instagram.com"
 META_SCOPES = (
     "instagram_business_basic",
     "instagram_business_content_publish",
+    "instagram_business_manage_insights",
 )
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm", ".m4v"}
 DEFAULT_PUBLIC_BASE_URL = "https://instablack-production.up.railway.app"

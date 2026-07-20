@@ -129,6 +129,7 @@ e cadastre exatamente a URL de callback configurada em
 
 - `instagram_business_basic`
 - `instagram_business_content_publish`
+- `instagram_business_manage_insights`
 
 Em produção, o app precisa de Advanced Access/App Review. Somente contas
 Instagram profissionais (Business ou Creator) podem usar esta conexão. A URL
