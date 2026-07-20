@@ -70,7 +70,7 @@ def default_sticker_text(url: str) -> str:
     return text if len(text) <= 60 else text[:57] + "..."
 
 
-def cookies_from_client(cl: Any) -> dict[str, str]:
+def cookies_from_client(cl: Any, *, require_csrf: bool = True) -> dict[str, str]:
     cookies: dict[str, str] = {}
     raw = getattr(cl, "cookie_dict", None) or {}
     if isinstance(raw, dict):
@@ -93,14 +93,59 @@ def cookies_from_client(cl: Any) -> dict[str, str]:
             if value is not None:
                 cookies.setdefault(str(key), str(value))
 
-    missing = [name for name in ("sessionid", "csrftoken") if not cookies.get(name)]
+    required = ["sessionid", "csrftoken"] if require_csrf else ["sessionid"]
+    missing = [name for name in required if not cookies.get(name)]
     if missing:
         raise RuntimeError(
             "Sessão incompleta para Story web (faltam: "
             + ", ".join(missing)
-            + "). Reconecte a conta com sessionid."
+            + "). Em Contas conectadas, importe o JSON completo do Cookie-Editor "
+            "(sessionid + csrftoken + mid + ig_did…)."
         )
     return cookies
+
+
+def merge_web_cookies(
+    cl: Any,
+    web_cookies: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Prioriza cookies importados do Cookie-Editor; completa com a sessão instagrapi."""
+    base = cookies_from_client(cl, require_csrf=False)
+    if web_cookies:
+        for name, value in web_cookies.items():
+            if value:
+                base[name] = str(value)
+    missing = [name for name in ("sessionid", "csrftoken") if not base.get(name)]
+    if missing:
+        raise RuntimeError(
+            "Sessão incompleta para Story web (faltam: "
+            + ", ".join(missing)
+            + "). Importe o JSON completo do Cookie-Editor na conta."
+        )
+    return base
+
+
+def build_web_session(
+    cl: Any,
+    web_cookies: dict[str, str] | None = None,
+) -> requests.Session:
+    cookies = merge_web_cookies(cl, web_cookies)
+    session = requests.Session()
+    session.headers.update(
+        {
+            "accept": "*/*",
+            "user-agent": _client_user_agent(cl),
+            "x-ig-app-id": IG_APP_ID,
+            "origin": IG_WEB_ORIGIN,
+            "referer": f"{IG_WEB_ORIGIN}/",
+        }
+    )
+    for name, value in cookies.items():
+        session.cookies.set(name, value, domain=".instagram.com", path="/")
+    proxy = _client_proxy(cl)
+    if proxy:
+        session.proxies.update({"http": proxy, "https": proxy})
+    return session
 
 
 def _client_proxy(cl: Any) -> str | None:
@@ -126,26 +171,6 @@ def _client_user_agent(cl: Any) -> str:
     except Exception:
         pass
     return DEFAULT_UA
-
-
-def build_web_session(cl: Any) -> requests.Session:
-    cookies = cookies_from_client(cl)
-    session = requests.Session()
-    session.headers.update(
-        {
-            "accept": "*/*",
-            "user-agent": _client_user_agent(cl),
-            "x-ig-app-id": IG_APP_ID,
-            "origin": IG_WEB_ORIGIN,
-            "referer": f"{IG_WEB_ORIGIN}/",
-        }
-    )
-    for name, value in cookies.items():
-        session.cookies.set(name, value, domain=".instagram.com", path="/")
-    proxy = _client_proxy(cl)
-    if proxy:
-        session.proxies.update({"http": proxy, "https": proxy})
-    return session
 
 
 def _load_font(size: int) -> ImageFont.ImageFont:
@@ -438,6 +463,7 @@ def publish_photo_story_web_link(
     cover: bool = False,
     variant: str = "default",
     draw_sticker: bool = False,
+    web_cookies: dict[str, str] | None = None,
     work_dir: Path | None = None,
 ) -> dict:
     """Publica Story de foto com link via API web (NÃO usa instagrapi upload).
@@ -466,7 +492,7 @@ def publish_photo_story_web_link(
         draw_sticker=draw_sticker,
     )
 
-    session = build_web_session(cl)
+    session = build_web_session(cl, web_cookies)
     upload_id = str(int(time.time() * 1000))
     log.info(
         "Story web+link (INSSIST/Opalite): upload_id=%s url=%s text=%r",

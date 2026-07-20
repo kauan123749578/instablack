@@ -906,11 +906,13 @@ input[type="checkbox"]:checked::after {
 
 .auth-method-panel { display: none; }
 #account-add-form:has(input[name="auth_method"][value="sessionid"]:checked) #sessionid-wrap { display: block; }
+#account-add-form:has(input[name="auth_method"][value="cookies"]:checked) #cookies-wrap { display: block; }
 #account-add-form:has(input[name="auth_method"][value="password"]:checked) #password-wrap { display: block; }
 #account-add-form:has(input[name="auth_method"][value="import"]:checked) #import-wrap { display: block; }
 #account-add-form .hint-sessionid,
 #account-add-form .hint-required { display: none; }
-#account-add-form:has(input[name="auth_method"][value="sessionid"]:checked) .hint-sessionid { display: inline; }
+#account-add-form:has(input[name="auth_method"][value="sessionid"]:checked) .hint-sessionid,
+#account-add-form:has(input[name="auth_method"][value="cookies"]:checked) .hint-sessionid { display: inline; }
 #account-add-form:has(input[name="auth_method"][value="password"]:checked) .hint-required,
 #account-add-form:has(input[name="auth_method"][value="import"]:checked) .hint-required { display: inline; }
 

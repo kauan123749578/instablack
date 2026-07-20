@@ -45,6 +45,12 @@ from core.instagram import (
     login_with_sessionid,
     serialize_settings,
 )
+from core.web_cookies import (
+    WebCookiesError,
+    encrypt_web_cookies,
+    parse_web_cookies_blob,
+    web_cookies_status,
+)
 
 from models.models import InstagramAccount, User
 
@@ -376,18 +382,28 @@ def connected_accounts(
         "proxy_updated": "Proxy atualizado com sucesso!",
         "account_added": "Conta conectada com sucesso!",
         "meta_connected": "Conta conectada pela API oficial da Meta!",
+        "cookies_updated": "Cookies web atualizados! Já pode publicar Story com link.",
     }.get(ok_key or "")
     err_key = request.query_params.get("error")
     err_msg = {
         "proxy_vazio": "Informe um proxy válido.",
         "proxy_invalid": "Proxy inválido ou fora do ar. Teste antes de salvar.",
+        "cookies_invalid": "Cookies inválidos. Cole o JSON do Cookie-Editor (precisa ter sessionid e csrftoken).",
+        "cookies_login": "Não foi possível validar o sessionid desses cookies. Exporte de novo com a conta logada.",
+        "cookies_meta": "Contas da API oficial Meta não usam cookies web.",
     }.get(err_key or "")
     offline = offline_accounts(db, user.id)
+    cookie_flags = {
+        acc.id: web_cookies_status(acc.encrypted_web_cookies)
+        for acc in accounts
+        if (acc.provider or "instagrapi") != "meta"
+    }
     return templates.TemplateResponse(
         "accounts_connected.html",
         {
             **_accounts_page_context(request, user, accounts, ok=ok_msg, error=err_msg or None),
             "offline_accounts": offline,
+            "cookie_flags": cookie_flags,
         },
     )
 
@@ -401,6 +417,7 @@ def add_account(
     verification_code: str = Form(""),
     sessionid: str = Form(""),
     session_json: str = Form(""),
+    web_cookies: str = Form(""),
     proxy: str = Form(""),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -411,12 +428,18 @@ def add_account(
     sid = clean_sessionid(sessionid)
     use_sessionid = auth_method == "sessionid"
     use_import = auth_method == "import"
-    sessionid_only = bool(sid) and not password.strip()
+    use_cookies = auth_method == "cookies"
+    sessionid_only = bool(sid) and not password.strip() and not use_cookies
     form_state = {
-        "auth_method": "sessionid" if (use_sessionid or sessionid_only) else auth_method,
+        "auth_method": (
+            "sessionid"
+            if (use_sessionid or sessionid_only)
+            else auth_method
+        ),
         "username": username,
         "sessionid": sid or sessionid.strip(),
         "session_json": session_json.strip(),
+        "web_cookies": web_cookies.strip(),
         "proxy": proxy_raw.strip() or proxy,
     }
 
@@ -450,8 +473,24 @@ def add_account(
         )
 
     encrypted_pw = None
+    encrypted_cookies = None
     try:
-        if use_import:
+        if use_cookies:
+            try:
+                parsed_cookies = parse_web_cookies_blob(web_cookies)
+            except WebCookiesError as exc:
+                raise InstagramAuthError(str(exc)) from exc
+            sid = clean_sessionid(parsed_cookies["sessionid"])
+            settings_dict, resolved_user = login_with_sessionid(
+                sid, proxy=proxy, username_hint=username or None
+            )
+            username = resolved_user or username
+            if not username and parsed_cookies.get("ds_user_id"):
+                # login_with_sessionid normalmente resolve o @; fallback mínimo
+                username = username or f"user_{parsed_cookies['ds_user_id']}"
+            encrypted_cookies = encrypt_web_cookies(parsed_cookies)
+            encrypted_pw = encrypt_secret(password) if password else None
+        elif use_import:
             if not session_json.strip():
                 raise InstagramAuthError("Cole o conteúdo do session.json exportado pelo instagrapi.")
             if not username:
@@ -541,6 +580,8 @@ def add_account(
         existing.session_json = serialize_settings(settings_dict)
         if encrypted_pw:
             existing.encrypted_password = encrypted_pw
+        if encrypted_cookies:
+            existing.encrypted_web_cookies = encrypted_cookies
         existing.meta_ig_user_id = None
         existing.encrypted_meta_access_token = None
         existing.meta_token_expires_at = None
@@ -556,6 +597,7 @@ def add_account(
             encrypted_password=encrypted_pw,
             proxy=proxy,
             session_json=serialize_settings(settings_dict),
+            encrypted_web_cookies=encrypted_cookies,
             status="active",
             last_login_at=dt.datetime.utcnow(),
         )
@@ -607,6 +649,55 @@ def update_account_proxy(
     db.commit()
     return RedirectResponse(
         "/accounts/connected?ok=proxy_updated",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post("/{account_id}/update-web-cookies")
+def update_account_web_cookies(
+    account_id: int,
+    web_cookies: str = Form(""),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Atualiza o jar de cookies web (Cookie-Editor) para Story com link."""
+    acc = _get_owned_account(db, account_id, user)
+    if (acc.provider or "instagrapi") == "meta":
+        return RedirectResponse(
+            "/accounts/connected?error=cookies_meta",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    try:
+        parsed = parse_web_cookies_blob(web_cookies)
+    except WebCookiesError:
+        return RedirectResponse(
+            "/accounts/connected?error=cookies_invalid",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    sid = clean_sessionid(parsed["sessionid"])
+    try:
+        settings_dict, resolved_user = login_with_sessionid(
+            sid,
+            proxy=acc.proxy,
+            username_hint=acc.username,
+        )
+    except InstagramAuthError:
+        return RedirectResponse(
+            "/accounts/connected?error=cookies_login",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    acc.session_json = serialize_settings(settings_dict)
+    acc.encrypted_web_cookies = encrypt_web_cookies(parsed)
+    if resolved_user:
+        acc.username = resolved_user
+    acc.status = "active"
+    acc.last_login_at = dt.datetime.utcnow()
+    acc.last_error = None
+    db.commit()
+    return RedirectResponse(
+        "/accounts/connected?ok=cookies_updated",
         status_code=status.HTTP_303_SEE_OTHER,
     )
 

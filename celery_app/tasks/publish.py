@@ -451,6 +451,9 @@ def _execute_publish(
         settings_dict = deserialize_settings(account.session_json) if account.session_json else None
         meta_access_token = decrypt_secret(account.encrypted_meta_access_token)
         meta_ig_user_id = account.meta_ig_user_id
+        from core.web_cookies import decrypt_web_cookies
+
+        web_cookies = decrypt_web_cookies(account.encrypted_web_cookies)
         if (
             provider == "meta"
             and account_status == "needs_login"
@@ -716,6 +719,7 @@ def _execute_publish(
                     thumbnail_path=thumb_path,
                     sticker_text=story_sticker_text,
                     story_layout=story_layout,
+                    web_cookies=web_cookies,
                 )
             elif content_type == "photo":
                 result = publish_photo_feed(cl, clean_path, caption)

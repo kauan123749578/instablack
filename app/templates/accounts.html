@@ -64,6 +64,7 @@
       <legend>Método de autenticação</legend>
       <div class="checkbox-row">
         <label><input type="radio" name="auth_method" value="password" {% if auth_method == 'password' %}checked{% endif %}> Usuário e senha</label>
+        <label><input type="radio" name="auth_method" value="cookies" {% if auth_method == 'cookies' %}checked{% endif %}> Cookies JSON (Story link)</label>
         <label><input type="radio" name="auth_method" value="sessionid" {% if auth_method == 'sessionid' %}checked{% endif %}> Session ID</label>
         <label><input type="radio" name="auth_method" value="import" {% if auth_method == 'import' %}checked{% endif %}> Importar session.json</label>
       </div>
@@ -76,10 +77,24 @@
     </label>
     <p class="muted" style="margin:0;font-size:12px">Mesma proxy do perfil no Multilogin. Aceita http, socks5 e <code>ip:porta:user:senha</code>.</p>
 
+    <div id="cookies-wrap" class="auth-method-panel">
+      <label>Cookies do Instagram (Cookie-Editor ou header)
+        <textarea name="web_cookies" id="web-cookies-input" rows="8" placeholder='Cole o JSON do Cookie-Editor OU: sessionid=...; csrftoken=...; ds_user_id=...'>{{ form.get('web_cookies', '') }}</textarea>
+      </label>
+      <p class="muted" style="margin:6px 0 0;font-size:12px">
+        <strong>Recomendado para Story com link.</strong> Precisa de
+        <code>sessionid</code> + <code>csrftoken</code> (+ mid, ig_did, ds_user_id…).
+        Extensão Cookie-Editor → Export → JSON.
+      </p>
+    </div>
+
     <div id="sessionid-wrap" class="auth-method-panel">
       <label>Session ID do navegador
         <textarea name="sessionid" id="sessionid-input" rows="2" placeholder="Cole o sessionid (F12 → Application → Cookies → instagram.com)">{{ form.get('sessionid', '') }}</textarea>
       </label>
+      <p class="muted" style="margin:6px 0 0;font-size:12px">
+        Só sessionid <em>não</em> publica Story com link (falta csrftoken). Prefira Cookies JSON.
+      </p>
     </div>
 
     <div id="import-wrap" class="auth-method-panel">

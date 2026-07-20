@@ -168,6 +168,8 @@ def _sqlite_migrate() -> None:
                 conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN proxy_ip VARCHAR(45)"))
             if "proxy_geo" not in acols:
                 conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN proxy_geo VARCHAR(64)"))
+            if "encrypted_web_cookies" not in acols:
+                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN encrypted_web_cookies TEXT"))
             conn.execute(
                 text(
                     "CREATE INDEX IF NOT EXISTS ix_instagram_accounts_user_status "
@@ -300,6 +302,8 @@ def _postgres_migrate() -> None:
                 conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN proxy_ip VARCHAR(45)"))
             if "proxy_geo" not in acols:
                 conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN proxy_geo VARCHAR(64)"))
+            if "encrypted_web_cookies" not in acols:
+                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN encrypted_web_cookies TEXT"))
             conn.execute(
                 text(
                     "CREATE INDEX IF NOT EXISTS ix_instagram_accounts_user_status "

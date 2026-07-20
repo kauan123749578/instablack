@@ -73,6 +73,26 @@
           <td>{{ acc.last_login_at | localtime }}</td>
           <td class="account-actions">
             {% if acc.provider != 'meta' %}
+            {% set cflag = cookie_flags.get(acc.id, {}) %}
+            <details class="proxy-update-panel">
+              <summary class="btn btn-sm">
+                {% if cflag.has_csrftoken %}Cookies web ✓{% else %}Cookies web (Story){% endif %}
+              </summary>
+              <form method="post" action="/accounts/{{ acc.id }}/update-web-cookies" class="proxy-update-form">
+                <textarea name="web_cookies" rows="6" required
+                          placeholder="Cole o JSON do Cookie-Editor ou sessionid=...; csrftoken=..."></textarea>
+                <p class="muted" style="margin:6px 0;font-size:11px">
+                  {% if cflag.has_csrftoken %}
+                  Já tem cookies web salvos ({{ cflag.count }}). Cole de novo para renovar.
+                  {% else %}
+                  Sem csrftoken — Story com link vai falhar até importar o JSON completo.
+                  {% endif %}
+                </p>
+                <div class="proxy-update-actions">
+                  <button type="submit" class="btn btn-sm btn-primary">Salvar cookies</button>
+                </div>
+              </form>
+            </details>
             <details class="proxy-update-panel">
               <summary class="btn btn-sm">Atualizar proxy</summary>
               <form method="post" action="/accounts/{{ acc.id }}/update-proxy" class="proxy-update-form" data-account="@{{ acc.username }}">

@@ -560,6 +560,7 @@ def publish_story(
     thumbnail_path: Path | None = None,
     sticker_text: str | None = None,
     story_layout: dict | None = None,
+    web_cookies: dict[str, str] | None = None,
 ) -> dict:
     if not media_path.exists():
         raise FileNotFoundError(f"Mídia não encontrada: {media_path}")
@@ -600,6 +601,7 @@ def publish_story(
             # False = Instagram desenha "Acessar link >" (nativo).
             # True = botão customizado pintado na foto (estilo Opalite).
             draw_sticker=bool(layout.get("draw_sticker", False)),
+            web_cookies=web_cookies,
         )
 
     def _upload() -> object:

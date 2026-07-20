@@ -113,6 +113,8 @@ class InstagramAccount(Base):
     proxy_ip: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
     proxy_geo: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)  # ex: BR - Brasil
     session_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Cookies web completos (Cookie-Editor) cifrados — necessários para Story com link.
+    encrypted_web_cookies: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     status: Mapped[str] = mapped_column(String(32), default="active")  # active | paused | needs_login | proxy_down | banned | deleted
     last_login_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
