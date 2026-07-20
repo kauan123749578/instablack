@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Exclusão de dados · instablack</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/static/style.css?v=33" />
+  <style>
+    .legal-page { max-width: 820px; margin: 40px auto; padding: 0 20px 80px; color: var(--text); }
+    .legal-page h1 { font-family: var(--font-display); font-size: 28px; margin: 0 0 8px; }
+    .legal-page h2 { font-size: 18px; margin: 28px 0 8px; }
+    .legal-page p, .legal-page li { color: var(--text-sec); line-height: 1.7; }
+    .legal-page a { color: var(--primary); }
+    .legal-meta { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+    .code-box {
+      display: inline-block; padding: 8px 12px; border-radius: 8px;
+      background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+      font-family: ui-monospace, monospace; color: var(--text);
+    }
+  </style>
+</head>
+<body class="login-body">
+  <div class="legal-page">
+    <p><a href="/">← instablack</a></p>
+    <h1>Exclusão de dados do usuário</h1>
+    <p class="legal-meta">Instruções para App Review da Meta e solicitação do titular</p>
+
+    {% if confirmation_code %}
+    <h2>Status do pedido</h2>
+    <p>Código de confirmação:</p>
+    <p><span class="code-box">{{ confirmation_code }}</span></p>
+    <p>
+      Status: <strong>{{ status_label }}</strong>.
+      Tokens da API oficial vinculados a essa solicitação foram revogados no instablack
+      e a conta Instagram correspondente foi desconectada do painel.
+    </p>
+    {% endif %}
+
+    <h2>Como solicitar exclusão</h2>
+    <ol>
+      <li>No painel instablack, abra Contas conectadas e remova a conta Instagram.</li>
+      <li>Ou envie e-mail para <a href="mailto:kauawqii@gmail.com">kauawqii@gmail.com</a> com o username Instagram e o usuário do painel.</li>
+      <li>Se você remover o app nas configurações do Instagram/Meta, processamos automaticamente o callback de exclusão.</li>
+    </ol>
+
+    <h2>O que removemos</h2>
+    <ul>
+      <li>Token de acesso da API oficial (Meta)</li>
+      <li>Sessão/credenciais armazenadas da conta Instagram no painel</li>
+      <li>Vínculo da conta às automações</li>
+    </ul>
+    <p>
+      Logs históricos de publicação podem ser anonimizados ou retidos pelo tempo mínimo
+      necessário à operação e segurança do serviço, conforme a
+      <a href="/privacy">Política de Privacidade</a>.
+    </p>
+  </div>
+</body>
+</html>

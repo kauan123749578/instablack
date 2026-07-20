@@ -29,6 +29,7 @@ from app.routes import (
     notifications,
     profile,
 )
+from app.templating import templates
 from core.database import init_db
 from core.health import check_database, check_redis, check_storage
 from core.storage import get_storage
@@ -77,6 +78,26 @@ def create_app() -> FastAPI:
     app.include_router(profile.router)
     app.include_router(admin.router)
     app.include_router(notifications.router)
+
+    @app.get("/privacy", include_in_schema=False)
+    def privacy_policy(request: Request):
+        return templates.TemplateResponse("privacy.html", {"request": request})
+
+    @app.get("/terms", include_in_schema=False)
+    def terms_of_service(request: Request):
+        return templates.TemplateResponse("terms.html", {"request": request})
+
+    @app.get("/data-deletion", include_in_schema=False)
+    def data_deletion_instructions(request: Request, code: str = ""):
+        status_label = "Concluída" if code else "Aguardando solicitação"
+        return templates.TemplateResponse(
+            "data_deletion.html",
+            {
+                "request": request,
+                "confirmation_code": code.strip() or None,
+                "status_label": status_label,
+            },
+        )
 
     @app.get("/sw.js", include_in_schema=False)
     def service_worker():

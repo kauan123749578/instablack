@@ -213,6 +213,46 @@ def public_media_url(key: str) -> str:
     return _app_media_url(key)
 
 
+def public_origin() -> str:
+    """Origem HTTPS pública usada em páginas e callbacks do App Review."""
+    return _app_media_url("x").rsplit("/media/", 1)[0]
+
+
+def parse_signed_request(signed_request: str) -> dict:
+    """Valida o signed_request enviado pela Meta em deauthorize/data-deletion."""
+    import base64
+    import hashlib
+    import hmac
+    import json
+
+    if not signed_request or "." not in signed_request:
+        raise MetaInstagramError("signed_request inválido.")
+    encoded_sig, payload = signed_request.split(".", 1)
+    secret = settings.meta_instagram_app_secret.strip()
+    if not secret:
+        raise MetaInstagramError("META_INSTAGRAM_APP_SECRET não configurada.")
+
+    def _b64url(data: str) -> bytes:
+        padding = "=" * (-len(data) % 4)
+        return base64.urlsafe_b64decode(data + padding)
+
+    expected = hmac.new(
+        secret.encode("utf-8"),
+        payload.encode("utf-8"),
+        hashlib.sha256,
+    ).digest()
+    if not hmac.compare_digest(expected, _b64url(encoded_sig)):
+        raise MetaInstagramError("Assinatura do signed_request inválida.")
+
+    try:
+        data = json.loads(_b64url(payload).decode("utf-8"))
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise MetaInstagramError("Payload do signed_request inválido.") from exc
+    if not isinstance(data, dict):
+        raise MetaInstagramError("Payload do signed_request inválido.")
+    return data
+
+
 def _validate_public_media_url(
     url: str,
     *,

@@ -34,6 +34,8 @@ from core.meta_instagram import (
     authorization_url,
     exchange_code,
     is_configured as meta_is_configured,
+    parse_signed_request,
+    public_origin,
 )
 from core.instagram import (
     InstagramAuthError,
@@ -297,6 +299,63 @@ def meta_oauth_callback(
         "/accounts/connected?ok=meta_connected",
         status_code=status.HTTP_303_SEE_OTHER,
     )
+
+
+def _revoke_meta_account(db: Session, *, ig_user_id: str | None, confirmation_code: str) -> int:
+    """Revoga token Meta e soft-delete das contas oficiais correspondentes."""
+    if not ig_user_id:
+        return 0
+    accounts = db.scalars(
+        select(InstagramAccount).where(
+            InstagramAccount.provider == "meta",
+            InstagramAccount.meta_ig_user_id == str(ig_user_id),
+            InstagramAccount.status != "deleted",
+        )
+    ).all()
+    for acc in accounts:
+        acc.status = "deleted"
+        acc.encrypted_meta_access_token = None
+        acc.meta_token_expires_at = None
+        acc.session_json = None
+        acc.encrypted_password = None
+        acc.last_error = f"Revogado pela Meta ({confirmation_code})"
+        acc.automations.clear()
+    if accounts:
+        db.commit()
+    return len(accounts)
+
+
+@router.post("/meta/deauthorize")
+async def meta_deauthorize(request: Request, db: Session = Depends(get_db)):
+    """Callback público: usuário removeu o app nas configurações da Meta."""
+    form = await request.form()
+    signed = str(form.get("signed_request") or "")
+    try:
+        payload = parse_signed_request(signed)
+    except MetaInstagramError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    user_id = str(payload.get("user_id") or "")
+    code = f"deauth-{user_id or secrets.token_hex(6)}"
+    _revoke_meta_account(db, ig_user_id=user_id or None, confirmation_code=code)
+    return JSONResponse({"ok": True, "confirmation_code": code})
+
+
+@router.post("/meta/data-deletion")
+async def meta_data_deletion(request: Request, db: Session = Depends(get_db)):
+    """Callback público de exclusão de dados exigido pelo App Review."""
+    form = await request.form()
+    signed = str(form.get("signed_request") or "")
+    try:
+        payload = parse_signed_request(signed)
+    except MetaInstagramError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    user_id = str(payload.get("user_id") or "")
+    code = f"del-{user_id or secrets.token_hex(6)}"
+    _revoke_meta_account(db, ig_user_id=user_id or None, confirmation_code=code)
+    status_url = f"{public_origin()}/data-deletion?code={code}"
+    return JSONResponse({"url": status_url, "confirmation_code": code})
 
 
 @router.get("/connected")

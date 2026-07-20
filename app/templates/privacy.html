@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Política de Privacidade · instablack</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/static/style.css?v=33" />
+  <style>
+    .legal-page { max-width: 820px; margin: 40px auto; padding: 0 20px 80px; color: var(--text); }
+    .legal-page h1 { font-family: var(--font-display); font-size: 28px; margin: 0 0 8px; }
+    .legal-page h2 { font-size: 18px; margin: 28px 0 8px; }
+    .legal-page p, .legal-page li { color: var(--text-sec); line-height: 1.7; }
+    .legal-page a { color: var(--primary); }
+    .legal-meta { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+  </style>
+</head>
+<body class="login-body">
+  <div class="legal-page">
+    <p><a href="/">← instablack</a></p>
+    <h1>Política de Privacidade</h1>
+    <p class="legal-meta">Última atualização: 19 de julho de 2026 · Contato: kauawqii@gmail.com</p>
+
+    <p>
+      Esta Política descreve como o <strong>instablack</strong> (“nós”) trata dados pessoais
+      quando você usa o painel em
+      <a href="https://instablack-production.up.railway.app">instablack-production.up.railway.app</a>
+      e quando conecta uma conta Instagram pela API oficial da Meta.
+    </p>
+
+    <h2>1. Quem somos</h2>
+    <p>
+      O instablack é uma plataforma de automação e publicação de conteúdo no Instagram
+      (Reels, Stories e fotos). O operador do serviço pode ser contatado pelo e-mail
+      <a href="mailto:kauawqii@gmail.com">kauawqii@gmail.com</a>.
+    </p>
+
+    <h2>2. Dados que coletamos</h2>
+    <ul>
+      <li><strong>Conta do painel:</strong> usuário, senha (armazenada de forma criptografada/hash), preferências e logs de uso.</li>
+      <li><strong>Contas Instagram conectadas:</strong> username, identificador da conta, tokens de acesso da Meta (criptografados), status da conexão e erros de publicação.</li>
+      <li><strong>Mídias e legendas:</strong> vídeos, imagens, capas e textos enviados para publicação.</li>
+      <li><strong>Dados técnicos:</strong> logs de publicação, IP de proxy configurado pelo usuário e metadados necessários ao funcionamento do serviço.</li>
+    </ul>
+
+    <h2>3. Como usamos os dados</h2>
+    <ul>
+      <li>Autenticar você no painel e proteger o acesso à conta.</li>
+      <li>Conectar e manter a autorização com a Instagram Graph API / Business Login.</li>
+      <li>Publicar conteúdo solicitado por você nas contas Instagram que você conectou.</li>
+      <li>Exibir logs, status de automações e notificações no painel.</li>
+      <li>Cumprir obrigações legais e responder a solicitações de exclusão da Meta ou do titular.</li>
+    </ul>
+
+    <h2>4. Integração com a Meta / Instagram</h2>
+    <p>
+      Ao conectar uma conta pela API oficial, pedimos apenas as permissões necessárias para
+      ler o perfil básico e publicar conteúdo
+      (<code>instagram_business_basic</code> e <code>instagram_business_content_publish</code>).
+      Tokens e dados recebidos da Meta são usados somente para operar o serviço em seu nome.
+      Não vendemos esses dados.
+    </p>
+
+    <h2>5. Compartilhamento</h2>
+    <p>
+      Podemos processar dados com provedores de infraestrutura essenciais (hospedagem,
+      banco de dados, armazenamento de mídia e filas), apenas para operar o instablack.
+      Também enviamos mídia e tokens à Meta quando você solicita uma publicação pela API oficial.
+      Não compartilhamos dados com anunciantes terceiros.
+    </p>
+
+    <h2>6. Retenção</h2>
+    <p>
+      Mantemos os dados enquanto a conta do painel estiver ativa e enquanto forem necessários
+      para prestar o serviço, cumprir obrigações legais ou manter histórico de publicações.
+      Tokens da Meta são removidos quando a conta Instagram é desconectada, quando a Meta
+      notifica desautorização ou quando solicitamos exclusão.
+    </p>
+
+    <h2>7. Seus direitos e exclusão</h2>
+    <p>
+      Você pode solicitar acesso, correção ou exclusão dos seus dados pelo e-mail
+      <a href="mailto:kauawqii@gmail.com">kauawqii@gmail.com</a> ou removendo a conta Instagram
+      no painel. Também processamos automaticamente os callbacks de
+      <a href="/accounts/meta/data-deletion">exclusão de dados</a> e desautorização enviados pela Meta.
+    </p>
+    <p>
+      Instruções detalhadas de exclusão:
+      <a href="/data-deletion">https://instablack-production.up.railway.app/data-deletion</a>
+    </p>
+
+    <h2>8. Segurança</h2>
+    <p>
+      Usamos HTTPS, criptografia de segredos (tokens e senhas) e controles de acesso ao painel.
+      Nenhum método é 100% seguro; recomendamos senhas fortes e não compartilhar credenciais.
+    </p>
+
+    <h2>9. Alterações</h2>
+    <p>
+      Podemos atualizar esta Política. A data no topo indica a versão vigente.
+      O uso contínuo do serviço após a atualização constitui ciência dos termos revisados.
+    </p>
+
+    <h2>10. Contato</h2>
+    <p>
+      Dúvidas sobre privacidade: <a href="mailto:kauawqii@gmail.com">kauawqii@gmail.com</a><br />
+      Termos de uso: <a href="/terms">/terms</a>
+    </p>
+  </div>
+</body>
+</html>

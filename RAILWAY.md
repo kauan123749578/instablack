@@ -136,6 +136,15 @@ Instagram profissionais (Business ou Creator) podem usar esta conexão. A URL
 o arquivo antes de criar o container. O fluxo implementado cria o container,
 aguarda `FINISHED` e chama `media_publish`.
 
+URLs públicas para o App Review / Configurações básicas da Meta:
+
+- Política de Privacidade: `https://SEU-DOMINIO.up.railway.app/privacy`
+- Termos de Uso: `https://SEU-DOMINIO.up.railway.app/terms`
+- Exclusão de dados (instruções): `https://SEU-DOMINIO.up.railway.app/data-deletion`
+- Callback de exclusão: `https://SEU-DOMINIO.up.railway.app/accounts/meta/data-deletion`
+- Callback de desautorização: `https://SEU-DOMINIO.up.railway.app/accounts/meta/deauthorize`
+- OAuth callback: `https://SEU-DOMINIO.up.railway.app/accounts/meta/callback`
+
 ### 3b. Alternativa: Volume Railway
 
 Se não usar R2:
