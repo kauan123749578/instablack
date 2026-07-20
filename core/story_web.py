@@ -31,6 +31,7 @@ DEFAULT_UA = (
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/124.0.0.0 Safari/537.36"
 )
+WEB_ASBD_ID = "359341"
 STORY_CANVAS = (1080, 1920)
 DEFAULT_STICKER = {
     "x": 0.5,
@@ -105,24 +106,47 @@ def cookies_from_client(cl: Any, *, require_csrf: bool = True) -> dict[str, str]
     return cookies
 
 
+DEFAULT_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/124.0.0.0 Safari/537.36"
+)
+# Header típico do Instagram web (Opalite/INSSIST no navegador).
+WEB_ASBD_ID = "359341"
+
+
 def merge_web_cookies(
     cl: Any,
     web_cookies: dict[str, str] | None = None,
 ) -> dict[str, str]:
-    """Prioriza cookies importados do Cookie-Editor; completa com a sessão instagrapi."""
-    base = cookies_from_client(cl, require_csrf=False)
+    """Monta o jar para a API web.
+
+    Se houver cookies importados do Cookie-Editor, eles têm prioridade total
+    (não misturar com UA/sessão mobile do instagrapi).
+    """
     if web_cookies:
-        for name, value in web_cookies.items():
-            if value:
-                base[name] = str(value)
-    missing = [name for name in ("sessionid", "csrftoken") if not base.get(name)]
+        cookies = {
+            str(k): str(v)
+            for k, v in web_cookies.items()
+            if k and v is not None and str(v).strip()
+        }
+    else:
+        cookies = cookies_from_client(cl, require_csrf=False)
+
+    missing = [name for name in ("sessionid", "csrftoken") if not cookies.get(name)]
     if missing:
         raise RuntimeError(
             "Sessão incompleta para Story web (faltam: "
             + ", ".join(missing)
             + "). Importe o JSON completo do Cookie-Editor na conta."
         )
-    return base
+    return cookies
+
+
+def _web_user_agent(cl: Any) -> str:
+    """Sempre desktop Chrome na API web — UA Android do instagrapi causa HTTP 400."""
+    _ = cl
+    return DEFAULT_UA
 
 
 def build_web_session(
@@ -134,18 +158,48 @@ def build_web_session(
     session.headers.update(
         {
             "accept": "*/*",
-            "user-agent": _client_user_agent(cl),
+            "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+            "user-agent": _web_user_agent(cl),
             "x-ig-app-id": IG_APP_ID,
+            "x-asbd-id": WEB_ASBD_ID,
+            "x-requested-with": "XMLHttpRequest",
             "origin": IG_WEB_ORIGIN,
             "referer": f"{IG_WEB_ORIGIN}/",
         }
     )
     for name, value in cookies.items():
+        # path=/ domain=.instagram.com — igual ao Cookie-Editor
         session.cookies.set(name, value, domain=".instagram.com", path="/")
+    csrf = cookies.get("csrftoken")
+    if csrf:
+        session.headers["x-csrftoken"] = csrf
     proxy = _client_proxy(cl)
     if proxy:
         session.proxies.update({"http": proxy, "https": proxy})
     return session
+
+
+def _warmup_web_session(session: requests.Session) -> None:
+    """Abre o Instagram web para alinhar claim/csrf antes do configure."""
+    try:
+        response = session.get(
+            f"{IG_WEB_ORIGIN}/",
+            timeout=30,
+            allow_redirects=True,
+        )
+        # Atualiza csrftoken se o Instagram rotacionar no warm-up
+        csrf = session.cookies.get("csrftoken", domain=".instagram.com") or session.cookies.get(
+            "csrftoken"
+        )
+        if csrf:
+            session.headers["x-csrftoken"] = csrf
+        log.info(
+            "Story web warmup: status=%s csrf=%s",
+            response.status_code,
+            "ok" if csrf else "missing",
+        )
+    except requests.RequestException as exc:
+        log.warning("Story web warmup falhou (seguindo mesmo assim): %s", exc)
 
 
 def _client_proxy(cl: Any) -> str | None:
@@ -159,18 +213,49 @@ def _client_proxy(cl: Any) -> str | None:
         return None
 
 
-def _client_user_agent(cl: Any) -> str:
-    ua = getattr(cl, "user_agent", None)
-    if isinstance(ua, str) and ua.strip():
-        return ua.strip()
+def _format_ig_error(response: requests.Response) -> str:
+    body = (response.text or "")[:800]
     try:
-        settings = cl.get_settings() or {}
-        ua = (settings.get("user_agent") or "").strip()
-        if ua:
-            return ua
-    except Exception:
-        pass
-    return DEFAULT_UA
+        payload = response.json()
+        message = (
+            payload.get("message")
+            or payload.get("error_type")
+            or payload.get("status")
+            or payload
+        )
+        return f"HTTP {response.status_code}: {message} | body={body}"
+    except ValueError:
+        return f"HTTP {response.status_code}: {body}"
+
+
+def _request_with_retry(
+    session: requests.Session,
+    method: str,
+    url: str,
+    *,
+    attempts: int = 3,
+    **kwargs,
+) -> requests.Response:
+    last_error: Exception | None = None
+    last_response: requests.Response | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            response = session.request(method, url, timeout=90, **kwargs)
+            last_response = response
+            if response.status_code == 200:
+                return response
+            body = response.text[:400]
+            retryable = "Transcode not finished" in body or response.status_code >= 500
+            if not retryable or attempt == attempts:
+                raise RuntimeError(_format_ig_error(response))
+        except requests.RequestException as exc:
+            last_error = exc
+            if attempt == attempts:
+                raise
+        time.sleep(2)
+    if last_response is not None:
+        raise RuntimeError(_format_ig_error(last_response))
+    raise RuntimeError(f"Falha na requisição web story: {last_error}")
 
 
 def _load_font(size: int) -> ImageFont.ImageFont:
@@ -328,36 +413,6 @@ def prepare_story_image_with_link(
     return canvas.size
 
 
-def _request_with_retry(
-    session: requests.Session,
-    method: str,
-    url: str,
-    *,
-    attempts: int = 3,
-    **kwargs,
-) -> requests.Response:
-    last_error: Exception | None = None
-    last_response: requests.Response | None = None
-    for attempt in range(1, attempts + 1):
-        try:
-            response = session.request(method, url, timeout=90, **kwargs)
-            last_response = response
-            if response.status_code == 200:
-                return response
-            body = response.text[:400]
-            retryable = "Transcode not finished" in body or response.status_code >= 500
-            if not retryable or attempt == attempts:
-                response.raise_for_status()
-        except requests.RequestException as exc:
-            last_error = exc
-            if attempt == attempts:
-                raise
-        time.sleep(2)
-    if last_response is not None:
-        last_response.raise_for_status()
-    raise RuntimeError(f"Falha na requisição web story: {last_error}")
-
-
 def upload_story_photo_web(
     session: requests.Session,
     image_path: Path,
@@ -424,11 +479,20 @@ def configure_story_link_web(
         "upload_id": upload_id,
         "story_link_stickers": json.dumps([link_sticker], separators=(",", ":")),
     }
+    csrf = (
+        session.cookies.get("csrftoken", domain=".instagram.com")
+        or session.cookies.get("csrftoken")
+        or session.headers.get("x-csrftoken")
+    )
     headers = {
+        "accept": "*/*",
         "content-type": "application/x-www-form-urlencoded",
-        "x-csrftoken": session.cookies.get("csrftoken", domain=".instagram.com")
-        or session.cookies.get("csrftoken"),
+        "x-csrftoken": csrf or "",
         "x-ig-app-id": IG_APP_ID,
+        "x-asbd-id": WEB_ASBD_ID,
+        "x-requested-with": "XMLHttpRequest",
+        "origin": IG_WEB_ORIGIN,
+        "referer": f"{IG_WEB_ORIGIN}/",
     }
     response = _request_with_retry(
         session,
@@ -493,9 +557,10 @@ def publish_photo_story_web_link(
     )
 
     session = build_web_session(cl, web_cookies)
+    _warmup_web_session(session)
     upload_id = str(int(time.time() * 1000))
     log.info(
-        "Story web+link (INSSIST/Opalite): upload_id=%s url=%s text=%r",
+        "Story web+link (INSSIST/Opalite): upload_id=%s url=%s text=%r ua=desktop",
         upload_id,
         url,
         sticker_text or default_sticker_text(url),
