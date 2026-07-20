@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Story Link Studio{% endblock %}
 {% block head %}
-<link rel="stylesheet" href="/static/story-studio.css?v=1" />
+<link rel="stylesheet" href="/static/story-studio.css?v=2" />
 {% endblock %}
 {% block content %}
 <div class="page-header">
@@ -28,8 +28,9 @@
 
   <aside class="studio-panel">
     <p class="studio-note">
-      Contas <strong>Instagrapi</strong> (sessionid) usam o sticker nativo via API web.
-      Contas Meta oficiais publicam Story sem esse link customizado.
+      <strong>Importante:</strong> Story com link <em>não</em> usa upload do Instagrapi
+      (sticker fica invisível). Publicamos com os <strong>cookies da sessão</strong> via
+      API web, igual à extensão INSSIST/Opalite. Conta precisa ser Instagrapi (sessionid).
     </p>
 
     <div class="field">
@@ -49,14 +50,22 @@
       <input id="imageInput" type="file" accept="image/jpeg,image/png,image/webp">
     </div>
     <div class="field">
+      <label for="modeInput">Tipo de sticker</label>
+      <select id="modeInput">
+        <option value="native" selected>Nativo Instagram (Acessar link ›)</option>
+        <option value="custom">Botão customizado (estilo Opalite)</option>
+      </select>
+      <p class="field-hint">Nativo = Instagram desenha o sticker preto. Custom = pintamos o botão na foto.</p>
+    </div>
+    <div class="field">
       <label for="urlInput">URL do link</label>
       <input id="urlInput" value="https://google.com">
     </div>
-    <div class="field">
-      <label for="textInput">Texto do sticker</label>
+    <div class="field" id="textField">
+      <label for="textInput">Texto do sticker (só no modo custom)</label>
       <input id="textInput" value="GOOGLE.COM" maxlength="60">
     </div>
-    <div class="row">
+    <div class="row" id="styleRow">
       <div class="field">
         <label for="variantInput">Estilo</label>
         <select id="variantInput">
@@ -107,5 +116,5 @@
 </dialog>
 {% endblock %}
 {% block scripts %}
-<script src="/static/story-studio.js?v=1"></script>
+<script src="/static/story-studio.js?v=2"></script>
 {% endblock %}

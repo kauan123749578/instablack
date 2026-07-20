@@ -296,6 +296,7 @@ def _parse_story_layout_form(
     rotation: float,
     variant: str,
     cover: str,
+    draw_sticker: str = "false",
 ) -> dict:
     for name, value in {"x": x, "y": y, "width": width, "height": height}.items():
         if not 0 < value <= 1:
@@ -322,6 +323,7 @@ def _parse_story_layout_form(
         "rotation": rotation,
         "variant": variant,
         "cover": str(cover).lower() in {"1", "true", "yes", "on"},
+        "draw_sticker": str(draw_sticker).lower() in {"1", "true", "yes", "on"},
     }
 
 
@@ -362,6 +364,7 @@ async def story_studio_preview(
     rotation: float = Form(0.0),
     variant: str = Form("default"),
     cover: str = Form("false"),
+    draw_sticker: str = Form("false"),
     account_id: int = Form(0),
     user: User = Depends(get_current_user),
 ):
@@ -376,6 +379,7 @@ async def story_studio_preview(
         rotation=rotation,
         variant=variant,
         cover=cover,
+        draw_sticker=draw_sticker,
     )
     try:
         normalized = normalize_story_url(url)
@@ -405,6 +409,7 @@ async def story_studio_preview(
             height=layout["height"],
             cover=layout["cover"],
             variant=layout["variant"],
+            draw_sticker=layout["draw_sticker"],
         )
         return Response(output.read_bytes(), media_type="image/jpeg")
 
@@ -422,6 +427,7 @@ async def story_studio_publish(
     rotation: float = Form(0.0),
     variant: str = Form("default"),
     cover: str = Form("false"),
+    draw_sticker: str = Form("false"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -435,6 +441,7 @@ async def story_studio_publish(
         rotation=rotation,
         variant=variant,
         cover=cover,
+        draw_sticker=draw_sticker,
     )
     try:
         normalized = normalize_story_url(url)

@@ -155,6 +155,23 @@
   line-height: 1.45;
 }
 
+.field-hint {
+  margin: 6px 0 0;
+  color: #7f8796;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.studio-panel.mode-native .sticker-custom-only,
+.studio-shell.mode-native #textField,
+.studio-shell.mode-native #styleRow .field:first-child,
+.studio-shell.mode-native #sizeInput,
+.studio-shell.mode-native label[for="sizeInput"],
+.studio-shell.mode-native #rotationInput,
+.studio-shell.mode-native label[for="rotationInput"] {
+  /* handled in JS by toggling hidden */
+}
+
 .studio-panel .field { margin-bottom: 14px; }
 .studio-panel label {
   display: block;

@@ -277,21 +277,30 @@ def prepare_story_image_with_link(
     height: float = DEFAULT_STICKER["height"],
     cover: bool = False,
     variant: str = "default",
+    draw_sticker: bool = False,
 ) -> tuple[int, int]:
-    text = (sticker_text or "").strip() or default_sticker_text(url)
+    """Prepara a foto 9:16.
+
+    draw_sticker=False (padrão): Instagram desenha o sticker nativo
+    \"Acessar link >\" via story_link_stickers (fluxo INSSIST).
+
+    draw_sticker=True: desenha o botão customizado na imagem (estilo Opalite).
+    """
     canvas = compose_story_canvas(source, cover=cover)
-    rendered = draw_link_sticker(
-        canvas,
-        text,
-        x=x,
-        y=y,
-        width=width,
-        height=height,
-        variant=variant,
-    )
+    if draw_sticker:
+        text = (sticker_text or "").strip() or default_sticker_text(url)
+        canvas = draw_link_sticker(
+            canvas,
+            text,
+            x=x,
+            y=y,
+            width=width,
+            height=height,
+            variant=variant,
+        )
     output.parent.mkdir(parents=True, exist_ok=True)
-    rendered.save(output, format="JPEG", quality=95, subsampling=0)
-    return rendered.size
+    canvas.save(output, format="JPEG", quality=95, subsampling=0)
+    return canvas.size
 
 
 def _request_with_retry(
@@ -428,9 +437,15 @@ def publish_photo_story_web_link(
     rotation: float = DEFAULT_STICKER["rotation"],
     cover: bool = False,
     variant: str = "default",
+    draw_sticker: bool = False,
     work_dir: Path | None = None,
 ) -> dict:
-    """Publica Story de foto com sticker de link nativo (INSSIST/Opalite)."""
+    """Publica Story de foto com link via API web (NÃO usa instagrapi upload).
+
+    Usa cookies da sessão (sessionid/csrftoken) + rupload_igphoto +
+    web/create/configure_to_story + story_link_stickers — mesmo padrão
+    da extensão INSSIST/Opalite. O instagrapi mobile deixa o sticker invisível.
+    """
     url = normalize_story_url(link_url)
     if not url:
         raise ValueError("URL do link é obrigatória para Story web.")
@@ -448,6 +463,7 @@ def publish_photo_story_web_link(
         height=height,
         cover=cover,
         variant=variant,
+        draw_sticker=draw_sticker,
     )
 
     session = build_web_session(cl)

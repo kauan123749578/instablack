@@ -12,7 +12,7 @@
 
   const BASE_WIDTH = 0.6;
   const BASE_HEIGHT = 0.068625;
-  const state = { x: 0.5, y: 0.8, scale: 1, rotation: 0, variant: "default" };
+  const state = { x: 0.5, y: 0.8, scale: 1, rotation: 0, variant: "default", mode: "native" };
   let imageFile = null;
   let interaction = null;
 
@@ -25,10 +25,22 @@
   function height() {
     return BASE_HEIGHT * state.scale;
   }
+  function isCustom() {
+    return state.mode === "custom";
+  }
 
   function setStatus(message, kind = "") {
     statusBox.textContent = message || "";
     statusBox.className = `status${kind ? ` ${kind}` : ""}`;
+  }
+
+  function syncModeUi() {
+    const custom = isCustom();
+    sticker.style.display = custom ? "flex" : "none";
+    $("textField").style.display = custom ? "block" : "none";
+    $("variantInput").closest(".field").style.display = custom ? "block" : "none";
+    $("sizeInput").closest(".field").style.display = custom ? "block" : "none";
+    $("rotationInput").closest(".field").style.display = custom ? "block" : "none";
   }
 
   function updateSticker() {
@@ -50,6 +62,7 @@
     $("metricY").textContent = state.y.toFixed(3);
     $("metricW").textContent = width().toFixed(3);
     $("metricH").textContent = height().toFixed(3);
+    syncModeUi();
   }
 
   function domainText() {
@@ -85,6 +98,7 @@
     form.append("rotation", String(state.rotation));
     form.append("variant", state.variant);
     form.append("cover", $("fitInput").value === "cover" ? "true" : "false");
+    form.append("draw_sticker", isCustom() ? "true" : "false");
     return form;
   }
 
@@ -129,6 +143,10 @@
 
   $("fitInput").addEventListener("change", (event) => {
     storyImage.style.objectFit = event.target.value;
+  });
+  $("modeInput").addEventListener("change", (event) => {
+    state.mode = event.target.value;
+    updateSticker();
   });
   $("textInput").addEventListener("input", updateSticker);
   $("urlInput").addEventListener("input", () => {

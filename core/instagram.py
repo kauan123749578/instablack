@@ -575,47 +575,42 @@ def publish_story(
     is_video = ext in (".mp4", ".mov", ".webm")
     layout = story_layout or {}
 
-    # Foto + link: via web (INSSIST/Opalite) → sticker nativo "Acessar link".
-    if links and not is_video:
-        try:
-            from core.story_web import DEFAULT_STICKER, publish_photo_story_web_link
-
-            return publish_photo_story_web_link(
-                cl,
-                media_path,
-                link_url=str(links[0].webUri),
-                sticker_text=sticker_text,
-                x=float(layout.get("x", DEFAULT_STICKER["x"])),
-                y=float(layout.get("y", DEFAULT_STICKER["y"])),
-                width=float(layout.get("width", DEFAULT_STICKER["width"])),
-                height=float(layout.get("height", DEFAULT_STICKER["height"])),
-                rotation=float(layout.get("rotation", DEFAULT_STICKER["rotation"])),
-                cover=bool(layout.get("cover", False)),
-                variant=str(layout.get("variant") or "default"),
+    # Story + link: SOMENTE API web com cookies (INSSIST/Opalite).
+    # Nunca usar instagrapi photo/video_upload_to_story com links — o sticker fica invisível.
+    if links:
+        if is_video:
+            raise RuntimeError(
+                "Story de vídeo com link ainda não usa a API web. "
+                "Envie uma foto para o sticker nativo \"Acessar link\"."
             )
-        except Exception as exc:
-            log.warning(
-                "Story web+link falhou (%s) — tentando fallback mobile instagrapi",
-                exc,
-            )
+        from core.story_web import DEFAULT_STICKER, publish_photo_story_web_link
 
-    def _upload(use_links: list) -> object:
-        kwargs: dict = {"links": use_links} if use_links else {}
+        return publish_photo_story_web_link(
+            cl,
+            media_path,
+            link_url=str(links[0].webUri),
+            sticker_text=sticker_text,
+            x=float(layout.get("x", DEFAULT_STICKER["x"])),
+            y=float(layout.get("y", DEFAULT_STICKER["y"])),
+            width=float(layout.get("width", DEFAULT_STICKER["width"])),
+            height=float(layout.get("height", DEFAULT_STICKER["height"])),
+            rotation=float(layout.get("rotation", DEFAULT_STICKER["rotation"])),
+            cover=bool(layout.get("cover", False)),
+            variant=str(layout.get("variant") or "default"),
+            # False = Instagram desenha "Acessar link >" (nativo).
+            # True = botão customizado pintado na foto (estilo Opalite).
+            draw_sticker=bool(layout.get("draw_sticker", False)),
+        )
+
+    def _upload() -> object:
+        kwargs: dict = {}
         if is_video:
             if thumbnail_path is not None:
                 kwargs["thumbnail"] = thumbnail_path
             return cl.video_upload_to_story(media_path, **kwargs)
         return cl.photo_upload_to_story(media_path, **kwargs)
 
-    try:
-        media = _upload(links)
-    except Exception as exc:
-        if links:
-            log.warning("Story com link falhou (%s) — republicando SEM link", exc)
-            media = _upload([])
-        else:
-            raise
-
+    media = _upload()
     return {"id": str(media.pk), "code": getattr(media, "code", None), "url": None}
 
 
