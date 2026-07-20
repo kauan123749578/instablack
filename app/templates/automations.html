@@ -7,6 +7,9 @@
     <a href="/automations/new/calendar" class="btn btn-calendar-outline">
       <i data-lucide="calendar-days"></i> Calendário
     </a>
+    <a href="/automations/story-studio" class="btn btn-story-outline">
+      <i data-lucide="link-2"></i> Story com link
+    </a>
     <a href="/automations/new/story" class="btn btn-story-outline">
       <i data-lucide="circle-dot"></i> Agendar Story
     </a>
@@ -52,9 +55,9 @@
 
 <div class="alert" style="border:1px solid rgba(17,97,254,.28);background:rgba(17,97,254,.06);color:#d7e4ff;margin-bottom:14px;font-size:13px">
   <strong>Story com link:</strong>
-  use contas com badge <em>Cookies web</em> (JSON do Cookie-Editor) em
-  <a href="/automations/new/story" style="color:#8eb6ff">Agendar Story</a>.
-  Contas só Instagrapi (sem csrftoken) não publicam o sticker nativo.
+  use o
+  <a href="/automations/story-studio" style="color:#8eb6ff">Story Link Studio</a>
+  (painel editável) com conta badge <em>Cookies web</em>.
 </div>
 
 {% if request.query_params.get('ok') and request.query_params.get('ok') != 'calendar' and request.query_params.get('ok') != 'duplicated' and request.query_params.get('ok') != 'draft' %}
