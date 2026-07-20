@@ -558,6 +558,8 @@ def publish_story(
     media_path: Path,
     link_url: str | None = None,
     thumbnail_path: Path | None = None,
+    sticker_text: str | None = None,
+    story_layout: dict | None = None,
 ) -> dict:
     if not media_path.exists():
         raise FileNotFoundError(f"Mídia não encontrada: {media_path}")
@@ -571,6 +573,31 @@ def publish_story(
 
     ext = media_path.suffix.lower()
     is_video = ext in (".mp4", ".mov", ".webm")
+    layout = story_layout or {}
+
+    # Foto + link: via web (INSSIST/Opalite) → sticker nativo "Acessar link".
+    if links and not is_video:
+        try:
+            from core.story_web import DEFAULT_STICKER, publish_photo_story_web_link
+
+            return publish_photo_story_web_link(
+                cl,
+                media_path,
+                link_url=str(links[0].webUri),
+                sticker_text=sticker_text,
+                x=float(layout.get("x", DEFAULT_STICKER["x"])),
+                y=float(layout.get("y", DEFAULT_STICKER["y"])),
+                width=float(layout.get("width", DEFAULT_STICKER["width"])),
+                height=float(layout.get("height", DEFAULT_STICKER["height"])),
+                rotation=float(layout.get("rotation", DEFAULT_STICKER["rotation"])),
+                cover=bool(layout.get("cover", False)),
+                variant=str(layout.get("variant") or "default"),
+            )
+        except Exception as exc:
+            log.warning(
+                "Story web+link falhou (%s) — tentando fallback mobile instagrapi",
+                exc,
+            )
 
     def _upload(use_links: list) -> object:
         kwargs: dict = {"links": use_links} if use_links else {}

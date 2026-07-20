@@ -1275,7 +1275,7 @@
 
     function draftFormData() {
       const data = new FormData();
-      ["name", "content_type", "caption", "story_link", "interval_minutes", "jitter_minutes", "posts_per_batch", "rest_minutes"].forEach((name) => {
+      ["name", "content_type", "caption", "story_link", "story_sticker_text", "interval_minutes", "jitter_minutes", "posts_per_batch", "rest_minutes"].forEach((name) => {
         const field = form.querySelector(`[name="${name}"]`);
         if (field) data.append(name, field.value || "");
       });

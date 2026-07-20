@@ -4,13 +4,25 @@
 <div class="page-header">
   <h2>{% if default_content_type == 'story' %}Agendar Story{% else %}Nova automação{% endif %}</h2>
   {% if default_content_type == 'story' %}
-  <p class="muted page-header-sub">Escolha os dias e o horário — ou publique imediatamente.</p>
+  <p class="muted page-header-sub">Teste Story com link nativo (fluxo INSSIST / Opalite) — foto recomendada.</p>
   {% else %}
   <p class="muted page-header-sub">Reels: selecione vários vídeos e uma capa única.</p>
   {% endif %}
 </div>
 
 {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
+
+{% if default_content_type == 'story' %}
+<div class="alert" style="border:1px solid rgba(17,97,254,.35);background:rgba(17,97,254,.08);color:#dce7ff;margin-bottom:16px">
+  <strong>Novo no painel — Story com link (estilo INSSIST/Opalite)</strong>
+  <ul style="margin:8px 0 0;padding-left:18px;font-size:13px;line-height:1.5">
+    <li><strong>Contas Instagrapi (sessionid):</strong> foto + link usa a API web com <code>story_link_stickers</code> (sticker nativo clicável).</li>
+    <li><strong>Texto do botão:</strong> só muda o visual desenhado na imagem; a URL do clique é o campo Link.</li>
+    <li><strong>API oficial (Meta):</strong> publica Story, mas <em>não</em> tem esse sticker de link customizado.</li>
+    <li>Para testar agora: escolha uma conta Instagrapi ativa, envie uma <strong>foto</strong>, preencha o link e marque <strong>Postar agora</strong>.</li>
+  </ul>
+</div>
+{% endif %}
 
 <form method="post" action="/automations/new" enctype="multipart/form-data" class="form-card form-card--premium form-grid" id="automation-form">
   <input type="hidden" name="video_count" id="video-count-input" value="0">
@@ -42,10 +54,16 @@
     </div>
 
     <div id="story-link-wrap">
-      <label>Link do Story (opcional)
+      <label>Link do Story (URL clicável)
         <input type="url" name="story_link" placeholder="https://seusite.com/pagina">
       </label>
-      <p class="muted" style="margin:4px 0 0;font-size:12px">O Instagram cria o sticker de link nativo no story.</p>
+      <label style="margin-top:10px">Texto do botão (opcional)
+        <input type="text" name="story_sticker_text" maxlength="60" placeholder="Ex.: GOOGLE.COM ou CLIQUE AQUI">
+      </label>
+      <p class="muted" style="margin:6px 0 0;font-size:12px">
+        Fluxo INSSIST/Opalite: o painel desenha o botão na foto e envia <code>story_link_stickers</code>
+        pela API web. Em contas Meta oficiais o link customizado não se aplica.
+      </p>
     </div>
   </section>
 

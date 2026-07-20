@@ -9,7 +9,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from PIL import Image, ImageOps
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session, selectinload
@@ -63,6 +63,15 @@ def _story_link_value(content_type: str, story_link: str) -> str | None:
         return None
     link = story_link.strip()
     return link or None
+
+
+def _story_sticker_text_value(content_type: str, story_sticker_text: str) -> str | None:
+    if content_type != "story":
+        return None
+    text = (story_sticker_text or "").strip()
+    if not text:
+        return None
+    return text[:60]
 
 
 def _collect_upload_files(form, *, field_names: tuple[str, ...]) -> list[UploadFile]:
@@ -278,6 +287,208 @@ def new_story_page(
     )
 
 
+def _parse_story_layout_form(
+    *,
+    x: float,
+    y: float,
+    width: float,
+    height: float,
+    rotation: float,
+    variant: str,
+    cover: str,
+) -> dict:
+    for name, value in {"x": x, "y": y, "width": width, "height": height}.items():
+        if not 0 < value <= 1:
+            raise HTTPException(400, detail=f"{name} precisa estar entre 0 e 1")
+    if not -2 <= rotation <= 2:
+        raise HTTPException(400, detail="rotation inválida")
+    variant = (variant or "default").strip().lower()
+    allowed = {
+        "default",
+        "white",
+        "rainbow",
+        "solid",
+        "brand",
+        "black-text",
+        "white-text",
+    }
+    if variant not in allowed:
+        raise HTTPException(400, detail="Estilo de sticker inválido")
+    return {
+        "x": x,
+        "y": y,
+        "width": width,
+        "height": height,
+        "rotation": rotation,
+        "variant": variant,
+        "cover": str(cover).lower() in {"1", "true", "yes", "on"},
+    }
+
+
+@router.get("/story-studio")
+def story_studio_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Editor visual de Story com link (INSSIST/Opalite)."""
+    accounts = db.scalars(
+        select(InstagramAccount)
+        .where(
+            InstagramAccount.user_id == user.id,
+            InstagramAccount.status.in_(("active", "paused")),
+        )
+        .order_by(InstagramAccount.username.asc())
+    ).all()
+    return templates.TemplateResponse(
+        "story_studio.html",
+        {
+            "request": request,
+            "user": user,
+            "accounts": accounts,
+        },
+    )
+
+
+@router.post("/story-studio/preview")
+async def story_studio_preview(
+    image: UploadFile = File(...),
+    url: str = Form(...),
+    text: str = Form(""),
+    x: float = Form(0.5),
+    y: float = Form(0.8),
+    width: float = Form(0.6),
+    height: float = Form(0.068625),
+    rotation: float = Form(0.0),
+    variant: str = Form("default"),
+    cover: str = Form("false"),
+    account_id: int = Form(0),
+    user: User = Depends(get_current_user),
+):
+    from core.story_web import normalize_story_url, prepare_story_image_with_link
+
+    _ = account_id, user
+    layout = _parse_story_layout_form(
+        x=x,
+        y=y,
+        width=width,
+        height=height,
+        rotation=rotation,
+        variant=variant,
+        cover=cover,
+    )
+    try:
+        normalized = normalize_story_url(url)
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc)) from exc
+
+    raw = await image.read()
+    if not raw:
+        raise HTTPException(400, detail="Selecione uma imagem")
+    if len(raw) > 25 * 1024 * 1024:
+        raise HTTPException(413, detail="Imagem maior que 25 MB")
+
+    import tempfile
+
+    with tempfile.TemporaryDirectory(prefix="ib-story-preview-") as temp_dir:
+        source = Path(temp_dir) / "source.jpg"
+        output = Path(temp_dir) / "preview.jpg"
+        source.write_bytes(raw)
+        prepare_story_image_with_link(
+            source,
+            output,
+            url=normalized,
+            sticker_text=text,
+            x=layout["x"],
+            y=layout["y"],
+            width=layout["width"],
+            height=layout["height"],
+            cover=layout["cover"],
+            variant=layout["variant"],
+        )
+        return Response(output.read_bytes(), media_type="image/jpeg")
+
+
+@router.post("/story-studio/publish")
+async def story_studio_publish(
+    image: UploadFile = File(...),
+    account_id: int = Form(...),
+    url: str = Form(...),
+    text: str = Form(""),
+    x: float = Form(0.5),
+    y: float = Form(0.8),
+    width: float = Form(0.6),
+    height: float = Form(0.068625),
+    rotation: float = Form(0.0),
+    variant: str = Form("default"),
+    cover: str = Form("false"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from core.story_web import normalize_story_url
+
+    layout = _parse_story_layout_form(
+        x=x,
+        y=y,
+        width=width,
+        height=height,
+        rotation=rotation,
+        variant=variant,
+        cover=cover,
+    )
+    try:
+        normalized = normalize_story_url(url)
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc)) from exc
+
+    account = db.scalar(
+        select(InstagramAccount).where(
+            InstagramAccount.id == account_id,
+            InstagramAccount.user_id == user.id,
+            InstagramAccount.status.in_(("active", "paused")),
+        )
+    )
+    if account is None:
+        raise HTTPException(400, detail="Conta inválida ou indisponível")
+    if (account.provider or "instagrapi") == "meta":
+        raise HTTPException(
+            400,
+            detail="Story com link visual exige conta Instagrapi (sessionid), não Meta oficial.",
+        )
+
+    raw = await image.read()
+    if not raw:
+        raise HTTPException(400, detail="Selecione uma imagem")
+    if len(raw) > 25 * 1024 * 1024:
+        raise HTTPException(413, detail="Imagem maior que 25 MB")
+
+    storage = get_storage()
+    ext = Path(image.filename or "story.jpg").suffix.lower() or ".jpg"
+    if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
+        ext = ".jpg"
+    video_key = storage.save(io.BytesIO(raw), suggested_ext=ext)
+    sticker_text = (text or "").strip()[:60] or None
+
+    publish_once.apply_async(
+        args=[
+            account.id,
+            video_key,
+            None,
+            "",
+            "story",
+            normalized,
+            sticker_text,
+            layout,
+        ],
+        countdown=0,
+    )
+    return {
+        "ok": True,
+        "message": f"Story enfileirado para @{account.username}. Acompanhe em Logs.",
+        "redirect": "/logs?watch=1&n=1",
+    }
+
+
 @router.get("/media-library")
 def media_library(
     request: Request,
@@ -451,6 +662,7 @@ async def create_automation(
     content_type: str = Form("reel"),
     caption: str = Form(""),
     story_link: str = Form(""),
+    story_sticker_text: str = Form(""),
     schedule_mode: str = Form("recurring"),
     interval_minutes: int = Form(60),
     calendar_days: str = Form(""),
@@ -654,6 +866,7 @@ async def create_automation(
                         caption,
                         content_type,
                         _story_link_value(content_type, story_link),
+                        _story_sticker_text_value(content_type, story_sticker_text),
                     ],
                     countdown=countdown + acc_idx * 5,
                 )
@@ -682,6 +895,7 @@ async def create_automation(
             thumb_key=thumb_key,
             thumb_original_name=thumb_original_name,
             story_link=_story_link_value(content_type, story_link),
+            story_sticker_text=_story_sticker_text_value(content_type, story_sticker_text),
             schedule_type="calendar",
             start_mode="calendar",
             calendar_days=days_to_json(days),
@@ -711,6 +925,7 @@ async def create_automation(
         thumb_key=thumb_key,
         thumb_original_name=thumb_original_name,
         story_link=_story_link_value(content_type, story_link),
+        story_sticker_text=_story_sticker_text_value(content_type, story_sticker_text),
         schedule_type="interval",
         start_mode="recurring",
         interval_minutes=interval_minutes,

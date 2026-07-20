@@ -7,6 +7,9 @@
     <a href="/automations/new/calendar" class="btn btn-calendar-outline">
       <i data-lucide="calendar-days"></i> Calendário
     </a>
+    <a href="/automations/story-studio" class="btn btn-story-outline">
+      <i data-lucide="link-2"></i> Story Link Studio
+    </a>
     <a href="/automations/new/story" class="btn btn-story-outline">
       <i data-lucide="circle-dot"></i> Agendar Story
     </a>
@@ -49,6 +52,13 @@
   Essa automação ainda não tem vídeo salvo. Envie os vídeos antes de ativar.
 </div>
 {% endif %}
+
+<div class="alert" style="border:1px solid rgba(17,97,254,.28);background:rgba(17,97,254,.06);color:#d7e4ff;margin-bottom:14px;font-size:13px">
+  <strong>Story com link (INSSIST/Opalite):</strong>
+  use o editor visual em
+  <a href="/automations/story-studio" style="color:#8eb6ff">Story Link Studio</a>
+  (arrastar/redimensionar) com conta Instagrapi + foto.
+</div>
 
 {% if request.query_params.get('ok') and request.query_params.get('ok') != 'calendar' and request.query_params.get('ok') != 'duplicated' and request.query_params.get('ok') != 'draft' %}
 <div class="alert alert-ok">

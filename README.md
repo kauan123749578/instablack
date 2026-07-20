@@ -18,6 +18,8 @@ SaaS privado para publicação automática e recorrente de Reels no Instagram em
 - Logs de publicação por automação (sucesso, erro, link do post).
 - Storage plugável: disco local (dev / Railway Volume) ou S3 opcional.
 - Pronto para deploy no Railway com 3 services (web, worker, beat).
+- **Story com link nativo (estilo INSSIST/Opalite)** em contas Instagrapi: desenha o botão na foto e publica via API web (`story_link_stickers`). Contas Meta oficiais publicam Story sem esse sticker customizado.
+- **Story Link Studio** em `/automations/story-studio`: editor visual para arrastar/redimensionar o botão antes de publicar.
 
 ---
 
@@ -36,6 +38,8 @@ app/                # FastAPI (HTTP + Jinja templates + auth)
 core/
   ├ database.py    # SQLAlchemy engine + sessão + init_db
   ├ instagram.py   # wrapper instagrapi (login, publicar, serializar sessão)
+  ├ story_web.py   # Story foto+link via API web (INSSIST/Opalite)
+  ├ meta_instagram.py  # Instagram Graph API oficial
   ├ metadata.py    # ffmpeg -map_metadata -1 + creation_time aleatório
   └ storage.py     # Local / S3 (boto3)
 

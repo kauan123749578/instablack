@@ -316,6 +316,8 @@ def publish_once(
     caption: str,
     content_type: str,
     story_link: str | None = None,
+    story_sticker_text: str | None = None,
+    story_layout: dict | None = None,
 ) -> dict:
     """Publicação única imediata (sem automação recorrente)."""
     return _execute_publish(
@@ -326,6 +328,8 @@ def publish_once(
         caption=caption or "",
         content_type=content_type or "reel",
         story_link=story_link,
+        story_sticker_text=story_sticker_text,
+        story_layout=story_layout,
     )
 
 
@@ -396,6 +400,7 @@ def publish_to_account(
                 caption=automation.caption or "",
                 content_type=automation.content_type or "reel",
                 story_link=automation.story_link,
+                story_sticker_text=automation.story_sticker_text,
                 playlist_index=int(posted_index),
             )
         except Exception as exc:
@@ -414,6 +419,8 @@ def _execute_publish(
     caption: str,
     content_type: str,
     story_link: str | None = None,
+    story_sticker_text: str | None = None,
+    story_layout: dict | None = None,
     playlist_index: int | None = None,
 ) -> dict:
     storage = get_storage()
@@ -707,6 +714,8 @@ def _execute_publish(
                     publish_path,
                     link_url=story_link,
                     thumbnail_path=thumb_path,
+                    sticker_text=story_sticker_text,
+                    story_layout=story_layout,
                 )
             elif content_type == "photo":
                 result = publish_photo_feed(cl, clean_path, caption)
