@@ -19,8 +19,8 @@
   <h3 style="margin-top:0">Configure o app no painel da Meta para conectar contas do Instagram.</h3>
   <ol class="muted" style="line-height:1.75;font-size:14px;padding-left:20px;margin-bottom:20px">
     <li>Acesse <a href="https://developers.facebook.com/apps" target="_blank" rel="noopener">developers.facebook.com/apps</a> e crie um app do tipo <strong>Business</strong>.</li>
-    <li>Adicione o produto <strong>“Instagram API with Instagram Login”</strong>.</li>
-    <li>Em <strong>Instagram → API setup with Instagram login</strong>, cole as URLs abaixo nos <strong>3 campos de callback</strong> (Redirect OAuth, Deauthorize e Data deletion).</li>
+    <li>Adicione o produto <strong>"Instagram API with Instagram Login"</strong>.</li>
+    <li>Em <strong>Instagram → API setup with Instagram login</strong>, cole estas URLs nos <strong>3 campos de callback</strong>:</li>
   </ol>
 
   {% if app_rows %}
@@ -50,8 +50,9 @@
   {% endif %}
 
   <ol class="muted" style="line-height:1.75;font-size:14px;padding-left:20px;margin-top:16px" start="4">
-    <li>Adicione as permissões: <code>instagram_business_basic</code>, <code>instagram_business_content_publish</code>, <code>instagram_business_manage_comments</code> e <code>instagram_business_manage_insights</code> (para seguidores + views).</li>
-    <li>Copie o <strong>Instagram App ID</strong> e o <strong>Instagram App Secret</strong> e cole no formulário <strong>Novo App</strong>.</li>
+    <li>Adicione as permissões: <code>instagram_business_basic</code>, <code>instagram_business_content_publish</code>, <code>instagram_business_manage_comments</code>.</li>
+    <li>Para mostrar seguidores + views Reels no painel, habilite também <code>instagram_business_manage_insights</code>.</li>
+    <li>Copie o <strong>Instagram App ID</strong> e o <strong>Instagram App Secret</strong> e cole no formulário <strong>"Novo App"</strong>.</li>
     <li>Depois de salvar o app, vá em <a href="/accounts" data-nav="/accounts">Adicionar conta</a>: cole o <strong>token de longa duração</strong> (token manual) e selecione o app.</li>
   </ol>
 </div>
