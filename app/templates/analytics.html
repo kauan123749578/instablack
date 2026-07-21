@@ -154,26 +154,44 @@
     </div>
   </section>
   <section class="og-glass-card" style="margin-top:14px">
-    <div class="og-card-head"><h2 class="og-card-title">Reels recentes (API oficial)</h2></div>
-    {% if official.recent_reels %}
-    <div class="og-table-wrap">
-      <table class="og-table">
-        <thead><tr><th>Data</th><th>Conta</th><th>Views</th><th>Link</th></tr></thead>
-        <tbody>
-          {% for log in official.recent_reels %}
-          <tr>
-            <td class="og-muted">{{ log.created_at | localtime('%d/%m %H:%M') }}</td>
-            <td>@{{ log.account.username }}</td>
-            <td>{% if log.play_count is not none %}{{ format_count(log.play_count) }}{% else %}—{% endif %}</td>
-            <td>{% if log.media_url %}<a href="{{ log.media_url }}" target="_blank" rel="noopener">Abrir</a>{% else %}—{% endif %}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <div class="og-card-head">
+      <h2 class="og-card-title">Insights por conta (API oficial)</h2>
+      <span class="og-muted" style="font-size:12px">Reels recentes e views · janela {{ official.reel_views_days }}D</span>
     </div>
-    {% else %}
-    <p class="og-empty">Nenhum Reel publicado pela API oficial ainda.</p>
-    {% endif %}
+
+    {% for row in official.account_rows %}
+    <div class="og-glass-card" style="margin-top:14px;padding:16px;background:rgba(255,255,255,0.03)">
+      <div class="og-card-head" style="margin-bottom:10px;padding:0">
+        <div>
+          <h3 class="og-card-title" style="font-size:15px;margin:0">@{{ row.account.username }}</h3>
+          <p class="og-card-sub" style="margin:4px 0 0;font-size:12px">
+            {% if row.followers is not none %}{{ format_count(row.followers) }} seguidores{% else %}Seguidores —{% endif %}
+            · {{ format_count(row.reel_views_period) }} views Reels
+          </p>
+        </div>
+      </div>
+
+      {% set reels = official.recent_reels_by_account.get(row.account.id, []) %}
+      {% if reels %}
+      <div class="og-table-wrap">
+        <table class="og-table">
+          <thead><tr><th>Data</th><th>Views</th><th>Link</th></tr></thead>
+          <tbody>
+            {% for log in reels[:10] %}
+            <tr>
+              <td class="og-muted">{{ log.created_at | localtime('%d/%m %H:%M') }}</td>
+              <td>{% if log.play_count is not none %}{{ format_count(log.play_count) }}{% else %}—{% endif %}</td>
+              <td>{% if log.media_url %}<a href="{{ log.media_url }}" target="_blank" rel="noopener">Abrir</a>{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="og-empty">Nenhum Reel recente desta conta.</p>
+      {% endif %}
+    </div>
+    {% endfor %}
   </section>
   {% endif %}
 

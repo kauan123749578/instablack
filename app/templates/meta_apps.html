@@ -16,11 +16,11 @@
 
 {% if tab == 'setup' %}
 <div class="og-glass-card" style="padding:20px;margin-bottom:16px">
-  <h3 style="margin-top:0">Passo a passo</h3>
+  <h3 style="margin-top:0">Configure o app no painel da Meta para conectar contas do Instagram.</h3>
   <ol class="muted" style="line-height:1.75;font-size:14px;padding-left:20px;margin-bottom:20px">
     <li>Acesse <a href="https://developers.facebook.com/apps" target="_blank" rel="noopener">developers.facebook.com/apps</a> e crie um app do tipo <strong>Business</strong>.</li>
-    <li>Adicione o produto <strong>Instagram API with Instagram Login</strong>.</li>
-    <li>Em <strong>Instagram → API setup with Instagram login</strong>, cole as URLs abaixo nos <strong>3 campos de callback</strong> (Redirect, Deauthorize e Data deletion). Use os links do seu app Instablack — cada app tem URLs próprias:</li>
+    <li>Adicione o produto <strong>“Instagram API with Instagram Login”</strong>.</li>
+    <li>Em <strong>Instagram → API setup with Instagram login</strong>, cole as URLs abaixo nos <strong>3 campos de callback</strong> (Redirect OAuth, Deauthorize e Data deletion).</li>
   </ol>
 
   {% if app_rows %}
@@ -50,9 +50,9 @@
   {% endif %}
 
   <ol class="muted" style="line-height:1.75;font-size:14px;padding-left:20px;margin-top:16px" start="4">
-    <li>Adicione as permissões: <code>instagram_business_basic</code>, <code>instagram_business_content_publish</code>, <code>instagram_business_manage_comments</code> e <code>instagram_business_manage_insights</code> (insights no dashboard).</li>
+    <li>Adicione as permissões: <code>instagram_business_basic</code>, <code>instagram_business_content_publish</code>, <code>instagram_business_manage_comments</code> e <code>instagram_business_manage_insights</code> (para seguidores + views).</li>
     <li>Copie o <strong>Instagram App ID</strong> e o <strong>Instagram App Secret</strong> e cole no formulário <strong>Novo App</strong>.</li>
-    <li>Depois de salvar o app, vá em <a href="/accounts" data-nav="/accounts">Adicionar conta</a>: escolha o app, cole o <strong>token de longa duração</strong> da conta (ou use <strong>Continuar com Instagram</strong>).</li>
+    <li>Depois de salvar o app, vá em <a href="/accounts" data-nav="/accounts">Adicionar conta</a>: cole o <strong>token de longa duração</strong> (token manual) e selecione o app.</li>
   </ol>
 </div>
 
@@ -181,29 +181,4 @@
 </dialog>
 {% endif %}
 
-<script>
-(function(){
-  document.querySelectorAll('.copy-url-btn').forEach(function(btn){
-    btn.addEventListener('click', function(){
-      var t = btn.getAttribute('data-copy') || '';
-      if (!t && btn.previousElementSibling && btn.previousElementSibling.value) {
-        t = btn.previousElementSibling.value;
-      }
-      navigator.clipboard.writeText(t).then(function(){
-        var prev = btn.textContent;
-        btn.textContent = 'OK';
-        setTimeout(function(){ btn.textContent = prev; }, 1200);
-      });
-    });
-  });
-  var dlg = document.getElementById('meta-app-dialog');
-  var newBtn = document.getElementById('meta-app-new-btn');
-  var closeBtn = document.getElementById('meta-app-dialog-close');
-  if (newBtn && dlg) newBtn.addEventListener('click', function(){ dlg.showModal(); });
-  if (closeBtn && dlg) closeBtn.addEventListener('click', function(){ dlg.close(); });
-  {% if edit_app and dlg %}
-  dlg.showModal();
-  {% endif %}
-})();
-</script>
 {% endblock %}

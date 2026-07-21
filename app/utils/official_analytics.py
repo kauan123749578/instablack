@@ -82,6 +82,14 @@ def user_official_insights_summary(
         .limit(25)
     ).all()
 
+    recent_reels_by_account: dict[int, list[PublishLog]] = {}
+    for reel in recent_reels:
+        # PublishLog.account is eager-loaded above; group by its id for the template.
+        acc_id = reel.account.id if reel.account else None
+        if acc_id is None:
+            continue
+        recent_reels_by_account.setdefault(acc_id, []).append(reel)
+
     return {
         "meta_accounts_count": len(accounts),
         "total_followers": total_followers if followers_known else None,
@@ -89,4 +97,5 @@ def user_official_insights_summary(
         "reel_views_days": reel_views_days,
         "account_rows": account_rows,
         "recent_reels": recent_reels,
+        "recent_reels_by_account": recent_reels_by_account,
     }

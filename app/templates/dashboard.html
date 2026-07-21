@@ -253,50 +253,28 @@
     <section class="og-glass-card og-warmup-panel">
       <div class="og-card-head">
         <div>
-          <h2 class="og-card-title">Contas aquecendo</h2>
-          <p class="og-card-sub og-card-sub--caps">Warmup ativo</p>
+          <h2 class="og-card-title">Insights API oficial</h2>
+          <p class="og-card-sub og-card-sub--caps">Seguidores + views Reels ({{ official.reel_views_days }}D)</p>
         </div>
-        <a href="/warmup" class="og-link" data-nav="/warmup">Ver todos</a>
+        <a href="/analytics" class="og-link" data-nav="/analytics" style="font-size:12px;margin-top:0">Ver detalhes</a>
       </div>
-      {% if warming_jobs %}
-      <ul class="og-dash-list">
-        {% for job in warming_jobs %}
-        <li class="og-dash-list-item">
-          <span class="og-timeline-icon og-timeline-icon--{% if job.status == 'running' %}success{% elif job.status == 'paused' %}skipped{% else %}failed{% endif %}">
-            {% if job.status == 'running' %}<i data-lucide="flame"></i>
-            {% elif job.status == 'paused' %}<i data-lucide="pause"></i>
-            {% else %}<i data-lucide="clock"></i>{% endif %}
-          </span>
+
+      {% if official.meta_accounts_count > 0 %}
+      <ul class="og-dash-list" style="margin-top:10px">
+        {% for row in official.account_rows %}
+        <li class="og-dash-list-item" style="padding:6px 0">
           <div class="og-dash-list-body">
-            <strong>@{{ job.account.username if job.account else '?' }}</strong>
-            <span>{{ job.actions_done }}/{{ job.actions_target }} ações · {{ job.duration_minutes }} min{% if job.last_action %} · {{ job.last_action[:40] }}{% endif %}</span>
+            <strong>@{{ row.account.username }}</strong>
+            <span>
+              {% if row.followers is not none %}{{ format_count(row.followers) }} seguidores{% else %}Seguidores —{% endif %}
+              · {{ format_count(row.reel_views_period) }} views Reels
+            </span>
           </div>
-          <span class="og-badge {{ status_badge_class(job.status) }}">{{ status_label(job.status) }}</span>
         </li>
         {% endfor %}
       </ul>
       {% else %}
-      <div class="og-empty">Nenhuma conta aquecendo agora.<br><a href="/warmup" data-nav="/warmup" class="og-link">Iniciar aquecimento</a></div>
-      {% endif %}
-
-      {% if official.meta_accounts_count > 0 %}
-      <div class="og-dash-insights" style="margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.08)">
-        <p class="og-card-sub og-card-sub--caps" style="margin:0 0 10px">Insights API oficial · {{ official.reel_views_days }}D</p>
-        <ul class="og-dash-list" style="margin:0">
-          {% for row in official.account_rows %}
-          <li class="og-dash-list-item" style="padding:6px 0">
-            <div class="og-dash-list-body">
-              <strong>@{{ row.account.username }}</strong>
-              <span>
-                {% if row.followers is not none %}{{ format_count(row.followers) }} seguidores{% else %}Seguidores —{% endif %}
-                · {{ format_count(row.reel_views_period) }} views Reels
-              </span>
-            </div>
-          </li>
-          {% endfor %}
-        </ul>
-        <a href="/analytics" class="og-link" data-nav="/analytics" style="font-size:12px;margin-top:8px;display:inline-block">Ver analytics</a>
-      </div>
+      <div class="og-empty">Nenhuma conta Meta conectada via API oficial ainda.</div>
       {% endif %}
     </section>
 

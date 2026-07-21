@@ -78,6 +78,71 @@
     navigateTo(href);
   });
 
+  async function copyToClipboard(text) {
+    const value = String(text || "");
+    if (!value) return false;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(value);
+        return true;
+      }
+    } catch (_) {
+      // Fallback abaixo
+    }
+
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = value;
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      ta.style.top = "-9999px";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      return Boolean(ok);
+    } catch (_) {}
+    return false;
+  }
+
+  document.addEventListener("click", async (e) => {
+    const copyBtn = e.target.closest(".copy-url-btn");
+    if (copyBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const t = copyBtn.getAttribute("data-copy") || "";
+      let text = t;
+      if (!text) {
+        const input = copyBtn.parentElement?.querySelector("input") || null;
+        if (input && input.value) text = input.value;
+      }
+      const ok = await copyToClipboard(text);
+      const prev = copyBtn.textContent;
+      copyBtn.textContent = ok ? "OK" : "Falha";
+      window.setTimeout(() => {
+        copyBtn.textContent = prev;
+      }, 1200);
+      return;
+    }
+
+    const newBtn = e.target.closest("#meta-app-new-btn");
+    if (newBtn) {
+      const dlg = document.getElementById("meta-app-dialog");
+      if (dlg && typeof dlg.showModal === "function") dlg.showModal();
+      else if (dlg) dlg.setAttribute("open", "open");
+      return;
+    }
+
+    const closeBtn = e.target.closest("#meta-app-dialog-close");
+    if (closeBtn) {
+      const dlg = document.getElementById("meta-app-dialog");
+      if (dlg && typeof dlg.close === "function") dlg.close();
+      else if (dlg) dlg.removeAttribute("open");
+      return;
+    }
+  });
+
   window.addEventListener("popstate", (e) => {
     if (e.state?.url) navigateTo(e.state.url, false);
   });

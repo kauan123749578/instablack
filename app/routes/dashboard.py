@@ -16,7 +16,7 @@ from app.utils.charts import attach_chart_paths
 from app.utils.official_analytics import user_official_insights_summary
 from app.utils.timezone import brt_now
 from core.database import get_db
-from models.models import Automation, InstagramAccount, PublishLog, User, WarmupJob
+from models.models import Automation, InstagramAccount, PublishLog, User
 
 router = APIRouter(tags=["dashboard"])
 BRT = ZoneInfo("America/Sao_Paulo")
@@ -349,17 +349,6 @@ def home(
         db, _brt_day_bounds(month_start)[0], _brt_day_bounds(today)[1], viewer=user
     )
 
-    warming_jobs = db.scalars(
-        select(WarmupJob)
-        .where(
-            WarmupJob.user_id == user.id,
-            WarmupJob.status.in_(("pending", "running", "paused")),
-        )
-        .options(selectinload(WarmupJob.account))
-        .order_by(desc(WarmupJob.updated_at))
-        .limit(8)
-    ).all()
-
     failed_videos = db.scalars(
         select(PublishLog)
         .join(PublishLog.account)
@@ -418,7 +407,6 @@ def home(
             "official": official,
             "top_players": top_players,
             "top_players_month": top_players_month,
-            "warming_jobs": warming_jobs,
             "failed_videos": failed_videos,
         },
     )
