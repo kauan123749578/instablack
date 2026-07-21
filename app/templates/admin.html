@@ -3,13 +3,9 @@
 {% block content %}
 <div class="page-header">
   <h2><i data-lucide="shield" class="inline-icon"></i> Painel Admin</h2>
-  <p class="muted page-header-sub">
-    {% if is_owner %}
-      Gerencie usuários. Marque “Meu usuário” para esconder da lista dos outros admins.
-    {% else %}
-      Lista de usuários visíveis (sem os usuários privados do dono).
-    {% endif %}
-  </p>
+  {% if is_owner %}
+  <p class="muted page-header-sub">Gerencie usuários. Use “Meu usuário” para marcar contas suas (badge Meu).</p>
+  {% endif %}
 </div>
 
 {% if ok == 'deleted' %}
@@ -156,9 +152,9 @@
             {% elif is_owner %}
             <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end">
               <form method="post" action="/admin/users/{{ u.id }}/toggle-private"
-                    onsubmit="return confirm('{% if u.owner_private %}Mostrar @{{ u.username }} para os outros admins?{% else %}Esconder @{{ u.username }} dos outros admins (ficar só na sua lista)?{% endif %}');">
+                    onsubmit="return confirm('{% if u.owner_private %}Remover marcação Meu de @{{ u.username }}?{% else %}Marcar @{{ u.username }} como Meu usuário?{% endif %}');">
                 <button type="submit" class="btn btn-sm">
-                  {% if u.owner_private %}Mostrar aos admins{% else %}Meu usuário{% endif %}
+                  {% if u.owner_private %}Remover Meu{% else %}Meu usuário{% endif %}
                 </button>
               </form>
               <form method="post" action="/admin/users/{{ u.id }}/toggle-admin"

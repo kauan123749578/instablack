@@ -35,7 +35,7 @@
   setActiveNav(window.location.pathname);
 
   async function navigateTo(url, push = true) {
-    if (url.startsWith("/automations/new")) {
+    if (url.startsWith("/automations/new") || url.startsWith("/automations/story-studio")) {
       window.location.href = url;
       return;
     }
@@ -69,6 +69,13 @@
   }
 
   document.addEventListener("click", (e) => {
+    const clearLogs = e.target.closest(".logs-clear-filters");
+    if (clearLogs) {
+      e.preventDefault();
+      e.stopPropagation();
+      window.location.assign("/logs");
+      return;
+    }
     const link = e.target.closest("[data-nav]");
     if (!link || link.tagName === "BUTTON") return;
     if (link.classList.contains("logs-clear-filters")) return;
@@ -851,12 +858,22 @@
     const form = document.getElementById("account-add-form");
     if (!form) return;
     const passwordInput = document.getElementById("account-password-input");
+    const proxyInput = document.getElementById("account-proxy-input");
+    const connectBtn = document.getElementById("account-connect-btn");
     const radios = form.querySelectorAll('input[name="auth_method"]');
 
     function update() {
       const method = form.querySelector('input[name="auth_method"]:checked')?.value || "password";
+      const isMeta = method === "meta";
       if (passwordInput) {
         passwordInput.required = method === "password";
+      }
+      if (proxyInput) {
+        proxyInput.required = !isMeta;
+        if (isMeta) proxyInput.removeAttribute("required");
+      }
+      if (connectBtn) {
+        connectBtn.hidden = isMeta;
       }
     }
     radios.forEach((r) => {

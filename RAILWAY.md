@@ -205,6 +205,9 @@ BOOTSTRAP_ADMIN_USERNAME=admin
 BOOTSTRAP_ADMIN_PASSWORD=<senha-forte>
 BOOTSTRAP_ADMIN_IS_ADMIN=true
 
+# Dono da plataforma (@ de login EXATO). Sem isso (ou errado) você vira só Admin no /admin.
+OWNER_USERNAME=kauawqi
+
 # Web Push — MESMAS keys no web E no worker (cooperative-dream)
 # Sem isso no worker: sino funciona, celular não (ex.: "Conta fora do ar")
 VAPID_PUBLIC_KEY=<mesma do web>

@@ -39,41 +39,28 @@
       <div class="og-kpi-value">{{ success_total }}</div>
       <div class="og-kpi-label">Total publicado (histórico)</div>
     </article>
+    {% if official.meta_accounts_count > 0 %}
+    <article class="og-glass-card og-kpi-card">
+      <div class="og-kpi-top"><div class="og-kpi-icon og-kpi-icon--purple"><i data-lucide="badge-check"></i></div></div>
+      <div class="og-kpi-value">{% if official.total_followers is not none %}{{ format_count(official.total_followers) }}{% else %}—{% endif %}</div>
+      <div class="og-kpi-label">Seguidores · API oficial</div>
+    </article>
+    <article class="og-glass-card og-kpi-card">
+      <div class="og-kpi-top"><div class="og-kpi-icon og-kpi-icon--pink"><i data-lucide="eye"></i></div></div>
+      <div class="og-kpi-value">{{ format_count(official.total_reel_views_period) }}</div>
+      <div class="og-kpi-label">Views Reels · {{ official.reel_views_days }}D</div>
+    </article>
+    {% endif %}
   </div>
 
-  <section class="og-glass-card" style="margin-top:14px">
-    <div class="og-card-head">
-      <h2 class="og-card-title">Insights (API oficial Meta)</h2>
-      <span class="og-muted" style="font-size:12px">Janela {{ official.reel_views_days }} dias</span>
-    </div>
-
-    {% if official.meta_accounts_count > 0 %}
-    <div class="og-kpi-row" style="margin-top:12px">
-      <article class="og-glass-card og-kpi-card">
-        <div class="og-kpi-top">
-          <div class="og-kpi-icon og-kpi-icon--purple"><i data-lucide="users"></i></div>
-        </div>
-        <div class="og-kpi-value">{% if official.total_followers is not none %}{{ format_count(official.total_followers) }}{% else %}—{% endif %}</div>
-        <div class="og-kpi-label">Seguidores (API oficial)</div>
-      </article>
-      <article class="og-glass-card og-kpi-card">
-        <div class="og-kpi-top">
-          <div class="og-kpi-icon og-kpi-icon--pink"><i data-lucide="eye"></i></div>
-        </div>
-        <div class="og-kpi-value">{{ format_count(official.total_reel_views_period) }}</div>
-        <div class="og-kpi-label">Views Reels · {{ official.reel_views_days }}D</div>
-      </article>
-    </div>
-    {% else %}
-    <p class="og-empty" style="margin-top:10px">
-      Nenhuma conta conectada via API oficial Meta.
-      Cadastre o app em
-      <a href="/accounts/meta-apps?tab=setup" data-nav="/accounts/meta-apps?tab=setup">Meus Apps</a>
-      e conecte em
-      <a href="/accounts" data-nav="/accounts">Adicionar conta</a>.
-    </p>
-    {% endif %}
-  </section>
+  {% if official.meta_accounts_count == 0 %}
+  <p class="og-muted" style="margin:10px 0 0;font-size:12px">
+    Insights Meta: nenhuma conta API oficial.
+    <a href="/accounts/meta-apps?tab=setup" data-nav="/accounts/meta-apps?tab=setup">Meus Apps</a>
+    ·
+    <a href="/accounts" data-nav="/accounts">Adicionar conta</a>
+  </p>
+  {% endif %}
 
   <div class="og-main-grid og-main-grid--analytics">
     <section class="og-glass-card og-chart-panel og-chart-premium">

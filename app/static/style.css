@@ -708,7 +708,7 @@ a:hover { color: var(--primary-hover); }
 .official-api-actions {
   display: block;
 }
-.meta-token-connect { width: min(360px, 100%); }
+.meta-token-connect { width: 100%; max-width: 480px; }
 .meta-token-connect > summary { list-style: none; cursor: pointer; }
 .meta-token-connect > summary::-webkit-details-marker { display: none; }
 .meta-token-connect[open] {
@@ -908,6 +908,21 @@ input[type="checkbox"]:checked::after {
 #account-add-form:has(input[name="auth_method"][value="cookies"]:checked) .hint-sessionid { display: inline; }
 #account-add-form:has(input[name="auth_method"][value="password"]:checked) .hint-required,
 #account-add-form:has(input[name="auth_method"][value="import"]:checked) .hint-required { display: inline; }
+
+.auth-method-groups { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; margin: 0 0 8px; }
+.auth-method-groups > legend { padding: 0 6px; font-size: 13px; font-weight: 600; }
+.auth-method-group { margin-top: 12px; }
+.auth-method-group:first-of-type { margin-top: 4px; }
+.auth-method-group-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #93c5fd;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.form-card:has(input[name="auth_method"][value="meta"]:checked) #non-meta-fields { display: none; }
+.form-card:has(input[name="auth_method"][value="meta"]:checked) #meta-wrap { display: block; }
 
 /* Login — premium privado */
 .login-body {

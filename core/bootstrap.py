@@ -19,19 +19,30 @@ def _owner_username() -> str:
 
 
 def sync_owner() -> None:
-    """OWNER_USERNAME é o único owner: marca ele e desmarca qualquer outro."""
+    """OWNER_USERNAME é o único owner: marca ele e desmarca qualquer outro.
+
+    Se o username configurado não existir no banco, NÃO mexe em is_owner
+    (evita demotar o dono real quando OWNER_USERNAME está errado/desatualizado).
+    """
     owner = _owner_username()
     if not owner:
         return
     with session_scope() as db:
+        user = db.scalar(select(User).where(User.username == owner))
+        if not user:
+            log.warning(
+                "OWNER_USERNAME='%s' não existe no banco — flags is_owner intactas. "
+                "Ajuste OWNER_USERNAME no Railway para o seu @ de login.",
+                owner,
+            )
+            return
         others = db.scalars(
             select(User).where(User.is_owner.is_(True), User.username != owner)
         ).all()
         for u in others:
             u.is_owner = False
             log.info("Flag de owner removida de '%s' (owner atual: '%s').", u.username, owner)
-        user = db.scalar(select(User).where(User.username == owner))
-        if user and (not getattr(user, "is_owner", False) or not user.is_admin):
+        if not getattr(user, "is_owner", False) or not user.is_admin:
             user.is_owner = True
             user.is_admin = True
             log.info("Usuário '%s' marcado como owner da plataforma.", owner)

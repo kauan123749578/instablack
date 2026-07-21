@@ -13,21 +13,104 @@
 {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
 {% if ok %}<div class="alert alert-ok">{{ ok }}</div>{% endif %}
 
-<div class="form-card" style="margin-bottom:16px">
-  <div>
-    <span class="og-badge badge-green">OFICIAL</span>
-    <h3>Conectar com Instagram</h3>
-    <p class="muted">
-      Alternativa oficial da Meta para contas profissionais (Business ou Creator).
-      Não usa senha, sessionid nem proxy. Fluxo: cadastre o app em
-      <a href="/accounts/meta-apps" data-nav="/accounts/meta-apps">Meus Apps</a>,
-      configure na Meta, depois conecte aqui com OAuth ou <strong>token manual</strong>.
-    </p>
-  </div>
-  <div>
+{% if not can_add_account %}
+<div class="alert alert-error" style="margin-bottom:12px">
+  Limite de contas atingido ({{ account_limit_label }}). Peça ao administrador para liberar mais vagas.
+</div>
+{% endif %}
+
+{% set auth_method = form.get('auth_method', 'password') %}
+<div class="form-card" style="margin-bottom:24px{% if not can_add_account %};opacity:0.45;pointer-events:none{% endif %}">
+  <h3 style="margin-top:0">Conectar conta Instagram</h3>
+  <p class="muted" style="margin:0 0 16px;font-size:13px">
+    Escolha o método de autenticação. API oficial não usa senha nem proxy; API web usa cookies da extensão.
+  </p>
+
+  <form method="post" action="/accounts/add" class="form-grid" id="account-add-form">
+    <fieldset class="auth-method-groups">
+      <legend>Método de autenticação</legend>
+
+      <div class="auth-method-group">
+        <div class="auth-method-group-title">API não oficial (Instagrapi)</div>
+        <div class="checkbox-row">
+          <label><input type="radio" name="auth_method" value="password" {% if auth_method == 'password' %}checked{% endif %}> Usuário e senha</label>
+          <label><input type="radio" name="auth_method" value="sessionid" {% if auth_method == 'sessionid' %}checked{% endif %}> Session ID</label>
+          <label><input type="radio" name="auth_method" value="import" {% if auth_method == 'import' %}checked{% endif %}> Importar session.json</label>
+        </div>
+      </div>
+
+      <div class="auth-method-group">
+        <div class="auth-method-group-title">API web</div>
+        <div class="checkbox-row">
+          <label><input type="radio" name="auth_method" value="cookies" {% if auth_method == 'cookies' %}checked{% endif %}> Importar cookies JSON</label>
+        </div>
+        <p class="muted" style="margin:6px 0 0;font-size:12px">Extensão / Cookie-Editor. Por enquanto publica Reels (Story com link quando aplicável).</p>
+      </div>
+
+      <div class="auth-method-group">
+        <div class="auth-method-group-title">API oficial (Meta)</div>
+        <div class="checkbox-row">
+          <label><input type="radio" name="auth_method" value="meta" {% if auth_method == 'meta' %}checked{% endif %}> Token ou login OAuth</label>
+        </div>
+        <p class="muted" style="margin:6px 0 0;font-size:12px">Contas Business/Creator. Cadastre o app em <a href="/accounts/meta-apps" data-nav="/accounts/meta-apps">Meus Apps</a>.</p>
+      </div>
+    </fieldset>
+
+    <div id="non-meta-fields">
+      <label>Proxy <strong style="color:var(--red)">*</strong>
+        <input type="text" name="proxy" id="account-proxy-input" required
+               value="{{ form.get('proxy') or default_proxy }}"
+               placeholder="ip:porta:usuario:senha">
+      </label>
+      <p class="muted" style="margin:0;font-size:12px">Mesma proxy do perfil no Multilogin. Aceita http, socks5 e <code>ip:porta:user:senha</code>.</p>
+
+      <div id="cookies-wrap" class="auth-method-panel">
+        <label>Cookies do Instagram (Cookie-Editor ou header)
+          <textarea name="web_cookies" id="web-cookies-input" rows="8" placeholder='Cole o JSON do Cookie-Editor OU: sessionid=...; csrftoken=...; ds_user_id=...'>{{ form.get('web_cookies', '') }}</textarea>
+        </label>
+        <p class="muted" style="margin:6px 0 0;font-size:12px">
+          Precisa de <code>sessionid</code> + <code>csrftoken</code> (+ mid, ig_did, ds_user_id…).
+          Extensão Cookie-Editor → Export → JSON.
+        </p>
+      </div>
+
+      <div id="sessionid-wrap" class="auth-method-panel">
+        <label>Session ID do navegador
+          <textarea name="sessionid" id="sessionid-input" rows="2" placeholder="Cole o sessionid (F12 → Application → Cookies → instagram.com)">{{ form.get('sessionid', '') }}</textarea>
+        </label>
+        <p class="muted" style="margin:6px 0 0;font-size:12px">
+          Só sessionid <em>não</em> publica Story com link (falta csrftoken). Prefira API web (cookies).
+        </p>
+      </div>
+
+      <div id="import-wrap" class="auth-method-panel">
+        <label>session.json
+          <textarea name="session_json" rows="5" placeholder='Cole o conteúdo do arquivo session.json'>{{ form.get('session_json', '') }}</textarea>
+        </label>
+      </div>
+
+      <label>Usuário Instagram (@)
+        <span class="muted username-hint hint-sessionid">(opcional com sessionid / cookies)</span>
+        <span class="muted username-hint hint-required">(obrigatório)</span>
+        <input type="text" name="username" id="account-username-input" placeholder="meu_perfil" value="{{ form.get('username', '') }}">
+      </label>
+
+      <div id="password-wrap" class="auth-method-panel">
+        <label>Senha <strong style="color:var(--red)">*</strong>
+          <input type="password" name="password" id="account-password-input" autocomplete="current-password" placeholder="Senha do Instagram">
+        </label>
+        <p class="muted" style="margin:0;font-size:12px">Após o login, a sessão (<code>session.json</code>) é salva no banco automaticamente.</p>
+      </div>
+
+      <input type="hidden" name="verification_code" id="verification-code-hidden" value="">
+      <button type="submit" class="btn btn-primary" id="account-connect-btn">Conectar conta</button>
+    </div>
+  </form>
+
+  <div id="meta-wrap" class="auth-method-panel" style="margin-top:12px">
     {% if meta_apps %}
-    <details class="meta-token-connect">
-      <summary class="btn btn-sm">Conectar com token da conta (recomendado após configurar o app)</summary>
+    <details class="meta-token-connect" open>
+      <summary class="btn btn-sm">Conectar com token da conta (recomendado)</summary>
       <form method="post" action="/accounts/meta/connect-token" class="form-grid">
         <label>Token de longa duração da conta
           <input type="password" name="access_token" required minlength="20"
@@ -48,7 +131,7 @@
         <button type="submit" class="btn btn-primary btn-sm">Conectar com token</button>
       </form>
     </details>
-    <form method="get" action="/accounts/meta/connect" class="form-grid" style="max-width:360px;margin:12px 0 0">
+    <form method="get" action="/accounts/meta/connect" class="form-grid" style="margin-top:12px">
       <label>Ou login OAuth — qual app Meta usar?
         <select name="app_id" required>
           {% for app in meta_apps %}
@@ -61,87 +144,11 @@
       </button>
     </form>
     {% else %}
-    <a href="/accounts/meta-apps" class="btn btn-primary">
+    <a href="/accounts/meta-apps" class="btn btn-primary" data-nav="/accounts/meta-apps">
       <i data-lucide="boxes"></i> Cadastre um app em Meus Apps
     </a>
     {% endif %}
   </div>
-</div>
-
-<div class="form-card" style="margin-bottom:24px">
-  <h3 style="margin-top:0">Conectar via Instagrapi</h3>
-  <p class="muted" style="margin:0 0 16px;font-size:13px">
-    Você pode conectar direto pelo painel com <strong>usuário e senha</strong>; após o login, a sessão
-    (<code>session.json</code>) é salva no banco automaticamente. Se o Instagram recusar ou pedir challenge,
-    use Session ID/session.json do Multilogin com a mesma proxy.
-  </p>
-  {% if not can_add_account %}
-  <div class="alert alert-error" style="margin-bottom:12px">
-    Limite de contas atingido ({{ account_limit_label }}). Peça ao administrador para liberar mais vagas.
-  </div>
-  {% endif %}
-  {% set auth_method = form.get('auth_method', 'password') %}
-  <form method="post" action="/accounts/add" class="form-grid" id="account-add-form"{% if not can_add_account %} style="opacity:0.45;pointer-events:none"{% endif %}>
-    <fieldset>
-      <legend>Método de autenticação</legend>
-      <div class="checkbox-row">
-        <label><input type="radio" name="auth_method" value="password" {% if auth_method == 'password' %}checked{% endif %}> Usuário e senha</label>
-        <label><input type="radio" name="auth_method" value="cookies" {% if auth_method == 'cookies' %}checked{% endif %}> Cookies JSON (Story link)</label>
-        <label><input type="radio" name="auth_method" value="sessionid" {% if auth_method == 'sessionid' %}checked{% endif %}> Session ID</label>
-        <label><input type="radio" name="auth_method" value="import" {% if auth_method == 'import' %}checked{% endif %}> Importar session.json</label>
-      </div>
-    </fieldset>
-
-    <label>Proxy <strong style="color:var(--red)">*</strong>
-      <input type="text" name="proxy" id="account-proxy-input" required
-             value="{{ form.get('proxy') or default_proxy }}"
-             placeholder="ip:porta:usuario:senha">
-    </label>
-    <p class="muted" style="margin:0;font-size:12px">Mesma proxy do perfil no Multilogin. Aceita http, socks5 e <code>ip:porta:user:senha</code>.</p>
-
-    <div id="cookies-wrap" class="auth-method-panel">
-      <label>Cookies do Instagram (Cookie-Editor ou header)
-        <textarea name="web_cookies" id="web-cookies-input" rows="8" placeholder='Cole o JSON do Cookie-Editor OU: sessionid=...; csrftoken=...; ds_user_id=...'>{{ form.get('web_cookies', '') }}</textarea>
-      </label>
-      <p class="muted" style="margin:6px 0 0;font-size:12px">
-        <strong>Recomendado para Story com link.</strong> Precisa de
-        <code>sessionid</code> + <code>csrftoken</code> (+ mid, ig_did, ds_user_id…).
-        Extensão Cookie-Editor → Export → JSON.
-      </p>
-    </div>
-
-    <div id="sessionid-wrap" class="auth-method-panel">
-      <label>Session ID do navegador
-        <textarea name="sessionid" id="sessionid-input" rows="2" placeholder="Cole o sessionid (F12 → Application → Cookies → instagram.com)">{{ form.get('sessionid', '') }}</textarea>
-      </label>
-      <p class="muted" style="margin:6px 0 0;font-size:12px">
-        Só sessionid <em>não</em> publica Story com link (falta csrftoken). Prefira Cookies JSON.
-      </p>
-    </div>
-
-    <div id="import-wrap" class="auth-method-panel">
-      <label>session.json
-        <textarea name="session_json" rows="5" placeholder='Cole o conteúdo do arquivo session.json'>{{ form.get('session_json', '') }}</textarea>
-      </label>
-    </div>
-
-    <label>Usuário Instagram (@)
-      <span class="muted username-hint hint-sessionid">(opcional com sessionid)</span>
-      <span class="muted username-hint hint-required">(obrigatório)</span>
-      <input type="text" name="username" id="account-username-input" placeholder="meu_perfil" value="{{ form.get('username', '') }}">
-    </label>
-
-    <div id="password-wrap" class="auth-method-panel">
-      <label>Senha <strong style="color:var(--red)">*</strong>
-        <input type="password" name="password" id="account-password-input" autocomplete="current-password" placeholder="Senha do Instagram">
-      </label>
-      <p class="muted" style="margin:0;font-size:12px">Após o login, a sessão (<code>session.json</code>) é salva no banco automaticamente.</p>
-    </div>
-
-    <input type="hidden" name="verification_code" id="verification-code-hidden" value="">
-
-    <button type="submit" class="btn btn-primary" id="account-connect-btn">Conectar conta</button>
-  </form>
 </div>
 
 <p class="muted" style="font-size:13px">
