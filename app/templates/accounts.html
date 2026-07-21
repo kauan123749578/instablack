@@ -19,13 +19,37 @@
     <h3>Conectar com Instagram</h3>
     <p class="muted">
       Alternativa oficial da Meta para contas profissionais (Business ou Creator).
-      Não usa senha, sessionid nem proxy.
+      Não usa senha, sessionid nem proxy. Fluxo: cadastre o app em
+      <a href="/accounts/meta-apps" data-nav="/accounts/meta-apps">Meus Apps</a>,
+      configure na Meta, depois conecte aqui com OAuth ou <strong>token manual</strong>.
     </p>
   </div>
   <div class="official-api-actions">
     {% if meta_apps %}
-    <form method="get" action="/accounts/meta/connect" class="form-grid" style="max-width:360px;margin:0">
-      <label>Qual app Meta usar?
+    <details class="meta-token-connect" open>
+      <summary class="btn btn-sm">Conectar com token da conta (recomendado após configurar o app)</summary>
+      <form method="post" action="/accounts/meta/connect-token" class="form-grid">
+        <label>Token de longa duração da conta
+          <input type="password" name="access_token" required minlength="20"
+                 autocomplete="off" placeholder="Cole o token gerado no Graph API Explorer ou no painel Meta">
+        </label>
+        <label>Qual app Meta este token pertence?
+          <select name="app_id" required>
+            {% for app in meta_apps %}
+            <option value="{{ app.id }}">{{ app.name }} ({{ app.ig_app_id }})</option>
+            {% endfor %}
+          </select>
+        </label>
+        <p class="muted" style="font-size:12px;margin:0">
+          Tutorial:
+          <a href="/accounts/meta-apps?tab=setup" data-nav="/accounts/meta-apps?tab=setup">Como pegar o token</a>
+          {% if token_youtube_url %} · <a href="{{ token_youtube_url }}" target="_blank" rel="noopener">Vídeo no YouTube</a>{% endif %}
+        </p>
+        <button type="submit" class="btn btn-primary btn-sm">Conectar com token</button>
+      </form>
+    </details>
+    <form method="get" action="/accounts/meta/connect" class="form-grid" style="max-width:360px;margin:12px 0 0">
+      <label>Ou login OAuth — qual app Meta usar?
         <select name="app_id" required>
           {% for app in meta_apps %}
           <option value="{{ app.id }}">{{ app.name }} ({{ app.ig_app_id }})</option>
@@ -40,26 +64,6 @@
     <a href="/accounts/meta-apps" class="btn btn-primary">
       <i data-lucide="boxes"></i> Cadastre um app em Meus Apps
     </a>
-    {% endif %}
-    {% if meta_apps %}
-    <details class="meta-token-connect">
-      <summary class="btn btn-sm">Conectar com token manual</summary>
-      <form method="post" action="/accounts/meta/connect-token" class="form-grid">
-        <label>App Meta
-          <select name="app_id" required>
-            {% for app in meta_apps %}
-            <option value="{{ app.id }}">{{ app.name }}</option>
-            {% endfor %}
-          </select>
-        </label>
-        <label>Token gerado no painel da Meta
-          <input type="password" name="access_token" required minlength="20"
-                 autocomplete="off" placeholder="Cole o token sem compartilhar com ninguém">
-        </label>
-        <p class="muted">Útil para testes ou quando o login web retorna HTTP 429.</p>
-        <button type="submit" class="btn btn-primary btn-sm">Conectar token oficial</button>
-      </form>
-    </details>
     {% endif %}
   </div>
 </div>

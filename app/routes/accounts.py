@@ -28,6 +28,7 @@ from app.utils.account_limits import (
 )
 from app.utils.auth_failures import mark_accounts_from_latest_auth_failures
 from app.utils.meta_apps import credentials_from_app, get_owned_meta_app, list_user_meta_apps
+from app.utils.platform_settings import META_TOKEN_YOUTUBE_URL, get_platform_setting
 from core.database import get_db
 from core.meta_instagram import (
     MetaInstagramError,
@@ -194,11 +195,15 @@ def list_accounts(
         "account_limit": "Seu limite de contas foi atingido.",
     }.get(request.query_params.get("error") or "")
     meta_apps_list = list_user_meta_apps(db, user.id)
+    token_youtube_url = get_platform_setting(
+        db, META_TOKEN_YOUTUBE_URL, default="https://youtu.be/EA0iEb92sZg"
+    )
     return templates.TemplateResponse(
         "accounts.html",
         {
             **_accounts_page_context(request, user, accounts, ok=ok_msg, error=error_msg),
             "meta_apps": meta_apps_list,
+            "token_youtube_url": token_youtube_url,
         },
     )
 

@@ -71,6 +71,7 @@
   document.addEventListener("click", (e) => {
     const link = e.target.closest("[data-nav]");
     if (!link || link.tagName === "BUTTON") return;
+    if (link.classList.contains("logs-clear-filters")) return;
     const href = link.getAttribute("data-nav") || link.getAttribute("href");
     if (!href || href.startsWith("http") || link.target === "_blank") return;
     e.preventDefault();

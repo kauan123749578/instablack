@@ -3,43 +3,93 @@
 {% block content %}
 <div class="page-header">
   <h2><i data-lucide="boxes" class="inline-icon"></i> Meus Apps Meta</h2>
-  <p class="muted page-header-sub">Cadastre seu app no Meta for Developers e conecte contas pela API oficial.</p>
+  <p class="muted page-header-sub">Configure o app no painel da Meta para conectar contas do Instagram.</p>
 </div>
 
 {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
 {% if ok %}<div class="alert alert-ok">{{ ok }}</div>{% endif %}
 
 <div class="og-period-pills" style="margin-bottom:16px" role="tablist">
-  <a href="/accounts/meta-apps?tab=apps" class="period-pill{% if tab != 'setup' %} active{% endif %}">Meus apps</a>
-  <a href="/accounts/meta-apps?tab=setup" class="period-pill{% if tab == 'setup' %} active{% endif %}">Como configurar</a>
+  <a href="/accounts/meta-apps?tab=apps" class="period-pill{% if tab != 'setup' %} active{% endif %}" data-nav="/accounts/meta-apps?tab=apps">Meus apps</a>
+  <a href="/accounts/meta-apps?tab=setup" class="period-pill{% if tab == 'setup' %} active{% endif %}" data-nav="/accounts/meta-apps?tab=setup">Como configurar</a>
 </div>
 
 {% if tab == 'setup' %}
 <div class="og-glass-card" style="padding:20px;margin-bottom:16px">
   <h3 style="margin-top:0">Passo a passo</h3>
-  <ol class="muted" style="line-height:1.7;font-size:14px;padding-left:20px">
-    <li>Acesse <a href="https://developers.facebook.com/" target="_blank" rel="noopener">developers.facebook.com</a> e crie um app (tipo Business).</li>
+  <ol class="muted" style="line-height:1.75;font-size:14px;padding-left:20px;margin-bottom:20px">
+    <li>Acesse <a href="https://developers.facebook.com/apps" target="_blank" rel="noopener">developers.facebook.com/apps</a> e crie um app do tipo <strong>Business</strong>.</li>
     <li>Adicione o produto <strong>Instagram API with Instagram Login</strong>.</li>
-    <li>Em <strong>Instagram Login → Settings</strong>, cole as três URLs do seu app Instablack (aba Meus apps → copiar).</li>
-    <li>Solicite permissões: <code>instagram_business_basic</code>, <code>instagram_business_content_publish</code>, <code>instagram_business_manage_insights</code>.</li>
-    <li>Copie o <strong>Instagram App ID</strong> e o <strong>App Secret</strong> e salve em <strong>+ Novo App</strong>.</li>
-    <li>Coloque o app em modo <strong>Live</strong> após a verificação da empresa e App Review.</li>
+    <li>Em <strong>Instagram → API setup with Instagram login</strong>, cole as URLs abaixo nos <strong>3 campos de callback</strong> (Redirect, Deauthorize e Data deletion). Use os links do seu app Instablack — cada app tem URLs próprias:</li>
   </ol>
-  <p class="muted" style="font-size:13px;margin:0">Base pública: <code>{{ public_origin }}</code></p>
+
+  {% if app_rows %}
+  {% for row in app_rows %}
+  <div class="og-glass-card" style="padding:14px;margin-bottom:12px;background:rgba(255,255,255,0.03)">
+    <strong>{{ row.app.name }}</strong> <span class="og-muted">· App ID {{ row.app.ig_app_id }}</span>
+    <div class="meta-copy-list" style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
+      {% for label, url in [
+        ('Redirect OAuth (callback)', row.urls.callback),
+        ('Deauthorize callback', row.urls.deauthorize),
+        ('Data deletion callback', row.urls.data_deletion)
+      ] %}
+      <label class="meta-copy-field" style="display:block;font-size:12px">
+        <span class="og-muted">{{ label }}</span>
+        <div style="display:flex;gap:8px;margin-top:4px;align-items:center;flex-wrap:wrap">
+          <input type="text" readonly value="{{ url }}" class="meta-copy-input" style="flex:1;min-width:200px;font-size:11px">
+          <button type="button" class="btn btn-sm copy-url-btn" data-copy="{{ url }}">Copiar</button>
+        </div>
+      </label>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+  {% else %}
+  <p class="muted" style="font-size:13px">Cadastre um app na aba <strong>Meus apps</strong> (+ Novo App) para gerar as URLs. O padrão é:</p>
+  <code style="font-size:11px;display:block;margin:8px 0">{{ public_origin }}/accounts/meta/callback/<em>id_do_app</em></code>
+  {% endif %}
+
+  <ol class="muted" style="line-height:1.75;font-size:14px;padding-left:20px;margin-top:16px" start="4">
+    <li>Adicione as permissões: <code>instagram_business_basic</code>, <code>instagram_business_content_publish</code>, <code>instagram_business_manage_comments</code> e <code>instagram_business_manage_insights</code> (insights no dashboard).</li>
+    <li>Copie o <strong>Instagram App ID</strong> e o <strong>Instagram App Secret</strong> e cole no formulário <strong>Novo App</strong>.</li>
+    <li>Depois de salvar o app, vá em <a href="/accounts" data-nav="/accounts">Adicionar conta</a>: escolha o app, cole o <strong>token de longa duração</strong> da conta (ou use <strong>Continuar com Instagram</strong>).</li>
+  </ol>
 </div>
+
 {% if youtube_url %}
 <div class="og-glass-card" style="padding:20px;margin-bottom:16px">
-  <h3 style="margin-top:0"><i data-lucide="youtube" class="inline-icon"></i> Vídeo tutorial</h3>
+  <h3 style="margin-top:0"><i data-lucide="youtube" class="inline-icon"></i> Vídeo: configurar app Meta</h3>
   {% set yt = youtube_url %}
-  {% if 'youtube.com/watch' in yt or 'youtu.be/' in yt %}
+  {% if 'youtu.be/' in yt %}{% set yt_id = yt.split('youtu.be/')[-1].split('?')[0] %}
+  {% elif 'watch?v=' in yt %}{% set yt_id = yt.split('watch?v=')[-1].split('&')[0] %}
+  {% else %}{% set yt_id = '' %}{% endif %}
+  {% if yt_id %}
   <div style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:12px;margin-top:12px">
-    <iframe src="{{ yt | replace('watch?v=', 'embed/') | replace('youtu.be/', 'youtube.com/embed/') }}" title="Tutorial Meta" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0" allowfullscreen></iframe>
+    <iframe src="https://www.youtube.com/embed/{{ yt_id }}" title="Tutorial Meta" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0" allowfullscreen></iframe>
   </div>
   {% else %}
-  <p><a href="{{ youtube_url }}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">Abrir vídeo</a></p>
+  <a href="{{ youtube_url }}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">Abrir vídeo</a>
   {% endif %}
 </div>
 {% endif %}
+
+<div class="og-glass-card" style="padding:20px;margin-bottom:16px">
+  <h3 style="margin-top:0"><i data-lucide="youtube" class="inline-icon"></i> Vídeo: como pegar o token da conta</h3>
+  <p class="muted" style="font-size:13px;margin:0 0 8px">Use este token em <strong>Adicionar conta → Conectar com token manual</strong>.</p>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+    <input type="text" readonly value="{{ token_youtube_url }}" class="meta-copy-input" style="flex:1;min-width:200px;font-size:12px">
+    <button type="button" class="btn btn-sm copy-url-btn" data-copy="{{ token_youtube_url }}">Copiar link</button>
+    <a href="{{ token_youtube_url }}" target="_blank" rel="noopener" class="btn btn-sm">Abrir no YouTube</a>
+  </div>
+  {% set tok = token_youtube_url %}
+  {% if 'youtu.be/' in tok %}{% set tok_id = tok.split('youtu.be/')[-1].split('?')[0] %}
+  {% elif 'watch?v=' in tok %}{% set tok_id = tok.split('watch?v=')[-1].split('&')[0] %}
+  {% else %}{% set tok_id = 'EA0iEb92sZg' %}{% endif %}
+  <div style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:12px;margin-top:12px">
+    <iframe src="https://www.youtube.com/embed/{{ tok_id }}" title="Token da conta" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0" allowfullscreen></iframe>
+  </div>
+</div>
+
 {% else %}
 
 <div style="margin-bottom:12px">
@@ -54,7 +104,7 @@
           <th>Nome</th>
           <th>IG App ID</th>
           <th>Secret</th>
-          <th>URLs OAuth</th>
+          <th>URLs (copiar)</th>
           <th></th>
         </tr>
       </thead>
@@ -66,13 +116,13 @@
           <td><code>{{ a.ig_app_id }}</code></td>
           <td class="og-muted">{{ row.secret_masked }}</td>
           <td>
-            <div style="display:flex;flex-direction:column;gap:4px;font-size:11px">
-              {% for label, url in [('Redirect', row.urls.callback), ('Deauthorize', row.urls.deauthorize), ('Data deletion', row.urls.data_deletion)] %}
-              <span class="copy-url-row">
-                <span class="og-muted">{{ label }}:</span>
-                <code class="copy-url-text">{{ url }}</code>
+            <div style="display:flex;flex-direction:column;gap:6px;font-size:11px;min-width:280px">
+              {% for label, url in [('Callback', row.urls.callback), ('Deauthorize', row.urls.deauthorize), ('Data deletion', row.urls.data_deletion)] %}
+              <div style="display:flex;gap:6px;align-items:center">
+                <span class="og-muted" style="width:72px">{{ label }}</span>
+                <input type="text" readonly value="{{ url }}" style="flex:1;font-size:10px;min-width:0">
                 <button type="button" class="btn btn-sm copy-url-btn" data-copy="{{ url }}">Copiar</button>
-              </span>
+              </div>
               {% endfor %}
             </div>
           </td>
@@ -84,7 +134,7 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="5" class="og-muted">Nenhum app cadastrado. Clique em Novo App ou siga a aba Como configurar.</td></tr>
+        <tr><td colspan="5" class="og-muted">Nenhum app cadastrado. Use a aba Como configurar ou clique em Novo App.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -111,6 +161,7 @@
   </form>
   {% else %}
   <h3 style="margin-top:0">Novo app Meta</h3>
+  <p class="muted" style="font-size:13px;margin:0 0 12px">Cole o ID e o Secret do app que você configurou na Meta (passo a passo na aba Como configurar).</p>
   <form method="post" action="/accounts/meta-apps" class="form-grid">
     <label>Nome (ex.: Meu app Reels)
       <input type="text" name="name" required maxlength="255" placeholder="Meu app Instagram">
@@ -118,7 +169,7 @@
     <label>Instagram App ID
       <input type="text" name="ig_app_id" required placeholder="1234567890">
     </label>
-    <label>App Secret
+    <label>Instagram App Secret
       <input type="password" name="ig_app_secret" required minlength="8" autocomplete="off">
     </label>
     <div style="display:flex;gap:8px">
@@ -135,7 +186,14 @@
   document.querySelectorAll('.copy-url-btn').forEach(function(btn){
     btn.addEventListener('click', function(){
       var t = btn.getAttribute('data-copy') || '';
-      navigator.clipboard.writeText(t).then(function(){ btn.textContent = 'OK'; setTimeout(function(){ btn.textContent = 'Copiar'; }, 1200); });
+      if (!t && btn.previousElementSibling && btn.previousElementSibling.value) {
+        t = btn.previousElementSibling.value;
+      }
+      navigator.clipboard.writeText(t).then(function(){
+        var prev = btn.textContent;
+        btn.textContent = 'OK';
+        setTimeout(function(){ btn.textContent = prev; }, 1200);
+      });
     });
   });
   var dlg = document.getElementById('meta-app-dialog');

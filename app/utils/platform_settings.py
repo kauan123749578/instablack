@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from models.models import PlatformSetting
 
 META_SETUP_YOUTUBE_URL = "meta_setup_youtube_url"
+META_TOKEN_YOUTUBE_URL = "meta_token_youtube_url"
 
 
 def get_platform_setting(db: Session, key: str, default: str = "") -> str:

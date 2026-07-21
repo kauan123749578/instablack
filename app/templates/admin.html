@@ -77,19 +77,22 @@
   </form>
 </div>
 <div class="og-glass-card" style="margin-bottom:16px;padding:18px">
-  <h3 style="margin:0 0 4px;font-size:15px">
-    <i data-lucide="youtube" class="inline-icon"></i> Tutorial Meta (YouTube)
-  </h3>
+  <h3 style="margin-top:0"><i data-lucide="youtube" class="inline-icon"></i> Tutoriais Meta (YouTube)</h3>
   <p class="muted" style="margin:0 0 12px;font-size:12px">
-    Link exibido na aba “Como configurar” em Meus Apps.
+    Exibidos em Meus Apps → Como configurar (configurar app + pegar token da conta).
   </p>
   <form method="post" action="/admin/platform/meta-youtube" class="form-grid">
-    <label>URL do vídeo
+    <label>Vídeo: configurar app na Meta
       <input type="url" name="meta_setup_youtube_url" maxlength="512"
              value="{{ meta_setup_youtube_url or '' }}"
              placeholder="https://www.youtube.com/watch?v=...">
     </label>
-    <button type="submit" class="btn btn-primary btn-sm" style="align-self:flex-start">Salvar</button>
+    <label>Vídeo: como pegar o token da conta
+      <input type="url" name="meta_token_youtube_url" maxlength="512"
+             value="{{ meta_token_youtube_url or 'https://youtu.be/EA0iEb92sZg' }}"
+             placeholder="https://youtu.be/EA0iEb92sZg">
+    </label>
+    <button type="submit" class="btn btn-primary btn-sm" style="align-self:flex-start">Salvar links</button>
   </form>
 </div>
 {% endif %}

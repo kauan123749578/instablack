@@ -278,6 +278,26 @@
       {% else %}
       <div class="og-empty">Nenhuma conta aquecendo agora.<br><a href="/warmup" data-nav="/warmup" class="og-link">Iniciar aquecimento</a></div>
       {% endif %}
+
+      {% if official.meta_accounts_count > 0 %}
+      <div class="og-dash-insights" style="margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.08)">
+        <p class="og-card-sub og-card-sub--caps" style="margin:0 0 10px">Insights API oficial · {{ official.reel_views_days }}D</p>
+        <ul class="og-dash-list" style="margin:0">
+          {% for row in official.account_rows %}
+          <li class="og-dash-list-item" style="padding:6px 0">
+            <div class="og-dash-list-body">
+              <strong>@{{ row.account.username }}</strong>
+              <span>
+                {% if row.followers is not none %}{{ format_count(row.followers) }} seguidores{% else %}Seguidores —{% endif %}
+                · {{ format_count(row.reel_views_period) }} views Reels
+              </span>
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+        <a href="/analytics" class="og-link" data-nav="/analytics" style="font-size:12px;margin-top:8px;display:inline-block">Ver analytics</a>
+      </div>
+      {% endif %}
     </section>
 
     <section class="og-glass-card og-top-players-shark">

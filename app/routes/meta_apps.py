@@ -14,7 +14,11 @@ from app.utils.meta_apps import (
     list_user_meta_apps,
     mask_ig_secret,
 )
-from app.utils.platform_settings import META_SETUP_YOUTUBE_URL, get_platform_setting
+from app.utils.platform_settings import (
+    META_SETUP_YOUTUBE_URL,
+    META_TOKEN_YOUTUBE_URL,
+    get_platform_setting,
+)
 from core.database import get_db
 from core.meta_instagram import meta_app_urls, public_origin
 from models.models import InstagramAccount, User, UserMetaApp
@@ -31,6 +35,11 @@ def meta_apps_page(
     tab = request.query_params.get("tab") or "apps"
     apps = list_user_meta_apps(db, user.id)
     youtube_url = get_platform_setting(db, META_SETUP_YOUTUBE_URL)
+    token_youtube_url = get_platform_setting(
+        db,
+        META_TOKEN_YOUTUBE_URL,
+        default="https://youtu.be/EA0iEb92sZg",
+    )
     error_msg = {
         "name": "Informe um nome para o app.",
         "ig_app_id": "Informe o Instagram App ID.",
@@ -75,6 +84,7 @@ def meta_apps_page(
             "app_rows": app_rows,
             "public_origin": public_origin(),
             "youtube_url": youtube_url,
+            "token_youtube_url": token_youtube_url,
             "error": error_msg,
             "ok": ok_msg,
             "edit_app": edit_app,
