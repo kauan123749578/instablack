@@ -13,7 +13,7 @@
 {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
 {% if ok %}<div class="alert alert-ok">{{ ok }}</div>{% endif %}
 
-<div class="form-card official-api-card" style="margin-bottom:16px">
+<div class="form-card" style="margin-bottom:16px">
   <div>
     <span class="og-badge badge-green">OFICIAL</span>
     <h3>Conectar com Instagram</h3>
@@ -24,7 +24,7 @@
       configure na Meta, depois conecte aqui com OAuth ou <strong>token manual</strong>.
     </p>
   </div>
-  <div class="official-api-actions">
+  <div>
     {% if meta_apps %}
     <details class="meta-token-connect">
       <summary class="btn btn-sm">Conectar com token da conta (recomendado após configurar o app)</summary>

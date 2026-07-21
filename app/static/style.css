@@ -699,21 +699,14 @@ a:hover { color: var(--primary-hover); }
 .auto-playlist-preview .is-current { color: #38bdf8; font-weight: 600; }
 .auto-playlist-more { margin: 6px 0 0; font-size: 11px; }
 .official-api-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
+  display: block;
   border-radius: 16px;
   background: linear-gradient(135deg, rgba(17,97,254,0.13), rgba(255,255,255,0.025));
 }
 .official-api-card h3 { margin: 8px 0 4px; }
 .official-api-card p { margin: 0; max-width: 680px; font-size: 13px; }
 .official-api-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 8px;
-  min-width: 230px;
+  display: block;
 }
 .meta-token-connect { width: min(360px, 100%); }
 .meta-token-connect > summary { list-style: none; cursor: pointer; }

@@ -37,7 +37,7 @@
         <span class="og-muted">{{ label }}</span>
         <div style="display:flex;gap:8px;margin-top:4px;align-items:center;flex-wrap:wrap">
           <input type="text" readonly value="{{ url }}" class="meta-copy-input" style="flex:1;min-width:200px;font-size:11px">
-          <button type="button" class="btn btn-sm copy-url-btn" data-copy="{{ url }}">Copiar</button>
+          <button type="button" class="btn btn-sm copy-url-btn" data-copy="{{ url }}" data-copy-label="Copiar">Copiar</button>
         </div>
       </label>
       {% endfor %}
@@ -50,7 +50,7 @@
   {% endif %}
 
   <ol class="muted" style="line-height:1.75;font-size:14px;padding-left:20px;margin-top:16px" start="4">
-    <li>Adicione as permissões: <code>instagram_business_basic</code>, <code>instagram_business_content_publish</code>, <code>instagram_business_manage_comments</code>.</li>
+    <li>Adicione as permissões: <code>instagram_business_basic</code>, <code>instagram_business_content_publish</code>, <code>instagram_business_manage_insights</code>.</li>
     <li>Para mostrar seguidores + views Reels no painel, habilite também <code>instagram_business_manage_insights</code>.</li>
     <li>Copie o <strong>Instagram App ID</strong> e o <strong>Instagram App Secret</strong> e cole no formulário <strong>"Novo App"</strong>.</li>
     <li>Depois de salvar o app, vá em <a href="/accounts" data-nav="/accounts">Adicionar conta</a>: cole o <strong>token de longa duração</strong> (token manual) e selecione o app.</li>
@@ -79,7 +79,7 @@
   <p class="muted" style="font-size:13px;margin:0 0 8px">Use este token em <strong>Adicionar conta → Conectar com token manual</strong>.</p>
   <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
     <input type="text" readonly value="{{ token_youtube_url }}" class="meta-copy-input" style="flex:1;min-width:200px;font-size:12px">
-    <button type="button" class="btn btn-sm copy-url-btn" data-copy="{{ token_youtube_url }}">Copiar link</button>
+    <button type="button" class="btn btn-sm copy-url-btn" data-copy="{{ token_youtube_url }}" data-copy-label="Copiar link">Copiar link</button>
     <a href="{{ token_youtube_url }}" target="_blank" rel="noopener" class="btn btn-sm">Abrir no YouTube</a>
   </div>
   {% set tok = token_youtube_url %}
@@ -122,7 +122,7 @@
               <div style="display:flex;gap:6px;align-items:center">
                 <span class="og-muted" style="width:72px">{{ label }}</span>
                 <input type="text" readonly value="{{ url }}" style="flex:1;font-size:10px;min-width:0">
-                <button type="button" class="btn btn-sm copy-url-btn" data-copy="{{ url }}">Copiar</button>
+                <button type="button" class="btn btn-sm copy-url-btn" data-copy="{{ url }}" data-copy-label="Copiar">Copiar</button>
               </div>
               {% endfor %}
             </div>

@@ -17,7 +17,7 @@
 
   document.getElementById("mobile-menu-btn")?.addEventListener("click", () => {
     sidebar?.classList.toggle("mobile-open");
-  });
+  }, true);
 
   function setActiveNav(path) {
     const els = Array.from(document.querySelectorAll("[data-nav]"));
@@ -111,41 +111,76 @@
     if (copyBtn) {
       e.preventDefault();
       e.stopPropagation();
-      const t = copyBtn.getAttribute("data-copy") || "";
+      const t = copyBtn.getAttribute("data-copy") || copyBtn.dataset?.copy || "";
       let text = t;
       if (!text) {
-        const input = copyBtn.parentElement?.querySelector("input") || null;
+        const input =
+          copyBtn.parentElement?.querySelector("input[readonly], textarea[readonly]") || null;
         if (input && input.value) text = input.value;
       }
       const ok = await copyToClipboard(text);
-      const prev = copyBtn.textContent;
-      copyBtn.textContent = ok ? "OK" : "Falha";
+      const prevHtml = copyBtn.innerHTML;
+      const okLabel = copyBtn.dataset?.copyOkLabel || "OK";
+      const failLabel = copyBtn.dataset?.copyFailLabel || "Falha";
+      copyBtn.innerHTML = ok ? okLabel : failLabel;
       window.setTimeout(() => {
-        copyBtn.textContent = prev;
+        copyBtn.innerHTML = prevHtml;
       }, 1200);
       return;
     }
 
     const newBtn = e.target.closest("#meta-app-new-btn");
     if (newBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      initMetaAppsPage();
       const dlg = document.getElementById("meta-app-dialog");
-      if (dlg && typeof dlg.showModal === "function") dlg.showModal();
+      if (dlg && typeof dlg.showModal === "function") {
+        if (!dlg.open) dlg.showModal();
+      }
       else if (dlg) dlg.setAttribute("open", "open");
       return;
     }
 
     const closeBtn = e.target.closest("#meta-app-dialog-close");
     if (closeBtn) {
+      e.preventDefault();
+      e.stopPropagation();
       const dlg = document.getElementById("meta-app-dialog");
       if (dlg && typeof dlg.close === "function") dlg.close();
       else if (dlg) dlg.removeAttribute("open");
       return;
     }
-  });
+  }, true);
 
   window.addEventListener("popstate", (e) => {
     if (e.state?.url) navigateTo(e.state.url, false);
   });
+
+  function initMetaAppsPage() {
+    const dialogs = Array.from(document.querySelectorAll("#meta-app-dialog"));
+    if (!dialogs.length) return;
+
+    // Prefer dialog instance currently rendered in #app-content (fresh navigation),
+    // and remove any stale dialog moved from a previous SPA visit.
+    const inContent = appContent ? dialogs.filter((d) => appContent.contains(d)) : dialogs;
+    const dialog = (inContent.length ? inContent[inContent.length - 1] : dialogs[dialogs.length - 1]);
+    dialogs.forEach((d) => { if (d !== dialog) d.remove(); });
+
+    if (dialog && !document.body.contains(dialog)) {
+      document.body.appendChild(dialog);
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const edit = params.get("edit");
+    if (!edit) return;
+
+    if (dialog && typeof dialog.showModal === "function") {
+      if (!dialog.open) dialog.showModal();
+    } else if (dialog) {
+      dialog.setAttribute("open", "open");
+    }
+  }
 
   function initCharts() {
     const tooltip = document.getElementById("chart-tooltip");
@@ -1575,6 +1610,7 @@
 
   function initPage() {
     initLucide();
+    initMetaAppsPage();
     initCharts();
     initPeriodPills();
     initContentTypeForm();
