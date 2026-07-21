@@ -38,6 +38,7 @@
     <h2>2. Dados que coletamos</h2>
     <ul>
       <li><strong>Conta do painel:</strong> usuário, senha (armazenada de forma criptografada/hash), preferências e logs de uso.</li>
+      <li><strong>Apps Meta (Meus Apps):</strong> Instagram App ID e App Secret do app que você cadastrou no Meta for Developers, armazenados cifrados; usados só para OAuth e publicação da sua conta.</li>
       <li><strong>Contas Instagram conectadas:</strong> username, identificador da conta, tokens de acesso da Meta (criptografados), status da conexão e erros de publicação.</li>
       <li><strong>Mídias e legendas:</strong> vídeos, imagens, capas e textos enviados para publicação.</li>
       <li><strong>Dados técnicos:</strong> logs de publicação, IP de proxy configurado pelo usuário e metadados necessários ao funcionamento do serviço.</li>
@@ -82,12 +83,10 @@
     <p>
       Você pode solicitar acesso, correção ou exclusão dos seus dados pelo e-mail
       <a href="mailto:kauawqii@gmail.com">kauawqii@gmail.com</a> ou removendo a conta Instagram
-      no painel. Também processamos automaticamente os callbacks de
-      <a href="/accounts/meta/data-deletion">exclusão de dados</a> e desautorização enviados pela Meta.
-    </p>
-    <p>
-      Instruções detalhadas de exclusão:
-      <a href="/data-deletion">https://instablack-production.up.railway.app/data-deletion</a>
+      no painel.       Também processamos automaticamente os callbacks de exclusão de dados e desautorização
+      enviados pela Meta para o app que você configurou (URLs em Meus Apps).
+      Instruções gerais:
+      <a href="/data-deletion">política de exclusão</a>.
     </p>
 
     <h2>8. Segurança</h2>

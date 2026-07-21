@@ -451,6 +451,7 @@ def _execute_publish(
         settings_dict = deserialize_settings(account.session_json) if account.session_json else None
         meta_access_token = decrypt_secret(account.encrypted_meta_access_token)
         meta_ig_user_id = account.meta_ig_user_id
+        user_meta_app_id = account.user_meta_app_id
         from core.web_cookies import decrypt_web_cookies
 
         web_cookies = decrypt_web_cookies(account.encrypted_web_cookies)
@@ -469,6 +470,12 @@ def _execute_publish(
         return {"skipped": True, "reason": f"account_{account_status}"}
 
     if provider == "meta":
+        if not user_meta_app_id:
+            _mark_account_needs_login(
+                account_id,
+                "Conta sem app Meta vinculado. Cadastre em Meus Apps e reconecte.",
+            )
+            return {"error": "meta_app_missing"}
         if not meta_access_token or not meta_ig_user_id:
             _mark_account_needs_login(account_id, "Token da API oficial ausente. Reconecte a conta.")
             return {"error": "meta_token_missing"}

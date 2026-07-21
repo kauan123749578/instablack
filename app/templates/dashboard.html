@@ -62,6 +62,40 @@
     </article>
   </div>
 
+  {% if official.meta_accounts_count > 0 %}
+  <div class="og-kpi-row" style="margin-top:12px">
+    <article class="og-glass-card og-kpi-card">
+      <div class="og-kpi-top"><div class="og-kpi-icon og-kpi-icon--purple"><i data-lucide="badge-check"></i></div></div>
+      <div class="og-kpi-value">{% if official.total_followers is not none %}{{ format_count(official.total_followers) }}{% else %}—{% endif %}</div>
+      <div class="og-kpi-label">Seguidores (API oficial)</div>
+    </article>
+    <article class="og-glass-card og-kpi-card">
+      <div class="og-kpi-top"><div class="og-kpi-icon og-kpi-icon--pink"><i data-lucide="eye"></i></div></div>
+      <div class="og-kpi-value">{{ format_count(official.total_reel_views_period) }}</div>
+      <div class="og-kpi-label">Views Reels · {{ official.reel_views_days }}D</div>
+    </article>
+  </div>
+  {% if official.account_rows %}
+  <section class="og-glass-card" style="margin:12px 0;padding:16px">
+    <div class="og-card-head"><h2 class="og-card-title">Contas API oficial</h2></div>
+    <div class="og-table-wrap">
+      <table class="og-table">
+        <thead><tr><th>Conta</th><th>Seguidores</th><th>Views Reels (período)</th></tr></thead>
+        <tbody>
+          {% for row in official.account_rows %}
+          <tr>
+            <td>@{{ row.account.username }}</td>
+            <td>{% if row.followers is not none %}{{ format_count(row.followers) }}{% else %}—{% endif %}</td>
+            <td>{{ format_count(row.reel_views_period) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+  {% endif %}
+
   <div class="og-main-grid">
 
     <section class="og-glass-card og-chart-panel og-chart-premium">

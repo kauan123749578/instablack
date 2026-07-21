@@ -59,6 +59,44 @@ class User(Base):
     proxy_orders: Mapped[List["ProxyOrder"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    meta_apps: Mapped[List["UserMetaApp"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+class UserMetaApp(Base):
+    """App Meta cadastrado pelo usuário (Instagram API with Instagram Login)."""
+
+    __tablename__ = "user_meta_apps"
+    __table_args__ = (
+        UniqueConstraint("user_id", "ig_app_id", name="uq_user_meta_app_ig_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    ig_app_id: Mapped[str] = mapped_column(String(64))
+    encrypted_ig_app_secret: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    user: Mapped["User"] = relationship(back_populates="meta_apps")
+    instagram_accounts: Mapped[List["InstagramAccount"]] = relationship(
+        back_populates="meta_app"
+    )
+
+
+class PlatformSetting(Base):
+    """Configurações globais da plataforma (KV)."""
+
+    __tablename__ = "platform_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, default="")
 
 
 class InviteCode(Base):
@@ -105,6 +143,13 @@ class InstagramAccount(Base):
     meta_token_expires_at: Mapped[Optional[dt.datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    user_meta_app_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("user_meta_apps.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    followers_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    followers_updated_at: Mapped[Optional[dt.datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # password \u00e9 opcional: se vier null, n\u00e3o conseguimos re-logar automaticamente.
     encrypted_password: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
@@ -127,6 +172,9 @@ class InstagramAccount(Base):
     )
 
     user: Mapped["User"] = relationship(back_populates="instagram_accounts")
+    meta_app: Mapped[Optional["UserMetaApp"]] = relationship(
+        back_populates="instagram_accounts"
+    )
     automations: Mapped[List["Automation"]] = relationship(
         secondary=automation_accounts, back_populates="accounts"
     )

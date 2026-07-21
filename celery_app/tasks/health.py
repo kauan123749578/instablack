@@ -90,6 +90,12 @@ def check_account_health(account_id: int) -> dict:
         try:
             if not meta_token:
                 raise MetaInstagramError("Token oficial ausente")
+            with session_scope() as db:
+                acc_chk = db.get(InstagramAccount, account_id)
+                if acc_chk and not acc_chk.user_meta_app_id:
+                    raise MetaInstagramError(
+                        "Conta sem app Meta. Cadastre em Meus Apps e reconecte."
+                    )
             validate_meta_token(meta_token)
             refreshed_token = None
             refreshed_expires_at = meta_token_expires_at

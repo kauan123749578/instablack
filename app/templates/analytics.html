@@ -130,6 +130,53 @@
     {% endif %}
   </section>
 
+  {% if official.meta_accounts_count > 0 %}
+  <section class="og-glass-card" style="margin-top:14px">
+    <div class="og-card-head">
+      <h2 class="og-card-title">Contas Instagram (API oficial)</h2>
+      <span class="og-muted" style="font-size:12px">Últimos {{ official.reel_views_days }} dias · insights Meta</span>
+    </div>
+    <div class="og-table-wrap">
+      <table class="og-table">
+        <thead><tr><th>Conta</th><th>Seguidores</th><th>Views Reels</th><th>Publicações OK</th></tr></thead>
+        <tbody>
+          {% for row in official.account_rows %}
+          {% set acc = row.account %}
+          <tr>
+            <td><strong>@{{ acc.username }}</strong></td>
+            <td>{% if row.followers is not none %}{{ format_count(row.followers) }}{% else %}—{% endif %}</td>
+            <td>{{ format_count(row.reel_views_period) }}</td>
+            <td>{{ row.success_count }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <section class="og-glass-card" style="margin-top:14px">
+    <div class="og-card-head"><h2 class="og-card-title">Reels recentes (API oficial)</h2></div>
+    {% if official.recent_reels %}
+    <div class="og-table-wrap">
+      <table class="og-table">
+        <thead><tr><th>Data</th><th>Conta</th><th>Views</th><th>Link</th></tr></thead>
+        <tbody>
+          {% for log in official.recent_reels %}
+          <tr>
+            <td class="og-muted">{{ log.created_at | localtime('%d/%m %H:%M') }}</td>
+            <td>@{{ log.account.username }}</td>
+            <td>{% if log.play_count is not none %}{{ format_count(log.play_count) }}{% else %}—{% endif %}</td>
+            <td>{% if log.media_url %}<a href="{{ log.media_url }}" target="_blank" rel="noopener">Abrir</a>{% else %}—{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="og-empty">Nenhum Reel publicado pela API oficial ainda.</p>
+    {% endif %}
+  </section>
+  {% endif %}
+
   <div class="analytics-summary-row">
     <div class="og-glass-card analytics-pill-card">
       <span class="og-muted">Hoje</span>

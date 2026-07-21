@@ -23,22 +23,40 @@
     </p>
   </div>
   <div class="official-api-actions">
-    {% if meta_configured %}
-    <a href="/accounts/meta/connect" class="btn btn-primary">
-      <i data-lucide="instagram"></i> Continuar com Instagram
+    {% if meta_apps %}
+    <form method="get" action="/accounts/meta/connect" class="form-grid" style="max-width:360px;margin:0">
+      <label>Qual app Meta usar?
+        <select name="app_id" required>
+          {% for app in meta_apps %}
+          <option value="{{ app.id }}">{{ app.name }} ({{ app.ig_app_id }})</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button type="submit" class="btn btn-primary">
+        <i data-lucide="instagram"></i> Continuar com Instagram
+      </button>
+    </form>
+    {% else %}
+    <a href="/accounts/meta-apps" class="btn btn-primary">
+      <i data-lucide="boxes"></i> Cadastre um app em Meus Apps
     </a>
-    {% elif not meta_configured %}
-    <button type="button" class="btn" disabled>Configuração da Meta pendente</button>
     {% endif %}
-    {% if user.is_owner %}
+    {% if meta_apps %}
     <details class="meta-token-connect">
-      <summary class="btn btn-sm">Usar token de teste</summary>
+      <summary class="btn btn-sm">Conectar com token manual</summary>
       <form method="post" action="/accounts/meta/connect-token" class="form-grid">
+        <label>App Meta
+          <select name="app_id" required>
+            {% for app in meta_apps %}
+            <option value="{{ app.id }}">{{ app.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
         <label>Token gerado no painel da Meta
           <input type="password" name="access_token" required minlength="20"
                  autocomplete="off" placeholder="Cole o token sem compartilhar com ninguém">
         </label>
-        <p class="muted">Uso temporário enquanto o login do Instagram estiver bloqueado com HTTP 429.</p>
+        <p class="muted">Útil para testes ou quando o login web retorna HTTP 429.</p>
         <button type="submit" class="btn btn-primary btn-sm">Conectar token oficial</button>
       </form>
     </details>

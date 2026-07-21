@@ -121,30 +121,33 @@ alternam ~50/50 entre os buckets; objetos no bucket 2 ficam com prefixo lógico
 `b2/` (ex.: `b2/videos/...`). Download/delete/presign roteiam por esse prefixo.
 Se `_2` estiver vazio, o comportamento continua só com o bucket principal.
 
-### 3.6 Instagram API oficial (opcional)
+### 3.6 Instagram API oficial (Meus Apps)
 
-Crie um app em **Meta for Developers**, habilite **Business Login for Instagram**
-e cadastre exatamente a URL de callback configurada em
-`META_INSTAGRAM_REDIRECT_URI`. Para publicar, solicite:
+Cada usuário do instablack cadastra **seu próprio app** em **Meus Apps** no painel
+(nome, Instagram App ID, App Secret). No [Meta for Developers](https://developers.facebook.com),
+habilite **Instagram API with Instagram Login** e cole as três URLs geradas pelo painel
+(por app, com ID interno):
 
-- `instagram_business_basic`
-- `instagram_business_content_publish`
-- `instagram_business_manage_insights`
+- Redirect OAuth: `https://SEU-DOMINIO/accounts/meta/callback/{app_id}`
+- Deauthorize: `https://SEU-DOMINIO/accounts/meta/deauthorize/{app_id}`
+- Data deletion: `https://SEU-DOMINIO/accounts/meta/data-deletion/{app_id}`
 
-Em produção, o app precisa de Advanced Access/App Review. Somente contas
-Instagram profissionais (Business ou Creator) podem usar esta conexão. A URL
-`PUBLIC_BASE_URL` precisa ser HTTPS e publicamente acessível, porque a Meta baixa
-o arquivo antes de criar o container. O fluxo implementado cria o container,
-aguarda `FINISHED` e chama `media_publish`.
+Permissões: `instagram_business_basic`, `instagram_business_content_publish`,
+`instagram_business_manage_insights`. App Review e verificação de empresa são
+**por app de cada usuário**.
 
-URLs públicas para o App Review / Configurações básicas da Meta:
+Configure no Railway apenas:
+
+```env
+META_INSTAGRAM_GRAPH_VERSION=v25.0
+PUBLIC_BASE_URL=https://SEU-DOMINIO.up.railway.app
+```
+
+URLs públicas da plataforma (políticas — iguais para todos):
 
 - Política de Privacidade: `https://SEU-DOMINIO.up.railway.app/privacy`
 - Termos de Uso: `https://SEU-DOMINIO.up.railway.app/terms`
 - Exclusão de dados (instruções): `https://SEU-DOMINIO.up.railway.app/data-deletion`
-- Callback de exclusão: `https://SEU-DOMINIO.up.railway.app/accounts/meta/data-deletion`
-- Callback de desautorização: `https://SEU-DOMINIO.up.railway.app/accounts/meta/deauthorize`
-- OAuth callback: `https://SEU-DOMINIO.up.railway.app/accounts/meta/callback`
 
 ### 3b. Alternativa: Volume Railway
 
@@ -183,10 +186,7 @@ S3_REGION=auto
 # S3_ACCESS_KEY_ID_2=
 # S3_SECRET_ACCESS_KEY_2=
 
-# Instagram API oficial (opcional)
-META_INSTAGRAM_APP_ID=
-META_INSTAGRAM_APP_SECRET=
-META_INSTAGRAM_REDIRECT_URI=https://SEU-DOMINIO.up.railway.app/accounts/meta/callback
+# Instagram Graph (versão global; apps Meta ficam em Meus Apps por usuário)
 META_INSTAGRAM_GRAPH_VERSION=v25.0
 PUBLIC_BASE_URL=https://SEU-DOMINIO.up.railway.app
 

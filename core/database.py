@@ -170,6 +170,12 @@ def _sqlite_migrate() -> None:
                 conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN proxy_geo VARCHAR(64)"))
             if "encrypted_web_cookies" not in acols:
                 conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN encrypted_web_cookies TEXT"))
+            if "user_meta_app_id" not in acols:
+                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN user_meta_app_id INTEGER"))
+            if "followers_count" not in acols:
+                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN followers_count INTEGER"))
+            if "followers_updated_at" not in acols:
+                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN followers_updated_at DATETIME"))
             conn.execute(
                 text(
                     "CREATE INDEX IF NOT EXISTS ix_instagram_accounts_user_status "
@@ -304,6 +310,12 @@ def _postgres_migrate() -> None:
                 conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN proxy_geo VARCHAR(64)"))
             if "encrypted_web_cookies" not in acols:
                 conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN encrypted_web_cookies TEXT"))
+            if "user_meta_app_id" not in acols:
+                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN user_meta_app_id INTEGER"))
+            if "followers_count" not in acols:
+                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN followers_count INTEGER"))
+            if "followers_updated_at" not in acols:
+                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN followers_updated_at TIMESTAMPTZ"))
             conn.execute(
                 text(
                     "CREATE INDEX IF NOT EXISTS ix_instagram_accounts_user_status "

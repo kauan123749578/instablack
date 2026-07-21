@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.deps import get_admin_user, get_owner_user
 from app.templating import templates
-from app.utils.account_limits import account_limit_label
+from app.utils.platform_settings import META_SETUP_YOUTUBE_URL, get_platform_setting
 from core.database import get_db
 from models.models import Automation, InstagramAccount, User
 
@@ -74,7 +74,25 @@ def admin_dashboard(
             "rows": rows,
             "ok": request.query_params.get("ok"),
             "error": request.query_params.get("error"),
+            "meta_setup_youtube_url": get_platform_setting(db, META_SETUP_YOUTUBE_URL)
+            if is_owner
+            else "",
         },
+    )
+
+
+@router.post("/platform/meta-youtube")
+def save_meta_youtube_url(
+    meta_setup_youtube_url: str = Form(""),
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_owner_user),
+):
+    from app.utils.platform_settings import set_platform_setting
+
+    set_platform_setting(db, META_SETUP_YOUTUBE_URL, meta_setup_youtube_url)
+    return RedirectResponse(
+        "/admin?ok=meta_youtube",
+        status_code=status.HTTP_303_SEE_OTHER,
     )
 
 

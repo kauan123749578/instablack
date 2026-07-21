@@ -4,6 +4,7 @@ from __future__ import annotations
 import datetime as dt
 import os
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote, urlencode, urlsplit
 
@@ -21,6 +22,13 @@ META_SCOPES = (
 )
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm", ".m4v"}
 DEFAULT_PUBLIC_BASE_URL = "https://instablack-production.up.railway.app"
+
+
+@dataclass(frozen=True)
+class MetaAppCredentials:
+    ig_app_id: str
+    ig_app_secret: str
+    redirect_uri: str
 
 
 class MetaInstagramError(RuntimeError):
@@ -44,20 +52,21 @@ def _graph_url(path: str) -> str:
     return f"{GRAPH_BASE_URL}{prefix}/{path.lstrip('/')}"
 
 
-def is_configured() -> bool:
-    return bool(
-        settings.meta_instagram_app_id
-        and settings.meta_instagram_app_secret
-        and settings.meta_instagram_redirect_uri
-    )
+def meta_app_urls(instablack_app_id: int) -> dict[str, str]:
+    origin = public_origin()
+    base = f"{origin}/accounts/meta"
+    suffix = str(instablack_app_id)
+    return {
+        "callback": f"{base}/callback/{suffix}",
+        "deauthorize": f"{base}/deauthorize/{suffix}",
+        "data_deletion": f"{base}/data-deletion/{suffix}",
+    }
 
 
-def authorization_url(state: str) -> str:
-    if not is_configured():
-        raise MetaInstagramError("Instagram API oficial ainda não foi configurada.")
+def authorization_url(creds: MetaAppCredentials, state: str) -> str:
     params = {
-        "client_id": settings.meta_instagram_app_id,
-        "redirect_uri": settings.meta_instagram_redirect_uri,
+        "client_id": creds.ig_app_id,
+        "redirect_uri": creds.redirect_uri,
         "response_type": "code",
         "scope": ",".join(META_SCOPES),
         "state": state,
@@ -109,15 +118,15 @@ def _json_or_error(response: requests.Response, action: str) -> dict:
     return payload
 
 
-def exchange_code(code: str) -> tuple[str, dt.datetime | None]:
+def exchange_code(creds: MetaAppCredentials, code: str) -> tuple[str, dt.datetime | None]:
     """Troca code por token longo; retorna (token, expiração)."""
     short_response = requests.post(
         OAUTH_TOKEN_URL,
         data={
-            "client_id": settings.meta_instagram_app_id,
-            "client_secret": settings.meta_instagram_app_secret,
+            "client_id": creds.ig_app_id,
+            "client_secret": creds.ig_app_secret,
             "grant_type": "authorization_code",
-            "redirect_uri": settings.meta_instagram_redirect_uri,
+            "redirect_uri": creds.redirect_uri,
             "code": code,
         },
         timeout=30,
@@ -131,7 +140,7 @@ def exchange_code(code: str) -> tuple[str, dt.datetime | None]:
         f"{GRAPH_BASE_URL}/access_token",
         params={
             "grant_type": "ig_exchange_token",
-            "client_secret": settings.meta_instagram_app_secret,
+            "client_secret": creds.ig_app_secret,
             "access_token": short_token,
         },
         timeout=30,
@@ -191,11 +200,6 @@ def refresh_access_token(access_token: str) -> tuple[str, dt.datetime | None]:
 def _app_media_url(key: str) -> str:
     base = settings.public_base_url.strip()
     if not base:
-        callback = settings.meta_instagram_redirect_uri.strip()
-        parsed = urlsplit(callback)
-        if parsed.scheme == "https" and parsed.netloc:
-            base = f"{parsed.scheme}://{parsed.netloc}"
-    if not base:
         railway_url = os.getenv("RAILWAY_STATIC_URL", "").strip()
         railway_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "").strip()
         base = railway_url or (f"https://{railway_domain}" if railway_domain else "")
@@ -219,7 +223,7 @@ def public_origin() -> str:
     return _app_media_url("x").rsplit("/media/", 1)[0]
 
 
-def parse_signed_request(signed_request: str) -> dict:
+def parse_signed_request(creds: MetaAppCredentials, signed_request: str) -> dict:
     """Valida o signed_request enviado pela Meta em deauthorize/data-deletion."""
     import base64
     import hashlib
@@ -229,9 +233,9 @@ def parse_signed_request(signed_request: str) -> dict:
     if not signed_request or "." not in signed_request:
         raise MetaInstagramError("signed_request inválido.")
     encoded_sig, payload = signed_request.split(".", 1)
-    secret = settings.meta_instagram_app_secret.strip()
+    secret = creds.ig_app_secret.strip()
     if not secret:
-        raise MetaInstagramError("META_INSTAGRAM_APP_SECRET não configurada.")
+        raise MetaInstagramError("App Secret não configurado.")
 
     def _b64url(data: str) -> bytes:
         padding = "=" * (-len(data) % 4)
@@ -252,6 +256,70 @@ def parse_signed_request(signed_request: str) -> dict:
     if not isinstance(data, dict):
         raise MetaInstagramError("Payload do signed_request inválido.")
     return data
+
+
+def fetch_ig_user_metrics(access_token: str, ig_user_id: str) -> dict[str, int | None]:
+    response = requests.get(
+        _graph_url(ig_user_id),
+        params={
+            "fields": "followers_count,media_count",
+            "access_token": access_token,
+        },
+        timeout=30,
+    )
+    data = _json_or_error(response, "Falha ao consultar métricas da conta")
+    followers = data.get("followers_count")
+    media_count = data.get("media_count")
+    return {
+        "followers_count": int(followers) if followers is not None else None,
+        "media_count": int(media_count) if media_count is not None else None,
+    }
+
+
+def _parse_insights_payload(payload: dict) -> dict[str, int]:
+    out: dict[str, int] = {}
+    rows = payload.get("data")
+    if not isinstance(rows, list):
+        return out
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        name = str(row.get("name") or "")
+        values = row.get("values")
+        if not name or not isinstance(values, list) or not values:
+            continue
+        first = values[0]
+        if isinstance(first, dict) and first.get("value") is not None:
+            try:
+                out[name] = int(first["value"])
+            except (TypeError, ValueError):
+                pass
+    return out
+
+
+def fetch_media_insights(access_token: str, media_id: str) -> dict[str, int | None]:
+    metrics = "plays,likes,comments,shares,saved,reach,total_interactions"
+    response = requests.get(
+        _graph_url(f"{media_id}/insights"),
+        params={"metric": metrics, "access_token": access_token},
+        timeout=30,
+    )
+    try:
+        parsed = _parse_insights_payload(_json_or_error(response, "Falha ao consultar insights"))
+    except MetaInstagramError:
+        response = requests.get(
+            _graph_url(f"{media_id}/insights"),
+            params={"metric": "plays,reach,likes", "access_token": access_token},
+            timeout=30,
+        )
+        parsed = _parse_insights_payload(_json_or_error(response, "Falha ao consultar insights"))
+    plays = parsed.get("plays") or parsed.get("video_views") or parsed.get("impressions")
+    return {
+        "play_count": int(plays) if plays is not None else None,
+        "like_count": parsed.get("likes"),
+        "comments": parsed.get("comments"),
+        "reach": parsed.get("reach"),
+    }
 
 
 def _validate_public_media_url(

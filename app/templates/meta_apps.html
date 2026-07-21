@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}Meus Apps Meta — instablack{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2><i data-lucide="boxes" class="inline-icon"></i> Meus Apps Meta</h2>
+  <p class="muted page-header-sub">Cadastre seu app no Meta for Developers e conecte contas pela API oficial.</p>
+</div>
+
+{% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
+{% if ok %}<div class="alert alert-ok">{{ ok }}</div>{% endif %}
+
+<div class="og-period-pills" style="margin-bottom:16px" role="tablist">
+  <a href="/accounts/meta-apps?tab=apps" class="period-pill{% if tab != 'setup' %} active{% endif %}">Meus apps</a>
+  <a href="/accounts/meta-apps?tab=setup" class="period-pill{% if tab == 'setup' %} active{% endif %}">Como configurar</a>
+</div>
+
+{% if tab == 'setup' %}
+<div class="og-glass-card" style="padding:20px;margin-bottom:16px">
+  <h3 style="margin-top:0">Passo a passo</h3>
+  <ol class="muted" style="line-height:1.7;font-size:14px;padding-left:20px">
+    <li>Acesse <a href="https://developers.facebook.com/" target="_blank" rel="noopener">developers.facebook.com</a> e crie um app (tipo Business).</li>
+    <li>Adicione o produto <strong>Instagram API with Instagram Login</strong>.</li>
+    <li>Em <strong>Instagram Login → Settings</strong>, cole as três URLs do seu app Instablack (aba Meus apps → copiar).</li>
+    <li>Solicite permissões: <code>instagram_business_basic</code>, <code>instagram_business_content_publish</code>, <code>instagram_business_manage_insights</code>.</li>
+    <li>Copie o <strong>Instagram App ID</strong> e o <strong>App Secret</strong> e salve em <strong>+ Novo App</strong>.</li>
+    <li>Coloque o app em modo <strong>Live</strong> após a verificação da empresa e App Review.</li>
+  </ol>
+  <p class="muted" style="font-size:13px;margin:0">Base pública: <code>{{ public_origin }}</code></p>
+</div>
+{% if youtube_url %}
+<div class="og-glass-card" style="padding:20px;margin-bottom:16px">
+  <h3 style="margin-top:0"><i data-lucide="youtube" class="inline-icon"></i> Vídeo tutorial</h3>
+  {% set yt = youtube_url %}
+  {% if 'youtube.com/watch' in yt or 'youtu.be/' in yt %}
+  <div style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:12px;margin-top:12px">
+    <iframe src="{{ yt | replace('watch?v=', 'embed/') | replace('youtu.be/', 'youtube.com/embed/') }}" title="Tutorial Meta" style="position:absolute;top:0;left:0;width:100%;height:100%;border:0" allowfullscreen></iframe>
+  </div>
+  {% else %}
+  <p><a href="{{ youtube_url }}" target="_blank" rel="noopener" class="btn btn-primary btn-sm">Abrir vídeo</a></p>
+  {% endif %}
+</div>
+{% endif %}
+{% else %}
+
+<div style="margin-bottom:12px">
+  <button type="button" class="btn btn-primary" id="meta-app-new-btn"><i data-lucide="plus"></i> Novo App</button>
+</div>
+
+<div class="og-glass-card og-table-panel">
+  <div class="og-table-wrap">
+    <table class="og-table">
+      <thead>
+        <tr>
+          <th>Nome</th>
+          <th>IG App ID</th>
+          <th>Secret</th>
+          <th>URLs OAuth</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in app_rows %}
+        {% set a = row.app %}
+        <tr>
+          <td><strong>{{ a.name }}</strong></td>
+          <td><code>{{ a.ig_app_id }}</code></td>
+          <td class="og-muted">{{ row.secret_masked }}</td>
+          <td>
+            <div style="display:flex;flex-direction:column;gap:4px;font-size:11px">
+              {% for label, url in [('Redirect', row.urls.callback), ('Deauthorize', row.urls.deauthorize), ('Data deletion', row.urls.data_deletion)] %}
+              <span class="copy-url-row">
+                <span class="og-muted">{{ label }}:</span>
+                <code class="copy-url-text">{{ url }}</code>
+                <button type="button" class="btn btn-sm copy-url-btn" data-copy="{{ url }}">Copiar</button>
+              </span>
+              {% endfor %}
+            </div>
+          </td>
+          <td style="white-space:nowrap">
+            <a href="/accounts/meta-apps?edit={{ a.id }}" class="btn btn-sm">Editar</a>
+            <form method="post" action="/accounts/meta-apps/{{ a.id }}/delete" style="display:inline" onsubmit="return confirm('Excluir app {{ a.name }}?');">
+              <button type="submit" class="btn btn-sm btn-danger">Excluir</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="og-muted">Nenhum app cadastrado. Clique em Novo App ou siga a aba Como configurar.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<dialog id="meta-app-dialog" class="og-glass-card" style="border:none;max-width:480px;width:92%;padding:20px">
+  {% if edit_app %}
+  <h3 style="margin-top:0">Editar app</h3>
+  <form method="post" action="/accounts/meta-apps/{{ edit_app.id }}/update" class="form-grid">
+    <label>Nome
+      <input type="text" name="name" required maxlength="255" value="{{ edit_app.name }}">
+    </label>
+    <label>Instagram App ID
+      <input type="text" name="ig_app_id" required value="{{ edit_app.ig_app_id }}">
+    </label>
+    <label>App Secret <span class="muted">(deixe vazio para manter)</span>
+      <input type="password" name="ig_app_secret" autocomplete="off" placeholder="••••••••">
+    </label>
+    <div style="display:flex;gap:8px">
+      <button type="submit" class="btn btn-primary">Salvar</button>
+      <a href="/accounts/meta-apps" class="btn">Cancelar</a>
+    </div>
+  </form>
+  {% else %}
+  <h3 style="margin-top:0">Novo app Meta</h3>
+  <form method="post" action="/accounts/meta-apps" class="form-grid">
+    <label>Nome (ex.: Meu app Reels)
+      <input type="text" name="name" required maxlength="255" placeholder="Meu app Instagram">
+    </label>
+    <label>Instagram App ID
+      <input type="text" name="ig_app_id" required placeholder="1234567890">
+    </label>
+    <label>App Secret
+      <input type="password" name="ig_app_secret" required minlength="8" autocomplete="off">
+    </label>
+    <div style="display:flex;gap:8px">
+      <button type="submit" class="btn btn-primary">Cadastrar</button>
+      <button type="button" class="btn" id="meta-app-dialog-close">Cancelar</button>
+    </div>
+  </form>
+  {% endif %}
+</dialog>
+{% endif %}
+
+<script>
+(function(){
+  document.querySelectorAll('.copy-url-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var t = btn.getAttribute('data-copy') || '';
+      navigator.clipboard.writeText(t).then(function(){ btn.textContent = 'OK'; setTimeout(function(){ btn.textContent = 'Copiar'; }, 1200); });
+    });
+  });
+  var dlg = document.getElementById('meta-app-dialog');
+  var newBtn = document.getElementById('meta-app-new-btn');
+  var closeBtn = document.getElementById('meta-app-dialog-close');
+  if (newBtn && dlg) newBtn.addEventListener('click', function(){ dlg.showModal(); });
+  if (closeBtn && dlg) closeBtn.addEventListener('click', function(){ dlg.close(); });
+  {% if edit_app and dlg %}
+  dlg.showModal();
+  {% endif %}
+})();
+</script>
+{% endblock %}

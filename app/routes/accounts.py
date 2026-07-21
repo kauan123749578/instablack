@@ -27,13 +27,13 @@ from app.utils.account_limits import (
     can_add_instagram_account,
 )
 from app.utils.auth_failures import mark_accounts_from_latest_auth_failures
+from app.utils.meta_apps import credentials_from_app, get_owned_meta_app, list_user_meta_apps
 from core.database import get_db
 from core.meta_instagram import (
     MetaInstagramError,
     account_profile,
     authorization_url,
     exchange_code,
-    is_configured as meta_is_configured,
     parse_signed_request,
     public_origin,
 )
@@ -127,6 +127,7 @@ def _store_meta_account(
     token: str,
     expires_at: dt.datetime | None,
     profile: dict[str, str],
+    user_meta_app_id: int | None,
 ) -> str | None:
     """Cria/atualiza a conta oficial sem registrar o token em logs."""
     existing = db.scalar(
@@ -155,6 +156,7 @@ def _store_meta_account(
 
     existing.provider = "meta"
     existing.meta_ig_user_id = profile["id"]
+    existing.user_meta_app_id = user_meta_app_id
     existing.encrypted_meta_access_token = encrypt_secret(token)
     existing.meta_token_expires_at = expires_at
     existing.username = profile["username"]
@@ -182,18 +184,21 @@ def list_accounts(
         "account_added": "Conta conectada com sucesso!",
     }.get(request.query_params.get("ok") or "")
     error_msg = {
-        "meta_not_configured": "A API oficial ainda não foi configurada pelo administrador.",
+        "meta_not_configured": "Cadastre um app em Meus Apps antes de conectar pela API oficial.",
+        "meta_no_app": "Selecione qual app Meta usar.",
+        "meta_app_invalid": "App Meta inválido.",
         "meta_denied": "A autorização do Instagram foi cancelada.",
         "meta_state": "A sessão de autorização expirou. Tente conectar novamente.",
         "meta_exchange": "A Meta recusou a conexão. Confira o app e tente novamente.",
         "meta_token_invalid": "Token oficial inválido ou sem acesso à conta.",
         "account_limit": "Seu limite de contas foi atingido.",
     }.get(request.query_params.get("error") or "")
+    meta_apps_list = list_user_meta_apps(db, user.id)
     return templates.TemplateResponse(
         "accounts.html",
         {
             **_accounts_page_context(request, user, accounts, ok=ok_msg, error=error_msg),
-            "meta_configured": meta_is_configured(),
+            "meta_apps": meta_apps_list,
         },
     )
 
@@ -201,29 +206,39 @@ def list_accounts(
 @router.get("/meta/connect")
 def connect_meta_account(
     request: Request,
+    app_id: int = 0,
+    db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     """Inicia o Business Login oficial do Instagram."""
-    if not meta_is_configured():
+    meta_app = get_owned_meta_app(db, user.id, app_id) if app_id else None
+    if not meta_app:
         return RedirectResponse(
-            "/accounts?error=meta_not_configured",
+            "/accounts?error=meta_no_app" if app_id else "/accounts?error=meta_not_configured",
             status_code=status.HTTP_303_SEE_OTHER,
         )
     state = secrets.token_urlsafe(32)
+    creds = credentials_from_app(meta_app)
     request.session["meta_oauth_state"] = state
     request.session["meta_oauth_user_id"] = user.id
-    return RedirectResponse(authorization_url(state), status_code=status.HTTP_302_FOUND)
+    request.session["meta_oauth_app_id"] = meta_app.id
+    return RedirectResponse(authorization_url(creds, state), status_code=status.HTTP_302_FOUND)
 
 
 @router.post("/meta/connect-token")
 def connect_meta_account_with_token(
     access_token: str = Form(...),
+    app_id: int = Form(...),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Conexão de diagnóstico para o owner quando o login web da Meta retorna 429."""
-    if not user.is_owner:
-        raise HTTPException(status_code=403, detail="Disponível apenas para o proprietário")
+    """Conexão manual com token de longa duração (diagnóstico ou App Review)."""
+    meta_app = get_owned_meta_app(db, user.id, app_id)
+    if not meta_app:
+        return RedirectResponse(
+            "/accounts?error=meta_app_invalid",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
     token = access_token.strip()
     if len(token) < 20:
         return RedirectResponse(
@@ -243,6 +258,7 @@ def connect_meta_account_with_token(
         token=token,
         expires_at=None,
         profile=profile,
+        user_meta_app_id=meta_app.id,
     )
     if error:
         return RedirectResponse(
@@ -255,8 +271,9 @@ def connect_meta_account_with_token(
     )
 
 
-@router.get("/meta/callback")
+@router.get("/meta/callback/{app_id}")
 def meta_oauth_callback(
+    app_id: int,
     request: Request,
     code: str = "",
     state: str = "",
@@ -265,8 +282,15 @@ def meta_oauth_callback(
     user: User = Depends(get_current_user),
 ):
     """Conclui OAuth e cria/atualiza uma conta com provider=meta."""
+    meta_app = get_owned_meta_app(db, user.id, app_id)
+    if not meta_app:
+        return RedirectResponse(
+            "/accounts?error=meta_app_invalid",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
     expected_state = str(request.session.pop("meta_oauth_state", "") or "")
     expected_user_id = request.session.pop("meta_oauth_user_id", None)
+    expected_app_id = request.session.pop("meta_oauth_app_id", None)
     if error:
         return RedirectResponse(
             "/accounts?error=meta_denied",
@@ -277,11 +301,12 @@ def meta_oauth_callback(
             "/accounts?error=meta_state",
             status_code=status.HTTP_303_SEE_OTHER,
         )
-    if expected_user_id != user.id:
+    if expected_user_id != user.id or expected_app_id != app_id:
         raise HTTPException(status_code=403, detail="Sessão OAuth inválida")
 
+    creds = credentials_from_app(meta_app)
     try:
-        token, expires_at = exchange_code(code)
+        token, expires_at = exchange_code(creds, code)
         profile = account_profile(token)
     except MetaInstagramError:
         return RedirectResponse(
@@ -295,6 +320,7 @@ def meta_oauth_callback(
         token=token,
         expires_at=expires_at,
         profile=profile,
+        user_meta_app_id=meta_app.id,
     )
     if store_error:
         return RedirectResponse(
@@ -307,17 +333,24 @@ def meta_oauth_callback(
     )
 
 
-def _revoke_meta_account(db: Session, *, ig_user_id: str | None, confirmation_code: str) -> int:
+def _revoke_meta_account(
+    db: Session,
+    *,
+    ig_user_id: str | None,
+    confirmation_code: str,
+    user_meta_app_id: int | None = None,
+) -> int:
     """Revoga token Meta e soft-delete das contas oficiais correspondentes."""
     if not ig_user_id:
         return 0
-    accounts = db.scalars(
-        select(InstagramAccount).where(
-            InstagramAccount.provider == "meta",
-            InstagramAccount.meta_ig_user_id == str(ig_user_id),
-            InstagramAccount.status != "deleted",
-        )
-    ).all()
+    q = select(InstagramAccount).where(
+        InstagramAccount.provider == "meta",
+        InstagramAccount.meta_ig_user_id == str(ig_user_id),
+        InstagramAccount.status != "deleted",
+    )
+    if user_meta_app_id is not None:
+        q = q.where(InstagramAccount.user_meta_app_id == user_meta_app_id)
+    accounts = db.scalars(q).all()
     for acc in accounts:
         acc.status = "deleted"
         acc.encrypted_meta_access_token = None
@@ -331,35 +364,65 @@ def _revoke_meta_account(db: Session, *, ig_user_id: str | None, confirmation_co
     return len(accounts)
 
 
-@router.post("/meta/deauthorize")
-async def meta_deauthorize(request: Request, db: Session = Depends(get_db)):
+@router.post("/meta/deauthorize/{app_id}")
+async def meta_deauthorize(
+    app_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     """Callback público: usuário removeu o app nas configurações da Meta."""
+    from models.models import UserMetaApp
+
+    meta_app = db.get(UserMetaApp, app_id)
+    if not meta_app:
+        raise HTTPException(status_code=404, detail="App não encontrado")
+    creds = credentials_from_app(meta_app)
     form = await request.form()
     signed = str(form.get("signed_request") or "")
     try:
-        payload = parse_signed_request(signed)
+        payload = parse_signed_request(creds, signed)
     except MetaInstagramError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     user_id = str(payload.get("user_id") or "")
     code = f"deauth-{user_id or secrets.token_hex(6)}"
-    _revoke_meta_account(db, ig_user_id=user_id or None, confirmation_code=code)
+    _revoke_meta_account(
+        db,
+        ig_user_id=user_id or None,
+        confirmation_code=code,
+        user_meta_app_id=app_id,
+    )
     return JSONResponse({"ok": True, "confirmation_code": code})
 
 
-@router.post("/meta/data-deletion")
-async def meta_data_deletion(request: Request, db: Session = Depends(get_db)):
+@router.post("/meta/data-deletion/{app_id}")
+async def meta_data_deletion(
+    app_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     """Callback público de exclusão de dados exigido pelo App Review."""
+    from models.models import UserMetaApp
+
+    meta_app = db.get(UserMetaApp, app_id)
+    if not meta_app:
+        raise HTTPException(status_code=404, detail="App não encontrado")
+    creds = credentials_from_app(meta_app)
     form = await request.form()
     signed = str(form.get("signed_request") or "")
     try:
-        payload = parse_signed_request(signed)
+        payload = parse_signed_request(creds, signed)
     except MetaInstagramError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     user_id = str(payload.get("user_id") or "")
     code = f"del-{user_id or secrets.token_hex(6)}"
-    _revoke_meta_account(db, ig_user_id=user_id or None, confirmation_code=code)
+    _revoke_meta_account(
+        db,
+        ig_user_id=user_id or None,
+        confirmation_code=code,
+        user_meta_app_id=app_id,
+    )
     status_url = f"{public_origin()}/data-deletion?code={code}"
     return JSONResponse({"url": status_url, "confirmation_code": code})
 

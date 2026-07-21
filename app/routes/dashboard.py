@@ -13,6 +13,7 @@ from app.deps import get_current_user, maybe_current_user
 from app.templating import templates
 from app.utils.account_health import offline_accounts
 from app.utils.charts import attach_chart_paths
+from app.utils.official_analytics import user_official_insights_summary
 from app.utils.timezone import brt_now
 from core.database import get_db
 from models.models import Automation, InstagramAccount, PublishLog, User, WarmupJob
@@ -386,6 +387,7 @@ def home(
     )
     chart_weekly = _chart_weekly_bars(db, user.id, min(chart_days, 7) if chart_days == 7 else 7)
     offline = offline_accounts(db, user.id)
+    official = user_official_insights_summary(db, user.id, reel_views_days=chart_days)
 
     return templates.TemplateResponse(
         "dashboard.html",
@@ -413,13 +415,11 @@ def home(
             "chart_weekly": chart_weekly,
             "now_brt": brt_now(),
             "offline_accounts": offline,
-            "total_views": 0,
+            "official": official,
             "top_players": top_players,
             "top_players_month": top_players_month,
-            "top_reels": [],
             "warming_jobs": warming_jobs,
             "failed_videos": failed_videos,
-            "pending_views": 0,
         },
     )
 
@@ -482,6 +482,7 @@ def analytics_page(
         chart_performance
     )
     chart_weekly = _chart_weekly_bars(db, user.id, 7)
+    official = user_official_insights_summary(db, user.id, reel_views_days=chart_days)
 
     return templates.TemplateResponse(
         "analytics.html",
@@ -505,5 +506,6 @@ def analytics_page(
             "chart_max_val": chart_max_val,
             "chart_days": chart_days,
             "chart_weekly": chart_weekly,
+            "official": official,
         },
     )

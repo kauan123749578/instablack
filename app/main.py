@@ -26,6 +26,7 @@ from app.routes import (
     automations,
     dashboard,
     logs,
+    meta_apps,
     notifications,
     profile,
 )
@@ -74,6 +75,7 @@ def create_app() -> FastAPI:
     app.include_router(dashboard.router)
     app.include_router(logs.router)
     app.include_router(accounts.router)
+    app.include_router(meta_apps.router)
     app.include_router(automations.router)
     app.include_router(profile.router)
     app.include_router(admin.router)
