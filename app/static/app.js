@@ -1267,6 +1267,40 @@
         });
       });
     });
+
+    const rankModal = document.getElementById("rankModal");
+    const rankEye = document.getElementById("rankEyeBtn");
+    const rankClose = document.getElementById("rankModalClose");
+    const openRankModal = () => {
+      if (!rankModal) return;
+      if (typeof rankModal.showModal === "function") rankModal.showModal();
+      else rankModal.setAttribute("open", "");
+      try { if (window.lucide) lucide.createIcons(); } catch (_) {}
+    };
+    const closeRankModal = () => {
+      if (!rankModal) return;
+      if (typeof rankModal.close === "function") rankModal.close();
+      else rankModal.removeAttribute("open");
+    };
+    rankEye?.addEventListener("click", openRankModal);
+    rankClose?.addEventListener("click", closeRankModal);
+    rankModal?.addEventListener("click", (e) => {
+      if (e.target === rankModal) closeRankModal();
+    });
+    document.querySelectorAll(".rank-modal-tab").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        const target = tab.dataset.rankModalTab;
+        if (!target) return;
+        document.querySelectorAll(".rank-modal-tab").forEach((t) => {
+          t.classList.toggle("active", t.dataset.rankModalTab === target);
+        });
+        document.querySelectorAll(".rank-modal-panel").forEach((panel) => {
+          const show = panel.id === `rank-modal-${target}`;
+          panel.hidden = !show;
+          panel.classList.toggle("active", show);
+        });
+      });
+    });
   }
 
   const directUploadConcurrency = 6;

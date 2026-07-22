@@ -278,28 +278,35 @@
       {% endif %}
     </section>
 
-    <section class="og-glass-card og-top-players-shark">
+    <section class="og-glass-card og-top-players-shark" id="rankCard">
       <div class="og-rank-head">
         <div class="og-rank-title-wrap">
           <span class="og-rank-crown" aria-hidden="true"><i data-lucide="crown"></i></span>
           <div>
-            <h2 class="og-card-title">Top 5 Players</h2>
+            <h2 class="og-card-title">Top do Mês</h2>
             <p class="og-card-sub og-card-sub--caps">Corrida de publicações</p>
           </div>
         </div>
-        <div class="og-rank-tabs" role="tablist">
-          <button type="button" class="og-rank-tab active" data-rank-tab="today" role="tab" aria-selected="true">7 dias</button>
-          <button type="button" class="og-rank-tab" data-rank-tab="month" role="tab" aria-selected="false">Mensal</button>
-        </div>
+        <button type="button" class="og-rank-eye" id="rankEyeBtn" title="Ver ranking completo" aria-label="Ver ranking completo">
+          <i data-lucide="eye"></i>
+        </button>
+      </div>
+
+      <div class="og-rank-tabs og-rank-tabs--pills" role="tablist">
+        <button type="button" class="og-rank-tab active" data-rank-tab="today" role="tab" aria-selected="true">
+          <i data-lucide="trophy"></i> 7 dias
+        </button>
+        <button type="button" class="og-rank-tab" data-rank-tab="month" role="tab" aria-selected="false">
+          <i data-lucide="crown"></i> Mensal
+        </button>
       </div>
 
       <div class="og-rank-panel active" id="rank-panel-today" role="tabpanel">
         {% if top_players %}
-        <ol class="og-rank-list">
-          {% for item in top_players %}
-          <li class="og-rank-row{% if loop.index == 1 %} og-rank-row--gold{% endif %}">
-            <span class="og-rank-pos">{{ loop.index }}</span>
-            <div class="og-rank-avatar{% if item.avatar_url %} og-rank-avatar--photo{% endif %}">
+        <ol class="og-rank-list og-rank-list--card">
+          {% for item in top_players[:5] %}
+          <li class="og-rank-row{% if loop.index == 1 %} og-rank-row--gold{% elif loop.index == 2 %} og-rank-row--silver{% elif loop.index == 3 %} og-rank-row--bronze{% endif %}">
+            <div class="og-rank-avatar{% if item.avatar_url %} og-rank-avatar--photo{% endif %}{% if loop.index == 1 %} og-rank-avatar--gold{% endif %}">
               {% if item.avatar_url %}
               <img src="{{ item.avatar_url }}" alt="" class="og-rank-avatar-img">
               {% else %}
@@ -307,25 +314,24 @@
               {% endif %}
             </div>
             <div class="og-rank-info">
-              <strong>{{ item.display_name }}</strong>
-              <span>@{{ item.username }}</span>
+              <strong>{{ item.display_name }} <span class="og-rank-badge">#{{ loop.index }}</span></strong>
+              <span class="og-rank-tier">{{ item.tier }}</span>
             </div>
-            <span class="og-rank-score">{{ item.posts_today }} post{% if item.posts_today != 1 %}s{% endif %}</span>
+            <span class="og-rank-score-pill">{{ item.posts_today }}</span>
           </li>
           {% endfor %}
         </ol>
         {% else %}
-        <div class="og-rank-empty">Nenhum player no ranking ainda. A corrida conta publicações dos últimos 7 dias.</div>
+        <div class="og-rank-empty">Nenhum player no ranking ainda.</div>
         {% endif %}
       </div>
 
       <div class="og-rank-panel" id="rank-panel-month" role="tabpanel" hidden>
         {% if top_players_month %}
-        <ol class="og-rank-list">
-          {% for item in top_players_month %}
-          <li class="og-rank-row{% if loop.index == 1 %} og-rank-row--gold{% endif %}">
-            <span class="og-rank-pos">{{ loop.index }}</span>
-            <div class="og-rank-avatar{% if item.avatar_url %} og-rank-avatar--photo{% endif %}">
+        <ol class="og-rank-list og-rank-list--card">
+          {% for item in top_players_month[:5] %}
+          <li class="og-rank-row{% if loop.index == 1 %} og-rank-row--gold{% elif loop.index == 2 %} og-rank-row--silver{% elif loop.index == 3 %} og-rank-row--bronze{% endif %}">
+            <div class="og-rank-avatar{% if item.avatar_url %} og-rank-avatar--photo{% endif %}{% if loop.index == 1 %} og-rank-avatar--gold{% endif %}">
               {% if item.avatar_url %}
               <img src="{{ item.avatar_url }}" alt="" class="og-rank-avatar-img">
               {% else %}
@@ -333,10 +339,10 @@
               {% endif %}
             </div>
             <div class="og-rank-info">
-              <strong>{{ item.display_name }}</strong>
-              <span>@{{ item.username }}</span>
+              <strong>{{ item.display_name }} <span class="og-rank-badge">#{{ loop.index }}</span></strong>
+              <span class="og-rank-tier">{{ item.tier }}</span>
             </div>
-            <span class="og-rank-score">{{ item.post_count }} post{% if item.post_count != 1 %}s{% endif %}</span>
+            <span class="og-rank-score-pill">{{ item.post_count }}</span>
           </li>
           {% endfor %}
         </ol>
@@ -353,7 +359,7 @@
       </div>
       {% if accounts_data %}
       <ol class="og-rank-list og-accounts-rank-list">
-        {% for item in accounts_data[:18] %}
+        {% for item in accounts_data[:12] %}
         {% set acc = item.account %}
         <li class="og-rank-row og-account-rank-row" title="@{{ acc.username }} · {{ item.publish_count }} publicações">
           <div class="og-rank-avatar og-account-avatar og-account-avatar--{{ acc.status }}">
@@ -401,4 +407,155 @@
   </div>
 
 </div>
+
+{# Modal ranking completo (pódio + lista) #}
+<dialog class="rank-modal" id="rankModal">
+  <div class="rank-modal-inner">
+    <button type="button" class="rank-modal-close" id="rankModalClose" aria-label="Fechar">
+      <i data-lucide="x"></i>
+    </button>
+    <div class="rank-modal-tabs">
+      <button type="button" class="rank-modal-tab active" data-rank-modal-tab="today">7 dias</button>
+      <button type="button" class="rank-modal-tab" data-rank-modal-tab="month">Mensal</button>
+    </div>
+
+    <div class="rank-modal-panel active" id="rank-modal-today">
+      {% if top_players %}
+      <div class="rank-podium">
+        {% set p2 = top_players[1] if top_players|length > 1 else None %}
+        {% set p1 = top_players[0] %}
+        {% set p3 = top_players[2] if top_players|length > 2 else None %}
+        <div class="rank-podium-slot rank-podium-slot--2{% if not p2 %} is-empty{% endif %}">
+          {% if p2 %}
+          <div class="rank-podium-avatar{% if p2.avatar_url %} has-photo{% endif %}">
+            {% if p2.avatar_url %}<img src="{{ p2.avatar_url }}" alt="">{% else %}{{ p2.display_name[0]|upper }}{% endif %}
+          </div>
+          <strong>{{ p2.display_name }}</strong>
+          <span class="rank-podium-tier">{{ p2.tier }}</span>
+          <span class="rank-podium-score">{{ p2.posts_today }} posts</span>
+          {% endif %}
+          <div class="rank-podium-block"><span>2</span></div>
+        </div>
+        <div class="rank-podium-slot rank-podium-slot--1">
+          <span class="rank-podium-crown" aria-hidden="true"><i data-lucide="crown"></i></span>
+          <div class="rank-podium-avatar rank-podium-avatar--gold{% if p1.avatar_url %} has-photo{% endif %}">
+            {% if p1.avatar_url %}<img src="{{ p1.avatar_url }}" alt="">{% else %}{{ p1.display_name[0]|upper }}{% endif %}
+          </div>
+          <strong>{{ p1.display_name }}</strong>
+          <span class="rank-podium-tier">{{ p1.tier }}</span>
+          <span class="rank-podium-score">{{ p1.posts_today }} posts</span>
+          <div class="rank-podium-block"><span>1</span></div>
+        </div>
+        <div class="rank-podium-slot rank-podium-slot--3{% if not p3 %} is-empty{% endif %}">
+          {% if p3 %}
+          <div class="rank-podium-avatar{% if p3.avatar_url %} has-photo{% endif %}">
+            {% if p3.avatar_url %}<img src="{{ p3.avatar_url }}" alt="">{% else %}{{ p3.display_name[0]|upper }}{% endif %}
+          </div>
+          <strong>{{ p3.display_name }}</strong>
+          <span class="rank-podium-tier">{{ p3.tier }}</span>
+          <span class="rank-podium-score">{{ p3.posts_today }} posts</span>
+          {% endif %}
+          <div class="rank-podium-block"><span>3</span></div>
+        </div>
+      </div>
+      {% if top_players|length > 3 %}
+      <ol class="rank-modal-list">
+        {% for item in top_players[3:] %}
+        <li>
+          <span class="rank-modal-pos">{{ loop.index + 3 }}</span>
+          <div class="og-rank-avatar{% if item.avatar_url %} og-rank-avatar--photo{% endif %}">
+            {% if item.avatar_url %}<img src="{{ item.avatar_url }}" alt="" class="og-rank-avatar-img">{% else %}{{ item.display_name[0]|upper }}{% endif %}
+          </div>
+          <div class="og-rank-info">
+            <strong>{{ item.display_name }}</strong>
+            <span class="og-rank-tier">{{ item.tier }}</span>
+          </div>
+          <span class="og-rank-score-pill">{{ item.posts_today }}</span>
+        </li>
+        {% endfor %}
+      </ol>
+      {% endif %}
+      {% else %}
+      <div class="og-rank-empty">Sem dados no período.</div>
+      {% endif %}
+      <div class="rank-modal-you">
+        <span>SUA POSIÇÃO</span>
+        {% if my_rank_week and my_rank_week.rank %}
+        <strong>#{{ my_rank_week.rank }} · {{ my_rank_week.post_count }} posts</strong>
+        {% else %}
+        <strong>Sem publicações ainda</strong>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="rank-modal-panel" id="rank-modal-month" hidden>
+      {% if top_players_month %}
+      <div class="rank-podium">
+        {% set m2 = top_players_month[1] if top_players_month|length > 1 else None %}
+        {% set m1 = top_players_month[0] %}
+        {% set m3 = top_players_month[2] if top_players_month|length > 2 else None %}
+        <div class="rank-podium-slot rank-podium-slot--2{% if not m2 %} is-empty{% endif %}">
+          {% if m2 %}
+          <div class="rank-podium-avatar{% if m2.avatar_url %} has-photo{% endif %}">
+            {% if m2.avatar_url %}<img src="{{ m2.avatar_url }}" alt="">{% else %}{{ m2.display_name[0]|upper }}{% endif %}
+          </div>
+          <strong>{{ m2.display_name }}</strong>
+          <span class="rank-podium-tier">{{ m2.tier }}</span>
+          <span class="rank-podium-score">{{ m2.post_count }} posts</span>
+          {% endif %}
+          <div class="rank-podium-block"><span>2</span></div>
+        </div>
+        <div class="rank-podium-slot rank-podium-slot--1">
+          <span class="rank-podium-crown" aria-hidden="true"><i data-lucide="crown"></i></span>
+          <div class="rank-podium-avatar rank-podium-avatar--gold{% if m1.avatar_url %} has-photo{% endif %}">
+            {% if m1.avatar_url %}<img src="{{ m1.avatar_url }}" alt="">{% else %}{{ m1.display_name[0]|upper }}{% endif %}
+          </div>
+          <strong>{{ m1.display_name }}</strong>
+          <span class="rank-podium-tier">{{ m1.tier }}</span>
+          <span class="rank-podium-score">{{ m1.post_count }} posts</span>
+          <div class="rank-podium-block"><span>1</span></div>
+        </div>
+        <div class="rank-podium-slot rank-podium-slot--3{% if not m3 %} is-empty{% endif %}">
+          {% if m3 %}
+          <div class="rank-podium-avatar{% if m3.avatar_url %} has-photo{% endif %}">
+            {% if m3.avatar_url %}<img src="{{ m3.avatar_url }}" alt="">{% else %}{{ m3.display_name[0]|upper }}{% endif %}
+          </div>
+          <strong>{{ m3.display_name }}</strong>
+          <span class="rank-podium-tier">{{ m3.tier }}</span>
+          <span class="rank-podium-score">{{ m3.post_count }} posts</span>
+          {% endif %}
+          <div class="rank-podium-block"><span>3</span></div>
+        </div>
+      </div>
+      {% if top_players_month|length > 3 %}
+      <ol class="rank-modal-list">
+        {% for item in top_players_month[3:] %}
+        <li>
+          <span class="rank-modal-pos">{{ loop.index + 3 }}</span>
+          <div class="og-rank-avatar{% if item.avatar_url %} og-rank-avatar--photo{% endif %}">
+            {% if item.avatar_url %}<img src="{{ item.avatar_url }}" alt="" class="og-rank-avatar-img">{% else %}{{ item.display_name[0]|upper }}{% endif %}
+          </div>
+          <div class="og-rank-info">
+            <strong>{{ item.display_name }}</strong>
+            <span class="og-rank-tier">{{ item.tier }}</span>
+          </div>
+          <span class="og-rank-score-pill">{{ item.post_count }}</span>
+        </li>
+        {% endfor %}
+      </ol>
+      {% endif %}
+      {% else %}
+      <div class="og-rank-empty">Sem dados no mês.</div>
+      {% endif %}
+      <div class="rank-modal-you">
+        <span>SUA POSIÇÃO</span>
+        {% if my_rank_month and my_rank_month.rank %}
+        <strong>#{{ my_rank_month.rank }} · {{ my_rank_month.post_count }} posts</strong>
+        {% else %}
+        <strong>Sem publicações ainda</strong>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</dialog>
 {% endblock %}

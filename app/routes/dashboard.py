@@ -183,8 +183,10 @@ def _top_platform_players(
     start: dt.datetime,
     end: dt.datetime,
     viewer: User | None = None,
+    *,
+    limit: int = 12,
 ) -> list[dict]:
-    """Top 5 usuários da plataforma por publicações no período.
+    """Top usuários da plataforma por publicações no período.
 
     Usuários Meu (owner_private) só aparecem no rank para o Owner.
     """
@@ -211,7 +213,7 @@ def _top_platform_players(
         query
         .group_by(User.id, User.username, User.display_name, User.avatar_key)
         .order_by(desc(func.count(PublishLog.id)))
-        .limit(5)
+        .limit(max(1, min(int(limit or 12), 30)))
     ).all()
     return [
         {
@@ -220,17 +222,81 @@ def _top_platform_players(
             "display_name": (r.display_name or r.username),
             "avatar_url": f"/media/{r.avatar_key}" if r.avatar_key else None,
             "post_count": int(r.post_count),
+            "tier": _rank_tier(int(r.post_count)),
         }
         for r in rows
     ]
 
 
+def _rank_tier(posts: int) -> str:
+    if posts >= 200:
+        return "LENDA"
+    if posts >= 80:
+        return "ELITE"
+    if posts >= 30:
+        return "PRO"
+    if posts >= 10:
+        return "RISING"
+    return "PLAYER"
+
+
+def _viewer_rank_entry(
+    db: Session,
+    start: dt.datetime,
+    end: dt.datetime,
+    viewer: User,
+) -> dict | None:
+    """Posição do usuário logado no ranking (mesmo fora do top)."""
+    viewer_is_owner = bool(getattr(viewer, "is_owner", False))
+    my_count = db.scalar(
+        select(func.count(PublishLog.id))
+        .join(InstagramAccount, PublishLog.account_id == InstagramAccount.id)
+        .where(
+            InstagramAccount.user_id == viewer.id,
+            PublishLog.status == "success",
+            PublishLog.created_at >= _utc_naive(start),
+            PublishLog.created_at < _utc_naive(end),
+        )
+    ) or 0
+    my_count = int(my_count)
+
+    better_filters = [
+        PublishLog.status == "success",
+        PublishLog.created_at >= _utc_naive(start),
+        PublishLog.created_at < _utc_naive(end),
+    ]
+    if not viewer_is_owner:
+        better_filters.append(User.owner_private.isnot(True))
+    better_q = (
+        select(func.count())
+        .select_from(
+            select(User.id)
+            .join(InstagramAccount, InstagramAccount.user_id == User.id)
+            .join(PublishLog, PublishLog.account_id == InstagramAccount.id)
+            .where(*better_filters)
+            .group_by(User.id)
+            .having(func.count(PublishLog.id) > my_count)
+            .subquery()
+        )
+    )
+    better = int(db.scalar(better_q) or 0)
+    return {
+        "user_id": viewer.id,
+        "username": viewer.username,
+        "display_name": (viewer.display_name or viewer.username),
+        "avatar_url": f"/media/{viewer.avatar_key}" if viewer.avatar_key else None,
+        "post_count": my_count,
+        "rank": better + 1 if my_count > 0 else None,
+        "tier": _rank_tier(my_count),
+    }
+
+
 def _top_platform_players_week(db: Session, day: dt.date, viewer: User | None = None) -> list[dict]:
-    """Top 5 dos últimos 7 dias (BRT) — não zera à meia-noite."""
+    """Top dos últimos 7 dias (BRT) — não zera à meia-noite."""
     start_day = day - dt.timedelta(days=6)
     start, _ = _brt_day_bounds(start_day)
     _, end = _brt_day_bounds(day)
-    items = _top_platform_players(db, start, end, viewer=viewer)
+    items = _top_platform_players(db, start, end, viewer=viewer, limit=12)
     return [{**item, "posts_today": item["post_count"]} for item in items]
 
 
@@ -340,10 +406,15 @@ def home(
     accounts_data.sort(key=lambda x: x["publish_count"], reverse=True)
 
     top_players = _top_platform_players_week(db, today, viewer=user)
-    month_start = today.replace(day=1)
+    month_start_dt, _ = _brt_day_bounds(month_start)
+    _, month_end_dt = _brt_day_bounds(today)
     top_players_month = _top_platform_players(
-        db, _brt_day_bounds(month_start)[0], _brt_day_bounds(today)[1], viewer=user
+        db, month_start_dt, month_end_dt, viewer=user, limit=12
     )
+    week_start_day = today - dt.timedelta(days=6)
+    week_start_dt, _ = _brt_day_bounds(week_start_day)
+    my_rank_week = _viewer_rank_entry(db, week_start_dt, month_end_dt, user)
+    my_rank_month = _viewer_rank_entry(db, month_start_dt, month_end_dt, user)
 
     failed_videos = db.scalars(
         select(PublishLog)
@@ -403,6 +474,8 @@ def home(
             "official": official,
             "top_players": top_players,
             "top_players_month": top_players_month,
+            "my_rank_week": my_rank_week,
+            "my_rank_month": my_rank_month,
             "failed_videos": failed_videos,
         },
     )
