@@ -216,58 +216,31 @@
       {% endif %}
     </section>
 
-    <section class="og-glass-card og-warmup-panel og-meta-insights-panel">
-      <div class="og-meta-insights-head">
-        <div class="og-meta-insights-brand">
-          <span class="og-meta-insights-badge"><i data-lucide="badge-check"></i> Meta API</span>
+    <section class="og-glass-card og-warmup-panel">
+      <div class="og-card-head">
+        <div>
           <h2 class="og-card-title">Insights API oficial</h2>
-          <p class="og-card-sub og-card-sub--caps">Seguidores + views Reels · {{ official.reel_views_days }}D</p>
+          <p class="og-card-sub og-card-sub--caps">Seguidores + views Reels ({{ official.reel_views_days }}D)</p>
         </div>
-        <a href="/analytics" class="og-meta-insights-link" data-nav="/analytics">
-          Ver detalhes <i data-lucide="arrow-up-right"></i>
-        </a>
+        <a href="/analytics" class="og-link" data-nav="/analytics">Ver detalhes</a>
       </div>
 
       {% if official.meta_accounts_count > 0 %}
-      <div class="og-meta-insights-kpis">
-        <div class="og-meta-kpi">
-          <span class="og-meta-kpi-icon og-meta-kpi-icon--purple"><i data-lucide="users"></i></span>
-          <div>
-            <strong>{% if official.total_followers is not none %}{{ format_count(official.total_followers) }}{% else %}—{% endif %}</strong>
-            <span>Seguidores</span>
-          </div>
-        </div>
-        <div class="og-meta-kpi">
-          <span class="og-meta-kpi-icon og-meta-kpi-icon--pink"><i data-lucide="eye"></i></span>
-          <div>
-            <strong>{{ format_count(official.total_reel_views_period) }}</strong>
-            <span>Views Reels</span>
-          </div>
-        </div>
-      </div>
-
-      <ul class="og-meta-insights-list">
+      <ul class="og-dash-list">
         {% for row in official.account_rows %}
-        <li class="og-meta-insights-row">
-          <div class="og-meta-insights-avatar" aria-hidden="true">
-            {{ row.account.username[0]|upper }}
-          </div>
-          <div class="og-meta-insights-body">
+        <li class="og-dash-list-item">
+          <div class="og-dash-list-body">
             <strong>@{{ row.account.username }}</strong>
-            <span class="og-meta-insights-tags">
-              <em>{% if row.followers is not none %}{{ format_count(row.followers) }} seg.{% else %}Seg. —{% endif %}</em>
-              <em>{{ format_count(row.reel_views_period) }} views</em>
+            <span>
+              {% if row.followers is not none %}{{ format_count(row.followers) }} seguidores{% else %}Seguidores —{% endif %}
+              · {{ format_count(row.reel_views_period) }} views Reels
             </span>
           </div>
         </li>
         {% endfor %}
       </ul>
       {% else %}
-      <div class="og-meta-insights-empty">
-        <span class="og-meta-insights-empty-icon"><i data-lucide="link-2"></i></span>
-        <p>Nenhuma conta Meta conectada via API oficial ainda.</p>
-        <a href="/accounts/meta-apps" class="og-link" data-nav="/accounts/meta-apps">Conectar em Meus Apps</a>
-      </div>
+      <div class="og-empty">Nenhuma conta Meta conectada via API oficial ainda.</div>
       {% endif %}
     </section>
 
