@@ -388,7 +388,7 @@
       </div>
       {% if failed_videos %}
       <ul class="og-dash-list">
-        {% for log in failed_videos %}
+        {% for log in failed_videos[:5] %}
         <li class="og-dash-list-item">
           <span class="og-timeline-icon og-timeline-icon--failed"><i data-lucide="x"></i></span>
           <div class="og-dash-list-body">
