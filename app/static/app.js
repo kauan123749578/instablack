@@ -1229,23 +1229,43 @@
 
   function initOgDashboard() {
     const tooltip = document.getElementById("og-chart-tooltip");
-    document.querySelectorAll(".og-chart-dot").forEach((dot) => {
-      dot.addEventListener("mouseenter", () => {
-        if (!tooltip) return;
-        tooltip.textContent = dot.dataset.tip || "";
-        tooltip.style.opacity = "1";
-        const wrap = document.getElementById("og-line-chart");
-        if (wrap) {
-          const wr = wrap.getBoundingClientRect();
+    const chartWrap = document.getElementById("og-line-chart");
+    const chartDots = Array.from(document.querySelectorAll(".og-chart-dot"));
+
+    function showChartTip(dot) {
+      if (!tooltip || !chartWrap || !dot) return;
+      tooltip.textContent = dot.dataset.tip || "";
+      tooltip.style.opacity = "1";
+      const wr = chartWrap.getBoundingClientRect();
+      const dr = dot.getBoundingClientRect();
+      tooltip.style.left = (dr.left - wr.left + dr.width / 2) + "px";
+      tooltip.style.top = (dr.top - wr.top - 36) + "px";
+    }
+
+    function hideChartTip() {
+      if (tooltip) tooltip.style.opacity = "0";
+    }
+
+    if (chartWrap && chartDots.length) {
+      chartWrap.addEventListener("mousemove", (e) => {
+        const wr = chartWrap.getBoundingClientRect();
+        const x = e.clientX;
+        let best = null;
+        let bestDist = Infinity;
+        chartDots.forEach((dot) => {
           const dr = dot.getBoundingClientRect();
-          tooltip.style.left = (dr.left - wr.left + dr.width / 2) + "px";
-          tooltip.style.top = (dr.top - wr.top - 36) + "px";
-        }
+          const cx = dr.left + dr.width / 2;
+          const dist = Math.abs(cx - x);
+          if (dist < bestDist) {
+            bestDist = dist;
+            best = dot;
+          }
+        });
+        // Só mostra se o mouse está dentro da área horizontal do gráfico
+        if (best && x >= wr.left && x <= wr.right) showChartTip(best);
       });
-      dot.addEventListener("mouseleave", () => {
-        if (tooltip) tooltip.style.opacity = "0";
-      });
-    });
+      chartWrap.addEventListener("mouseleave", hideChartTip);
+    }
 
     document.querySelectorAll(".og-bar-fill").forEach((bar, i) => {
       bar.style.animationDelay = (i * 0.06) + "s";

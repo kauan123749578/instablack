@@ -526,8 +526,8 @@ def _execute_publish(
             )
             create_notification(
                 owner_user_id,
-                "Reel publicado sem a capa personalizada",
-                f"@{username}: a Meta recusou a capa, mas o Reel foi publicado. {cover_error[:140]}",
+                "Reels publicado sem a capa personalizada",
+                f"@{username}: a Meta recusou a capa, mas o Reels foi publicado. {cover_error[:140]}",
                 kind="warning",
                 link="/logs",
             )

@@ -26,7 +26,7 @@ _PUSH_KINDS = frozenset({
     "account",
 })
 
-CONTENT_LABELS = {"reel": "Reel", "story": "Story", "photo": "Foto"}
+CONTENT_LABELS = {"reel": "Reels", "story": "Story", "photo": "Foto"}
 
 
 def content_label(content_type: str | None) -> str:
@@ -45,9 +45,16 @@ def notify_publish_success(
     if not user_id:
         return False
 
-    label = content_label(content_type)
-    title = f"{label} publicado"
-    body = f"@{username}"
+    from core.notification_prefs import format_publish_copy
+
+    prefs = None
+    try:
+        with session_scope() as db:
+            prefs = get_notification_prefs_by_id(db, user_id)
+    except Exception:
+        log.exception("Falha ao ler prefs de publish user=%s", user_id)
+
+    title, body = format_publish_copy(prefs, username, content_type)
 
     try:
         with session_scope() as db:

@@ -128,17 +128,24 @@ def notify_user_push(
 def notify_user_publish_success(user_id: int, username: str, content_type: str = "reel") -> None:
     import time
 
-    from core.notifications import content_label
+    from core.notification_prefs import format_publish_copy, get_notification_prefs_by_id
+    from core.database import session_scope
 
-    label = content_label(content_type)
-    title = f"{label} publicado"
+    prefs = None
+    try:
+        with session_scope() as db:
+            prefs = get_notification_prefs_by_id(db, user_id)
+    except Exception:
+        log.exception("Falha ao ler prefs push publish user=%s", user_id)
+
+    title, body = format_publish_copy(prefs, username, content_type)
     # tag única — senão o SO substitui a notificação anterior no celular
     tag = f"publish-{content_type}-{username}-{int(time.time() * 1000)}"
     sent, failed = notify_user_push(
         user_id,
         {
             "title": title,
-            "body": f"@{username}",
+            "body": body,
             "url": "/logs",
             "tag": tag,
         },

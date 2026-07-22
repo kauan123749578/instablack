@@ -576,40 +576,50 @@ def publish_story(
     is_video = ext in (".mp4", ".mov", ".webm")
     layout = story_layout or {}
 
-    # Story + link: SOMENTE API web com cookies (INSSIST/Opalite).
-    # Nunca usar instagrapi photo/video_upload_to_story com links — o sticker fica invisível.
+    # Story + link: API web quando há cookies com csrftoken; senão fallback instagrapi.
     if links:
-        if is_video:
-            raise RuntimeError(
-                "Story de vídeo com link ainda não usa a API web. "
-                "Envie uma foto para o sticker nativo \"Acessar link\"."
-            )
-        from core.story_web import DEFAULT_STICKER, publish_photo_story_web_link
+        has_web = bool(
+            web_cookies
+            and str(web_cookies.get("sessionid") or "").strip()
+            and str(web_cookies.get("csrftoken") or "").strip()
+        )
+        if has_web:
+            if is_video:
+                raise RuntimeError(
+                    "Story de vídeo com link ainda não usa a API web. "
+                    "Envie uma foto para o sticker nativo \"Acessar link\"."
+                )
+            from core.story_web import DEFAULT_STICKER, publish_photo_story_web_link
 
-        return publish_photo_story_web_link(
-            cl,
-            media_path,
-            link_url=str(links[0].webUri),
-            sticker_text=sticker_text,
-            x=float(layout.get("x", DEFAULT_STICKER["x"])),
-            y=float(layout.get("y", DEFAULT_STICKER["y"])),
-            width=float(layout.get("width", DEFAULT_STICKER["width"])),
-            height=float(layout.get("height", DEFAULT_STICKER["height"])),
-            rotation=float(layout.get("rotation", DEFAULT_STICKER["rotation"])),
-            cover=bool(layout.get("cover", False)),
-            variant=str(layout.get("variant") or "default"),
-            # Explicit layout wins; otherwise draw custom button when text was given
-            # (visual de corrente). Sem texto = sticker nativo do Instagram.
-            draw_sticker=(
-                bool(layout["draw_sticker"])
-                if "draw_sticker" in layout
-                else bool((sticker_text or "").strip())
-            ),
-            web_cookies=web_cookies,
+            return publish_photo_story_web_link(
+                cl,
+                media_path,
+                link_url=str(links[0].webUri),
+                sticker_text=sticker_text,
+                x=float(layout.get("x", DEFAULT_STICKER["x"])),
+                y=float(layout.get("y", DEFAULT_STICKER["y"])),
+                width=float(layout.get("width", DEFAULT_STICKER["width"])),
+                height=float(layout.get("height", DEFAULT_STICKER["height"])),
+                rotation=float(layout.get("rotation", DEFAULT_STICKER["rotation"])),
+                cover=bool(layout.get("cover", False)),
+                variant=str(layout.get("variant") or "default"),
+                # Explicit layout wins; otherwise draw custom button when text was given
+                # (visual de corrente). Sem texto = sticker nativo do Instagram.
+                draw_sticker=(
+                    bool(layout["draw_sticker"])
+                    if "draw_sticker" in layout
+                    else bool((sticker_text or "").strip())
+                ),
+                web_cookies=web_cookies,
+            )
+        log.warning(
+            "Story com link sem cookies web (csrftoken); usando instagrapi mobile"
         )
 
     def _upload() -> object:
         kwargs: dict = {}
+        if links:
+            kwargs["links"] = links
         if is_video:
             if thumbnail_path is not None:
                 kwargs["thumbnail"] = thumbnail_path

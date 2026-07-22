@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Story Link Studio{% endblock %}
 {% block head %}
-<link rel="stylesheet" href="/static/story-studio.css?v=5" />
+<link rel="stylesheet" href="/static/story-studio.css?v=6" />
 {% endblock %}
 {% block content %}
 <div class="studio-app mode-custom" id="studioShell">
@@ -31,21 +31,24 @@
 
     <div class="studio-tab-panel active" id="tab-general" role="tabpanel">
       <div class="field">
-        <label>Contas <span class="muted" id="accountCountHint">(1+)</span></label>
+        <label>Contas API web <span class="muted" id="accountCountHint"></span></label>
         <div class="studio-accounts" id="accountsList">
+          {% if accounts %}
           {% for acc in accounts %}
-          {% set flag = cookie_flags.get(acc.id, {}) %}
           <label class="studio-account-chip">
-            <input type="checkbox" name="studio_account" value="{{ acc.id }}"
-              {% if flag.has_csrftoken %}data-web="1"{% endif %}
-              {% if acc.provider == 'meta' %}data-meta="1" disabled{% endif %}>
-            <span>@{{ acc.username }}{% if acc.provider == 'meta' %} · Meta{% elif flag.has_csrftoken %} · Web{% endif %}</span>
+            <input type="checkbox" name="studio_account" value="{{ acc.id }}" data-web="1">
+            <span>@{{ acc.username }} · Cookies web</span>
           </label>
-          {% else %}
-          <p class="muted" style="margin:0;font-size:12px">Nenhuma conta disponível.</p>
           {% endfor %}
+          {% else %}
+          <div class="studio-empty-accounts">
+            <strong>Nenhuma conta com API web</strong>
+            <p>Este editor só funciona com contas conectadas via <em>cookies JSON</em> (Cookie-Editor).</p>
+            <a href="/accounts" data-nav="/accounts" class="btn btn-sm btn-primary">Conectar conta web</a>
+          </div>
+          {% endif %}
         </div>
-        <p class="muted" style="margin:6px 0 0;font-size:11px">Story com link: contas com cookies web. Meta oficial não entra.</p>
+        <p class="muted studio-hint">Instagrapi e Meta oficial não aparecem aqui — só cookies web publicam Story com link nativo.</p>
       </div>
       <div class="field">
         <label for="imageInput">Fotos <span class="muted" id="mediaCountHint"></span></label>
@@ -159,5 +162,5 @@
 </dialog>
 {% endblock %}
 {% block scripts %}
-<script src="/static/story-studio.js?v=5"></script>
+<script src="/static/story-studio.js?v=6"></script>
 {% endblock %}

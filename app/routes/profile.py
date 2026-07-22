@@ -119,6 +119,8 @@ def profile_notifications_save(
     warmup: str = Form(""),
     errors: str = Form(""),
     desktop: str = Form(""),
+    publish_title: str = Form("{label} publicado"),
+    publish_body: str = Form("@{username}"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -132,6 +134,8 @@ def profile_notifications_save(
             warmup=warmup,
             errors=errors,
             desktop=desktop,
+            publish_title=publish_title,
+            publish_body=publish_body,
         ),
     )
     return RedirectResponse("/perfil?ok=notificacoes", status_code=303)

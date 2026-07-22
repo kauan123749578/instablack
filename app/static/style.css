@@ -178,14 +178,26 @@ a:hover { color: var(--primary-hover); }
 .sidebar:not(:hover) .sidebar-manage-btn { display: none; }
 .sidebar:not(:hover) .sidebar-user-row { margin: 0; justify-content: center; }
 .sidebar::before {
-  content: ""; position: absolute; right: -1px; width: 3px; height: 190px;
-  background: linear-gradient(180deg, transparent, rgba(17,97,254,0.1) 12%, #1161FE 38%, #3d82ff 50%, #0d4fd4 62%, #1161FE 82%, transparent);
-  box-shadow: 0 0 14px rgba(17,97,254,0.5), 0 0 28px rgba(17,97,254,0.25);
-  pointer-events: none; z-index: 4; border-radius: 2px;
-  animation: sidebar-beam 4.2s linear infinite;
+  content: ""; position: absolute; right: -1px; width: 1.5px; height: 300px;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    rgba(17, 97, 254, 0.05) 10%,
+    #1161FE 36%,
+    #3d82ff 50%,
+    #0d4fd4 64%,
+    #1161FE 88%,
+    transparent
+  );
+  box-shadow: 0 0 8px rgba(17, 97, 254, 0.45), 0 0 16px rgba(17, 97, 254, 0.2);
+  pointer-events: none; z-index: 4; border-radius: 99px;
+  animation: sidebar-beam 2.35s linear infinite;
 }
 @keyframes sidebar-beam {
-  0% { top: -190px; opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { top: 100%; opacity: 0; }
+  0% { top: -300px; opacity: 0; }
+  8% { opacity: 1; }
+  92% { opacity: 1; }
+  100% { top: 100%; opacity: 0; }
 }
 .sidebar:hover { width: var(--sidebar-w-open); }
 
@@ -941,6 +953,18 @@ input[type="checkbox"]:checked::after {
   box-shadow: 0 0 0 1px rgba(17, 97, 254, 0.25), 0 8px 28px rgba(17, 97, 254, 0.22);
 }
 .notify-prefs-hint { margin: 0; font-size: 12px; line-height: 1.55; }
+.notify-copy-fields {
+  display: grid; gap: 10px;
+  margin-top: 4px; padding: 12px 14px;
+  border: 1px solid rgba(17, 97, 254, 0.22);
+  border-radius: 12px;
+  background: rgba(17, 97, 254, 0.06);
+}
+.notify-copy-fields label { gap: 6px; }
+.notify-copy-fields input {
+  width: 100%;
+  font-size: 13px;
+}
 
 .auth-method-panel { display: none; }
 #account-add-form:has(input[name="auth_method"][value="sessionid"]:checked) #sessionid-wrap { display: block; }

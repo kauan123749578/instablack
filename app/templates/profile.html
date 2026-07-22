@@ -55,9 +55,26 @@
           <input type="checkbox" name="publish" value="on"{% if prefs.publish %} checked{% endif %}>
           <span class="notify-pref-copy">
             <strong>Posts publicados</strong>
-            <small>Sino e celular com o tipo certo: Reel, Story ou Foto</small>
+            <small>Sino e celular com o tipo certo: Reels, Story ou Foto</small>
           </span>
         </label>
+
+        <div class="notify-copy-fields">
+          <label>Título da notificação de publicação
+            <input type="text" name="publish_title" maxlength="80"
+                   value="{{ prefs.publish_title or '{label} publicado' }}"
+                   placeholder="{label} publicado">
+          </label>
+          <label>Texto (corpo) da notificação
+            <input type="text" name="publish_body" maxlength="160"
+                   value="{{ prefs.publish_body or '@{username}' }}"
+                   placeholder="@{username}">
+          </label>
+          <p class="muted" style="margin:0;font-size:12px;line-height:1.45">
+            Use <code>{label}</code> (Reels/Story/Foto) e <code>{username}</code> (conta que postou).
+            Ex.: corpo <code>@seu_instagram · @{username}</code> para filtrar no celular.
+          </p>
+        </div>
 
         <label class="notify-pref-row">
           <input type="checkbox" name="account_offline" value="on"{% if prefs.account_offline %} checked{% endif %}>

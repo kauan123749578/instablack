@@ -250,7 +250,7 @@ def _resolve_log_content_type(plog: PublishLog) -> str:
 
 def _sync_notifications_from_logs(db: Session, user: User) -> list[PublishLog]:
     """Cria notificações in-app para logs de sucesso recentes sem notificação vinculada."""
-    from core.notifications import content_label
+    from core.notification_prefs import format_publish_copy, get_notification_prefs
 
     since = dt.datetime.utcnow() - dt.timedelta(hours=6)
     recent_ok = list(
@@ -278,12 +278,16 @@ def _sync_notifications_from_logs(db: Session, user: User) -> list[PublishLog]:
 
     for plog in recent_ok:
         uname = plog.account.username if plog.account else "?"
-        label = content_label(_resolve_log_content_type(plog))
+        title, body = format_publish_copy(
+            get_notification_prefs(user),
+            uname,
+            _resolve_log_content_type(plog),
+        )
         db.add(
             AppNotification(
                 user_id=user.id,
-                title=f"{label} publicado",
-                body=f"@{uname}",
+                title=title,
+                body=body,
                 kind="publish",
                 link="/logs",
                 publish_log_id=plog.id,

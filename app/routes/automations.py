@@ -334,8 +334,8 @@ def story_studio_page(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Editor visual de Story com link."""
-    accounts = db.scalars(
+    """Editor visual de Story com link (somente contas com cookies web)."""
+    all_accounts = db.scalars(
         select(InstagramAccount)
         .where(
             InstagramAccount.user_id == user.id,
@@ -344,8 +344,14 @@ def story_studio_page(
         .order_by(InstagramAccount.username.asc())
     ).all()
     cookie_flags = {
-        acc.id: web_cookies_status(acc.encrypted_web_cookies) for acc in accounts
+        acc.id: web_cookies_status(acc.encrypted_web_cookies) for acc in all_accounts
     }
+    accounts = [
+        acc
+        for acc in all_accounts
+        if (acc.provider or "instagrapi") != "meta"
+        and cookie_flags.get(acc.id, {}).get("has_csrftoken")
+    ]
     return templates.TemplateResponse(
         "story_studio.html",
         {
@@ -467,6 +473,11 @@ async def story_studio_publish(
             400,
             detail="Story com link visual exige conta com cookies web (não API oficial Meta).",
         )
+    if not web_cookies_status(account.encrypted_web_cookies).get("has_csrftoken"):
+        raise HTTPException(
+            400,
+            detail="Importe cookies JSON (Cookie-Editor) com sessionid + csrftoken nesta conta.",
+        )
 
     raw = await image.read()
     if not raw:
@@ -565,6 +576,11 @@ async def story_studio_schedule(
             raise HTTPException(
                 400,
                 detail=f"@{account.username}: Story com link exige cookies web (não Meta).",
+            )
+        if not web_cookies_status(account.encrypted_web_cookies).get("has_csrftoken"):
+            raise HTTPException(
+                400,
+                detail=f"@{account.username}: importe cookies JSON com csrftoken (API web).",
             )
 
     days = parse_calendar_days(calendar_days)
