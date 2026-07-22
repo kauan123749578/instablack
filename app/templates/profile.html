@@ -65,14 +65,22 @@
                    value="{{ prefs.publish_title or '{label} publicado' }}"
                    placeholder="{label} publicado">
           </label>
-          <label>Texto (corpo) da notificação
+          <label class="notify-pref-row" style="margin:0;padding:10px 0">
+            <input type="checkbox" name="publish_show_username" value="on"
+              {% if prefs.publish_show_username %} checked{% endif %}>
+            <span class="notify-pref-copy">
+              <strong>Mostrar @ da conta no corpo</strong>
+              <small>Desligado = só o título (ex.: “Reels publicado”), sem @ no celular</small>
+            </span>
+          </label>
+          <label>Texto extra do corpo <span class="muted">(opcional)</span>
             <input type="text" name="publish_body" maxlength="160"
-                   value="{{ prefs.publish_body or '@{username}' }}"
-                   placeholder="@{username}">
+                   value="{{ prefs.publish_body or '' }}"
+                   placeholder="Deixe vazio ou use {username} se marcou acima">
           </label>
           <p class="muted" style="margin:0;font-size:12px;line-height:1.45">
-            Use <code>{label}</code> (Reels/Story/Foto) e <code>{username}</code> (conta que postou).
-            Ex.: corpo <code>@seu_instagram · @{username}</code> para filtrar no celular.
+            <code>{label}</code> = Reels, Story ou Foto.
+            <code>{username}</code> só entra se “Mostrar @ da conta” estiver marcado.
           </p>
         </div>
 

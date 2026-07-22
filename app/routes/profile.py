@@ -120,7 +120,8 @@ def profile_notifications_save(
     errors: str = Form(""),
     desktop: str = Form(""),
     publish_title: str = Form("{label} publicado"),
-    publish_body: str = Form("@{username}"),
+    publish_body: str = Form(""),
+    publish_show_username: str = Form(""),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -134,6 +135,7 @@ def profile_notifications_save(
             warmup=warmup,
             errors=errors,
             desktop=desktop,
+            publish_show_username=publish_show_username,
             publish_title=publish_title,
             publish_body=publish_body,
         ),

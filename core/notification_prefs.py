@@ -19,11 +19,12 @@ DEFAULT_BOOL_PREFS: dict[str, bool] = {
     "warmup": True,
     "errors": True,
     "desktop": True,
+    "publish_show_username": False,
 }
 
 DEFAULT_COPY: dict[str, str] = {
     "publish_title": "{label} publicado",
-    "publish_body": "@{username}",
+    "publish_body": "",
 }
 
 # Compat: código antigo importa DEFAULT_PREFS como só bools
@@ -46,11 +47,10 @@ _BODY_MAX = 160
 _PLACEHOLDER_RE = re.compile(r"\{(label|username)\}")
 
 
-def _clean_template(value: Any, *, default: str, max_len: int) -> str:
+def _clean_template(value: Any, *, default: str, max_len: int, allow_empty: bool = False) -> str:
     text = str(value if value is not None else default).strip()
     if not text:
-        text = default
-    # Evita quebra / spam absurdo
+        return "" if allow_empty else default
     text = re.sub(r"[\r\n\t]+", " ", text)
     return text[:max_len]
 
@@ -66,7 +66,10 @@ def _normalize_prefs(raw: dict[str, Any] | None) -> dict[str, Any]:
         raw.get("publish_title"), default=DEFAULT_COPY["publish_title"], max_len=_TITLE_MAX
     )
     out["publish_body"] = _clean_template(
-        raw.get("publish_body"), default=DEFAULT_COPY["publish_body"], max_len=_BODY_MAX
+        raw.get("publish_body"),
+        default=DEFAULT_COPY["publish_body"],
+        max_len=_BODY_MAX,
+        allow_empty=True,
     )
     return out
 
@@ -141,11 +144,15 @@ def format_publish_copy(
         label=label,
         username=username,
     )
-    body = render_publish_template(
-        str(p.get("publish_body") or DEFAULT_COPY["publish_body"]),
-        label=label,
-        username=username,
-    )
+    show_user = bool(p.get("publish_show_username"))
+    body_template = str(p.get("publish_body") or "")
+    if show_user and not body_template.strip():
+        body_template = "@{username}"
+    elif not show_user:
+        body_template = re.sub(r"@\{username\}", "", body_template)
+        body_template = re.sub(r"\{username\}", "", body_template)
+    body = render_publish_template(body_template, label=label, username=username).strip()
+    body = re.sub(r"\s{2,}", " ", body).strip(" ·-|")
     return title[:255], body[:1000]
 
 
