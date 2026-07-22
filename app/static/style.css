@@ -28,17 +28,27 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; }
-html { scroll-behavior: smooth; scrollbar-width: none; }
-html::-webkit-scrollbar { display: none; }
+html {
+  scroll-behavior: smooth;
+  height: 100%;
+  overflow: hidden;
+}
 
 body {
   margin: 0;
+  height: 100%;
   font-family: var(--font);
   font-size: 14px;
   color: var(--text);
   background: var(--bg);
   line-height: 1.5;
+  overflow: hidden;
+}
+body.login-body {
+  height: auto;
+  min-height: 100%;
   overflow-x: hidden;
+  overflow-y: auto;
 }
 
 /* Impede SVGs de explodirem o layout */
@@ -59,7 +69,7 @@ a:hover { color: var(--primary-hover); }
   background: #050505;
 }
 
-.app { position: relative; z-index: 1; display: flex; min-height: 100vh; }
+.app { position: relative; z-index: 1; display: flex; height: 100%; min-height: 100%; overflow: hidden; }
 
 /* ===== SIDEBAR — colapsada, expande no HOVER ===== */
 .sidebar {
@@ -305,22 +315,34 @@ a:hover { color: var(--primary-hover); }
 
 .sidebar-logout { margin-top: 8px; }
 
-/* Main wrap — empurrado pela sidebar */
+/* Main wrap — empurrado pela sidebar; altura travada para o scroll ficar no painel */
 .main-wrap {
   margin-left: var(--sidebar-w);
-  flex: 1; min-height: 100vh;
-  display: flex; flex-direction: column;
-  transition: margin-left var(--motion);
+  flex: 1;
+  width: calc(100% - var(--sidebar-w));
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100vh;
+  max-height: 100dvh;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: margin-left var(--motion), width var(--motion);
 }
-.app:has(.sidebar:hover) .main-wrap { margin-left: var(--sidebar-w-open); }
+.app:has(.sidebar:hover) .main-wrap {
+  margin-left: var(--sidebar-w-open);
+  width: calc(100% - var(--sidebar-w-open));
+}
 
 /* Topbar */
 .topbar {
   display: grid; grid-template-columns: 1fr auto 1fr;
   align-items: center; padding: 16px 28px;
   border-bottom: 1px solid var(--border);
-  background: rgba(5,5,5,0.7); backdrop-filter: blur(12px);
-  position: sticky; top: 0; z-index: 20;
+  background: rgba(5,5,5,0.92); backdrop-filter: blur(12px);
+  position: relative; z-index: 20;
+  flex-shrink: 0;
 }
 .topbar-center { text-align: center; }
 .greeting {
@@ -428,24 +450,35 @@ a:hover { color: var(--primary-hover); }
 .fat-bar-fill { height: 100%; background: var(--primary); border-radius: 99px; }
 .fat-sub { font-size: 11px; color: var(--muted); }
 
-/* Content — scroll visível à direita do painel */
+/* Content — scroll visível à direita do painel (não no html/body) */
 .shark-content {
   padding: 20px 28px 100px;
-  flex: 1;
-  overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
   scrollbar-width: thin;
-  scrollbar-color: rgba(17, 97, 254, 0.55) rgba(255, 255, 255, 0.04);
+  scrollbar-color: rgba(17, 97, 254, 0.7) rgba(255, 255, 255, 0.06);
 }
-.shark-content::-webkit-scrollbar { width: 8px; display: block; }
+.shark-content::-webkit-scrollbar {
+  width: 10px;
+  display: block !important;
+  background: transparent;
+}
 .shark-content::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(255, 255, 255, 0.04);
   border-radius: 99px;
+  margin: 6px 0;
 }
 .shark-content::-webkit-scrollbar-thumb {
   background: linear-gradient(180deg, #3d82ff, #1161FE);
   border-radius: 99px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  min-height: 40px;
 }
-.shark-content::-webkit-scrollbar-thumb:hover { background: #1161FE; }
+.shark-content::-webkit-scrollbar-thumb:hover { background: #1161FE; background-clip: padding-box; }
 
 /* Period pills — alinhado à direita como referência OnlyChat */
 .dash-toolbar {
@@ -1237,7 +1270,10 @@ input[type="checkbox"]:checked::after {
 @media (max-width: 768px) {
   .sidebar { transform: translateX(-100%); }
   .sidebar.mobile-open { transform: translateX(0); width: var(--sidebar-w-open); }
-  .main-wrap, .app:has(.sidebar:hover) .main-wrap { margin-left: 0 !important; }
+  .main-wrap, .app:has(.sidebar:hover) .main-wrap {
+    margin-left: 0 !important;
+    width: 100% !important;
+  }
   .bottom-tabs { display: flex; }
   .mobile-drawer { display: block; }
   .shark-content { padding: 16px 16px 80px; }

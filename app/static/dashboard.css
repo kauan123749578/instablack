@@ -241,25 +241,35 @@ body.premium-app .shark-content { padding: 24px 32px 80px; }
 .og-top-players-shark {
   grid-column: 3;
   grid-row: 1 / span 2;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
 }
-.og-panel-accounts { grid-column: 1; grid-row: 2; }
-.og-failed-panel { grid-column: 2; grid-row: 2; }
+.og-panel-accounts { grid-column: 1; grid-row: 2; align-self: stretch; }
+.og-failed-panel { grid-column: 2; grid-row: 2; align-self: stretch; }
 .og-bottom-span-2 { grid-column: span 2; }
 
-/* Contas conectadas — lista vertical estilo ranking */
+/* Contas conectadas — lista preenche o card inteiro */
 .og-panel-accounts {
   min-height: 220px;
+  height: 100%;
   display: flex;
   flex-direction: column;
 }
 .og-accounts-rank-list {
-  flex: 1;
-  max-height: 155px;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
   overflow-y: auto;
-  scrollbar-width: none !important;
-  -ms-overflow-style: none !important;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(17, 97, 254, 0.45) transparent;
+  padding-right: 2px;
 }
-.og-accounts-rank-list::-webkit-scrollbar { width: 0 !important; height: 0 !important; display: none !important; }
+.og-accounts-rank-list::-webkit-scrollbar { width: 5px; display: block; }
+.og-accounts-rank-list::-webkit-scrollbar-thumb {
+  background: rgba(17, 97, 254, 0.45);
+  border-radius: 99px;
+}
 .og-account-rank-row {
   width: 100%;
   padding: 7px 9px;
@@ -554,19 +564,30 @@ body.premium-app .shark-content { padding: 24px 32px 80px; }
 
 .og-reels-views-panel { min-height: 220px; }
 .og-warmup-panel,
-.og-failed-panel { min-height: 220px; }
+.og-failed-panel {
+  min-height: 220px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
 
 .og-dash-list {
   list-style: none; margin: 0; padding: 0;
   display: flex; flex-direction: column; gap: 8px;
-  max-height: 280px; overflow-y: auto;
-  scrollbar-width: none !important;
-  -ms-overflow-style: none !important;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(17, 97, 254, 0.45) transparent;
 }
 .og-dash-list::-webkit-scrollbar {
-  width: 0 !important;
-  height: 0 !important;
-  display: none !important;
+  width: 5px;
+  display: block;
+}
+.og-dash-list::-webkit-scrollbar-thumb {
+  background: rgba(17, 97, 254, 0.45);
+  border-radius: 99px;
 }
 .og-dash-list-item {
   display: flex; align-items: center; gap: 10px;
