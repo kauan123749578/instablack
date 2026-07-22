@@ -29,15 +29,12 @@ def _is_owner_private(user: User) -> bool:
 
 
 def _admin_can_see(viewer: User, target: User) -> bool:
-    """Owner vê todos; outros admins veem todos exceto a conta do Owner.
-
-    owner_private é só rótulo/badge (Meu) — não esconde mais da lista.
-    """
+    """Owner vê todos; outros admins não veem Owner nem usuários Meu (owner_private)."""
     if _is_owner(viewer):
         return True
     if _is_owner(target):
         return False
-    return True
+    return not _is_owner_private(target)
 
 
 def _require_visible(viewer: User, target: User | None) -> User:
@@ -185,7 +182,7 @@ def toggle_user_private(
     db: Session = Depends(get_db),
     admin: User = Depends(get_owner_user),
 ):
-    """Marca/desmarca usuário como 'Meu' (badge) — só o Owner gerencia."""
+    """Marca/desmarca usuário como 'Meu' — outros admins não veem na lista."""
     target = db.get(User, user_id)
     if not target:
         raise HTTPException(status_code=404, detail="Usuário não encontrado")

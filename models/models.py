@@ -41,7 +41,7 @@ class User(Base):
     avatar_key: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_owner: Mapped[bool] = mapped_column(Boolean, default=False)  # dono da plataforma
-    # Se true, badge "Meu" no /admin (só o owner marca; não esconde da lista)
+    # Se true, só o owner vê este usuário no /admin e no rank (outros admins não)
     owner_private: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     account_limit: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=None)

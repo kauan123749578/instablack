@@ -16,7 +16,8 @@
   <span class="og-badge badge-yellow">{{ counts.get('skipped', 0) }} ignorada</span>
 </div>
 
-<form method="get" action="/logs" class="logs-filters form-card">
+<div class="logs-filters form-card" style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">
+<form method="get" action="/logs" class="logs-filters" style="flex:1;margin:0;padding:0;border:none;background:transparent;display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">
   <label>Status
     <select name="status">
       <option value="">Todos</option>
@@ -34,8 +35,9 @@
     </select>
   </label>
   <button type="submit" class="btn btn-primary btn-sm">Filtrar</button>
-  <button type="button" class="btn btn-sm logs-clear-filters">Limpar</button>
 </form>
+<a href="/logs" class="btn btn-sm logs-clear-filters">Limpar</a>
+</div>
 
 <div class="og-glass-card og-table-panel" style="margin-top:16px" data-latest-id="{{ logs[0].id if logs else 0 }}">
   <div class="og-table-wrap hide-scrollbar">

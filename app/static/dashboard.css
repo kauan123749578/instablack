@@ -606,6 +606,63 @@ body.premium-app .shark-content { padding: 24px 32px 80px; }
 }
 .analytics-pill-card strong { font-size: 14px; }
 
+.analytics-insights-hero {
+  margin: 4px 0 20px;
+  padding: 18px 18px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(17, 97, 254, 0.4);
+  background:
+    linear-gradient(135deg, rgba(17, 97, 254, 0.22) 0%, rgba(8, 12, 24, 0.92) 45%, rgba(5, 5, 5, 0.98) 100%);
+  box-shadow: 0 16px 40px rgba(17, 97, 254, 0.16);
+}
+.analytics-insights-hero-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 4px;
+}
+.analytics-insights-title {
+  margin: 8px 0 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.analytics-account-select {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--og-muted);
+  min-width: 200px;
+}
+.analytics-account-select select {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(17, 97, 254, 0.45);
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.analytics-insights-kpis { margin-top: 14px; }
+.analytics-kpi-accent {
+  border-color: rgba(17, 97, 254, 0.25) !important;
+  background: linear-gradient(160deg, rgba(17, 97, 254, 0.14), rgba(5, 5, 5, 0.9)) !important;
+}
+.analytics-section-label {
+  margin: 22px 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #93c5fd;
+}
+
 @media (max-width: 1100px) {
   .og-main-grid { grid-template-columns: 1fr 1fr; }
   .og-next-panel { grid-column: span 1; }

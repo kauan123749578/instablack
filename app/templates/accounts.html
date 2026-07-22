@@ -20,7 +20,7 @@
 {% endif %}
 
 {% set auth_method = form.get('auth_method', 'password') %}
-<div class="form-card" style="margin-bottom:24px{% if not can_add_account %};opacity:0.45;pointer-events:none{% endif %}">
+<div class="form-card form-card--connect"{% if not can_add_account %} style="opacity:0.45;pointer-events:none"{% endif %}>
   <h3 style="margin-top:0">Conectar conta Instagram</h3>
   <p class="muted" style="margin:0 0 16px;font-size:13px">
     Escolha o método de autenticação. API oficial não usa senha nem proxy; API web usa cookies da extensão.
@@ -103,7 +103,7 @@
       </div>
 
       <input type="hidden" name="verification_code" id="verification-code-hidden" value="">
-      <button type="submit" class="btn btn-primary" id="account-connect-btn">Conectar conta</button>
+      <button type="submit" class="btn btn-primary btn-pulse" id="account-connect-btn">Conectar conta</button>
     </div>
   </form>
 
@@ -128,7 +128,7 @@
           <a href="/accounts/meta-apps?tab=setup" data-nav="/accounts/meta-apps?tab=setup">Como pegar o token</a>
           {% if token_youtube_url %} · <a href="{{ token_youtube_url }}" target="_blank" rel="noopener">Vídeo no YouTube</a>{% endif %}
         </p>
-        <button type="submit" class="btn btn-primary btn-sm">Conectar com token</button>
+        <button type="submit" class="btn btn-primary btn-sm btn-pulse">Conectar com token</button>
       </form>
     </details>
     <form method="get" action="/accounts/meta/connect" class="form-grid" style="margin-top:12px">
@@ -139,7 +139,7 @@
           {% endfor %}
         </select>
       </label>
-      <button type="submit" class="btn btn-primary">
+      <button type="submit" class="btn btn-primary btn-pulse">
         <i data-lucide="instagram"></i> Continuar com Instagram
       </button>
     </form>

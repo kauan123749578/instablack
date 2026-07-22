@@ -186,8 +186,7 @@ def _top_platform_players(
 ) -> list[dict]:
     """Top 5 usuários da plataforma por publicações no período.
 
-    Usuários marcados como privados do owner só aparecem no rank para o
-    próprio owner e para os outros usuários privados dele.
+    Usuários Meu (owner_private) só aparecem no rank para o Owner.
     """
     query = (
         select(
@@ -205,11 +204,8 @@ def _top_platform_players(
             PublishLog.created_at < _utc_naive(end),
         )
     )
-    viewer_sees_private = bool(
-        viewer is not None
-        and (getattr(viewer, "is_owner", False) or getattr(viewer, "owner_private", False))
-    )
-    if not viewer_sees_private:
+    viewer_is_owner = bool(viewer is not None and getattr(viewer, "is_owner", False))
+    if not viewer_is_owner:
         query = query.where(User.owner_private.isnot(True))
     rows = db.execute(
         query
@@ -416,6 +412,7 @@ def home(
 def analytics_page(
     request: Request,
     days: int = 7,
+    account_id: int | None = None,
     db: Session = Depends(get_db),
     user: User | None = Depends(maybe_current_user),
 ):
@@ -463,14 +460,33 @@ def analytics_page(
                 PublishLog.status == "failed",
             )
         ) or 0
-        account_stats.append({"account": acc, "success": ok, "failed": fail})
+        provider = (acc.provider or "instagrapi").lower()
+        if provider == "meta":
+            provider_label = "API oficial"
+        elif getattr(acc, "encrypted_web_cookies", None):
+            provider_label = "API web"
+        else:
+            provider_label = "Instagrapi"
+        account_stats.append(
+            {
+                "account": acc,
+                "success": ok,
+                "failed": fail,
+                "provider_label": provider_label,
+            }
+        )
 
     chart_performance = _chart_performance(db, user.id, chart_days)
     chart_performance, chart_line_path, chart_area_path, chart_max_val = attach_chart_paths(
         chart_performance
     )
     chart_weekly = _chart_weekly_bars(db, user.id, 7)
-    official = user_official_insights_summary(db, user.id, reel_views_days=chart_days)
+    official = user_official_insights_summary(
+        db,
+        user.id,
+        reel_views_days=chart_days,
+        account_id=account_id,
+    )
 
     return templates.TemplateResponse(
         "analytics.html",
@@ -495,5 +511,6 @@ def analytics_page(
             "chart_days": chart_days,
             "chart_weekly": chart_weekly,
             "official": official,
+            "selected_meta_account_id": official.get("selected_account_id"),
         },
     )

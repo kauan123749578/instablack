@@ -1,17 +1,133 @@
 {% extends "base.html" %}
 {% block title %}Analytics — instablack{% endblock %}
 {% block content %}
-<div class="og-dash">
+{% set sel = official.selected_account_id %}
+{% set acc_q = ('&account_id=' ~ sel) if sel else '' %}
+<div class="og-dash analytics-dash">
   <header class="og-page-header">
     <div class="og-page-titles">
       <h1 class="og-page-title">Analytics</h1>
-      <p class="og-page-sub">Desempenho das publicações nos últimos 7 dias</p>
+      <p class="og-page-sub">Insights Meta e desempenho das publicações</p>
     </div>
     <a href="/logs" class="og-btn-primary" data-nav="/logs" style="background:transparent;border:1px solid rgba(255,255,255,0.1);box-shadow:none">
       <i data-lucide="scroll-text"></i> Ver logs
     </a>
   </header>
 
+  <section class="analytics-insights-hero">
+    <div class="analytics-insights-hero-top">
+      <div>
+        <span class="og-badge badge-green">INSIGHTS META</span>
+        <h2 class="analytics-insights-title">
+          {% if official.selected_account %}
+            @{{ official.selected_account.username }}
+          {% elif official.meta_accounts_count > 0 %}
+            Todas as contas oficiais
+          {% else %}
+            API oficial
+          {% endif %}
+        </h2>
+        <p class="og-muted" style="margin:4px 0 0;font-size:13px">Janela {{ official.reel_views_days }} dias · seguidores e views de Reels</p>
+      </div>
+      {% if official.meta_accounts_count > 0 %}
+      <label class="analytics-account-select">
+        <span>Conta Meta</span>
+        <select id="analytics-meta-account"
+                onchange="var v=this.value;var u='/analytics?days={{ chart_days }}'+(v?'&account_id='+encodeURIComponent(v):''); window.location.href=u;">
+          <option value="" {% if not sel %}selected{% endif %}>Todas</option>
+          {% for acc in official.meta_accounts %}
+          <option value="{{ acc.id }}" {% if sel == acc.id %}selected{% endif %}>@{{ acc.username }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {% endif %}
+    </div>
+
+    {% if official.meta_accounts_count > 0 %}
+    <div class="og-kpi-row analytics-insights-kpis">
+      <article class="og-glass-card og-kpi-card analytics-kpi-accent">
+        <div class="og-kpi-top"><div class="og-kpi-icon og-kpi-icon--purple"><i data-lucide="users"></i></div></div>
+        <div class="og-kpi-value">{% if official.total_followers is not none %}{{ format_count(official.total_followers) }}{% else %}—{% endif %}</div>
+        <div class="og-kpi-label">Seguidores</div>
+      </article>
+      <article class="og-glass-card og-kpi-card analytics-kpi-accent">
+        <div class="og-kpi-top"><div class="og-kpi-icon og-kpi-icon--pink"><i data-lucide="eye"></i></div></div>
+        <div class="og-kpi-value">{{ format_count(official.total_reel_views_period) }}</div>
+        <div class="og-kpi-label">Views Reels · {{ official.reel_views_days }}D</div>
+      </article>
+      <article class="og-glass-card og-kpi-card analytics-kpi-accent">
+        <div class="og-kpi-top"><div class="og-kpi-icon og-kpi-icon--green"><i data-lucide="check-circle"></i></div></div>
+        <div class="og-kpi-value">{{ format_count(official.total_success_count) }}</div>
+        <div class="og-kpi-label">Publicações OK</div>
+      </article>
+      <article class="og-glass-card og-kpi-card analytics-kpi-accent">
+        <div class="og-kpi-top"><div class="og-kpi-icon og-kpi-icon--orange"><i data-lucide="badge-check"></i></div></div>
+        <div class="og-kpi-value">{{ official.account_rows|length }}</div>
+        <div class="og-kpi-label">Conta(s) na visão</div>
+      </article>
+    </div>
+
+    <div class="og-glass-card" style="margin-top:14px;padding:16px">
+      <div class="og-card-head" style="margin-bottom:10px">
+        <h3 class="og-card-title" style="font-size:15px;margin:0">Reels recentes</h3>
+        <span class="og-muted" style="font-size:12px">
+          {% if official.selected_account %}@{{ official.selected_account.username }}{% else %}Todas as contas Meta{% endif %}
+        </span>
+      </div>
+      {% if official.recent_reels %}
+      <div class="og-table-wrap">
+        <table class="og-table">
+          <thead><tr><th>Conta</th><th>Data</th><th>Views</th><th>Link</th></tr></thead>
+          <tbody>
+            {% for log in official.recent_reels[:15] %}
+            <tr>
+              <td><strong>@{{ log.account.username if log.account else '—' }}</strong></td>
+              <td class="og-muted">{{ log.created_at | localtime('%d/%m %H:%M') }}</td>
+              <td>{% if log.play_count is not none %}{{ format_count(log.play_count) }}{% else %}—{% endif %}</td>
+              <td>{% if log.media_url %}<a href="{{ log.media_url }}" target="_blank" rel="noopener">Abrir</a>{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="og-empty">Nenhum Reel recente com insights nesta visão.</p>
+      {% endif %}
+    </div>
+
+    {% if not official.selected_account_id and official.account_rows|length > 1 %}
+    <div class="og-table-wrap" style="margin-top:14px">
+      <table class="og-table">
+        <thead><tr><th>Conta</th><th>Seguidores</th><th>Views Reels</th><th>Pubs OK</th><th></th></tr></thead>
+        <tbody>
+          {% for row in official.account_rows %}
+          <tr>
+            <td><strong>@{{ row.account.username }}</strong></td>
+            <td>{% if row.followers is not none %}{{ format_count(row.followers) }}{% else %}—{% endif %}</td>
+            <td>{{ format_count(row.reel_views_period) }}</td>
+            <td>{{ row.success_count }}</td>
+            <td>
+              <a class="btn btn-sm" data-nav="/analytics?days={{ chart_days }}&account_id={{ row.account.id }}"
+                 href="/analytics?days={{ chart_days }}&account_id={{ row.account.id }}">Ver</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <p class="og-muted" style="margin:12px 0 0;font-size:13px">
+      Nenhuma conta conectada via API oficial.
+      <a href="/accounts/meta-apps?tab=setup" data-nav="/accounts/meta-apps?tab=setup">Meus Apps</a>
+      ·
+      <a href="/accounts" data-nav="/accounts">Adicionar conta</a>
+    </p>
+    {% endif %}
+  </section>
+
+  <h2 class="analytics-section-label">Publicações (todas as contas)</h2>
   <div class="og-kpi-row">
     <article class="og-glass-card og-kpi-card">
       <div class="og-kpi-top"><div class="og-kpi-icon og-kpi-icon--orange"><i data-lucide="video"></i></div>
@@ -37,42 +153,21 @@
     <article class="og-glass-card og-kpi-card">
       <div class="og-kpi-top"><div class="og-kpi-icon og-kpi-icon--pink"><i data-lucide="bar-chart-2"></i></div></div>
       <div class="og-kpi-value">{{ success_total }}</div>
-      <div class="og-kpi-label">Total publicado (histórico)</div>
+      <div class="og-kpi-label">Total publicado</div>
     </article>
-    {% if official.meta_accounts_count > 0 %}
-    <article class="og-glass-card og-kpi-card">
-      <div class="og-kpi-top"><div class="og-kpi-icon og-kpi-icon--purple"><i data-lucide="badge-check"></i></div></div>
-      <div class="og-kpi-value">{% if official.total_followers is not none %}{{ format_count(official.total_followers) }}{% else %}—{% endif %}</div>
-      <div class="og-kpi-label">Seguidores · API oficial</div>
-    </article>
-    <article class="og-glass-card og-kpi-card">
-      <div class="og-kpi-top"><div class="og-kpi-icon og-kpi-icon--pink"><i data-lucide="eye"></i></div></div>
-      <div class="og-kpi-value">{{ format_count(official.total_reel_views_period) }}</div>
-      <div class="og-kpi-label">Views Reels · {{ official.reel_views_days }}D</div>
-    </article>
-    {% endif %}
   </div>
 
-  {% if official.meta_accounts_count == 0 %}
-  <p class="og-muted" style="margin:10px 0 0;font-size:12px">
-    Insights Meta: nenhuma conta API oficial.
-    <a href="/accounts/meta-apps?tab=setup" data-nav="/accounts/meta-apps?tab=setup">Meus Apps</a>
-    ·
-    <a href="/accounts" data-nav="/accounts">Adicionar conta</a>
-  </p>
-  {% endif %}
-
-  <div class="og-main-grid og-main-grid--analytics">
+  <div class="og-main-grid og-main-grid--analytics" style="margin-top:14px">
     <section class="og-glass-card og-chart-panel og-chart-premium">
       <div class="og-chart-head">
         <div class="og-chart-head-icon"><i data-lucide="activity"></i></div>
         <div>
-          <h2 class="og-card-title">Seu Desempenho</h2>
+          <h2 class="og-card-title">Desempenho</h2>
           <p class="og-card-sub og-card-sub--caps">Últimos {{ chart_days }} dias</p>
         </div>
         <div class="og-period-pills" role="tablist">
           {% for d in [7, 15, 30] %}
-          <a href="/analytics?days={{ d }}" class="period-pill{% if chart_days == d %} active{% endif %}" data-nav="/analytics?days={{ d }}">{{ d }}D</a>
+          <a href="/analytics?days={{ d }}{{ acc_q }}" class="period-pill{% if chart_days == d %} active{% endif %}" data-nav="/analytics?days={{ d }}{{ acc_q }}">{{ d }}D</a>
           {% endfor %}
         </div>
       </div>
@@ -93,15 +188,12 @@
               <stop offset="100%" stop-color="#1161FE"/>
             </linearGradient>
           </defs>
-
           <path class="og-chart-area" fill="url(#ogChartFill)" stroke="none" d="{{ chart_area_path }}"/>
           <path class="og-line-premium" fill="none" stroke="url(#ogChartLine)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="{{ chart_line_path }}"/>
-
           {% for pt in chart_performance %}
           <circle class="og-chart-dot" cx="{{ pt.x }}" cy="{{ pt.y }}" r="4" fill="#1161FE" stroke="#050505" stroke-width="2"
             data-tip="{{ pt.label }} {{ pt.date }}: {{ pt.success }} publicaç{% if pt.success == 1 %}ão{% else %}ões{% endif %}"/>
           {% endfor %}
-
           {% for pt in chart_performance %}
           {% if chart_days <= 7 or loop.index0 % (2 if chart_days == 15 else 3) == 0 or loop.last %}
           <text class="og-chart-xlabel" x="{{ pt.x }}" y="216" text-anchor="middle">{{ pt.label }}</text>
@@ -130,13 +222,14 @@
     {% if account_stats %}
     <div class="og-table-wrap">
       <table class="og-table">
-        <thead><tr><th>Conta</th><th>Status</th><th>Sucesso</th><th>Erros</th><th>Taxa</th></tr></thead>
+        <thead><tr><th>Conta</th><th>Provedor</th><th>Status</th><th>Sucesso</th><th>Erros</th><th>Taxa</th></tr></thead>
         <tbody>
           {% for row in account_stats %}
           {% set acc = row.account %}
           {% set total = row.success + row.failed %}
           <tr>
             <td><strong>@{{ acc.username }}</strong></td>
+            <td class="og-muted">{{ row.provider_label }}</td>
             <td><span class="og-badge {{ status_badge_class(acc.status) }}">{{ status_label(acc.status) }}</span></td>
             <td>{{ row.success }}</td>
             <td>{{ row.failed }}</td>
@@ -150,71 +243,6 @@
     <p class="og-empty">Nenhuma conta conectada.</p>
     {% endif %}
   </section>
-
-  {% if official.meta_accounts_count > 0 %}
-  <section class="og-glass-card" style="margin-top:14px">
-    <div class="og-card-head">
-      <h2 class="og-card-title">Contas Instagram (API oficial)</h2>
-      <span class="og-muted" style="font-size:12px">Últimos {{ official.reel_views_days }} dias · insights Meta</span>
-    </div>
-    <div class="og-table-wrap">
-      <table class="og-table">
-        <thead><tr><th>Conta</th><th>Seguidores</th><th>Views Reels</th><th>Publicações OK</th></tr></thead>
-        <tbody>
-          {% for row in official.account_rows %}
-          {% set acc = row.account %}
-          <tr>
-            <td><strong>@{{ acc.username }}</strong></td>
-            <td>{% if row.followers is not none %}{{ format_count(row.followers) }}{% else %}—{% endif %}</td>
-            <td>{{ format_count(row.reel_views_period) }}</td>
-            <td>{{ row.success_count }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </section>
-  <section class="og-glass-card" style="margin-top:14px">
-    <div class="og-card-head">
-      <h2 class="og-card-title">Insights por conta (API oficial)</h2>
-      <span class="og-muted" style="font-size:12px">Reels recentes e views · janela {{ official.reel_views_days }}D</span>
-    </div>
-
-    {% for row in official.account_rows %}
-    <div class="og-glass-card" style="margin-top:14px;padding:16px;background:rgba(255,255,255,0.03)">
-      <div class="og-card-head" style="margin-bottom:10px;padding:0">
-        <div>
-          <h3 class="og-card-title" style="font-size:15px;margin:0">@{{ row.account.username }}</h3>
-          <p class="og-card-sub" style="margin:4px 0 0;font-size:12px">
-            {% if row.followers is not none %}{{ format_count(row.followers) }} seguidores{% else %}Seguidores —{% endif %}
-            · {{ format_count(row.reel_views_period) }} views Reels
-          </p>
-        </div>
-      </div>
-
-      {% set reels = official.recent_reels_by_account.get(row.account.id, []) %}
-      {% if reels %}
-      <div class="og-table-wrap">
-        <table class="og-table">
-          <thead><tr><th>Data</th><th>Views</th><th>Link</th></tr></thead>
-          <tbody>
-            {% for log in reels[:10] %}
-            <tr>
-              <td class="og-muted">{{ log.created_at | localtime('%d/%m %H:%M') }}</td>
-              <td>{% if log.play_count is not none %}{{ format_count(log.play_count) }}{% else %}—{% endif %}</td>
-              <td>{% if log.media_url %}<a href="{{ log.media_url }}" target="_blank" rel="noopener">Abrir</a>{% else %}—{% endif %}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      {% else %}
-      <p class="og-empty">Nenhum Reel recente desta conta.</p>
-      {% endif %}
-    </div>
-    {% endfor %}
-  </section>
-  {% endif %}
 
   <div class="analytics-summary-row">
     <div class="og-glass-card analytics-pill-card">

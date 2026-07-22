@@ -69,21 +69,20 @@
   }
 
   document.addEventListener("click", (e) => {
-    const clearLogs = e.target.closest(".logs-clear-filters");
+    const clearLogs = e.target.closest("a.logs-clear-filters, .logs-clear-filters");
     if (clearLogs) {
       e.preventDefault();
       e.stopPropagation();
-      window.location.assign("/logs");
+      window.location.href = "/logs";
       return;
     }
     const link = e.target.closest("[data-nav]");
     if (!link || link.tagName === "BUTTON") return;
-    if (link.classList.contains("logs-clear-filters")) return;
     const href = link.getAttribute("data-nav") || link.getAttribute("href");
     if (!href || href.startsWith("http") || link.target === "_blank") return;
     e.preventDefault();
     navigateTo(href);
-  });
+  }, true);
 
   async function copyToClipboard(text) {
     const value = String(text || "");
