@@ -37,6 +37,19 @@ def _admin_can_see(viewer: User, target: User) -> bool:
     return not _is_owner_private(target)
 
 
+def _admin_can_moderate(viewer: User, target: User) -> bool:
+    """Ban/excluir: visível para o admin, mas nunca owner, self ou usuários Meu (para não-owner)."""
+    if target.id == viewer.id:
+        return False
+    if _is_owner(target):
+        return False
+    if not _admin_can_see(viewer, target):
+        return False
+    if _is_owner_private(target) and not _is_owner(viewer):
+        return False
+    return True
+
+
 def _require_visible(viewer: User, target: User | None) -> User:
     if not target:
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
@@ -244,24 +257,34 @@ def toggle_user_admin(
     )
 
 
+@router.post("/users/{user_id}/toggle-ban")
+def toggle_user_ban(
+    user_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_admin_user),
+):
+    target = db.get(User, user_id)
+    if not target or not _admin_can_moderate(admin, target):
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+
+    target.is_active = not target.is_active
+    db.commit()
+    return RedirectResponse(
+        "/admin?ok=ban" if not target.is_active else "/admin?ok=unban",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
 @router.post("/users/{user_id}/delete")
 def delete_user(
     user_id: int,
     db: Session = Depends(get_db),
-    admin: User = Depends(get_owner_user),
+    admin: User = Depends(get_admin_user),
 ):
-    if user_id == admin.id:
-        return RedirectResponse(
-            "/admin?error=self",
-            status_code=status.HTTP_303_SEE_OTHER,
-        )
-
     target = db.get(User, user_id)
-    if not target:
-        raise HTTPException(status_code=404, detail="Usuário não encontrado")
-    if _is_owner(target):
+    if not target or not _admin_can_moderate(admin, target):
         return RedirectResponse(
-            "/admin?error=owner_delete",
+            "/admin?error=protected",
             status_code=status.HTTP_303_SEE_OTHER,
         )
 

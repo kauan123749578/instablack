@@ -5,14 +5,19 @@
   <h2><i data-lucide="shield" class="inline-icon"></i> Painel Admin</h2>
   {% if is_owner %}
   <p class="muted page-header-sub">Gerencie usuários. “Meu usuário” esconde a conta da lista dos outros admins.</p>
+  {% else %}
+  <p class="muted page-header-sub">Usuários visíveis para você. Usuários “Meu” do owner não aparecem aqui.</p>
   {% endif %}
 </div>
 
+{% if ok == 'ban' %}
+<div class="alert alert-ok">Usuário banido — não consegue mais entrar na plataforma.</div>
+{% endif %}
+{% if ok == 'unban' %}
+<div class="alert alert-ok">Ban removido — usuário pode entrar novamente.</div>
+{% endif %}
 {% if ok == 'deleted' %}
 <div class="alert alert-ok">Usuário removido com sucesso.</div>
-{% endif %}
-{% if ok == 'limit' %}
-<div class="alert alert-ok">Limite de contas atualizado.</div>
 {% endif %}
 {% if ok == 'admin' %}
 <div class="alert alert-ok">Permissão de admin atualizada.</div>
@@ -28,6 +33,9 @@
 {% endif %}
 {% if error == 'broadcast_empty' %}
 <div class="alert alert-error">Escreva a mensagem antes de enviar.</div>
+{% endif %}
+{% if error == 'protected' %}
+<div class="alert alert-error">Você não pode banir ou excluir este usuário.</div>
 {% endif %}
 {% if error == 'self' %}
 <div class="alert alert-error">Você não pode excluir sua própria conta.</div>
@@ -163,6 +171,41 @@
                   {% if u.is_admin %}Remover admin{% else %}Tornar admin{% endif %}
                 </button>
               </form>
+              {% if u.is_active %}
+              <form method="post" action="/admin/users/{{ u.id }}/toggle-ban"
+                    onsubmit="return confirm('Banir @{{ u.username }}? Ele não conseguirá mais entrar.');">
+                <button type="submit" class="btn btn-sm btn-danger">
+                  <i data-lucide="ban"></i> Banir
+                </button>
+              </form>
+              {% else %}
+              <form method="post" action="/admin/users/{{ u.id }}/toggle-ban"
+                    onsubmit="return confirm('Desbanir @{{ u.username }}?');">
+                <button type="submit" class="btn btn-sm">Desbanir</button>
+              </form>
+              {% endif %}
+              <form method="post" action="/admin/users/{{ u.id }}/delete"
+                    onsubmit="return confirm('Excluir @{{ u.username }}? Todas as contas IG e automações serão apagadas.');">
+                <button type="submit" class="btn btn-sm btn-danger">
+                  <i data-lucide="trash-2"></i> Excluir
+                </button>
+              </form>
+            </div>
+            {% elif user.is_admin %}
+            <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end">
+              {% if u.is_active %}
+              <form method="post" action="/admin/users/{{ u.id }}/toggle-ban"
+                    onsubmit="return confirm('Banir @{{ u.username }}? Ele não conseguirá mais entrar.');">
+                <button type="submit" class="btn btn-sm btn-danger">
+                  <i data-lucide="ban"></i> Banir
+                </button>
+              </form>
+              {% else %}
+              <form method="post" action="/admin/users/{{ u.id }}/toggle-ban"
+                    onsubmit="return confirm('Desbanir @{{ u.username }}?');">
+                <button type="submit" class="btn btn-sm">Desbanir</button>
+              </form>
+              {% endif %}
               <form method="post" action="/admin/users/{{ u.id }}/delete"
                     onsubmit="return confirm('Excluir @{{ u.username }}? Todas as contas IG e automações serão apagadas.');">
                 <button type="submit" class="btn btn-sm btn-danger">

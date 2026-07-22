@@ -178,6 +178,15 @@ def _growth_pct(current: int, previous: int) -> float | None:
     return round((current - previous) / previous * 100, 1)
 
 
+def _rank_sees_private_users(viewer: User | None) -> bool:
+    """Owner e usuários Meu veem o rank completo; outros admins (ex.: caue) não."""
+    if viewer is None:
+        return False
+    if getattr(viewer, "is_owner", False):
+        return True
+    return bool(getattr(viewer, "owner_private", False))
+
+
 def _top_platform_players(
     db: Session,
     start: dt.datetime,
@@ -188,7 +197,7 @@ def _top_platform_players(
 ) -> list[dict]:
     """Top usuários da plataforma por publicações no período.
 
-    Usuários Meu (owner_private) só aparecem no rank para o Owner.
+    Usuários Meu (owner_private) só ficam ocultos no rank para quem não é Owner nem Meu.
     """
     query = (
         select(
@@ -206,8 +215,7 @@ def _top_platform_players(
             PublishLog.created_at < _utc_naive(end),
         )
     )
-    viewer_is_owner = bool(viewer is not None and getattr(viewer, "is_owner", False))
-    if not viewer_is_owner:
+    if not _rank_sees_private_users(viewer):
         query = query.where(User.owner_private.isnot(True))
     rows = db.execute(
         query
@@ -247,7 +255,6 @@ def _viewer_rank_entry(
     viewer: User,
 ) -> dict | None:
     """Posição do usuário logado no ranking (mesmo fora do top)."""
-    viewer_is_owner = bool(getattr(viewer, "is_owner", False))
     my_count = db.scalar(
         select(func.count(PublishLog.id))
         .join(InstagramAccount, PublishLog.account_id == InstagramAccount.id)
@@ -265,7 +272,7 @@ def _viewer_rank_entry(
         PublishLog.created_at >= _utc_naive(start),
         PublishLog.created_at < _utc_naive(end),
     ]
-    if not viewer_is_owner:
+    if not _rank_sees_private_users(viewer):
         better_filters.append(User.owner_private.isnot(True))
     better_q = (
         select(func.count())
