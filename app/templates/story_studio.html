@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Story Link Studio{% endblock %}
 {% block head %}
-<link rel="stylesheet" href="/static/story-studio.css?v=4" />
+<link rel="stylesheet" href="/static/story-studio.css?v=5" />
 {% endblock %}
 {% block content %}
 <div class="studio-app mode-custom" id="studioShell">
@@ -26,27 +26,34 @@
     <nav class="studio-tabs" role="tablist">
       <button type="button" class="studio-tab active" data-tab="general" role="tab">General</button>
       <button type="button" class="studio-tab" data-tab="link" role="tab">Link</button>
+      <button type="button" class="studio-tab" data-tab="schedule" role="tab">Agendar</button>
     </nav>
 
     <div class="studio-tab-panel active" id="tab-general" role="tabpanel">
       <div class="field">
-        <label for="accountInput">Conta</label>
-        <select id="accountInput" required>
-          <option value="">Selecione…</option>
+        <label>Contas <span class="muted" id="accountCountHint">(1+)</span></label>
+        <div class="studio-accounts" id="accountsList">
           {% for acc in accounts %}
           {% set flag = cookie_flags.get(acc.id, {}) %}
-          <option value="{{ acc.id }}">
-            @{{ acc.username }}{% if acc.provider == 'meta' %} · API oficial{% elif flag.has_csrftoken %} · Cookies web{% endif %}
-          </option>
+          <label class="studio-account-chip">
+            <input type="checkbox" name="studio_account" value="{{ acc.id }}"
+              {% if flag.has_csrftoken %}data-web="1"{% endif %}
+              {% if acc.provider == 'meta' %}data-meta="1" disabled{% endif %}>
+            <span>@{{ acc.username }}{% if acc.provider == 'meta' %} · Meta{% elif flag.has_csrftoken %} · Web{% endif %}</span>
+          </label>
+          {% else %}
+          <p class="muted" style="margin:0;font-size:12px">Nenhuma conta disponível.</p>
           {% endfor %}
-        </select>
+        </div>
+        <p class="muted" style="margin:6px 0 0;font-size:11px">Story com link: contas com cookies web. Meta oficial não entra.</p>
       </div>
       <div class="field">
-        <label for="imageInput">Foto</label>
+        <label for="imageInput">Fotos <span class="muted" id="mediaCountHint"></span></label>
         <label class="file-drop">
-          <input id="imageInput" type="file" accept="image/jpeg,image/png,image/webp" hidden>
-          <span id="fileDropLabel">Clique ou arraste a foto</span>
+          <input id="imageInput" type="file" accept="image/jpeg,image/png,image/webp" multiple hidden>
+          <span id="fileDropLabel">Clique ou arraste uma ou mais fotos</span>
         </label>
+        <ul class="studio-media-list" id="mediaList" hidden></ul>
       </div>
       <div class="field">
         <label for="fitInput">Ajuste da foto</label>
@@ -99,6 +106,38 @@
         </select>
       </div>
     </div>
+
+    <div class="studio-tab-panel" id="tab-schedule" role="tabpanel">
+      <div class="field">
+        <label>Dias do mês</label>
+        <div class="calendar-toolbar studio-cal-toolbar">
+          <button type="button" class="btn btn-sm" id="cal-select-all">Todos</button>
+          <button type="button" class="btn btn-sm" id="cal-clear">Limpar</button>
+          <span class="muted" id="cal-count">0 dias</span>
+        </div>
+        <div class="calendar-weekdays studio-cal-weekdays">
+          <span>D</span><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span>
+        </div>
+        <div class="calendar-grid" id="calendar-grid"></div>
+        <input type="hidden" id="calendar-days-input" value="[]">
+      </div>
+      <div class="field">
+        <label>Horários (BRT)</label>
+        <div id="calendar-times-list" class="calendar-times-list">
+          <div class="calendar-time-row">
+            <input type="time" name="calendar_times" value="10:00">
+          </div>
+        </div>
+        <button type="button" class="btn btn-sm" id="cal-add-time" style="margin-top:8px">+ Horário</button>
+        <span class="muted" style="display:block;margin-top:6px;font-size:11px">
+          Várias fotos + 1 horário: gera +30 min por mídia automaticamente.
+        </span>
+      </div>
+      <div class="field">
+        <label for="scheduleName">Nome da automação <span class="muted">(opcional)</span></label>
+        <input id="scheduleName" type="text" maxlength="255" placeholder="Story Studio · …">
+      </div>
+    </div>
   </section>
 
   <aside class="studio-publish">
@@ -108,7 +147,8 @@
       <img id="publishThumbImg" alt="" hidden>
     </div>
     <button type="button" class="btn-studio secondary" id="renderButton">Prévia final</button>
-    <button type="button" class="btn-studio primary" id="publishButton">PUBLISH</button>
+    <button type="button" class="btn-studio primary" id="publishButton">PUBLICAR AGORA</button>
+    <button type="button" class="btn-studio schedule" id="scheduleButton">AGENDAR</button>
     <div class="status" id="status"></div>
   </aside>
 </div>
@@ -119,5 +159,5 @@
 </dialog>
 {% endblock %}
 {% block scripts %}
-<script src="/static/story-studio.js?v=4"></script>
+<script src="/static/story-studio.js?v=5"></script>
 {% endblock %}

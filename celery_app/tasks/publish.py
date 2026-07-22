@@ -58,6 +58,19 @@ log = logging.getLogger(__name__)
 PLAYLIST_CODE = "claim-v5-storage-fallback"
 
 
+def _load_story_layout(automation: Automation) -> dict | None:
+    raw = getattr(automation, "story_layout_json", None)
+    if not raw:
+        return None
+    try:
+        import json
+
+        data = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
 def _download_media(storage, key: str, dest_path: Path) -> None:
     """Baixa do storage do worker e usa o web como recuperação.
 
@@ -401,6 +414,7 @@ def publish_to_account(
                 content_type=automation.content_type or "reel",
                 story_link=automation.story_link,
                 story_sticker_text=automation.story_sticker_text,
+                story_layout=_load_story_layout(automation),
                 playlist_index=int(posted_index),
             )
         except Exception as exc:

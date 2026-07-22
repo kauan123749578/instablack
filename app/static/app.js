@@ -69,13 +69,6 @@
   }
 
   document.addEventListener("click", (e) => {
-    const clearLogs = e.target.closest("a.logs-clear-filters, .logs-clear-filters");
-    if (clearLogs) {
-      e.preventDefault();
-      e.stopPropagation();
-      window.location.href = "/logs";
-      return;
-    }
     const link = e.target.closest("[data-nav]");
     if (!link || link.tagName === "BUTTON") return;
     const href = link.getAttribute("data-nav") || link.getAttribute("href");
@@ -519,6 +512,36 @@
 
     poll();
     dashActivityPollTimer = setInterval(poll, 7000);
+  }
+
+  function initLogsClearForm() {
+    const form = document.getElementById("logs-clear-form");
+    if (!form || form.dataset.bound === "1") return;
+    form.dataset.bound = "1";
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (!confirm("Apagar TODO o histórico de logs? Esta ação não pode ser desfeita.")) {
+        return;
+      }
+      const btn = document.getElementById("logs-clear-btn");
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = "Limpando…";
+      }
+      try {
+        const res = await fetch("/logs/clear", {
+          method: "POST",
+          headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" },
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.detail || "Falha ao limpar logs");
+        }
+        window.location.href = data.redirect || "/logs?ok=cleared";
+      } catch (_) {
+        form.submit();
+      }
+    });
   }
 
   function initLogsWatchPoll() {
@@ -1645,6 +1668,7 @@
     initProfileNotifications();
     initNotifCard();
     initDashActivityPoll();
+    initLogsClearForm();
     initLogsWatchPoll();
   }
 

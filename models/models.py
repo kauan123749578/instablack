@@ -194,6 +194,7 @@ class Automation(Base):
     caption: Mapped[str] = mapped_column(Text, default="")
     story_link: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     story_sticker_text: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    story_layout_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     video_key: Mapped[str] = mapped_column(String(512))  # mídia principal no storage
     video_original_name: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     thumb_key: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)

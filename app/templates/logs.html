@@ -6,6 +6,9 @@
   <p class="muted page-header-sub">Histórico completo — sucessos, erros e publicações ignoradas</p>
 </div>
 
+{% if ok == 'cleared' %}
+<div class="alert alert-ok">Histórico de logs apagado.</div>
+{% endif %}
 {% if request.query_params.get('watch') == '1' %}
 <div class="alert alert-ok">Publicação na fila — esta página atualiza sozinha a cada poucos segundos.</div>
 {% endif %}
@@ -35,8 +38,11 @@
     </select>
   </label>
   <button type="submit" class="btn btn-primary btn-sm">Filtrar</button>
+  <a href="/logs" class="btn btn-sm">Resetar filtros</a>
 </form>
-<a href="/logs" class="btn btn-sm logs-clear-filters">Limpar</a>
+<form method="post" action="/logs/clear" id="logs-clear-form" class="logs-clear-form">
+  <button type="submit" class="btn btn-sm btn-danger" id="logs-clear-btn">Limpar</button>
+</form>
 </div>
 
 <div class="og-glass-card og-table-panel" style="margin-top:16px" data-latest-id="{{ logs[0].id if logs else 0 }}">

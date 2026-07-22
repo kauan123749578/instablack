@@ -32,27 +32,45 @@
 
       <div class="auth-method-group">
         <div class="auth-method-group-title">API não oficial (Instagrapi)</div>
-        <div class="checkbox-row">
-          <label><input type="radio" name="auth_method" value="password" {% if auth_method == 'password' %}checked{% endif %}> Usuário e senha</label>
-          <label><input type="radio" name="auth_method" value="sessionid" {% if auth_method == 'sessionid' %}checked{% endif %}> Session ID</label>
-          <label><input type="radio" name="auth_method" value="import" {% if auth_method == 'import' %}checked{% endif %}> Importar session.json</label>
+        <div class="auth-method-chips">
+          <label class="auth-method-chip">
+            <input type="radio" name="auth_method" value="password" {% if auth_method == 'password' %}checked{% endif %}>
+            <span class="auth-method-chip-title">Usuário e senha</span>
+            <span class="auth-method-chip-desc">Login clássico + sessão salva</span>
+          </label>
+          <label class="auth-method-chip">
+            <input type="radio" name="auth_method" value="sessionid" {% if auth_method == 'sessionid' %}checked{% endif %}>
+            <span class="auth-method-chip-title">Session ID</span>
+            <span class="auth-method-chip-desc">Cookie sessionid do navegador</span>
+          </label>
+          <label class="auth-method-chip">
+            <input type="radio" name="auth_method" value="import" {% if auth_method == 'import' %}checked{% endif %}>
+            <span class="auth-method-chip-title">session.json</span>
+            <span class="auth-method-chip-desc">Importar arquivo de sessão</span>
+          </label>
         </div>
       </div>
 
       <div class="auth-method-group">
         <div class="auth-method-group-title">API web</div>
-        <div class="checkbox-row">
-          <label><input type="radio" name="auth_method" value="cookies" {% if auth_method == 'cookies' %}checked{% endif %}> Importar cookies JSON</label>
+        <div class="auth-method-chips">
+          <label class="auth-method-chip">
+            <input type="radio" name="auth_method" value="cookies" {% if auth_method == 'cookies' %}checked{% endif %}>
+            <span class="auth-method-chip-title">Cookies JSON</span>
+            <span class="auth-method-chip-desc">Cookie-Editor · Reels e Story com link</span>
+          </label>
         </div>
-        <p class="muted" style="margin:6px 0 0;font-size:12px">Extensão / Cookie-Editor. Por enquanto publica Reels (Story com link quando aplicável).</p>
       </div>
 
       <div class="auth-method-group">
         <div class="auth-method-group-title">API oficial (Meta)</div>
-        <div class="checkbox-row">
-          <label><input type="radio" name="auth_method" value="meta" {% if auth_method == 'meta' %}checked{% endif %}> Token ou login OAuth</label>
+        <div class="auth-method-chips">
+          <label class="auth-method-chip">
+            <input type="radio" name="auth_method" value="meta" {% if auth_method == 'meta' %}checked{% endif %}>
+            <span class="auth-method-chip-title">Token / OAuth</span>
+            <span class="auth-method-chip-desc">Business/Creator · cadastre em Meus Apps</span>
+          </label>
         </div>
-        <p class="muted" style="margin:6px 0 0;font-size:12px">Contas Business/Creator. Cadastre o app em <a href="/accounts/meta-apps" data-nav="/accounts/meta-apps">Meus Apps</a>.</p>
       </div>
     </fieldset>
 

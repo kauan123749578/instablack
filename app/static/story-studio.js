@@ -8,10 +8,11 @@
   const emptyState = $("emptyState");
   const statusBox = $("status");
   const previewDialog = $("previewDialog");
-  const accountInput = $("accountInput");
   const studioShell = $("studioShell");
   const publishThumbImg = $("publishThumbImg");
   const fileDropLabel = $("fileDropLabel");
+  const mediaList = $("mediaList");
+  const mediaCountHint = $("mediaCountHint");
 
   const BASE_WIDTH = 0.6;
   const BASE_HEIGHT = 0.068625;
@@ -24,7 +25,8 @@
     mode: "custom",
     measuredWidth: BASE_WIDTH,
   };
-  let imageFile = null;
+  let imageFiles = [];
+  let previewIndex = 0;
   let interaction = null;
 
   function clamp(min, value, max) {
@@ -51,6 +53,12 @@
   function setStatus(message, kind = "") {
     statusBox.textContent = message || "";
     statusBox.className = `status${kind ? ` ${kind}` : ""}`;
+  }
+
+  function selectedAccountIds() {
+    return [...document.querySelectorAll('#accountsList input[type="checkbox"]:checked')]
+      .map((el) => el.value)
+      .filter(Boolean);
   }
 
   function syncModeUi() {
@@ -113,13 +121,59 @@
     };
   }
 
-  function formData() {
-    if (!imageFile) throw new Error("Escolha uma foto");
-    if (!accountInput.value) throw new Error("Selecione uma conta Instagram");
+  function showPreviewFile(file) {
+    if (!file) {
+      storyImage.removeAttribute("src");
+      storyImage.style.display = "none";
+      emptyState.style.display = "grid";
+      publishThumbImg.hidden = true;
+      const empty = $("publishThumb")?.querySelector(".publish-thumb-empty");
+      if (empty) empty.hidden = false;
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    storyImage.src = url;
+    storyImage.style.display = "block";
+    emptyState.style.display = "none";
+    publishThumbImg.src = url;
+    publishThumbImg.hidden = false;
+    const empty = $("publishThumb")?.querySelector(".publish-thumb-empty");
+    if (empty) empty.hidden = true;
     updateSticker();
-    const form = new FormData();
-    form.append("image", imageFile);
-    form.append("account_id", accountInput.value);
+  }
+
+  function renderMediaList() {
+    if (!mediaList) return;
+    if (!imageFiles.length) {
+      mediaList.hidden = true;
+      mediaList.innerHTML = "";
+      if (mediaCountHint) mediaCountHint.textContent = "";
+      fileDropLabel.textContent = "Clique ou arraste uma ou mais fotos";
+      return;
+    }
+    mediaList.hidden = false;
+    if (mediaCountHint) mediaCountHint.textContent = `(${imageFiles.length})`;
+    fileDropLabel.textContent = `${imageFiles.length} foto(s) selecionada(s)`;
+    mediaList.innerHTML = imageFiles
+      .map(
+        (file, idx) =>
+          `<li class="${idx === previewIndex ? "active" : ""}" data-idx="${idx}">` +
+          `<button type="button" class="studio-media-pick">${idx + 1}. ${escapeHtml(file.name)}</button>` +
+          `<button type="button" class="studio-media-remove" title="Remover" data-remove="${idx}">×</button></li>`
+      )
+      .join("");
+  }
+
+  function escapeHtml(s) {
+    return String(s || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function appendLayoutFields(form) {
+    updateSticker();
     form.append("url", $("urlInput").value);
     form.append("text", $("textInput").value);
     form.append("x", String(state.x));
@@ -130,7 +184,128 @@
     form.append("variant", state.variant);
     form.append("cover", $("fitInput").value === "cover" ? "true" : "false");
     form.append("draw_sticker", isCustom() ? "true" : "false");
+  }
+
+  function formDataForPreview() {
+    const file = imageFiles[previewIndex] || imageFiles[0];
+    if (!file) throw new Error("Escolha pelo menos uma foto");
+    const form = new FormData();
+    form.append("image", file);
+    const accounts = selectedAccountIds();
+    form.append("account_id", accounts[0] || "0");
+    appendLayoutFields(form);
     return form;
+  }
+
+  function formDataForPublish(accountId) {
+    const file = imageFiles[0];
+    if (!file) throw new Error("Escolha pelo menos uma foto");
+    if (!accountId) throw new Error("Selecione pelo menos uma conta");
+    if (imageFiles.length > 1) {
+      throw new Error("Para várias fotos use AGENDAR (aba Agendar + dias).");
+    }
+    const form = new FormData();
+    form.append("image", file);
+    form.append("account_id", accountId);
+    appendLayoutFields(form);
+    return form;
+  }
+
+  function formDataForSchedule() {
+    if (!imageFiles.length) throw new Error("Escolha pelo menos uma foto");
+    const accounts = selectedAccountIds();
+    if (!accounts.length) throw new Error("Selecione pelo menos uma conta");
+    const days = ($("calendar-days-input")?.value || "[]").trim();
+    let parsed = [];
+    try {
+      parsed = JSON.parse(days);
+    } catch {
+      parsed = [];
+    }
+    if (!Array.isArray(parsed) || !parsed.length) {
+      throw new Error("Selecione os dias na aba Agendar");
+    }
+    const times = [...document.querySelectorAll('#calendar-times-list input[type="time"]')]
+      .map((el) => el.value)
+      .filter(Boolean);
+    if (!times.length) throw new Error("Informe pelo menos um horário");
+
+    const form = new FormData();
+    imageFiles.forEach((file) => form.append("images", file));
+    accounts.forEach((id) => form.append("account_ids", id));
+    form.append("calendar_days", JSON.stringify(parsed));
+    times.forEach((t) => form.append("calendar_times", t));
+    form.append("name", $("scheduleName")?.value || "");
+    appendLayoutFields(form);
+    return form;
+  }
+
+  function initCalendar() {
+    const grid = $("calendar-grid");
+    const input = $("calendar-days-input");
+    const countEl = $("cal-count");
+    if (!grid || !input) return;
+
+    const selected = new Set();
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const firstDow = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const today = now.getDate();
+
+    function sync() {
+      const arr = Array.from(selected).sort((a, b) => a - b);
+      input.value = JSON.stringify(arr);
+      if (countEl) countEl.textContent = `${arr.length} dia(s)`;
+    }
+
+    function toggle(day) {
+      if (selected.has(day)) selected.delete(day);
+      else selected.add(day);
+      sync();
+      grid.querySelectorAll(".cal-day").forEach((el) => {
+        const d = parseInt(el.dataset.day, 10);
+        el.classList.toggle("cal-day--selected", selected.has(d));
+      });
+    }
+
+    for (let i = 0; i < firstDow; i++) {
+      const empty = document.createElement("div");
+      empty.className = "cal-day cal-day--empty";
+      grid.appendChild(empty);
+    }
+    for (let d = 1; d <= daysInMonth; d++) {
+      const cell = document.createElement("button");
+      cell.type = "button";
+      cell.className = "cal-day" + (d === today ? " cal-day--today" : "");
+      cell.dataset.day = String(d);
+      cell.textContent = String(d);
+      cell.addEventListener("click", () => toggle(d));
+      grid.appendChild(cell);
+    }
+
+    $("cal-select-all")?.addEventListener("click", () => {
+      for (let d = 1; d <= daysInMonth; d++) selected.add(d);
+      sync();
+      grid.querySelectorAll(".cal-day:not(.cal-day--empty)").forEach((el) => {
+        el.classList.add("cal-day--selected");
+      });
+    });
+    $("cal-clear")?.addEventListener("click", () => {
+      selected.clear();
+      sync();
+      grid.querySelectorAll(".cal-day").forEach((el) => el.classList.remove("cal-day--selected"));
+    });
+
+    $("cal-add-time")?.addEventListener("click", () => {
+      const list = $("calendar-times-list");
+      if (!list) return;
+      const row = document.createElement("div");
+      row.className = "calendar-time-row";
+      row.innerHTML = '<input type="time" name="calendar_times" value="18:00">';
+      list.appendChild(row);
+    });
   }
 
   document.querySelectorAll(".studio-tab").forEach((tab) => {
@@ -182,18 +357,30 @@
   });
 
   imageInput.addEventListener("change", () => {
-    imageFile = imageInput.files[0] || null;
-    if (!imageFile) return;
-    const url = URL.createObjectURL(imageFile);
-    storyImage.src = url;
-    storyImage.style.display = "block";
-    emptyState.style.display = "none";
-    fileDropLabel.textContent = imageFile.name;
-    publishThumbImg.src = url;
-    publishThumbImg.hidden = false;
-    const empty = $("publishThumb")?.querySelector(".publish-thumb-empty");
-    if (empty) empty.hidden = true;
-    updateSticker();
+    const picked = [...(imageInput.files || [])];
+    if (!picked.length) return;
+    imageFiles = picked.slice(0, 30);
+    previewIndex = 0;
+    renderMediaList();
+    showPreviewFile(imageFiles[0]);
+  });
+
+  mediaList?.addEventListener("click", (event) => {
+    const removeBtn = event.target.closest("[data-remove]");
+    if (removeBtn) {
+      const idx = Number(removeBtn.dataset.remove);
+      imageFiles.splice(idx, 1);
+      if (previewIndex >= imageFiles.length) previewIndex = Math.max(0, imageFiles.length - 1);
+      renderMediaList();
+      showPreviewFile(imageFiles[previewIndex] || null);
+      return;
+    }
+    const pick = event.target.closest(".studio-media-pick");
+    if (!pick) return;
+    const li = pick.closest("[data-idx]");
+    previewIndex = Number(li?.dataset.idx || 0);
+    renderMediaList();
+    showPreviewFile(imageFiles[previewIndex]);
   });
 
   $("fitInput").addEventListener("change", (event) => {
@@ -230,7 +417,7 @@
     try {
       const response = await fetch("/automations/story-studio/preview", {
         method: "POST",
-        body: formData(),
+        body: formDataForPreview(),
       });
       if (!response.ok) {
         let message = `HTTP ${response.status}`;
@@ -252,20 +439,56 @@
   });
 
   $("publishButton").addEventListener("click", async () => {
-    if (!confirm("Publicar este Story no Instagram?")) return;
+    const accounts = selectedAccountIds();
+    if (!accounts.length) {
+      setStatus("Selecione pelo menos uma conta.", "error");
+      return;
+    }
+    if (!confirm(`Publicar este Story agora em ${accounts.length} conta(s)?`)) return;
     const button = $("publishButton");
     button.disabled = true;
     setStatus("Enfileirando…");
     try {
-      const response = await fetch("/automations/story-studio/publish", {
+      let lastRedirect = "/logs?watch=1";
+      for (const accountId of accounts) {
+        const response = await fetch("/automations/story-studio/publish", {
+          method: "POST",
+          body: formDataForPublish(accountId),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload.detail || payload.error || `HTTP ${response.status}`);
+        }
+        lastRedirect = payload.redirect || lastRedirect;
+      }
+      setStatus(`Story enfileirado para ${accounts.length} conta(s).`, "ok");
+      window.location.href = lastRedirect;
+    } catch (error) {
+      setStatus(error.message, "error");
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  $("scheduleButton").addEventListener("click", async () => {
+    if (!confirm("Criar automação de Story agendado?")) return;
+    const button = $("scheduleButton");
+    button.disabled = true;
+    setStatus("Agendando…");
+    try {
+      const response = await fetch("/automations/story-studio/schedule", {
         method: "POST",
-        body: formData(),
+        body: formDataForSchedule(),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(payload.detail || payload.error || `HTTP ${response.status}`);
+        const detail = payload.detail;
+        const msg = Array.isArray(detail)
+          ? detail.map((d) => d.msg || d).join("; ")
+          : detail || payload.error || `HTTP ${response.status}`;
+        throw new Error(msg);
       }
-      setStatus(payload.message || "Enfileirado.", "ok");
+      setStatus(payload.message || "Agendado.", "ok");
       if (payload.redirect) window.location.href = payload.redirect;
     } catch (error) {
       setStatus(error.message, "error");
@@ -274,10 +497,11 @@
     }
   });
 
-  if (!accountInput.value) {
-    const webOpt = [...accountInput.options].find((o) => o.text.includes("Cookies web"));
-    if (webOpt) accountInput.value = webOpt.value;
-  }
+  // Prefere cookies web; marca a primeira conta web
+  const webBox = [...document.querySelectorAll('#accountsList input[data-web="1"]')][0];
+  if (webBox && !webBox.disabled) webBox.checked = true;
+
+  initCalendar();
 
   if (window.lucide && typeof window.lucide.createIcons === "function") {
     window.lucide.createIcons();

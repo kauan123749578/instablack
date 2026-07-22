@@ -501,6 +501,168 @@ async def story_studio_publish(
     }
 
 
+@router.post("/story-studio/schedule")
+async def story_studio_schedule(
+    request: Request,
+    url: str = Form(...),
+    text: str = Form(""),
+    x: float = Form(0.5),
+    y: float = Form(0.8),
+    width: float = Form(0.6),
+    height: float = Form(0.068625),
+    rotation: float = Form(0.0),
+    variant: str = Form("default"),
+    cover: str = Form("false"),
+    draw_sticker: str = Form("false"),
+    calendar_days: str = Form("[]"),
+    calendar_time: str = Form("10:00"),
+    name: str = Form(""),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Agenda Stories com link (API web): multi-contas, multi-dias e multi-mídias."""
+    import json
+
+    from core.story_web import normalize_story_url
+
+    layout = _parse_story_layout_form(
+        x=x,
+        y=y,
+        width=width,
+        height=height,
+        rotation=rotation,
+        variant=variant,
+        cover=cover,
+        draw_sticker=draw_sticker,
+    )
+    try:
+        normalized = normalize_story_url(url)
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc)) from exc
+
+    form = await request.form()
+    account_ids: list[int] = []
+    for raw in form.getlist("account_ids"):
+        try:
+            account_ids.append(int(str(raw)))
+        except (TypeError, ValueError):
+            continue
+    account_ids = sorted(set(account_ids))
+    if not account_ids:
+        raise HTTPException(400, detail="Selecione pelo menos uma conta")
+
+    accounts = db.scalars(
+        select(InstagramAccount).where(
+            InstagramAccount.user_id == user.id,
+            InstagramAccount.id.in_(account_ids),
+            InstagramAccount.status.in_(("active", "paused")),
+        )
+    ).all()
+    if len(accounts) != len(account_ids):
+        raise HTTPException(400, detail="Uma ou mais contas são inválidas")
+    for account in accounts:
+        if (account.provider or "instagrapi") == "meta":
+            raise HTTPException(
+                400,
+                detail=f"@{account.username}: Story com link exige cookies web (não Meta).",
+            )
+
+    days = parse_calendar_days(calendar_days)
+    if not days:
+        raise HTTPException(400, detail="Selecione pelo menos um dia do mês")
+
+    cal_times: list[str] = []
+    for raw_time in form.getlist("calendar_times") or [calendar_time]:
+        cal_times.extend(parse_calendar_times(str(raw_time)))
+    cal_times = sorted(set(cal_times))
+    if not cal_times:
+        raise HTTPException(400, detail="Informe pelo menos um horário")
+
+    images = _collect_upload_files(form, field_names=("images", "image"))
+    if not images:
+        raise HTTPException(400, detail="Envie pelo menos uma foto")
+    if len(images) > 30:
+        raise HTTPException(400, detail="No máximo 30 mídias por agendamento")
+
+    storage = get_storage()
+    video_entries: list[dict[str, str]] = []
+    for image in images:
+        raw = await image.read()
+        if not raw:
+            continue
+        if len(raw) > 25 * 1024 * 1024:
+            raise HTTPException(413, detail=f"Imagem maior que 25 MB: {image.filename}")
+        ext = Path(image.filename or "story.jpg").suffix.lower() or ".jpg"
+        if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
+            raise HTTPException(400, detail=f"Formato inválido: {image.filename}")
+        key = storage.save(io.BytesIO(raw), suggested_ext=ext)
+        video_entries.append(
+            {
+                "video_key": key,
+                "video_original_name": (image.filename or "story.jpg")[:512],
+            }
+        )
+    if not video_entries:
+        raise HTTPException(400, detail="Nenhuma imagem válida enviada")
+
+    # Um horário por mídia quando há várias fotos (igual fluxo Story em /automations/new)
+    if len(video_entries) > 1 and len(cal_times) == 1:
+        base = cal_times[0]
+        hour, minute = map(int, base.split(":"))
+        expanded: list[str] = []
+        for i in range(len(video_entries)):
+            total = hour * 60 + minute + i * 30
+            expanded.append(f"{(total // 60) % 24:02d}:{total % 60:02d}")
+        cal_times = expanded
+    elif len(video_entries) > 1 and len(cal_times) < len(video_entries):
+        raise HTTPException(
+            400,
+            detail=(
+                f"Com {len(video_entries)} mídias, informe {len(video_entries)} horários "
+                "ou deixe só um (gera +30 min por mídia)."
+            ),
+        )
+
+    sticker_text = (text or "").strip()[:60] or None
+    auto_name = (name or "").strip() or f"Story Studio · {dt.datetime.now().strftime('%d/%m %H:%M')}"
+    time_stored = times_to_storage(cal_times)
+    nxt = next_calendar_run(days, time_stored) or dt.datetime.utcnow()
+
+    automation = Automation(
+        user_id=user.id,
+        name=auto_name[:255],
+        content_type="story",
+        caption="",
+        story_link=normalized,
+        story_sticker_text=sticker_text,
+        story_layout_json=json.dumps(layout, ensure_ascii=False),
+        video_key=video_entries[0]["video_key"],
+        video_original_name=video_entries[0]["video_original_name"],
+        videos_json=videos_to_json(video_entries),
+        schedule_type="calendar",
+        start_mode="calendar",
+        calendar_days=days_to_json(days),
+        calendar_time=time_stored,
+        interval_minutes=1440,
+        status="active",
+        next_run_at=nxt,
+        current_index=0,
+    )
+    automation.accounts = list(accounts)
+    db.add(automation)
+    db.commit()
+
+    return {
+        "ok": True,
+        "message": (
+            f"Agendado: {len(video_entries)} story(s) · {len(accounts)} conta(s) · "
+            f"dias {', '.join(str(d) for d in days)}. Acompanhe em Automações."
+        ),
+        "redirect": "/automations?ok=calendar",
+        "automation_id": automation.id,
+    }
+
+
 @router.get("/media-library")
 def media_library(
     request: Request,
@@ -1417,6 +1579,7 @@ def duplicate_automation(
         caption=src.caption or "",
         story_link=src.story_link,
         story_sticker_text=src.story_sticker_text,
+        story_layout_json=getattr(src, "story_layout_json", None),
         video_key=src.video_key,
         video_original_name=src.video_original_name,
         thumb_key=src.thumb_key,

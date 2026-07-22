@@ -1,8 +1,9 @@
 """Logs globais de publicação."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request
-from sqlalchemy import desc, func, select
+from fastapi import APIRouter, Depends, Request, status
+from fastapi.responses import RedirectResponse
+from sqlalchemy import delete, desc, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.deps import get_current_user
@@ -65,5 +66,30 @@ def user_logs(
             "status_filter": status_filter,
             "account_filter": int(account_filter) if account_filter.isdigit() else None,
             "counts": counts,
+            "ok": request.query_params.get("ok"),
         },
+    )
+
+
+@router.post("/clear")
+def clear_user_logs(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Apaga o histórico de logs de publicação do usuário."""
+    account_ids = db.scalars(
+        select(InstagramAccount.id).where(InstagramAccount.user_id == user.id)
+    ).all()
+    if account_ids:
+        db.execute(delete(PublishLog).where(PublishLog.account_id.in_(list(account_ids))))
+        db.commit()
+    wants_json = "application/json" in (request.headers.get("accept") or "").lower()
+    if wants_json or request.headers.get("x-requested-with") == "XMLHttpRequest":
+        from fastapi.responses import JSONResponse
+
+        return JSONResponse({"ok": True, "redirect": "/logs?ok=cleared"})
+    return RedirectResponse(
+        "/logs?ok=cleared",
+        status_code=status.HTTP_303_SEE_OTHER,
     )
