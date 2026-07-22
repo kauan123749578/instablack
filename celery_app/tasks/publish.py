@@ -745,7 +745,13 @@ def _execute_publish(
             elif content_type == "photo":
                 result = publish_photo_feed(cl, clean_path, caption)
             else:
-                result = publish_reel(cl, clean_path, caption, thumbnail_path=thumb_path)
+                result = publish_reel(
+                    cl,
+                    clean_path,
+                    caption,
+                    thumbnail_path=thumb_path,
+                    web_cookies=web_cookies,
+                )
         except Exception as exc:
             if looks_auth_required(exc):
                 reason = f"Sessão expirada no upload: {exc}"

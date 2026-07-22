@@ -478,9 +478,28 @@ def publish_reel(
     video_path: Path,
     caption: str,
     thumbnail_path: Path | None = None,
+    web_cookies: dict[str, str] | None = None,
+    share_to_feed: bool = True,
 ) -> dict:
     if not video_path.exists():
         raise FileNotFoundError(f"Vídeo não encontrado: {video_path}")
+
+    has_web = bool(
+        web_cookies
+        and str(web_cookies.get("sessionid") or "").strip()
+        and str(web_cookies.get("csrftoken") or "").strip()
+    )
+    if has_web:
+        from core.reel_web import publish_reel_web
+
+        return publish_reel_web(
+            cl,
+            video_path,
+            caption=caption,
+            cover_path=thumbnail_path,
+            web_cookies=web_cookies,
+            share_to_feed=share_to_feed,
+        )
 
     media = cl.clip_upload(video_path, caption, thumbnail=thumbnail_path)
     url = f"https://www.instagram.com/reel/{media.code}/" if media.code else None
