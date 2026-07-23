@@ -496,7 +496,8 @@
           li.dataset.logId = String(item.id);
           li.innerHTML =
             '<span class="og-timeline-icon og-timeline-icon--' + item.status + '"><i data-lucide="' + iconFor(item.status) + '"></i></span>' +
-            '<div class="og-timeline-body"><strong>@' + escapeHtml(item.username || "?") +
+            '<div class="og-timeline-body"><strong><span class="ig-handle">@' + escapeHtml(item.username || "?") +
+            "</span>" +
             (item.automation ? " · " + escapeHtml(item.automation) : "") +
             "</strong><span>" + when + "</span></div>" +
             '<span class="og-badge og-timeline-badge ' + badgeFor(item.status) + '">' + labelFor(item.status) + "</span>";
@@ -1736,8 +1737,43 @@
     });
   }
 
+  function initPrivacyBlur() {
+    const KEY = "instablack_privacy_blur_handles";
+    const btn = document.getElementById("privacy-blur-btn");
+
+    function apply(on) {
+      document.body.classList.toggle("privacy-blur-handles", on);
+      if (btn) {
+        btn.classList.toggle("is-active", on);
+        btn.setAttribute("aria-pressed", on ? "true" : "false");
+        btn.title = on
+          ? "Mostrar @ das contas"
+          : "Desfocar @ das contas (para prints)";
+        const icon = btn.querySelector("[data-lucide]");
+        if (icon) {
+          icon.setAttribute("data-lucide", on ? "eye" : "eye-off");
+          try {
+            if (window.lucide) lucide.createIcons({ nodes: [btn] });
+          } catch (_) {}
+        }
+      }
+    }
+
+    const saved = localStorage.getItem(KEY) === "1";
+    apply(saved);
+
+    if (!btn || btn.dataset.bound === "1") return;
+    btn.dataset.bound = "1";
+    btn.addEventListener("click", () => {
+      const next = !document.body.classList.contains("privacy-blur-handles");
+      localStorage.setItem(KEY, next ? "1" : "0");
+      apply(next);
+    });
+  }
+
   function initPage() {
     initLucide();
+    initPrivacyBlur();
     initMetaAppsPage();
     initCharts();
     initPeriodPills();

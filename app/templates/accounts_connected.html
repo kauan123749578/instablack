@@ -19,7 +19,7 @@
   <ul class="offline-list">
     {% for acc in offline_accounts %}
     <li>
-      <strong>@{{ acc.username }}</strong> · {{ status_label(acc.status) }}
+      <strong class="ig-handle">@{{ acc.username }}</strong> · {{ status_label(acc.status) }}
       {% if acc.last_error %}<span class="muted">— {{ acc.last_error[:120] }}</span>{% endif %}
     </li>
     {% endfor %}
@@ -46,7 +46,7 @@
       <tbody>
         {% for acc in accounts %}
         <tr>
-          <td>@{{ acc.username }}</td>
+          <td class="ig-handle">@{{ acc.username }}</td>
           <td>
             {% if acc.provider == 'meta' %}
             <span class="og-badge badge-green">API oficial</span>

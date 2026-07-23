@@ -379,6 +379,23 @@ a:hover { color: var(--primary-hover); }
   padding: 8px; border-radius: 10px; position: relative;
 }
 .icon-btn svg { width: 20px; height: 20px; }
+.icon-btn.is-active {
+  color: #93c5fd;
+  background: rgba(17, 97, 254, 0.16);
+  border: 1px solid rgba(17, 97, 254, 0.35);
+}
+
+/* Desfoca @ das contas Instagram (prints) */
+body.privacy-blur-handles .ig-handle {
+  filter: blur(7px);
+  user-select: none;
+  pointer-events: none;
+  transition: filter 0.15s ease;
+}
+body.privacy-blur-handles .ig-handle * {
+  filter: inherit;
+}
+
 .notif-dot {
   position: absolute; top: 6px; right: 6px; width: 7px; height: 7px;
   background: var(--danger); border-radius: 50%; border: 2px solid var(--bg);

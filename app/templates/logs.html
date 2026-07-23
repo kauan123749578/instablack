@@ -62,7 +62,7 @@
         {% for log in logs %}
         <tr data-log-id="{{ log.id }}">
           <td class="og-muted">{{ log.created_at | localtime('%d/%m/%Y %H:%M:%S') }}</td>
-          <td><strong>@{{ log.account.username }}</strong></td>
+          <td><strong class="ig-handle">@{{ log.account.username }}</strong></td>
           <td class="og-muted">
             {% if log.automation %}{{ log.automation.name }}{% else %}Post imediato{% endif %}
           </td>

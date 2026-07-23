@@ -14,7 +14,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bricolage+Grotesque:wght@600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=38" />
+  <link rel="stylesheet" href="/static/style.css?v=39" />
   <link rel="stylesheet" href="/static/dashboard.css?v=40" />
   {% block head %}{% endblock %}
 </head>
@@ -127,7 +127,10 @@
           </div>
           {% endblock %}
         </div>
-        <div class="topbar-slot topbar-right">
+          <div class="topbar-slot topbar-right">
+          <button type="button" class="icon-btn" id="privacy-blur-btn" title="Desfocar @ das contas (para prints)" aria-label="Desfocar usernames" aria-pressed="false">
+            <i data-lucide="eye-off"></i>
+          </button>
           <div class="notif-wrap" id="notif-wrap">
             <button type="button" class="icon-btn" id="notif-bell-btn" title="Notificações" aria-label="Notificações" aria-expanded="false">
               <i data-lucide="bell"></i>
@@ -230,7 +233,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/lucide@0.475.0/dist/umd/lucide.min.js" crossorigin="anonymous"></script>
-  <script src="/static/app.js?v=50"></script>
+  <script src="/static/app.js?v=51"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

@@ -373,40 +373,55 @@ def _validate_public_media_url(
     expected_prefix: str,
     label: str,
 ) -> None:
-    """Confirma que a mesma URL entregue à Meta aceita HEAD e Range GET."""
-    try:
-        head = requests.head(url, allow_redirects=True, timeout=(15, 60))
-        if head.status_code != 200:
-            raise MetaInstagramError(
-                f"{label} não está acessível por HTTPS: HEAD retornou HTTP {head.status_code}."
-            )
-        content_type = (head.headers.get("Content-Type") or "").lower()
-        if expected_prefix and not content_type.startswith(expected_prefix):
-            raise MetaInstagramError(
-                f"{label} retornou Content-Type {content_type or 'ausente'}; "
-                f"esperado {expected_prefix}."
-            )
-        content_length = int(head.headers.get("Content-Length") or 0)
-        if content_length <= 0:
-            raise MetaInstagramError(f"{label} público está vazio.")
+    """Confirma que a URL pública responde (check leve + retry).
 
-        with requests.get(
-            url,
-            headers={"Range": "bytes=0-0"},
-            allow_redirects=True,
-            stream=True,
-            timeout=(15, 60),
-        ) as probe:
-            if probe.status_code not in (200, 206):
-                raise MetaInstagramError(
-                    f"{label} não aceita download: GET retornou HTTP {probe.status_code}."
-                )
-    except MetaInstagramError:
-        raise
-    except (OSError, ValueError, requests.RequestException) as exc:
+    Antes fazia HEAD + GET com timeout 60s; sob carga no Railway isso gerava
+    Read timed out em sequência. Agora: só Range GET (1 byte), timeout maior e
+    até 3 tentativas com pausa curta.
+    """
+    import time
+
+    last_exc: Exception | None = None
+    for attempt in range(3):
+        try:
+            with requests.get(
+                url,
+                headers={"Range": "bytes=0-0"},
+                allow_redirects=True,
+                stream=True,
+                timeout=(20, 120),
+            ) as probe:
+                if probe.status_code not in (200, 206):
+                    raise MetaInstagramError(
+                        f"{label} não aceita download: GET retornou HTTP {probe.status_code}."
+                    )
+                # Consome no máximo 1 chunk para liberar a conexão
+                next(probe.iter_content(chunk_size=64), b"")
+                content_type = (probe.headers.get("Content-Type") or "").lower()
+                if expected_prefix and content_type and not content_type.startswith(
+                    expected_prefix
+                ):
+                    # Alguns proxies devolvem octet-stream; não bloqueia só por isso
+                    if "octet-stream" not in content_type and "binary" not in content_type:
+                        raise MetaInstagramError(
+                            f"{label} retornou Content-Type {content_type}; "
+                            f"esperado {expected_prefix}."
+                        )
+            return
+        except MetaInstagramError:
+            raise
+        except (OSError, ValueError, requests.RequestException) as exc:
+            last_exc = exc
+            if attempt < 2:
+                time.sleep(1.5 * (attempt + 1))
+                continue
+            raise MetaInstagramError(
+                f"Não foi possível validar o download público de {label}: {exc}"
+            ) from exc
+    if last_exc is not None:
         raise MetaInstagramError(
-            f"Não foi possível validar o download público de {label}: {exc}"
-        ) from exc
+            f"Não foi possível validar o download público de {label}: {last_exc}"
+        ) from last_exc
 
 
 def _wait_container(container_id: str, access_token: str) -> None:

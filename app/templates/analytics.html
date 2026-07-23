@@ -81,7 +81,7 @@
           <tbody>
             {% for log in official.recent_reels[:15] %}
             <tr>
-              <td><strong>@{{ log.account.username if log.account else '—' }}</strong></td>
+            <td><strong class="ig-handle">@{{ log.account.username if log.account else '—' }}</strong></td>
               <td class="og-muted">{{ log.created_at | localtime('%d/%m %H:%M') }}</td>
               <td>{% if log.play_count is not none %}{{ format_count(log.play_count) }}{% else %}—{% endif %}</td>
               <td>{% if log.media_url %}<a href="{{ log.media_url }}" target="_blank" rel="noopener">Abrir</a>{% else %}—{% endif %}</td>
@@ -102,7 +102,7 @@
         <tbody>
           {% for row in official.account_rows %}
           <tr>
-            <td><strong>@{{ row.account.username }}</strong></td>
+            <td><strong class="ig-handle">@{{ row.account.username }}</strong></td>
             <td>{% if row.followers is not none %}{{ format_count(row.followers) }}{% else %}—{% endif %}</td>
             <td>{{ format_count(row.reel_views_period) }}</td>
             <td>{{ row.success_count }}</td>
@@ -228,7 +228,7 @@
           {% set acc = row.account %}
           {% set total = row.success + row.failed %}
           <tr>
-            <td><strong>@{{ acc.username }}</strong></td>
+            <td><strong class="ig-handle">@{{ acc.username }}</strong></td>
             <td class="og-muted">{{ row.provider_label }}</td>
             <td><span class="og-badge {{ status_badge_class(acc.status) }}">{{ status_label(acc.status) }}</span></td>
             <td>{{ row.success }}</td>

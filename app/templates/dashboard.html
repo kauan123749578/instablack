@@ -203,7 +203,7 @@
             {% else %}<i data-lucide="minus"></i>{% endif %}
           </span>
           <div class="og-timeline-body">
-            <strong>@{{ log.account.username }}{% if log.automation %} · {{ log.automation.name }}{% endif %}</strong>
+            <strong><span class="ig-handle">@{{ log.account.username }}</span>{% if log.automation %} · {{ log.automation.name }}{% endif %}</strong>
             <span>{{ log.created_at | localtime('%d/%m %H:%M') }}{% if log.play_count %} · {{ format_count(log.play_count) }} views{% endif %}</span>
           </div>
           <span class="og-badge og-timeline-badge {{ status_badge_class(log.status) }}">{{ status_label(log.status) }}</span>
@@ -230,7 +230,7 @@
         {% for row in official.account_rows %}
         <li class="og-dash-list-item">
           <div class="og-dash-list-body">
-            <strong>@{{ row.account.username }}</strong>
+            <strong><span class="ig-handle">@{{ row.account.username }}</span></strong>
             <span>
               {% if row.followers is not none %}{{ format_count(row.followers) }} seguidores{% else %}Seguidores —{% endif %}
               · {{ format_count(row.reel_views_period) }} views Reels
@@ -332,7 +332,7 @@
             {{ acc.username[0]|upper }}
           </div>
           <div class="og-rank-info">
-            <strong>@{{ acc.username }}</strong>
+            <strong class="ig-handle">@{{ acc.username }}</strong>
             <span>{{ status_label(acc.status) }}</span>
           </div>
           <span class="og-rank-score">{{ item.publish_count }} post{% if item.publish_count != 1 %}s{% endif %}</span>
@@ -358,7 +358,7 @@
         <li class="og-dash-list-item">
           <span class="og-timeline-icon og-timeline-icon--failed"><i data-lucide="x"></i></span>
           <div class="og-dash-list-body">
-            <strong>@{{ log.account.username }}{% if log.automation %} · {{ log.automation.name }}{% endif %}</strong>
+            <strong><span class="ig-handle">@{{ log.account.username }}</span>{% if log.automation %} · {{ log.automation.name }}{% endif %}</strong>
             <span>{{ log.created_at | localtime('%d/%m %H:%M') }}{% if log.error %} · {{ log.error[:80] }}{% endif %}</span>
           </div>
           <span class="og-badge badge-red">Falhou</span>
