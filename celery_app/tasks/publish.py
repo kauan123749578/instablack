@@ -514,6 +514,10 @@ def _execute_publish(
             if exc.code in (102, 190):
                 _mark_account_needs_login(account_id, str(exc))
                 return {"error": "meta_auth"}
+            # Conta IG restringida / checkpoint pela Meta (API code 25 / 2207050)
+            if exc.code == 25 or exc.subcode == 2207050 or _meta_user_restricted(exc):
+                _mark_account_meta_restricted(account_id, str(exc))
+                return {"error": "meta_restricted"}
             raise
 
         cover_error = str(result.get("cover_error") or "")
@@ -924,6 +928,43 @@ def _log_failure(
             f"@{uname or '?'}: {error[:180]}",
             kind="warning",
             link="/logs",
+        )
+
+
+def _meta_user_restricted(exc: MetaInstagramError) -> bool:
+    text = str(exc).lower()
+    return (
+        "user access is restricted" in text
+        or "user is restricted" in text
+        or "instagram account is restricted" in text
+        or "2207050" in text
+    )
+
+
+def _mark_account_meta_restricted(account_id: int, reason: str) -> None:
+    """Pausa conta restringida pela Meta para não ficar tentando a cada hora."""
+    from core.notifications import create_notification
+
+    msg = (
+        "Conta restringida pela Meta (API). Entre no Instagram pelo navegador (PC), "
+        "resolva o aviso/checkpoint e depois reative a conta no painel."
+    )
+    with session_scope() as db:
+        acc = db.get(InstagramAccount, account_id)
+        if not acc or acc.status in ("deleted", "banned"):
+            return
+        prev = acc.status
+        acc.status = "paused"
+        acc.last_error = (reason or msg)[:1000]
+        uid = acc.user_id
+        uname = acc.username
+    if prev != "paused":
+        create_notification(
+            uid,
+            f"@{uname} restringida pela Meta",
+            msg,
+            kind="offline",
+            link="/accounts/connected",
         )
 
 
