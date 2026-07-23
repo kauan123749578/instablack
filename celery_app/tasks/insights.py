@@ -22,6 +22,7 @@ from core.meta_instagram import (
     MetaInstagramError,
     fetch_ig_user_metrics,
     fetch_media_insights,
+    fetch_media_permalink,
 )
 from models.models import InstagramAccount, PublishLog
 
@@ -41,8 +42,10 @@ def sync_all_views() -> dict:
     errors = 0
 
     with session_scope() as db:
+        # Prioriza Meta sem views (métrica `plays` antiga falhava; precisa re-sync com `views`)
         logs = db.scalars(
             select(PublishLog)
+            .join(InstagramAccount, PublishLog.account_id == InstagramAccount.id)
             .where(
                 PublishLog.status == "success",
                 PublishLog.media_id.is_not(None),
@@ -50,6 +53,14 @@ def sync_all_views() -> dict:
                 or_(
                     PublishLog.insights_fetched_at.is_(None),
                     PublishLog.insights_fetched_at < stale_before,
+                    # Meta sem views ou sem link (sync antigo quebrava com métrica `plays`)
+                    (
+                        (InstagramAccount.provider == "meta")
+                        & (
+                            PublishLog.play_count.is_(None)
+                            | PublishLog.media_url.is_(None)
+                        )
+                    ),
                 ),
             )
             .order_by(PublishLog.created_at.desc())
@@ -205,6 +216,12 @@ def _sync_one_log_meta(log_id: int, account_id: int, media_id: str) -> bool:
         log.warning("meta insights %s: %s", media_id, exc)
         return False
 
+    permalink: str | None = None
+    try:
+        permalink = fetch_media_permalink(token, media_id)
+    except MetaInstagramError:
+        permalink = None
+
     with session_scope() as db:
         log_row = db.get(PublishLog, log_id)
         if not log_row:
@@ -217,5 +234,7 @@ def _sync_one_log_meta(log_id: int, account_id: int, media_id: str) -> bool:
         likes = stats.get("like_count")
         if likes is not None:
             log_row.like_count = likes
+        if permalink and not log_row.media_url:
+            log_row.media_url = permalink[:512]
         log_row.insights_fetched_at = dt.datetime.utcnow()
     return True

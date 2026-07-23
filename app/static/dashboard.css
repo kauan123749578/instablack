@@ -237,7 +237,21 @@ body.premium-app .shark-content { padding: 24px 32px 80px; }
   align-items: stretch;
 }
 .og-panel-activity { grid-column: 1; grid-row: 1; }
-.og-warmup-panel { grid-column: 2; grid-row: 1; }
+.og-warmup-panel {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  flex-direction: column;
+  max-height: 320px;
+  min-height: 0;
+  overflow: hidden;
+}
+.og-warmup-panel .og-dash-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  margin-top: 10px;
+}
 .og-top-players-shark {
   grid-column: 3;
   grid-row: 1 / span 2;
@@ -901,6 +915,7 @@ body.premium-app .shark-content { padding: 24px 32px 80px; }
   .og-top-players-shark { grid-column: 1 / -1; grid-row: auto; min-height: 360px; max-height: none; }
   .og-panel-activity, .og-warmup-panel, .og-failed-panel,
   .og-panel-accounts, .og-bar-panel { grid-column: auto; grid-row: auto; }
+  .og-warmup-panel { max-height: 280px; }
 }
 @media (max-width: 768px) {
   body.premium-app .shark-content { padding: 16px 14px 88px; }

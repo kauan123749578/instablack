@@ -285,41 +285,86 @@ def _parse_insights_payload(payload: dict) -> dict[str, int]:
         if not isinstance(row, dict):
             continue
         name = str(row.get("name") or "")
-        values = row.get("values")
-        if not name or not isinstance(values, list) or not values:
+        if not name:
             continue
-        first = values[0]
-        if isinstance(first, dict) and first.get("value") is not None:
-            try:
-                out[name] = int(first["value"])
-            except (TypeError, ValueError):
-                pass
+        value = None
+        total = row.get("total_value")
+        if isinstance(total, dict) and total.get("value") is not None:
+            value = total.get("value")
+        else:
+            values = row.get("values")
+            if isinstance(values, list) and values:
+                first = values[0]
+                if isinstance(first, dict):
+                    value = first.get("value")
+        if value is None:
+            continue
+        try:
+            out[name] = int(value)
+        except (TypeError, ValueError):
+            pass
     return out
 
 
 def fetch_media_insights(access_token: str, media_id: str) -> dict[str, int | None]:
-    metrics = "plays,likes,comments,shares,saved,reach,total_interactions"
-    response = requests.get(
-        _graph_url(f"{media_id}/insights"),
-        params={"metric": metrics, "access_token": access_token},
-        timeout=30,
+    """Busca views/likes do media. Meta deprecou `plays`/`video_views` — use `views`."""
+    metric_sets = (
+        "views,likes,comments,shares,saved,reach,total_interactions",
+        "views,reach,likes",
+        "views,likes",
     )
-    try:
-        parsed = _parse_insights_payload(_json_or_error(response, "Falha ao consultar insights"))
-    except MetaInstagramError:
+    parsed: dict[str, int] = {}
+    last_error: MetaInstagramError | None = None
+    for metrics in metric_sets:
         response = requests.get(
             _graph_url(f"{media_id}/insights"),
-            params={"metric": "plays,reach,likes", "access_token": access_token},
+            params={"metric": metrics, "access_token": access_token},
             timeout=30,
         )
-        parsed = _parse_insights_payload(_json_or_error(response, "Falha ao consultar insights"))
-    plays = parsed.get("plays") or parsed.get("video_views") or parsed.get("impressions")
+        try:
+            parsed = _parse_insights_payload(
+                _json_or_error(response, "Falha ao consultar insights")
+            )
+            if parsed:
+                break
+        except MetaInstagramError as exc:
+            last_error = exc
+            continue
+    if not parsed and last_error is not None:
+        raise last_error
+
+    plays = (
+        parsed.get("views")
+        or parsed.get("plays")
+        or parsed.get("video_views")
+        or parsed.get("impressions")
+    )
     return {
         "play_count": int(plays) if plays is not None else None,
         "like_count": parsed.get("likes"),
         "comments": parsed.get("comments"),
         "reach": parsed.get("reach"),
     }
+
+
+def fetch_media_permalink(access_token: str, media_id: str) -> str | None:
+    """Permalink público do post (para abrir no Instagram)."""
+    response = requests.get(
+        _graph_url(media_id),
+        params={
+            "fields": "permalink,shortcode",
+            "access_token": access_token,
+        },
+        timeout=30,
+    )
+    data = _json_or_error(response, "Falha ao consultar permalink da mídia")
+    permalink = str(data.get("permalink") or "").strip()
+    if permalink:
+        return permalink
+    shortcode = str(data.get("shortcode") or "").strip()
+    if shortcode:
+        return f"https://www.instagram.com/reel/{shortcode}/"
+    return None
 
 
 def _validate_public_media_url(
@@ -469,10 +514,15 @@ def publish_media(
     media_id = str(published.get("id") or "")
     if not media_id:
         raise MetaInstagramError("A Meta não retornou o ID da publicação.")
+    permalink: str | None = None
+    try:
+        permalink = fetch_media_permalink(access_token, media_id)
+    except MetaInstagramError:
+        permalink = None
     return {
         "id": media_id,
         "code": None,
-        "url": None,
+        "url": permalink,
         "cover_applied": bool(cover_key and not cover_error),
         "cover_error": cover_error,
     }
