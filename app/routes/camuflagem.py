@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import Response
 
 from app.deps import get_owner_only
 from app.templating import templates
