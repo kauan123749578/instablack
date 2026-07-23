@@ -1,4 +1,4 @@
-/* Camuflagem — área privada owner */
+/* Camuflagem — alinhado ao padrão premium azul do painel */
 
 .camu-tabs {
   display: flex;
@@ -7,7 +7,7 @@
   margin: 0 0 20px;
   padding: 4px;
   background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-pink, rgba(255, 255, 255, 0.08));
   border-radius: 12px;
 }
 
@@ -23,11 +23,13 @@
   font-weight: 600;
   font-size: 13px;
   cursor: pointer;
+  transition: background 0.15s, color 0.15s;
 }
 
 .camu-tab.is-active {
-  background: rgba(34, 197, 94, 0.15);
-  color: #4ade80;
+  background: var(--primary-dim, rgba(17, 97, 254, 0.14));
+  color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(17, 97, 254, 0.35);
 }
 
 .camu-panel[hidden] { display: none !important; }
@@ -43,14 +45,17 @@
 }
 
 .camu-card {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--card-gradient,
+    radial-gradient(ellipse 100% 75% at 50% 115%, rgba(17, 97, 254, 0.08) 0%, transparent 55%),
+    rgba(255, 255, 255, 0.03));
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 14px;
   padding: 16px;
 }
 
 .camu-card--out {
-  border-color: rgba(34, 197, 94, 0.35);
+  border-color: rgba(17, 97, 254, 0.4);
+  box-shadow: 0 8px 24px rgba(17, 97, 254, 0.08);
 }
 
 .camu-card-head {
@@ -61,7 +66,12 @@
   margin-bottom: 12px;
 }
 
-.camu-card-head i { width: 18px; height: 18px; color: #4ade80; }
+.camu-card-head i {
+  width: 18px;
+  height: 18px;
+  color: var(--primary-hover, #3d82ff);
+}
+
 .camu-card-head strong { font-size: 14px; }
 
 .camu-badges { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
@@ -73,12 +83,15 @@
   text-transform: uppercase;
   padding: 3px 8px;
   border-radius: 6px;
-  border: 1px solid rgba(34, 197, 94, 0.4);
-  color: #4ade80;
+  border: 1px solid rgba(17, 97, 254, 0.35);
+  color: var(--primary-hover, #3d82ff);
   opacity: 0.35;
 }
 
-.camu-badge.is-on { opacity: 1; background: rgba(34, 197, 94, 0.12); }
+.camu-badge.is-on {
+  opacity: 1;
+  background: var(--primary-dim, rgba(17, 97, 254, 0.14));
+}
 
 .camu-checks {
   display: flex;
@@ -95,7 +108,7 @@
   cursor: pointer;
 }
 
-.camu-check input { accent-color: #22c55e; }
+.camu-check input { accent-color: var(--primary, #1161FE); }
 
 .camu-card textarea,
 .camu-panel textarea {
@@ -142,29 +155,38 @@
   padding: 14px;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.02);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.015));
   color: inherit;
   cursor: pointer;
   font: inherit;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
 }
 
-.camu-mode i { width: 18px; height: 18px; margin-bottom: 6px; display: block; color: #9ca3af; }
+.camu-mode i {
+  width: 18px;
+  height: 18px;
+  margin-bottom: 6px;
+  display: block;
+  color: #9ca3af;
+}
+
 .camu-mode strong { display: block; font-size: 14px; margin-bottom: 2px; }
 .camu-mode span { font-size: 12px; color: var(--muted, #9ca3af); }
 
 .camu-mode.is-active {
-  border-color: rgba(34, 197, 94, 0.5);
-  background: rgba(34, 197, 94, 0.08);
+  border-color: rgba(17, 97, 254, 0.55);
+  background: linear-gradient(180deg, rgba(17, 97, 254, 0.16), rgba(17, 97, 254, 0.05));
+  box-shadow: 0 0 0 1px rgba(17, 97, 254, 0.2), 0 8px 20px rgba(17, 97, 254, 0.12);
 }
 
-.camu-mode.is-active i { color: #4ade80; }
+.camu-mode.is-active i { color: var(--primary-hover, #3d82ff); }
 
 .camu-mode.is-hot {
-  border-color: rgba(249, 115, 22, 0.55);
-  background: rgba(249, 115, 22, 0.1);
+  border-color: rgba(61, 130, 255, 0.65);
+  background: linear-gradient(135deg, rgba(17, 97, 254, 0.22), rgba(13, 79, 212, 0.1));
 }
 
-.camu-mode.is-hot i { color: #fb923c; }
+.camu-mode.is-hot i { color: #93c5fd; }
 
 .camu-mode-hint {
   margin: -6px 0 16px;
@@ -172,22 +194,23 @@
   color: var(--muted, #9ca3af);
 }
 
-.camu-mode-hint.is-aggr { color: #fb923c; }
+.camu-mode-hint.is-aggr { color: var(--primary-hover, #3d82ff); }
 
 .camu-drop {
-  border: 1.5px dashed rgba(34, 197, 94, 0.45);
+  border: 1.5px dashed rgba(17, 97, 254, 0.45);
   border-radius: 14px;
   padding: 28px 18px;
   text-align: center;
-  background: rgba(34, 197, 94, 0.04);
+  background: linear-gradient(180deg, rgba(17, 97, 254, 0.08), rgba(17, 97, 254, 0.02));
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
 }
 
 .camu-drop:hover,
 .camu-drop.is-drag {
-  border-color: #4ade80;
-  background: rgba(34, 197, 94, 0.1);
+  border-color: var(--primary-hover, #3d82ff);
+  background: linear-gradient(180deg, rgba(17, 97, 254, 0.16), rgba(17, 97, 254, 0.05));
+  box-shadow: 0 8px 24px rgba(17, 97, 254, 0.12);
 }
 
 .camu-drop--muted {
@@ -195,12 +218,18 @@
   background: rgba(255, 255, 255, 0.02);
 }
 
-.camu-drop--blue {
-  border-color: rgba(96, 165, 250, 0.45);
-  background: rgba(96, 165, 250, 0.05);
+.camu-drop--muted:hover,
+.camu-drop--muted.is-drag {
+  border-color: rgba(17, 97, 254, 0.4);
+  background: rgba(17, 97, 254, 0.06);
 }
 
-.camu-drop--blue i { color: #60a5fa; }
+.camu-drop--cover {
+  border-color: rgba(61, 130, 255, 0.4);
+  background: linear-gradient(180deg, rgba(61, 130, 255, 0.08), rgba(17, 97, 254, 0.02));
+}
+
+.camu-drop--cover i { color: var(--primary-hover, #3d82ff); }
 
 .camu-drop--wide { width: 100%; }
 
@@ -209,7 +238,7 @@
   height: 28px;
   margin: 0 auto 10px;
   display: block;
-  color: #4ade80;
+  color: var(--primary-hover, #3d82ff);
 }
 
 .camu-drop strong { display: block; font-size: 14px; margin-bottom: 4px; }
@@ -235,14 +264,17 @@
 
 .camu-range {
   width: 100%;
-  accent-color: #22c55e;
+  accent-color: var(--primary, #1161FE);
 }
 
 .camu-noise-val {
   margin-left: auto;
   font-size: 22px;
   font-weight: 700;
-  color: #4ade80;
+  background: var(--ig-gradient, linear-gradient(135deg, #1161FE, #3d82ff));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .camu-range-labels {
@@ -272,14 +304,63 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   cursor: pointer;
   font-size: 13px;
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .camu-niche-opt.is-active {
-  border-color: rgba(34, 197, 94, 0.5);
-  background: rgba(34, 197, 94, 0.08);
+  border-color: rgba(17, 97, 254, 0.5);
+  background: var(--primary-dim, rgba(17, 97, 254, 0.14));
 }
 
-.camu-niche-opt input { accent-color: #22c55e; }
+.camu-niche-opt input { accent-color: var(--primary, #1161FE); }
+
+.camu-preview {
+  margin-top: 16px;
+}
+
+.camu-preview-frame {
+  position: relative;
+  min-height: 220px;
+  border-radius: 14px;
+  border: 1px solid rgba(17, 97, 254, 0.25);
+  background:
+    linear-gradient(180deg, rgba(17, 97, 254, 0.08), rgba(0, 0, 0, 0.25)),
+    repeating-conic-gradient(#1a1a1a 0% 25%, #111 0% 50%) 0 0 / 20px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.camu-preview-frame img,
+.camu-preview-frame video,
+.camu-preview-frame canvas {
+  max-width: 100%;
+  max-height: 420px;
+  display: block;
+  object-fit: contain;
+}
+
+.camu-preview-empty {
+  padding: 28px 16px;
+  text-align: center;
+  color: var(--muted, #9ca3af);
+  font-size: 13px;
+}
+
+.camu-preview-empty strong {
+  display: block;
+  color: #fff;
+  margin-bottom: 4px;
+  font-size: 14px;
+}
+
+.camu-preview-meta {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted, #9ca3af);
+  text-align: center;
+}
 
 .camu-actions {
   margin-top: 20px;
@@ -318,7 +399,7 @@
 }
 
 .camu-result-item a {
-  color: #4ade80;
+  color: var(--primary-hover, #3d82ff);
   font-weight: 600;
   text-decoration: none;
 }
@@ -330,9 +411,10 @@
   margin-top: 10px;
   padding: 6px 10px;
   border-radius: 999px;
-  border: 1px solid rgba(34, 197, 94, 0.35);
+  border: 1px solid rgba(17, 97, 254, 0.35);
+  background: var(--primary-dim, rgba(17, 97, 254, 0.14));
   font-size: 12px;
-  color: #4ade80;
+  color: var(--primary-hover, #3d82ff);
 }
 
 .camu-pill i { width: 14px; height: 14px; }
@@ -352,7 +434,7 @@
   padding: 14px;
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.02);
+  background: linear-gradient(180deg, rgba(17, 97, 254, 0.06), rgba(255, 255, 255, 0.02));
 }
 
 .camu-meta-feats strong { display: block; margin-bottom: 4px; font-size: 13px; }

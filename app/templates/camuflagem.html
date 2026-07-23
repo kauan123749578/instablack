@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Camuflagem — instablack{% endblock %}
 {% block content %}
-<link rel="stylesheet" href="/static/camuflagem.css?v=1" />
+<link rel="stylesheet" href="/static/camuflagem.css?v=2" />
 
 <div class="page-header">
   <div>
@@ -85,7 +85,7 @@
       <span class="camu-drop-hint">Clique ou arraste · JPG, PNG, WEBP · até 50</span>
       <ul class="camu-file-list" id="camu-img-main-list"></ul>
     </div>
-    <div class="camu-drop camu-drop--muted" data-drop="img-cover">
+    <div class="camu-drop camu-drop--cover" data-drop="img-cover">
       <input type="file" id="camu-img-cover" accept="image/jpeg,image/png,image/webp" hidden>
       <i data-lucide="image"></i>
       <strong>Imagem de capa (opcional)</strong>
@@ -93,6 +93,21 @@
       <span class="camu-drop-hint">1 imagem · JPG, PNG, WEBP</span>
       <ul class="camu-file-list" id="camu-img-cover-list"></ul>
     </div>
+  </div>
+
+  <div class="camu-card camu-preview" id="camu-img-preview-wrap">
+    <header class="camu-card-head">
+      <i data-lucide="eye"></i>
+      <strong>Preview</strong>
+      <span class="muted" style="margin-left:auto;font-size:12px">1ª imagem · atualiza ao vivo</span>
+    </header>
+    <div class="camu-preview-frame" id="camu-img-preview">
+      <div class="camu-preview-empty" id="camu-img-preview-empty">
+        <strong>Sem preview ainda</strong>
+        Envie um criativo para ver o resultado da camuflagem aqui.
+      </div>
+    </div>
+    <p class="camu-preview-meta" id="camu-img-preview-meta"></p>
   </div>
 
   <div class="camu-card" style="margin-top:16px">
@@ -151,7 +166,7 @@
       <span class="camu-drop-hint">MP4, AVI, MOV · máx ~5 min · 50MB · até 20</span>
       <ul class="camu-file-list" id="camu-vid-main-list"></ul>
     </div>
-    <div class="camu-drop camu-drop--blue" data-drop="vid-cover">
+    <div class="camu-drop camu-drop--cover" data-drop="vid-cover">
       <input type="file" id="camu-vid-cover" accept="image/jpeg,image/png,image/webp" hidden>
       <i data-lucide="image"></i>
       <strong>Imagem de camuflagem</strong>
@@ -159,6 +174,21 @@
       <span class="camu-drop-hint">1 imagem · JPG, PNG, WEBP</span>
       <ul class="camu-file-list" id="camu-vid-cover-list"></ul>
     </div>
+  </div>
+
+  <div class="camu-card camu-preview" id="camu-vid-preview-wrap">
+    <header class="camu-card-head">
+      <i data-lucide="eye"></i>
+      <strong>Preview</strong>
+      <span class="muted" style="margin-left:auto;font-size:12px">1º frame · overlay da capa</span>
+    </header>
+    <div class="camu-preview-frame" id="camu-vid-preview">
+      <div class="camu-preview-empty" id="camu-vid-preview-empty">
+        <strong>Sem preview ainda</strong>
+        Envie um vídeo + a imagem de camuflagem para ver o efeito.
+      </div>
+    </div>
+    <p class="camu-preview-meta" id="camu-vid-preview-meta"></p>
   </div>
 
   <div class="camu-actions">
@@ -211,5 +241,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script type="module" src="/static/camuflagem.js?v=1"></script>
+<script type="module" src="/static/camuflagem.js?v=2"></script>
 {% endblock %}

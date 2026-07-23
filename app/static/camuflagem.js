@@ -1,9 +1,14 @@
 /** Camuflagem — orquestração das abas (owner-only page) */
 
 import { initTextTab } from "./camuflagem/text.js";
-import { processImagesBatch, loadImageFromFile } from "./camuflagem/image.js";
+import {
+  processImage,
+  processImagesBatch,
+  loadImageFromFile,
+  MODE_CFG,
+} from "./camuflagem/image.js";
 import { encodeHotMp4 } from "./camuflagem/hot.js";
-import { processVideoFile } from "./camuflagem/video.js";
+import { processVideoFile, adversarialNoise } from "./camuflagem/video.js";
 import { stripMetadataBatch } from "./camuflagem/metadata.js";
 import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
 
@@ -37,7 +42,13 @@ function renderResults(container, files) {
     const url = URL.createObjectURL(f.blob);
     const row = document.createElement("div");
     row.className = "camu-result-item";
-    row.innerHTML = `<span>${f.name}</span><a href="${url}" download="${f.name}">Baixar</a>`;
+    const isVid = (f.name || "").endsWith(".mp4") || (f.blob?.type || "").includes("video");
+    const thumb = isVid
+      ? `<video src="${url}" muted playsinline style="width:64px;height:64px;object-fit:cover;border-radius:8px"></video>`
+      : f.blob?.type?.startsWith("image/")
+        ? `<img src="${url}" alt="" style="width:64px;height:64px;object-fit:cover;border-radius:8px">`
+        : "";
+    row.innerHTML = `${thumb}<span style="flex:1">${f.name}</span><a href="${url}" download="${f.name}">Baixar</a>`;
     container.appendChild(row);
   });
 }
@@ -79,6 +90,25 @@ function listFiles(el, files, maxShow = 12) {
   }
 }
 
+function debounce(fn, ms) {
+  let t;
+  return (...args) => {
+    clearTimeout(t);
+    t = setTimeout(() => fn(...args), ms);
+  };
+}
+
+function setPreviewMedia(frameEl, emptyEl, node) {
+  if (!frameEl) return;
+  frameEl.querySelectorAll("img,video,canvas").forEach((n) => n.remove());
+  if (!node) {
+    if (emptyEl) emptyEl.hidden = false;
+    return;
+  }
+  if (emptyEl) emptyEl.hidden = true;
+  frameEl.appendChild(node);
+}
+
 function initTabs() {
   const tabs = document.querySelectorAll("[data-camu-tabs] .camu-tab");
   const panels = document.querySelectorAll(".camu-panel");
@@ -107,13 +137,52 @@ function initImageTab() {
   const runBtn = $("#camu-img-run");
   const progress = $("#camu-img-progress");
   const results = $("#camu-img-results");
+  const previewFrame = $("#camu-img-preview");
+  const previewEmpty = $("#camu-img-preview-empty");
+  const previewMeta = $("#camu-img-preview-meta");
   let mode = "normal";
+  let previewToken = 0;
+
+  const refreshPreview = debounce(async () => {
+    const file = mainInput?.files?.[0];
+    if (!file) {
+      setPreviewMedia(previewFrame, previewEmpty, null);
+      if (previewMeta) previewMeta.textContent = "";
+      return;
+    }
+    const token = ++previewToken;
+    try {
+      const img = await loadImageFromFile(file);
+      const coverFile = coverInput?.files?.[0] || null;
+      const cover = coverFile ? await loadImageFromFile(coverFile) : null;
+      if (token !== previewToken) return;
+      const noiseLevel = Number(noise?.value || 6);
+      const blend = MODE_CFG[mode]?.blend ?? 0.9;
+      const result = processImage(img, cover, 0, blend, noiseLevel, mode);
+      if (token !== previewToken) return;
+      const imgEl = document.createElement("img");
+      imgEl.alt = "Preview camuflado";
+      imgEl.src = result.dataUrl;
+      setPreviewMedia(previewFrame, previewEmpty, imgEl);
+      if (previewMeta) {
+        const niche = document.querySelector('input[name="niche"]:checked')?.value || "default";
+        previewMeta.textContent =
+          niche === "default"
+            ? `Modo ${mode} · ruído ${noiseLevel} · saída PNG`
+            : `Modo ${mode} · ruído ${noiseLevel} · perfil ${niche.toUpperCase()} (MP4 no export)`;
+      }
+    } catch (err) {
+      console.error(err);
+      if (previewMeta) previewMeta.textContent = err.message || String(err);
+    }
+  }, 180);
 
   document.querySelectorAll("[data-img-modes] .camu-mode").forEach((btn) => {
     btn.addEventListener("click", () => {
       document.querySelectorAll("[data-img-modes] .camu-mode").forEach((b) => b.classList.remove("is-active"));
       btn.classList.add("is-active");
       mode = btn.dataset.mode || "normal";
+      refreshPreview();
     });
   });
 
@@ -121,11 +190,13 @@ function initImageTab() {
     lab.addEventListener("click", () => {
       document.querySelectorAll("[data-niche] .camu-niche-opt").forEach((l) => l.classList.remove("is-active"));
       lab.classList.add("is-active");
+      refreshPreview();
     });
   });
 
   noise?.addEventListener("input", () => {
     if (noiseVal) noiseVal.textContent = noise.value;
+    refreshPreview();
   });
 
   const syncBtn = () => {
@@ -143,10 +214,14 @@ function initImageTab() {
       }
       listFiles($("#camu-img-main-list"), mainInput.files);
       syncBtn();
+      refreshPreview();
     },
   });
   bindDrop($('[data-drop="img-cover"]'), coverInput, {
-    onChange: () => listFiles($("#camu-img-cover-list"), coverInput.files),
+    onChange: () => {
+      listFiles($("#camu-img-cover-list"), coverInput.files);
+      refreshPreview();
+    },
   });
 
   runBtn?.addEventListener("click", async () => {
@@ -211,7 +286,78 @@ function initVideoTab() {
   const progress = $("#camu-vid-progress");
   const results = $("#camu-vid-results");
   const hint = $("#camu-vid-hint");
+  const previewFrame = $("#camu-vid-preview");
+  const previewEmpty = $("#camu-vid-preview-empty");
+  const previewMeta = $("#camu-vid-preview-meta");
   let mode = "normal";
+  let previewToken = 0;
+  let previewUrl = null;
+
+  const refreshPreview = debounce(async () => {
+    const videoFile = mainInput?.files?.[0];
+    const coverFile = coverInput?.files?.[0];
+    if (!videoFile || !coverFile) {
+      setPreviewMedia(previewFrame, previewEmpty, null);
+      if (previewMeta) previewMeta.textContent = "";
+      return;
+    }
+    const token = ++previewToken;
+    try {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      previewUrl = URL.createObjectURL(videoFile);
+      const video = document.createElement("video");
+      video.muted = true;
+      video.playsInline = true;
+      video.preload = "auto";
+      video.src = previewUrl;
+      await new Promise((resolve, reject) => {
+        video.onloadeddata = () => resolve();
+        video.onerror = () => reject(new Error("Falha ao ler vídeo"));
+      });
+      video.currentTime = Math.min(0.2, (video.duration || 1) * 0.05);
+      await new Promise((resolve) => {
+        video.onseeked = () => resolve();
+      });
+      if (token !== previewToken) return;
+
+      const coverImg = await loadImageFromFile(coverFile);
+      if (token !== previewToken) return;
+
+      const w = video.videoWidth || 720;
+      const h = video.videoHeight || 1280;
+      const canvas = document.createElement("canvas");
+      const maxW = 720;
+      const scale = Math.min(1, maxW / w);
+      canvas.width = Math.round(w * scale);
+      canvas.height = Math.round(h * scale);
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      ctx.globalAlpha = 0.1;
+      ctx.drawImage(coverImg, 0, 0, canvas.width, canvas.height);
+      ctx.globalAlpha = 1;
+      if (mode === "agressiva") {
+        adversarialNoise(ctx, 4);
+        ctx.globalAlpha = 0.2;
+        ctx.fillStyle = "#0000ff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.globalAlpha = 1;
+      }
+
+      const img = document.createElement("img");
+      img.alt = "Preview frame camuflado";
+      img.src = canvas.toDataURL("image/jpeg", 0.92);
+      setPreviewMedia(previewFrame, previewEmpty, img);
+      if (previewMeta) {
+        previewMeta.textContent =
+          mode === "agressiva"
+            ? "Modo agressiva · overlay 10% + ruído (sample do 1º frame)"
+            : "Modo normal · overlay da capa a 10% (sample do 1º frame)";
+      }
+    } catch (err) {
+      console.error(err);
+      if (previewMeta) previewMeta.textContent = err.message || String(err);
+    }
+  }, 220);
 
   document.querySelectorAll("[data-vid-modes] .camu-mode").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -228,6 +374,7 @@ function initVideoTab() {
             ? "Aplica distorção por frame, ruído anti-IA e flashes. Mais lento."
             : "Mistura a imagem de camuflagem a 10% em cada frame. Chrome/Edge.";
       }
+      refreshPreview();
     });
   });
 
@@ -246,12 +393,14 @@ function initVideoTab() {
       mainInput.files = dt.files;
       listFiles($("#camu-vid-main-list"), mainInput.files);
       syncBtn();
+      refreshPreview();
     },
   });
   bindDrop($('[data-drop="vid-cover"]'), coverInput, {
     onChange: () => {
       listFiles($("#camu-vid-cover-list"), coverInput.files);
       syncBtn();
+      refreshPreview();
     },
   });
 
