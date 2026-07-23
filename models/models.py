@@ -214,6 +214,10 @@ class Automation(Base):
     # Variação de horário (± minutos) para não ficar intervalo exato
     jitter_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     jitter_minutes: Mapped[int] = mapped_column(Integer, default=10)
+    # Espaçamento entre contas no mesmo ciclo (anti-farm)
+    stagger_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    stagger_min_minutes: Mapped[int] = mapped_column(Integer, default=2)
+    stagger_max_minutes: Mapped[int] = mapped_column(Integer, default=8)
     # Posta N ciclos e descansa rest_minutes (0 = desligado)
     posts_per_batch: Mapped[int] = mapped_column(Integer, default=0)
     rest_minutes: Mapped[int] = mapped_column(Integer, default=0)

@@ -25,11 +25,15 @@ from app.utils.calendar_schedule import (
     times_to_storage,
 )
 from app.utils.anti_farm import (
+    DEFAULT_STAGGER_MAX,
+    DEFAULT_STAGGER_MIN,
     account_publish_countdown,
     captions_from_textarea,
     captions_textarea_value,
     captions_to_json,
+    clamp_stagger_minutes,
     parse_captions_json,
+    resolve_stagger_config,
 )
 from app.utils.automation_schedule import (
     parse_jitter_enabled,
@@ -199,13 +203,24 @@ def _schedule_humanize_fields(
     jitter_minutes: object = 10,
     posts_per_batch: object = 0,
     rest_minutes: object = 0,
+    stagger_enabled: object = True,
+    stagger_min_minutes: object = DEFAULT_STAGGER_MIN,
+    stagger_max_minutes: object = DEFAULT_STAGGER_MAX,
 ) -> dict[str, object]:
+    lo, hi = clamp_stagger_minutes(stagger_min_minutes, stagger_max_minutes)
+    if isinstance(stagger_enabled, bool):
+        stagger_on = stagger_enabled
+    else:
+        stagger_on = str(stagger_enabled or "").strip().lower() in ("1", "on", "true", "yes")
     return {
         "jitter_enabled": parse_jitter_enabled(jitter_enabled),
         "jitter_minutes": parse_jitter_minutes(jitter_minutes),
         "posts_per_batch": parse_posts_per_batch(posts_per_batch),
         "rest_minutes": parse_rest_minutes(rest_minutes),
         "posts_in_batch": 0,
+        "stagger_enabled": stagger_on,
+        "stagger_min_minutes": lo,
+        "stagger_max_minutes": hi,
     }
 
 
@@ -893,6 +908,9 @@ async def create_automation(
     jitter_minutes: int = Form(10),
     posts_per_batch: int = Form(0),
     rest_minutes: int = Form(0),
+    stagger_enabled: str = Form(""),
+    stagger_min_minutes: int = Form(DEFAULT_STAGGER_MIN),
+    stagger_max_minutes: int = Form(DEFAULT_STAGGER_MAX),
     thumb: UploadFile | None = File(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -902,6 +920,9 @@ async def create_automation(
         jitter_minutes=jitter_minutes,
         posts_per_batch=posts_per_batch,
         rest_minutes=rest_minutes,
+        stagger_enabled=stagger_enabled,
+        stagger_min_minutes=stagger_min_minutes,
+        stagger_max_minutes=stagger_max_minutes,
     )
     captions_json = captions_to_json(captions_from_textarea(captions_alt))
     submitted_cal_times: list[str] = []
@@ -1094,7 +1115,9 @@ async def create_automation(
         countdown = 0
         n_accounts = len(accounts)
         prefs = get_anti_farm_prefs(user)
-        use_stagger = bool(prefs.get("stagger_enabled", True))
+        use_stagger = bool(humanize["stagger_enabled"]) and bool(prefs.get("stagger_enabled", True))
+        stagger_lo = int(humanize["stagger_min_minutes"])  # type: ignore[arg-type]
+        stagger_hi = int(humanize["stagger_max_minutes"])  # type: ignore[arg-type]
         use_caption_rotate = bool(prefs.get("caption_rotate_enabled", True))
         alt_caps = parse_captions_json(captions_json) if use_caption_rotate else []
         for v_idx, entry in enumerate(video_entries):
@@ -1103,7 +1126,16 @@ async def create_automation(
                     acc_caption = alt_caps[acc_idx % len(alt_caps)]
                 else:
                     acc_caption = caption
-                stagger = account_publish_countdown(acc_idx, n_accounts) if use_stagger else 0
+                stagger = (
+                    account_publish_countdown(
+                        acc_idx,
+                        n_accounts,
+                        min_minutes=stagger_lo,
+                        max_minutes=stagger_hi,
+                    )
+                    if use_stagger
+                    else 0
+                )
                 publish_once.apply_async(
                     args=[
                         acc.id,
@@ -1118,7 +1150,12 @@ async def create_automation(
                 )
             if len(video_entries) > 1:
                 wave = (
-                    account_publish_countdown(max(n_accounts - 1, 0), n_accounts)
+                    account_publish_countdown(
+                        max(n_accounts - 1, 0),
+                        n_accounts,
+                        min_minutes=stagger_lo,
+                        max_minutes=stagger_hi,
+                    )
                     if use_stagger
                     else 0
                 )
@@ -1210,6 +1247,9 @@ async def create_reel_upload_draft(
     jitter_minutes: int = Form(10),
     posts_per_batch: int = Form(0),
     rest_minutes: int = Form(0),
+    stagger_enabled: str = Form(""),
+    stagger_min_minutes: int = Form(DEFAULT_STAGGER_MIN),
+    stagger_max_minutes: int = Form(DEFAULT_STAGGER_MAX),
     thumb: UploadFile | None = File(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -1254,6 +1294,9 @@ async def create_reel_upload_draft(
         jitter_minutes=jitter_minutes,
         posts_per_batch=posts_per_batch,
         rest_minutes=rest_minutes,
+        stagger_enabled=stagger_enabled,
+        stagger_min_minutes=stagger_min_minutes,
+        stagger_max_minutes=stagger_max_minutes,
     )
     captions_json = captions_to_json(captions_from_textarea(captions_alt))
     storage = get_storage()
@@ -1509,12 +1552,19 @@ def finish_reel_batch_upload(
         countdown = 0
         n_accounts = len(accounts)
         prefs = get_anti_farm_prefs(user)
-        use_stagger = bool(prefs.get("stagger_enabled", True))
+        use_stagger, stagger_lo, stagger_hi = resolve_stagger_config(a, prefs)
         use_caption_rotate = bool(prefs.get("caption_rotate_enabled", True))
         for index, entry in enumerate(entries):
             for account_index, account in enumerate(accounts):
                 stagger = (
-                    account_publish_countdown(account_index, n_accounts) if use_stagger else 0
+                    account_publish_countdown(
+                        account_index,
+                        n_accounts,
+                        min_minutes=stagger_lo,
+                        max_minutes=stagger_hi,
+                    )
+                    if use_stagger
+                    else 0
                 )
                 publish_to_account.apply_async(
                     args=[a.id, account.id, entry["video_key"], index],
@@ -1522,7 +1572,12 @@ def finish_reel_batch_upload(
                     countdown=countdown + stagger,
                 )
             wave = (
-                account_publish_countdown(max(n_accounts - 1, 0), n_accounts)
+                account_publish_countdown(
+                    max(n_accounts - 1, 0),
+                    n_accounts,
+                    min_minutes=stagger_lo,
+                    max_minutes=stagger_hi,
+                )
                 if use_stagger
                 else 0
             )
@@ -1696,6 +1751,9 @@ def duplicate_automation(
         calendar_time=src.calendar_time,
         jitter_enabled=bool(getattr(src, "jitter_enabled", False)),
         jitter_minutes=int(getattr(src, "jitter_minutes", 10) or 10),
+        stagger_enabled=bool(getattr(src, "stagger_enabled", True)),
+        stagger_min_minutes=int(getattr(src, "stagger_min_minutes", DEFAULT_STAGGER_MIN) or DEFAULT_STAGGER_MIN),
+        stagger_max_minutes=int(getattr(src, "stagger_max_minutes", DEFAULT_STAGGER_MAX) or DEFAULT_STAGGER_MAX),
         posts_per_batch=int(getattr(src, "posts_per_batch", 0) or 0),
         rest_minutes=int(getattr(src, "rest_minutes", 0) or 0),
         posts_in_batch=0,
@@ -1725,6 +1783,9 @@ async def edit_automation(
     jitter_minutes: int = Form(10),
     posts_per_batch: int = Form(0),
     rest_minutes: int = Form(0),
+    stagger_enabled: str = Form(""),
+    stagger_min_minutes: int = Form(DEFAULT_STAGGER_MIN),
+    stagger_max_minutes: int = Form(DEFAULT_STAGGER_MAX),
     thumb: UploadFile | None = File(None),
     remove_thumb: bool = Form(False),
     db: Session = Depends(get_db),
@@ -1782,6 +1843,9 @@ async def edit_automation(
         jitter_minutes=jitter_minutes,
         posts_per_batch=posts_per_batch,
         rest_minutes=rest_minutes,
+        stagger_enabled=stagger_enabled,
+        stagger_min_minutes=stagger_min_minutes,
+        stagger_max_minutes=stagger_max_minutes,
     )
     a.caption = caption
     a.captions_json = captions_to_json(captions_from_textarea(captions_alt))
@@ -1791,6 +1855,9 @@ async def edit_automation(
     a.jitter_minutes = int(humanize["jitter_minutes"])  # type: ignore[arg-type]
     a.posts_per_batch = int(humanize["posts_per_batch"])  # type: ignore[arg-type]
     a.rest_minutes = int(humanize["rest_minutes"])  # type: ignore[arg-type]
+    a.stagger_enabled = bool(humanize["stagger_enabled"])
+    a.stagger_min_minutes = int(humanize["stagger_min_minutes"])  # type: ignore[arg-type]
+    a.stagger_max_minutes = int(humanize["stagger_max_minutes"])  # type: ignore[arg-type]
     a.accounts = list(accounts)
     if not accounts:
         a.status = "paused"

@@ -93,6 +93,8 @@ def aquecimento_page(
 @router.post("/prefs")
 def save_aquecimento_prefs(
     stagger_enabled: str = Form(""),
+    stagger_min_minutes: int = Form(2),
+    stagger_max_minutes: int = Form(8),
     media_rotate_enabled: str = Form(""),
     caption_rotate_enabled: str = Form(""),
     meta_warmup_enabled: str = Form(""),
@@ -101,6 +103,8 @@ def save_aquecimento_prefs(
 ):
     prefs = prefs_from_form(
         stagger_enabled=stagger_enabled,
+        stagger_min_minutes=stagger_min_minutes,
+        stagger_max_minutes=stagger_max_minutes,
         media_rotate_enabled=media_rotate_enabled,
         caption_rotate_enabled=caption_rotate_enabled,
         meta_warmup_enabled=meta_warmup_enabled,

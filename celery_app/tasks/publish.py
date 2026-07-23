@@ -21,7 +21,7 @@ from sqlalchemy import select, text
 
 from app.config import settings
 from app.security import decrypt_secret
-from app.utils.anti_farm import account_publish_countdown, resolve_caption_for_slot
+from app.utils.anti_farm import account_publish_countdown, resolve_caption_for_slot, resolve_stagger_config
 from app.utils.auth_failures import (
     auth_status_reason,
     latest_auth_failure_reason,
@@ -211,6 +211,9 @@ def execute_automation(self, automation_id: int) -> dict:
     rotate_keys: list[str] = []
     owner_user_id: int | None = None
     anti_prefs: dict = {}
+    stagger_enabled = True
+    stagger_min = 2
+    stagger_max = 8
 
     with session_scope() as db:
         automation = db.execute(
@@ -223,6 +226,9 @@ def execute_automation(self, automation_id: int) -> dict:
 
         owner_user_id = automation.user_id
         anti_prefs = get_anti_farm_prefs_by_id(db, automation.user_id)
+        stagger_enabled, stagger_min, stagger_max = resolve_stagger_config(
+            automation, anti_prefs
+        )
 
         # Dispara lazy-load das contas ainda com o row lock
         accounts = list(automation.accounts)
@@ -310,11 +316,20 @@ def execute_automation(self, automation_id: int) -> dict:
         and len(rotate_keys) >= 2
         and queue_index is not None
     )
-    use_stagger = bool(anti_prefs.get("stagger_enabled", True))
+    use_stagger = stagger_enabled
     use_caption_rotate = bool(anti_prefs.get("caption_rotate_enabled", True))
 
     for i, account_id in enumerate(account_ids):
-        countdown = account_publish_countdown(i, n_accounts) if use_stagger else 0
+        countdown = (
+            account_publish_countdown(
+                i,
+                n_accounts,
+                min_minutes=stagger_min,
+                max_minutes=stagger_max,
+            )
+            if use_stagger
+            else 0
+        )
         if rotate:
             acc_index = (int(queue_index) + i) % len(rotate_keys)
             acc_video_key = rotate_keys[acc_index] or video_key
@@ -339,6 +354,8 @@ def execute_automation(self, automation_id: int) -> dict:
         "code": PLAYLIST_CODE,
         "anti_farm": {
             "stagger": use_stagger,
+            "stagger_min": stagger_min,
+            "stagger_max": stagger_max,
             "media_rotate": rotate,
             "caption_rotate": use_caption_rotate,
         },

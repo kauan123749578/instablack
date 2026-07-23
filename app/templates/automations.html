@@ -108,6 +108,11 @@
     <ul class="auto-meta">
       <li>A cada <strong>{% if a.schedule_type == 'calendar' %}dias {{ a.calendar_days }} às {{ format_calendar_times(a.calendar_time) }}{% else %}{{ a.interval_minutes }} min{% endif %}</strong>
         {% if a.jitter_enabled %} · variação ±{{ a.jitter_minutes or 10 }} min{% endif %}
+        {% if a.stagger_enabled is not defined or a.stagger_enabled %}
+          · espaçamento contas {{ a.stagger_min_minutes|default(2) }}–{{ a.stagger_max_minutes|default(8) }} min
+        {% else %}
+          · espaçamento contas OFF
+        {% endif %}
         {% if a.posts_per_batch and a.rest_minutes %} · {{ a.posts_per_batch }} posts / descanso {{ a.rest_minutes }} min{% endif %}
       </li>
       <li>{{ a.accounts|length }} conta(s):
@@ -234,6 +239,25 @@
               Contas Meta com menos de 7 dias usam mínimo 3h entre posts.
             </span>
           </label>
+          <fieldset>
+            <legend>Espaçamento entre contas <span class="muted">(anti-farm)</span></legend>
+            <label class="checkbox-row">
+              <input type="checkbox" name="stagger_enabled" value="1"
+                     {% if a.stagger_enabled is not defined or a.stagger_enabled %}checked{% endif %}>
+              Espalhar posts entre as contas do mesmo ciclo
+            </label>
+            <label>Mínimo (minutos)
+              <input type="number" name="stagger_min_minutes" min="1" max="120"
+                     value="{{ a.stagger_min_minutes if a.stagger_min_minutes is defined and a.stagger_min_minutes is not none else 2 }}">
+            </label>
+            <label>Máximo (minutos)
+              <input type="number" name="stagger_max_minutes" min="1" max="120"
+                     value="{{ a.stagger_max_minutes if a.stagger_max_minutes is defined and a.stagger_max_minutes is not none else 8 }}">
+            </label>
+            <p class="muted" style="margin:6px 0 0;font-size:12px">
+              Conta 1 posta já; as seguintes esperam i × (mín–máx) minutos. Evita o padrão 02:14:27…02:14:58.
+            </p>
+          </fieldset>
           <fieldset>
             <legend>Variação de horário</legend>
             <label class="checkbox-row">

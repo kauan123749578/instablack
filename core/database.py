@@ -133,6 +133,12 @@ def _sqlite_migrate() -> None:
             conn.execute(text("ALTER TABLE automations ADD COLUMN jitter_enabled BOOLEAN DEFAULT 0"))
         if "jitter_minutes" not in cols:
             conn.execute(text("ALTER TABLE automations ADD COLUMN jitter_minutes INTEGER DEFAULT 10"))
+        if "stagger_enabled" not in cols:
+            conn.execute(text("ALTER TABLE automations ADD COLUMN stagger_enabled BOOLEAN DEFAULT 1"))
+        if "stagger_min_minutes" not in cols:
+            conn.execute(text("ALTER TABLE automations ADD COLUMN stagger_min_minutes INTEGER DEFAULT 2"))
+        if "stagger_max_minutes" not in cols:
+            conn.execute(text("ALTER TABLE automations ADD COLUMN stagger_max_minutes INTEGER DEFAULT 8"))
         if "posts_per_batch" not in cols:
             conn.execute(text("ALTER TABLE automations ADD COLUMN posts_per_batch INTEGER DEFAULT 0"))
         if "rest_minutes" not in cols:
@@ -273,6 +279,12 @@ def _postgres_migrate() -> None:
                 conn.execute(text("ALTER TABLE automations ADD COLUMN jitter_enabled BOOLEAN DEFAULT FALSE"))
             if "jitter_minutes" not in cols:
                 conn.execute(text("ALTER TABLE automations ADD COLUMN jitter_minutes INTEGER DEFAULT 10"))
+            if "stagger_enabled" not in cols:
+                conn.execute(text("ALTER TABLE automations ADD COLUMN stagger_enabled BOOLEAN DEFAULT TRUE"))
+            if "stagger_min_minutes" not in cols:
+                conn.execute(text("ALTER TABLE automations ADD COLUMN stagger_min_minutes INTEGER DEFAULT 2"))
+            if "stagger_max_minutes" not in cols:
+                conn.execute(text("ALTER TABLE automations ADD COLUMN stagger_max_minutes INTEGER DEFAULT 8"))
             if "posts_per_batch" not in cols:
                 conn.execute(text("ALTER TABLE automations ADD COLUMN posts_per_batch INTEGER DEFAULT 0"))
             if "rest_minutes" not in cols:

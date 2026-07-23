@@ -5,24 +5,19 @@
   <div>
     <h2>Aquecimento</h2>
     <p class="muted page-header-sub">
-      Proteções anti-farm nas automações Meta: espaçar posts entre contas, variar vídeo/legenda
-      e aquecer contas novas com intervalo maior. Ligue ou desligue cada função abaixo.
+      Proteções anti-farm: espaçar posts entre contas, variar vídeo/legenda e aquecer contas Meta novas.
+      Aqui você liga/desliga e define o padrão; em cada automação (Editar) dá para ajustar o espaçamento.
     </p>
   </div>
 </div>
 
-{% if saved %}<div class="alert alert-ok">Preferências salvas. Valem para todas as suas automações.</div>{% endif %}
+{% if saved %}<div class="alert alert-ok">Preferências salvas.</div>{% endif %}
 
 <div class="panel" style="margin-bottom:20px">
   <div class="panel-header"><h3>Por que isso existe?</h3></div>
-  <p class="muted" style="margin:0 0 10px;font-size:14px;line-height:1.5">
-    Quando várias contas publicam o <strong>mesmo vídeo</strong>, com a <strong>mesma legenda</strong>,
-    no <strong>mesmo minuto</strong>, a Meta detecta padrão de farm e pode restringir a conta
-    (“User is restricted”). Estas funções espalham e diversificam os posts automaticamente.
-  </p>
-  <p class="muted" style="margin:0;font-size:13px">
-    Configure também as <a href="/automations" data-nav="/automations">Automações</a>
-    (legendas alternativas e playlist com vários vídeos) para a rotação funcionar bem.
+  <p class="muted" style="margin:0;font-size:14px;line-height:1.5">
+    Quando várias contas publicam no <strong>mesmo minuto</strong> (ex.: 02:14:27…02:14:58), a Meta
+    detecta farm e pode restringir (“User is restricted”). O espaçamento deixa minutos entre cada @ no mesmo ciclo.
   </p>
 </div>
 
@@ -31,7 +26,7 @@
     <i data-lucide="shield-check"></i>
     <div>
       <h3 style="margin:0">Funções (ligar / desligar)</h3>
-      <p class="muted" style="margin:4px 0 0;font-size:13px">Padrão: tudo ligado. Desmarque o que não quiser usar.</p>
+      <p class="muted" style="margin:4px 0 0;font-size:13px">Padrão: tudo ligado.</p>
     </div>
   </header>
 
@@ -43,20 +38,37 @@
       <span class="muted" style="font-size:13px;line-height:1.45">{{ meta.help }}</span>
     </span>
   </label>
+  {% if key == 'stagger_enabled' %}
+  <div style="margin:-8px 0 18px 28px;display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:420px">
+    <label>Mínimo (minutos)
+      <input type="number" name="stagger_min_minutes" min="1" max="120"
+             value="{{ prefs.stagger_min_minutes|default(2) }}">
+    </label>
+    <label>Máximo (minutos)
+      <input type="number" name="stagger_max_minutes" min="1" max="120"
+             value="{{ prefs.stagger_max_minutes|default(8) }}">
+    </label>
+    <p class="muted" style="grid-column:1/-1;margin:0;font-size:12px">
+      Padrão para automações novas. Em “1 POR HORA”, abra Editar e ajuste o espaçamento daquela automação.
+    </p>
+  </div>
+  {% endif %}
   {% endfor %}
 
   <button type="submit" class="btn btn-primary">Salvar preferências</button>
 </form>
 
 <div class="panel" style="margin-bottom:20px">
-  <div class="panel-header"><h3>Onde configurar na prática</h3></div>
+  <div class="panel-header"><h3>Onde configurar</h3></div>
   <ul class="muted" style="margin:0;padding-left:18px;font-size:14px;line-height:1.7">
-    <li><strong>Espaçamento entre contas</strong> — automático no worker (sem campo extra).</li>
-    <li><strong>Vídeos diferentes</strong> — na automação, envie <strong>2 ou mais vídeos</strong> na playlist.</li>
-    <li><strong>Legendas diferentes</strong> — em Nova/Editar automação, preencha
-      <em>Legendas alternativas (uma por linha)</em>.</li>
-    <li><strong>Aquecimento Meta</strong> — automático por idade da conta; o intervalo mínimo sobe para 3h na criação/edição.</li>
+    <li><strong>Espaçamento</strong> — nesta página (padrão) e em cada automação → Editar → “Espaçamento entre contas”.</li>
+    <li><strong>Vídeos diferentes</strong> — playlist com 2+ vídeos na automação.</li>
+    <li><strong>Legendas diferentes</strong> — “Legendas alternativas” na automação.</li>
+    <li><strong>Aquecimento Meta</strong> — automático por idade (&lt;7 dias = mín. 3h).</li>
   </ul>
+  <p style="margin:12px 0 0">
+    <a href="/automations" data-nav="/automations" class="btn btn-sm">Ir para Automações</a>
+  </p>
 </div>
 
 <div class="panel">
@@ -101,10 +113,6 @@
       </tbody>
     </table>
   </div>
-  <p class="muted" style="margin:12px 0 0;font-size:12px">
-    Contas Meta com menos de {{ meta_warmup_days }} dias → mínimo {{ meta_warmup_min_interval }} min (3h) quando o aquecimento está ligado.
-    Depois disso → mínimo {{ meta_min_interval }} min (1h).
-  </p>
   {% else %}
   <p class="muted">Nenhuma conta Meta conectada. <a href="/accounts" data-nav="/accounts">Adicionar conta</a>.</p>
   {% endif %}

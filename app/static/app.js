@@ -1523,7 +1523,7 @@
 
     function draftFormData() {
       const data = new FormData();
-      ["name", "content_type", "caption", "story_link", "story_sticker_text", "interval_minutes", "jitter_minutes", "posts_per_batch", "rest_minutes"].forEach((name) => {
+      ["name", "content_type", "caption", "captions_alt", "story_link", "story_sticker_text", "interval_minutes", "jitter_minutes", "posts_per_batch", "rest_minutes", "stagger_min_minutes", "stagger_max_minutes"].forEach((name) => {
         const field = form.querySelector(`[name="${name}"]`);
         if (field) data.append(name, field.value || "");
       });
@@ -1538,6 +1538,8 @@
       }
       const jitter = form.querySelector('[name="jitter_enabled"]');
       if (jitter && jitter.checked) data.append("jitter_enabled", "1");
+      const stagger = form.querySelector('[name="stagger_enabled"]');
+      if (stagger && stagger.checked) data.append("stagger_enabled", "1");
       form.querySelectorAll('[name="account_ids"]:checked').forEach((field) => {
         data.append("account_ids", field.value);
       });

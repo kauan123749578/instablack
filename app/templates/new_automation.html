@@ -160,6 +160,29 @@
       </label>
 
       <fieldset class="humanize-fieldset" style="margin-top:14px">
+        <legend>Espaçamento entre contas <span class="muted">(anti-farm)</span></legend>
+        <label class="checkbox-row" style="margin-bottom:8px">
+          <input type="checkbox" name="stagger_enabled" value="1" id="stagger-enabled"
+                 {% if (anti_farm_prefs or {}).get('stagger_enabled', true) %}checked{% endif %}>
+          Espalhar posts entre as contas do mesmo ciclo (não postar todas no mesmo minuto)
+        </label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <label>Mínimo entre contas (minutos)
+            <input type="number" name="stagger_min_minutes" id="stagger-min" min="1" max="120"
+                   value="{{ (anti_farm_prefs or {}).get('stagger_min_minutes', 2) }}">
+          </label>
+          <label>Máximo entre contas (minutos)
+            <input type="number" name="stagger_max_minutes" id="stagger-max" min="1" max="120"
+                   value="{{ (anti_farm_prefs or {}).get('stagger_max_minutes', 8) }}">
+          </label>
+        </div>
+        <span class="muted" style="display:block;margin-top:6px;font-size:12px">
+          Ex.: mín 3 e máx 10 → a 1ª conta posta já; a 2ª espera ~3–10 min; a 3ª ~6–20 min…
+          Assim a “1 por hora” não dispara 10 contas entre 02:14:27 e 02:14:58.
+        </span>
+      </fieldset>
+
+      <fieldset class="humanize-fieldset" style="margin-top:14px">
         <legend>Variação de horário <span class="muted">(anti-ban)</span></legend>
         <label class="checkbox-row" style="margin-bottom:8px">
           <input type="checkbox" name="jitter_enabled" value="1" id="jitter-enabled">
