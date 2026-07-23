@@ -620,7 +620,7 @@
           tr.className = "log-row-new";
           tr.innerHTML =
             '<td class="og-muted">' + when + "</td>" +
-            "<td><strong>@" + escapeHtml(item.username || "?") + "</strong></td>" +
+            "<td><strong class=\"ig-handle\">@" + escapeHtml(item.username || "?") + "</strong></td>" +
             '<td class="og-muted">' + escapeHtml(item.automation || "Post imediato") + "</td>" +
             '<td><span class="og-badge ' + badgeFor(item.status) + '">' + labelFor(item.status) + "</span></td>" +
             "<td>" + detail + "</td>";
