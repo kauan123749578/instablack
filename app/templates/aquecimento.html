@@ -5,28 +5,34 @@
   <div>
     <h2>Aquecimento</h2>
     <p class="muted page-header-sub">
-      Proteções anti-farm: espaçar posts entre contas, variar vídeo/legenda e aquecer contas Meta novas.
-      Aqui você liga/desliga e define o padrão; em cada automação (Editar) dá para ajustar o espaçamento.
+      Proteções anti-farm e modo aquecimento <strong>manual</strong> por conta Meta.
     </p>
   </div>
 </div>
 
 {% if saved %}<div class="alert alert-ok">Preferências salvas.</div>{% endif %}
+{% if warmup_ok == 'on' %}<div class="alert alert-ok">Conta colocada em modo aquecimento.</div>{% endif %}
+{% if warmup_ok == 'off' %}<div class="alert alert-ok">Aquecimento desativado nessa conta.</div>{% endif %}
 
 <div class="panel" style="margin-bottom:20px">
-  <div class="panel-header"><h3>Por que isso existe?</h3></div>
-  <p class="muted" style="margin:0;font-size:14px;line-height:1.5">
-    Quando várias contas publicam no <strong>mesmo minuto</strong> (ex.: 02:14:27…02:14:58), a Meta
-    detecta farm e pode restringir (“User is restricted”). O espaçamento deixa minutos entre cada @ no mesmo ciclo.
+  <div class="panel-header"><h3>O que é o modo aquecimento?</h3></div>
+  <p class="muted" style="margin:0 0 10px;font-size:14px;line-height:1.55">
+    Conta Meta nova ou sensível posta com menos frequência. Enquanto estiver em aquecimento:
   </p>
+  <ul class="muted" style="margin:0;padding-left:18px;font-size:14px;line-height:1.7">
+    <li>Intervalo mínimo entre posts dessa conta: <strong>3 horas</strong> (não 1 hora).</li>
+    <li>Se a automação tentar postar antes, o envio é <strong>pulado</strong> (nos Logs: skipped) — sem marcar erro de restrição.</li>
+    <li>Só entra no modo se <strong>você ativar</strong> na tabela abaixo (não é automático).</li>
+    <li>Você escolhe por quantos <strong>dias</strong> fica assim; depois o painel volta ao normal (mín. 1h).</li>
+  </ul>
 </div>
 
 <form method="post" action="/aquecimento/prefs" class="form-card form-card--premium" style="margin-bottom:24px">
   <header class="form-section-head" style="margin-bottom:16px">
     <i data-lucide="shield-check"></i>
     <div>
-      <h3 style="margin:0">Funções (ligar / desligar)</h3>
-      <p class="muted" style="margin:4px 0 0;font-size:13px">Padrão: tudo ligado.</p>
+      <h3 style="margin:0">Funções anti-farm (ligar / desligar)</h3>
+      <p class="muted" style="margin:4px 0 0;font-size:13px">Padrão global. Espaçamento também dá para ajustar em cada automação.</p>
     </div>
   </header>
 
@@ -48,9 +54,6 @@
       <input type="number" name="stagger_max_minutes" min="1" max="120"
              value="{{ prefs.stagger_max_minutes|default(8) }}">
     </label>
-    <p class="muted" style="grid-column:1/-1;margin:0;font-size:12px">
-      Padrão para automações novas. Em “1 POR HORA”, abra Editar e ajuste o espaçamento daquela automação.
-    </p>
   </div>
   {% endif %}
   {% endfor %}
@@ -59,54 +62,69 @@
 </form>
 
 <div class="panel" style="margin-bottom:20px">
-  <div class="panel-header"><h3>Onde configurar</h3></div>
-  <ul class="muted" style="margin:0;padding-left:18px;font-size:14px;line-height:1.7">
-    <li><strong>Espaçamento</strong> — nesta página (padrão) e em cada automação → Editar → “Espaçamento entre contas”.</li>
-    <li><strong>Vídeos diferentes</strong> — playlist com 2+ vídeos na automação.</li>
-    <li><strong>Legendas diferentes</strong> — “Legendas alternativas” na automação.</li>
-    <li><strong>Aquecimento Meta</strong> — automático por idade (&lt;7 dias = mín. 3h).</li>
-  </ul>
-  <p style="margin:12px 0 0">
-    <a href="/automations" data-nav="/automations" class="btn btn-sm">Ir para Automações</a>
+  <div class="panel-header"><h3>Espaçamento × variação de horário</h3></div>
+  <p class="muted" style="margin:0;font-size:14px;line-height:1.55">
+    <strong>Pode usar os dois juntos.</strong>
+    Espaçamento = minutos entre contas no <em>mesmo</em> ciclo.
+    Variação de horário = o próximo ciclo da automação não cai sempre no minuto exato (ex.: 60 ± 10 min).
   </p>
 </div>
 
 <div class="panel">
   <div class="panel-header">
-    <h3>Suas contas Meta</h3>
+    <h3>Contas Meta — ativar aquecimento</h3>
   </div>
+  <p class="muted" style="margin:0 0 12px;font-size:13px">
+    Por padrão nenhuma conta está em aquecimento. Ative só as que quiser.
+  </p>
   {% if warmup_rows %}
   <div class="table-wrap">
     <table class="table">
       <thead>
         <tr>
           <th>Conta</th>
-          <th>Idade no painel</th>
           <th>Modo</th>
-          <th>Intervalo mínimo</th>
+          <th>Intervalo mín.</th>
+          <th>Dias</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
         {% for row in warmup_rows %}
         <tr>
           <td>@{{ row.username }}</td>
-          <td class="muted">
-            {% if row.age_days is not none %}{{ row.age_days }} dia{{ 's' if row.age_days != 1 else '' }}
-            {% else %}—{% endif %}
-          </td>
           <td>
             {% if row.in_warmup and prefs.meta_warmup_enabled %}
-            <span class="og-badge badge-green">Aquecimento ({{ meta_warmup_days }} dias)</span>
-            {% elif not prefs.meta_warmup_enabled %}
-            <span class="og-badge">Aquecimento desligado</span>
+            <span class="og-badge badge-green">Em aquecimento</span>
+            {% if row.days_left is not none %}
+            <span class="muted" style="font-size:12px"> · {{ row.days_left }} dia(s) restantes</span>
+            {% endif %}
+            {% elif row.in_warmup and not prefs.meta_warmup_enabled %}
+            <span class="og-badge">Marcada, mas regra global OFF</span>
             {% else %}
             <span class="og-badge">Normal</span>
             {% endif %}
           </td>
           <td>
-            {% if row.min_interval >= 180 %}3 horas
-            {% elif row.min_interval >= 60 %}1 hora
-            {% else %}{{ row.min_interval }} min{% endif %}
+            {% if row.in_warmup and prefs.meta_warmup_enabled %}3 horas
+            {% else %}1 hora{% endif %}
+          </td>
+          <td>
+            {% if row.in_warmup %}
+            {{ row.warmup_days }} dias
+            {% else %}
+            <form method="post" action="/aquecimento/accounts/{{ row.id }}/enable" class="inline" style="display:flex;gap:6px;align-items:center">
+              <input type="number" name="warmup_days" min="1" max="30" value="{{ meta_warmup_days }}" style="width:64px">
+              <button type="submit" class="btn btn-sm btn-primary">Ativar</button>
+            </form>
+            {% endif %}
+          </td>
+          <td>
+            {% if row.in_warmup %}
+            <form method="post" action="/aquecimento/accounts/{{ row.id }}/disable" class="inline">
+              <button type="submit" class="btn btn-sm">Desativar</button>
+            </form>
+            {% endif %}
           </td>
         </tr>
         {% endfor %}

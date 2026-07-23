@@ -523,6 +523,9 @@ def _execute_publish(
         meta_ig_user_id = account.meta_ig_user_id
         user_meta_app_id = account.user_meta_app_id
         account_created_at = account.created_at
+        account_warmup_enabled = bool(getattr(account, "warmup_enabled", False))
+        account_warmup_days = int(getattr(account, "warmup_days", 7) or 7)
+        account_warmup_started_at = getattr(account, "warmup_started_at", None)
         from core.web_cookies import decrypt_web_cookies
 
         web_cookies = decrypt_web_cookies(account.encrypted_web_cookies)
@@ -543,10 +546,15 @@ def _execute_publish(
             anti = get_anti_farm_prefs_by_id(db, owner_user_id) if owner_user_id else {}
             warmup_on = bool(anti.get("meta_warmup_enabled", True))
             min_gap = meta_min_interval_for_account(
-                SimpleNamespace(provider="meta", created_at=account_created_at)
+                SimpleNamespace(
+                    provider="meta",
+                    warmup_enabled=account_warmup_enabled,
+                    warmup_days=account_warmup_days,
+                    warmup_started_at=account_warmup_started_at,
+                    created_at=account_created_at,
+                )
             )
             if not warmup_on:
-                # Sem aquecimento: só o piso Meta padrão (1h)
                 from app.utils.intervals import META_MIN_INTERVAL as _META_FLOOR
                 min_gap = _META_FLOOR
             if min_gap > 0:

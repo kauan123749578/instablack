@@ -188,6 +188,12 @@ def _sqlite_migrate() -> None:
                 conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN followers_count INTEGER"))
             if "followers_updated_at" not in acols:
                 conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN followers_updated_at DATETIME"))
+            if "warmup_enabled" not in acols:
+                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN warmup_enabled BOOLEAN DEFAULT 0"))
+            if "warmup_days" not in acols:
+                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN warmup_days INTEGER DEFAULT 7"))
+            if "warmup_started_at" not in acols:
+                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN warmup_started_at DATETIME"))
             conn.execute(
                 text(
                     "CREATE INDEX IF NOT EXISTS ix_instagram_accounts_user_status "
@@ -340,6 +346,12 @@ def _postgres_migrate() -> None:
                 conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN followers_count INTEGER"))
             if "followers_updated_at" not in acols:
                 conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN followers_updated_at TIMESTAMPTZ"))
+            if "warmup_enabled" not in acols:
+                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN warmup_enabled BOOLEAN DEFAULT FALSE"))
+            if "warmup_days" not in acols:
+                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN warmup_days INTEGER DEFAULT 7"))
+            if "warmup_started_at" not in acols:
+                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN warmup_started_at TIMESTAMPTZ"))
             conn.execute(
                 text(
                     "CREATE INDEX IF NOT EXISTS ix_instagram_accounts_user_status "

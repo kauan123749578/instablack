@@ -809,6 +809,54 @@
     update();
   }
 
+  function initCaptionsRotator() {
+    function bindItem(item) {
+      const removeBtn = item.querySelector("[data-caption-remove]");
+      removeBtn?.addEventListener("click", () => {
+        const list = item.closest("[data-captions-list]");
+        item.remove();
+        renumber(list);
+      });
+    }
+
+    function renumber(list) {
+      if (!list) return;
+      list.querySelectorAll(".captions-rotator-item").forEach((item, idx) => {
+        const label = item.querySelector("label");
+        if (label) {
+          const ta = label.querySelector("textarea");
+          label.childNodes[0].textContent = `Legenda ${idx + 1} `;
+          if (ta && !label.contains(ta)) label.appendChild(ta);
+        }
+      });
+    }
+
+    function addCaption(list, value) {
+      if (!list) return;
+      const idx = list.querySelectorAll(".captions-rotator-item").length + 1;
+      const wrap = document.createElement("div");
+      wrap.className = "captions-rotator-item";
+      wrap.style.marginTop = "8px";
+      wrap.innerHTML = `
+        <label>Legenda ${idx}
+          <textarea name="captions_alt" rows="6" placeholder="Cole aqui a legenda completa…"></textarea>
+        </label>
+        <button type="button" class="btn btn-sm" data-caption-remove style="margin-top:4px">Remover</button>
+      `;
+      const ta = wrap.querySelector("textarea");
+      if (ta && value) ta.value = value;
+      list.appendChild(wrap);
+      bindItem(wrap);
+    }
+
+    document.querySelectorAll("[data-captions-rotator]").forEach((root) => {
+      const list = root.querySelector("[data-captions-list]");
+      const addBtn = root.querySelector("[data-caption-add]");
+      list?.querySelectorAll(".captions-rotator-item").forEach(bindItem);
+      addBtn?.addEventListener("click", () => addCaption(list, ""));
+    });
+  }
+
   function initMetaIntervalFilter() {
     function applyFilter(root) {
       const scope = root || document;
@@ -827,12 +875,7 @@
           if ((cb.dataset.provider || "") !== "meta") return;
           hasMeta = true;
           if (!warmupEnabled) return;
-          const created = cb.dataset.createdAt;
-          if (!created) return;
-          const createdMs = Date.parse(created);
-          if (Number.isNaN(createdMs)) return;
-          const ageMs = Date.now() - createdMs;
-          if (ageMs < warmupDays * 86400000) {
+          if ((cb.dataset.warmupActive || "0") === "1") {
             hasWarmup = true;
             effectiveMin = Math.max(effectiveMin, warmupMin);
           }
@@ -1523,9 +1566,12 @@
 
     function draftFormData() {
       const data = new FormData();
-      ["name", "content_type", "caption", "captions_alt", "story_link", "story_sticker_text", "interval_minutes", "jitter_minutes", "posts_per_batch", "rest_minutes", "stagger_min_minutes", "stagger_max_minutes"].forEach((name) => {
+      ["name", "content_type", "caption", "story_link", "story_sticker_text", "interval_minutes", "jitter_minutes", "posts_per_batch", "rest_minutes", "stagger_min_minutes", "stagger_max_minutes"].forEach((name) => {
         const field = form.querySelector(`[name="${name}"]`);
         if (field) data.append(name, field.value || "");
+      });
+      form.querySelectorAll('textarea[name="captions_alt"]').forEach((field) => {
+        if ((field.value || "").trim()) data.append("captions_alt", field.value);
       });
       const mode = form.querySelector('[name="schedule_mode"]:checked');
       data.append("schedule_mode", mode ? mode.value : "recurring");
@@ -1801,6 +1847,7 @@
     initThumbPreview();
     initScheduleMode();
     initMetaIntervalFilter();
+    initCaptionsRotator();
     initAutomationForm();
     initAutomationPlaylistUploads();
     initOgDashboard();

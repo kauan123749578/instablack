@@ -168,6 +168,12 @@ class InstagramAccount(Base):
         DateTime(timezone=True), nullable=True
     )
     last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Aquecimento Meta manual (só se o usuário ativar)
+    warmup_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    warmup_days: Mapped[int] = mapped_column(Integer, default=7)
+    warmup_started_at: Mapped[Optional[dt.datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

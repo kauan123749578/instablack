@@ -11,9 +11,11 @@ ALLOWED_INTERVALS = [
 
 # API oficial Meta: mínimo 1 hora entre publicações
 META_MIN_INTERVAL = 60
-# Contas Meta novas (<7 dias): piso automático de 3 horas
-META_WARMUP_DAYS = 7
+# Conta Meta em modo aquecimento (manual): piso de 3 horas
+META_WARMUP_DAYS = 7  # default ao ativar
 META_WARMUP_MIN_INTERVAL = 180
+META_WARMUP_DAYS_MIN = 1
+META_WARMUP_DAYS_MAX = 30
 
 
 def interval_label(minutes: int) -> str:
@@ -49,18 +51,41 @@ def _as_utc_naive(value: dt.datetime) -> dt.datetime:
     return value
 
 
+def clamp_warmup_days(days: Any) -> int:
+    try:
+        n = int(days)
+    except (TypeError, ValueError):
+        n = META_WARMUP_DAYS
+    return max(META_WARMUP_DAYS_MIN, min(META_WARMUP_DAYS_MAX, n))
+
+
+def warmup_days_left(account: Any, *, now: dt.datetime | None = None) -> int | None:
+    """Dias restantes de aquecimento, ou None se não estiver no modo."""
+    if not is_meta_in_warmup(account, now=now):
+        return None
+    started = getattr(account, "warmup_started_at", None)
+    days = clamp_warmup_days(getattr(account, "warmup_days", META_WARMUP_DAYS))
+    if started is None or not isinstance(started, dt.datetime):
+        return days
+    ref = now or dt.datetime.utcnow()
+    elapsed = (_as_utc_naive(ref) - _as_utc_naive(started)).total_seconds()
+    left = days - int(elapsed // 86400)
+    return max(0, left)
+
+
 def is_meta_in_warmup(account: Any, *, now: dt.datetime | None = None) -> bool:
-    """True se conta Meta foi criada há menos de META_WARMUP_DAYS."""
+    """True só se a conta Meta foi colocada manualmente em aquecimento e ainda não expirou."""
     if getattr(account, "provider", None) != "meta":
         return False
-    created = getattr(account, "created_at", None)
-    if created is None:
+    if not bool(getattr(account, "warmup_enabled", False)):
         return False
-    if not isinstance(created, dt.datetime):
-        return False
+    started = getattr(account, "warmup_started_at", None)
+    days = clamp_warmup_days(getattr(account, "warmup_days", META_WARMUP_DAYS))
+    if started is None or not isinstance(started, dt.datetime):
+        return True
     ref = now or dt.datetime.utcnow()
-    age = _as_utc_naive(ref) - _as_utc_naive(created)
-    return age.total_seconds() < META_WARMUP_DAYS * 86400
+    age = _as_utc_naive(ref) - _as_utc_naive(started)
+    return age.total_seconds() < days * 86400
 
 
 def meta_min_interval_for_account(account: Any, *, now: dt.datetime | None = None) -> int:
@@ -104,8 +129,8 @@ def validate_interval_for_accounts(
     if floor and interval_minutes < floor:
         if floor >= META_WARMUP_MIN_INTERVAL:
             return (
-                "Contas Meta com menos de 7 dias exigem intervalo mínimo de 3 horas "
-                "entre posts. Desligue o aquecimento em Aquecimento se quiser só 1h."
+                "Há conta(s) em modo aquecimento: intervalo mínimo de 3 horas. "
+                "Desative o aquecimento da conta em Aquecimento se quiser 1h."
             )
         return "Com contas da API oficial, o intervalo mínimo é 1 hora."
     return None

@@ -52,13 +52,24 @@
     </label>
 
     <div id="caption-wrap">
-      <label>Legenda
-        <textarea name="caption" rows="4" placeholder="Escreva a legenda…"></textarea>
+      <label>Legenda principal
+        <textarea name="caption" rows="4" placeholder="Usada se você NÃO adicionar legendas para rotacionar…"></textarea>
       </label>
-      <label style="margin-top:10px">Legendas alternativas <span class="muted">(uma por linha)</span>
-        <textarea name="captions_alt" rows="3" placeholder="Opcional — cada conta usa uma linha diferente no mesmo ciclo"></textarea>
-      </label>
-      <span class="muted" style="display:block;margin-top:4px;font-size:12px">Se preencher, as contas rotacionam essas legendas em vez da legenda acima.</span>
+      <p class="muted" style="margin:8px 0 4px;font-size:13px">
+        <strong>Diferença:</strong> a legenda principal é a padrão (1 texto).
+        As de baixo são várias legendas grandes — cada conta do ciclo usa uma (1ª, 2ª, 3ª…).
+        Se adicionar pelo menos uma de rotação, o sistema usa só a lista de rotação.
+      </p>
+      <div class="captions-rotator" data-captions-rotator>
+        <div class="captions-rotator-head" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px">
+          <strong style="font-size:14px">Legendas para rotacionar</strong>
+          <button type="button" class="btn btn-sm" data-caption-add>+ Adicionar legenda</button>
+        </div>
+        <div class="captions-rotator-list" data-captions-list></div>
+        <p class="muted" style="margin:8px 0 0;font-size:12px">
+          Cada caixa = uma legenda completa (pode ser bem longa). Conta 1 usa a 1ª, conta 2 a 2ª…
+        </p>
+      </div>
     </div>
 
     <div id="story-link-wrap">
@@ -260,6 +271,7 @@
         <label>
           <input type="checkbox" name="account_ids" value="{{ ac.id }}"
                  data-provider="{{ ac.provider or 'instagrapi' }}"
+                 data-warmup-active="{{ '1' if ac.provider == 'meta' and ac.warmup_enabled else '0' }}"
                  data-created-at="{{ ac.created_at.isoformat() if ac.created_at else '' }}">
           @{{ ac.username }}
           {% if ac.provider == 'meta' %}<span class="og-badge badge-green" style="font-size:10px">API</span>{% endif %}

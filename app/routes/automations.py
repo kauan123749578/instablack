@@ -28,7 +28,7 @@ from app.utils.anti_farm import (
     DEFAULT_STAGGER_MAX,
     DEFAULT_STAGGER_MIN,
     account_publish_countdown,
-    captions_from_textarea,
+    captions_from_form,
     captions_textarea_value,
     captions_to_json,
     clamp_stagger_minutes,
@@ -894,7 +894,7 @@ async def create_automation(
     name: str = Form(...),
     content_type: str = Form("reel"),
     caption: str = Form(""),
-    captions_alt: str = Form(""),
+    captions_alt: list[str] = Form(default=[]),
     story_link: str = Form(""),
     story_sticker_text: str = Form(""),
     schedule_mode: str = Form("recurring"),
@@ -924,7 +924,7 @@ async def create_automation(
         stagger_min_minutes=stagger_min_minutes,
         stagger_max_minutes=stagger_max_minutes,
     )
-    captions_json = captions_to_json(captions_from_textarea(captions_alt))
+    captions_json = captions_to_json(captions_from_form(captions_alt))
     submitted_cal_times: list[str] = []
     for raw_time in (calendar_times or [calendar_time]):
         submitted_cal_times.extend(parse_calendar_times(raw_time))
@@ -1236,7 +1236,7 @@ async def create_reel_upload_draft(
     name: str = Form(...),
     content_type: str = Form("reel"),
     caption: str = Form(""),
-    captions_alt: str = Form(""),
+    captions_alt: list[str] = Form(default=[]),
     story_link: str = Form(""),
     schedule_mode: str = Form("recurring"),
     interval_minutes: int = Form(60),
@@ -1298,7 +1298,7 @@ async def create_reel_upload_draft(
         stagger_min_minutes=stagger_min_minutes,
         stagger_max_minutes=stagger_max_minutes,
     )
-    captions_json = captions_to_json(captions_from_textarea(captions_alt))
+    captions_json = captions_to_json(captions_from_form(captions_alt))
     storage = get_storage()
     thumb_key, thumb_original_name = _save_thumb(storage, thumb)
     automation = Automation(
@@ -1775,7 +1775,7 @@ def duplicate_automation(
 async def edit_automation(
     automation_id: int,
     caption: str = Form(""),
-    captions_alt: str = Form(""),
+    captions_alt: list[str] = Form(default=[]),
     content_type: str = Form("reel"),
     interval_minutes: int = Form(...),
     account_ids: list[int] = Form(default=[]),
@@ -1848,7 +1848,7 @@ async def edit_automation(
         stagger_max_minutes=stagger_max_minutes,
     )
     a.caption = caption
-    a.captions_json = captions_to_json(captions_from_textarea(captions_alt))
+    a.captions_json = captions_to_json(captions_from_form(captions_alt))
     a.content_type = content_type
     a.interval_minutes = interval_minutes
     a.jitter_enabled = bool(humanize["jitter_enabled"])

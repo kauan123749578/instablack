@@ -109,6 +109,20 @@ def captions_textarea_value(raw_json: str | None) -> str:
     return "\n".join(parse_captions_json(raw_json))
 
 
+def captions_from_form(captions_alt: list[str] | str | None) -> list[str]:
+    """Aceita lista de textareas (botão +) ou texto antigo uma-por-linha."""
+    if captions_alt is None:
+        return []
+    if isinstance(captions_alt, str):
+        return captions_from_textarea(captions_alt)
+    out: list[str] = []
+    for item in captions_alt:
+        text = str(item or "").strip()
+        if text:
+            out.append(text)
+    return out
+
+
 def resolve_caption_for_slot(automation: Automation, slot: int) -> str:
     """Conta `slot` usa captions_json[i % n]; se vazio, usa automation.caption."""
     alts = parse_captions_json(getattr(automation, "captions_json", None))

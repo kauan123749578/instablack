@@ -6,7 +6,7 @@ from pathlib import Path
 
 from fastapi.templating import Jinja2Templates
 
-from app.utils.anti_farm import captions_textarea_value
+from app.utils.anti_farm import captions_textarea_value, parse_captions_json
 from app.utils.automation_videos import playlist_items, video_count as automation_video_count
 from app.utils.avatars import user_avatar_url, user_display_name
 from app.utils.proxy import account_proxy_ip, proxy_label, proxy_to_raw
@@ -75,4 +75,5 @@ templates.env.globals["proxy_to_raw"] = proxy_to_raw
 templates.env.globals["account_proxy_ip"] = account_proxy_ip
 templates.env.globals["interval_label"] = interval_label
 templates.env.globals["captions_textarea_value"] = captions_textarea_value
+templates.env.globals["parse_captions_list"] = parse_captions_json
 templates.env.globals["format_calendar_times"] = format_calendar_times_label

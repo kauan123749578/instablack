@@ -26,8 +26,8 @@
     espaçamento entre contas {% if af.get('stagger_enabled', true) %}<span class="og-badge badge-green">ON</span>{% else %}<span class="og-badge">OFF</span>{% endif %}
     · vídeos diferentes {% if af.get('media_rotate_enabled', true) %}<span class="og-badge badge-green">ON</span>{% else %}<span class="og-badge">OFF</span>{% endif %}
     · legendas diferentes {% if af.get('caption_rotate_enabled', true) %}<span class="og-badge badge-green">ON</span>{% else %}<span class="og-badge">OFF</span>{% endif %}
-    · aquecimento Meta 3h {% if af.get('meta_warmup_enabled', true) %}<span class="og-badge badge-green">ON</span>{% else %}<span class="og-badge">OFF</span>{% endif %}
-    — <a href="/aquecimento" data-nav="/aquecimento">explicar e ligar/desligar</a>
+    · aquecimento Meta {% if af.get('meta_warmup_enabled', true) %}<span class="og-badge badge-green">ON</span>{% else %}<span class="og-badge">OFF</span>{% endif %}
+    — <a href="/aquecimento" data-nav="/aquecimento">ativar por conta + explicar</a>
   </p>
 </div>
 
@@ -277,12 +277,28 @@
               <input type="number" name="rest_minutes" min="0" max="10080" value="{{ a.rest_minutes or 0 }}">
             </label>
           </fieldset>
-          <label>Legenda
+          <label>Legenda principal
             <textarea name="caption" rows="3">{{ a.caption }}</textarea>
           </label>
-          <label>Legendas alternativas <span class="muted">(uma por linha)</span>
-            <textarea name="captions_alt" rows="3" placeholder="Opcional — rotação por conta">{{ captions_textarea_value(a.captions_json) }}</textarea>
-          </label>
+          <p class="muted" style="margin:6px 0;font-size:12px">
+            Principal = padrão. Abaixo = várias legendas grandes para rotacionar por conta (botão +).
+          </p>
+          <div class="captions-rotator" data-captions-rotator>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+              <strong style="font-size:13px">Legendas para rotacionar</strong>
+              <button type="button" class="btn btn-sm" data-caption-add>+ Adicionar</button>
+            </div>
+            <div class="captions-rotator-list" data-captions-list>
+              {% for line in parse_captions_list(a.captions_json) %}
+              <div class="captions-rotator-item" style="margin-top:8px">
+                <label>Legenda {{ loop.index }}
+                  <textarea name="captions_alt" rows="5">{{ line }}</textarea>
+                </label>
+                <button type="button" class="btn btn-sm" data-caption-remove style="margin-top:4px">Remover</button>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
           <label>Trocar capa (.jpg/.png)
             <input type="file" name="thumb" accept="image/jpeg,image/png,image/webp">
           </label>
@@ -299,6 +315,7 @@
               <label>
                 <input type="checkbox" name="account_ids" value="{{ ac.id }}"
                        data-provider="{{ ac.provider or 'instagrapi' }}"
+                       data-warmup-active="{{ '1' if ac.provider == 'meta' and ac.warmup_enabled else '0' }}"
                        data-created-at="{{ ac.created_at.isoformat() if ac.created_at else '' }}"
                        {% if ac.id in selected_ids %}checked{% endif %}>
                 @{{ ac.username }}

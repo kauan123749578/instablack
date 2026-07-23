@@ -56,10 +56,10 @@ PREF_LABELS: dict[str, dict[str, str]] = {
         ),
     },
     "meta_warmup_enabled": {
-        "title": "Aquecimento de conta Meta nova",
+        "title": "Respeitar modo aquecimento das contas",
         "help": (
-            "Contas Meta com menos de 7 dias no painel usam mínimo de 3 horas entre posts. "
-            "Se tentar postar antes, o envio é pulado (aparece como skipped nos Logs)."
+            "Se ligado, contas que VOCÊ colocar em aquecimento (abaixo) usam mínimo de 3 horas "
+            "entre posts. Contas sem aquecimento continuam com 1 hora."
         ),
     },
 }
