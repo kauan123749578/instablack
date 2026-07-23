@@ -24,6 +24,13 @@ from app.utils.calendar_schedule import (
     parse_calendar_times,
     times_to_storage,
 )
+from app.utils.anti_farm import (
+    account_publish_countdown,
+    captions_from_textarea,
+    captions_textarea_value,
+    captions_to_json,
+    parse_captions_json,
+)
 from app.utils.automation_schedule import (
     parse_jitter_enabled,
     parse_jitter_minutes,
@@ -40,10 +47,13 @@ from app.utils.automation_videos import (
 from app.utils.intervals import (
     ALLOWED_INTERVALS,
     META_MIN_INTERVAL,
+    META_WARMUP_DAYS,
+    META_WARMUP_MIN_INTERVAL,
     interval_label,
     validate_interval_for_accounts,
 )
 from celery_app.tasks.publish import publish_once, publish_to_account
+from core.anti_farm_prefs import get_anti_farm_prefs
 from core.database import get_db
 from core.storage import get_storage
 from core.web_cookies import web_cookies_status
@@ -226,6 +236,10 @@ def list_automations(
             "all_accounts": all_accounts,
             "intervals": ALLOWED_INTERVALS,
             "meta_min_interval": META_MIN_INTERVAL,
+            "meta_warmup_days": META_WARMUP_DAYS,
+            "meta_warmup_min_interval": META_WARMUP_MIN_INTERVAL,
+            "captions_textarea_value": captions_textarea_value,
+            "anti_farm_prefs": get_anti_farm_prefs(user),
         },
     )
 
@@ -259,6 +273,9 @@ def new_automation_page(
             "accounts": accounts,
             "intervals": ALLOWED_INTERVALS,
             "meta_min_interval": META_MIN_INTERVAL,
+            "meta_warmup_days": META_WARMUP_DAYS,
+            "meta_warmup_min_interval": META_WARMUP_MIN_INTERVAL,
+            "anti_farm_prefs": get_anti_farm_prefs(user),
             "content_types": CONTENT_TYPES,
             "default_content_type": default_type,
             "error": err_msg,
@@ -289,6 +306,9 @@ def new_story_page(
             "accounts": accounts,
             "intervals": ALLOWED_INTERVALS,
             "meta_min_interval": META_MIN_INTERVAL,
+            "meta_warmup_days": META_WARMUP_DAYS,
+            "meta_warmup_min_interval": META_WARMUP_MIN_INTERVAL,
+            "anti_farm_prefs": get_anti_farm_prefs(user),
             "content_types": CONTENT_TYPES,
             "default_content_type": "story",
             "error": None,
@@ -859,6 +879,7 @@ async def create_automation(
     name: str = Form(...),
     content_type: str = Form("reel"),
     caption: str = Form(""),
+    captions_alt: str = Form(""),
     story_link: str = Form(""),
     story_sticker_text: str = Form(""),
     schedule_mode: str = Form("recurring"),
@@ -882,6 +903,7 @@ async def create_automation(
         posts_per_batch=posts_per_batch,
         rest_minutes=rest_minutes,
     )
+    captions_json = captions_to_json(captions_from_textarea(captions_alt))
     submitted_cal_times: list[str] = []
     for raw_time in (calendar_times or [calendar_time]):
         submitted_cal_times.extend(parse_calendar_times(raw_time))
@@ -975,7 +997,11 @@ async def create_automation(
         if len(accounts) != len(set(account_ids)):
             error = "Alguma conta selecionada não existe."
         elif schedule_mode == "recurring":
-            iv_err = validate_interval_for_accounts(interval_minutes, accounts)
+            iv_err = validate_interval_for_accounts(
+                interval_minutes,
+                accounts,
+                meta_warmup_enabled=get_anti_farm_prefs(user).get("meta_warmup_enabled", True),
+            )
             if iv_err:
                 error = iv_err
 
@@ -994,6 +1020,9 @@ async def create_automation(
                 "accounts": all_accounts,
                 "intervals": ALLOWED_INTERVALS,
                 "meta_min_interval": META_MIN_INTERVAL,
+                "meta_warmup_days": META_WARMUP_DAYS,
+                "meta_warmup_min_interval": META_WARMUP_MIN_INTERVAL,
+                "anti_farm_prefs": get_anti_farm_prefs(user),
                 "content_types": CONTENT_TYPES,
                 "default_content_type": content_type if content_type in CONTENT_TYPES else "reel",
                 "error": error,
@@ -1027,6 +1056,9 @@ async def create_automation(
                 "accounts": all_accounts,
                 "intervals": ALLOWED_INTERVALS,
                 "meta_min_interval": META_MIN_INTERVAL,
+                "meta_warmup_days": META_WARMUP_DAYS,
+                "meta_warmup_min_interval": META_WARMUP_MIN_INTERVAL,
+                "anti_farm_prefs": get_anti_farm_prefs(user),
                 "content_types": CONTENT_TYPES,
                 "default_content_type": content_type if content_type in CONTENT_TYPES else "reel",
                 "error": msg,
@@ -1060,23 +1092,37 @@ async def create_automation(
 
     if schedule_mode == "now" and has_accounts:
         countdown = 0
+        n_accounts = len(accounts)
+        prefs = get_anti_farm_prefs(user)
+        use_stagger = bool(prefs.get("stagger_enabled", True))
+        use_caption_rotate = bool(prefs.get("caption_rotate_enabled", True))
+        alt_caps = parse_captions_json(captions_json) if use_caption_rotate else []
         for v_idx, entry in enumerate(video_entries):
             for acc_idx, acc in enumerate(accounts):
+                if alt_caps:
+                    acc_caption = alt_caps[acc_idx % len(alt_caps)]
+                else:
+                    acc_caption = caption
+                stagger = account_publish_countdown(acc_idx, n_accounts) if use_stagger else 0
                 publish_once.apply_async(
                     args=[
                         acc.id,
                         entry["video_key"],
                         thumb_key,
-                        caption,
+                        acc_caption,
                         content_type,
                         _story_link_value(content_type, story_link),
                         _story_sticker_text_value(content_type, story_sticker_text),
                     ],
-                    countdown=countdown + acc_idx * 5,
+                    countdown=countdown + stagger,
                 )
             if len(video_entries) > 1:
-                # Espaça cada vídeo da fila (um por vez, sem repetir)
-                countdown += max(45, len(accounts) * 8)
+                wave = (
+                    account_publish_countdown(max(n_accounts - 1, 0), n_accounts)
+                    if use_stagger
+                    else 0
+                )
+                countdown += wave + max(90, 60)
         return RedirectResponse(
             f"/logs?watch=1&n={len(video_entries)}{warn_q}",
             status_code=status.HTTP_303_SEE_OTHER,
@@ -1092,6 +1138,7 @@ async def create_automation(
             name=name.strip(),
             content_type=content_type,
             caption=caption,
+            captions_json=captions_json,
             video_key=video_key,
             video_original_name=video_original_name,
             videos_json=videos_json,
@@ -1122,6 +1169,7 @@ async def create_automation(
         name=name.strip(),
         content_type=content_type,
         caption=caption,
+        captions_json=captions_json,
         video_key=video_key,
         video_original_name=video_original_name,
         videos_json=videos_json,
@@ -1151,6 +1199,7 @@ async def create_reel_upload_draft(
     name: str = Form(...),
     content_type: str = Form("reel"),
     caption: str = Form(""),
+    captions_alt: str = Form(""),
     story_link: str = Form(""),
     schedule_mode: str = Form("recurring"),
     interval_minutes: int = Form(60),
@@ -1192,7 +1241,11 @@ async def create_reel_upload_draft(
     if len(accounts) != len(set(account_ids)):
         return JSONResponse({"error": "Alguma conta selecionada não existe."}, status_code=400)
     if schedule_mode == "recurring":
-        iv_err = validate_interval_for_accounts(interval_minutes, accounts)
+        iv_err = validate_interval_for_accounts(
+            interval_minutes,
+            accounts,
+            meta_warmup_enabled=get_anti_farm_prefs(user).get("meta_warmup_enabled", True),
+        )
         if iv_err:
             return JSONResponse({"error": iv_err}, status_code=400)
 
@@ -1202,6 +1255,7 @@ async def create_reel_upload_draft(
         posts_per_batch=posts_per_batch,
         rest_minutes=rest_minutes,
     )
+    captions_json = captions_to_json(captions_from_textarea(captions_alt))
     storage = get_storage()
     thumb_key, thumb_original_name = _save_thumb(storage, thumb)
     automation = Automation(
@@ -1209,6 +1263,7 @@ async def create_reel_upload_draft(
         name=name.strip(),
         content_type="reel",
         caption=caption,
+        captions_json=captions_json,
         video_key="",
         video_original_name="0 vídeos",
         videos_json=videos_to_json([]),
@@ -1452,13 +1507,26 @@ def finish_reel_batch_upload(
 
     if accounts and start_mode == "now":
         countdown = 0
+        n_accounts = len(accounts)
+        prefs = get_anti_farm_prefs(user)
+        use_stagger = bool(prefs.get("stagger_enabled", True))
+        use_caption_rotate = bool(prefs.get("caption_rotate_enabled", True))
         for index, entry in enumerate(entries):
             for account_index, account in enumerate(accounts):
+                stagger = (
+                    account_publish_countdown(account_index, n_accounts) if use_stagger else 0
+                )
                 publish_to_account.apply_async(
                     args=[a.id, account.id, entry["video_key"], index],
-                    countdown=countdown + account_index * 5,
+                    kwargs={"account_slot": account_index if use_caption_rotate else 0},
+                    countdown=countdown + stagger,
                 )
-            countdown += max(45, len(accounts) * 8)
+            wave = (
+                account_publish_countdown(max(n_accounts - 1, 0), n_accounts)
+                if use_stagger
+                else 0
+            )
+            countdown += wave + max(90, 60)
         redirect = f"/logs?watch=1&n={len(entries)}"
     else:
         state = "1" if accounts else "draft"
@@ -1611,6 +1679,7 @@ def duplicate_automation(
         name=copy_name,
         content_type=src.content_type or "reel",
         caption=src.caption or "",
+        captions_json=getattr(src, "captions_json", None),
         story_link=src.story_link,
         story_sticker_text=src.story_sticker_text,
         story_layout_json=getattr(src, "story_layout_json", None),
@@ -1648,6 +1717,7 @@ def duplicate_automation(
 async def edit_automation(
     automation_id: int,
     caption: str = Form(""),
+    captions_alt: str = Form(""),
     content_type: str = Form("reel"),
     interval_minutes: int = Form(...),
     account_ids: list[int] = Form(default=[]),
@@ -1675,7 +1745,11 @@ async def edit_automation(
     ).all()
     if len(accounts) != len(set(account_ids)):
         raise HTTPException(status_code=400, detail="Conta inválida")
-    iv_err = validate_interval_for_accounts(interval_minutes, accounts)
+    iv_err = validate_interval_for_accounts(
+        interval_minutes,
+        accounts,
+        meta_warmup_enabled=get_anti_farm_prefs(user).get("meta_warmup_enabled", True),
+    )
     if iv_err:
         raise HTTPException(status_code=400, detail=iv_err)
 
@@ -1710,6 +1784,7 @@ async def edit_automation(
         rest_minutes=rest_minutes,
     )
     a.caption = caption
+    a.captions_json = captions_to_json(captions_from_textarea(captions_alt))
     a.content_type = content_type
     a.interval_minutes = interval_minutes
     a.jitter_enabled = bool(humanize["jitter_enabled"])

@@ -12,6 +12,22 @@
 
 {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
 
+<div class="panel" style="margin-bottom:16px">
+  <p style="margin:0 0 8px;font-size:14px">
+    <strong>Proteção anti-farm</strong>
+    — espaçamento entre contas, vídeos/legendas diferentes e aquecimento Meta.
+    {% set af = anti_farm_prefs or {} %}
+    <span class="muted" style="font-size:12px">
+      Agora:
+      espaçamento {% if af.get('stagger_enabled', true) %}ligado{% else %}desligado{% endif %} ·
+      vídeos {% if af.get('media_rotate_enabled', true) %}ligado{% else %}desligado{% endif %} ·
+      legendas {% if af.get('caption_rotate_enabled', true) %}ligado{% else %}desligado{% endif %} ·
+      aquecimento {% if af.get('meta_warmup_enabled', true) %}ligado{% else %}desligado{% endif %}.
+    </span>
+  </p>
+  <a href="/aquecimento" data-nav="/aquecimento" class="btn btn-sm">Abrir Aquecimento (ligar/desligar + explicação)</a>
+</div>
+
 <form method="post" action="/automations/new" enctype="multipart/form-data" class="form-card form-card--premium form-grid" id="automation-form">
   <input type="hidden" name="video_count" id="video-count-input" value="0">
 
@@ -39,6 +55,10 @@
       <label>Legenda
         <textarea name="caption" rows="4" placeholder="Escreva a legenda…"></textarea>
       </label>
+      <label style="margin-top:10px">Legendas alternativas <span class="muted">(uma por linha)</span>
+        <textarea name="captions_alt" rows="3" placeholder="Opcional — cada conta usa uma linha diferente no mesmo ciclo"></textarea>
+      </label>
+      <span class="muted" style="display:block;margin-top:4px;font-size:12px">Se preencher, as contas rotacionam essas legendas em vez da legenda acima.</span>
     </div>
 
     <div id="story-link-wrap">
@@ -122,13 +142,20 @@
 
     <div id="interval-wrap">
       <label>Publicar a cada
-        <select name="interval_minutes" id="interval-minutes-select" data-meta-min="{{ meta_min_interval|default(60) }}">
+        <select name="interval_minutes" id="interval-minutes-select"
+                data-meta-min="{{ meta_min_interval|default(60) }}"
+                data-meta-warmup-days="{{ meta_warmup_days|default(7) }}"
+                data-meta-warmup-min="{{ meta_warmup_min_interval|default(180) }}"
+                data-meta-warmup-enabled="{{ '1' if (anti_farm_prefs or {}).get('meta_warmup_enabled', true) else '0' }}">
           {% for m in intervals %}
           <option value="{{ m }}" data-minutes="{{ m }}">{{ interval_label(m) }}</option>
           {% endfor %}
         </select>
         <span class="muted" id="meta-interval-hint" style="display:none;margin-top:6px;font-size:12px">
           Contas da API oficial: intervalo mínimo de 1 hora.
+        </span>
+        <span class="muted" id="meta-warmup-hint" style="display:none;margin-top:6px;font-size:12px">
+          Contas Meta com menos de 7 dias usam mínimo 3h entre posts.
         </span>
       </label>
 
@@ -209,7 +236,8 @@
         {% for ac in accounts %}
         <label>
           <input type="checkbox" name="account_ids" value="{{ ac.id }}"
-                 data-provider="{{ ac.provider or 'instagrapi' }}">
+                 data-provider="{{ ac.provider or 'instagrapi' }}"
+                 data-created-at="{{ ac.created_at.isoformat() if ac.created_at else '' }}">
           @{{ ac.username }}
           {% if ac.provider == 'meta' %}<span class="og-badge badge-green" style="font-size:10px">API</span>{% endif %}
           <span class="muted">({{ status_label(ac.status) }})</span>

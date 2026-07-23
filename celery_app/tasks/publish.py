@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
-import random
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from urllib.parse import quote
 
 import requests
@@ -21,13 +21,16 @@ from sqlalchemy import select, text
 
 from app.config import settings
 from app.security import decrypt_secret
+from app.utils.anti_farm import account_publish_countdown, resolve_caption_for_slot
 from app.utils.auth_failures import (
     auth_status_reason,
     latest_auth_failure_reason,
     looks_auth_required,
 )
 from app.utils.automation_videos import playlist_items, playlist_is_exhausted, resolve_video_key
+from app.utils.intervals import meta_min_interval_for_account
 from celery_app.config import celery_app
+from core.anti_farm_prefs import get_anti_farm_prefs_by_id
 from core.database import session_scope
 from core.instagram import (
     InstagramAuthError,
@@ -205,6 +208,9 @@ def execute_automation(self, automation_id: int) -> dict:
     video_name = None
     queue_index = None
     total_videos = 0
+    rotate_keys: list[str] = []
+    owner_user_id: int | None = None
+    anti_prefs: dict = {}
 
     with session_scope() as db:
         automation = db.execute(
@@ -214,6 +220,9 @@ def execute_automation(self, automation_id: int) -> dict:
             return {"error": "automation_not_found", "id": automation_id}
         if automation.status != "active":
             return {"skipped": True, "reason": "not_active", "code": PLAYLIST_CODE}
+
+        owner_user_id = automation.user_id
+        anti_prefs = get_anti_farm_prefs_by_id(db, automation.user_id)
 
         # Dispara lazy-load das contas ainda com o row lock
         accounts = list(automation.accounts)
@@ -278,6 +287,7 @@ def execute_automation(self, automation_id: int) -> dict:
                 done = (automation.user_id, automation.name, len(items))
             else:
                 queue_index, video_key, video_name = claimed
+                rotate_keys = [it.get("video_key") or "" for it in items]
 
     if done:
         uid, name, total = done
@@ -294,10 +304,28 @@ def execute_automation(self, automation_id: int) -> dict:
     if not account_ids or not video_key:
         return {"error": "no_accounts_or_video", "id": automation_id, "code": PLAYLIST_CODE}
 
+    n_accounts = len(account_ids)
+    rotate = (
+        bool(anti_prefs.get("media_rotate_enabled", True))
+        and len(rotate_keys) >= 2
+        and queue_index is not None
+    )
+    use_stagger = bool(anti_prefs.get("stagger_enabled", True))
+    use_caption_rotate = bool(anti_prefs.get("caption_rotate_enabled", True))
+
     for i, account_id in enumerate(account_ids):
-        countdown = 0 if i == 0 else random.randint(5, 40) + i * random.randint(2, 8)
+        countdown = account_publish_countdown(i, n_accounts) if use_stagger else 0
+        if rotate:
+            acc_index = (int(queue_index) + i) % len(rotate_keys)
+            acc_video_key = rotate_keys[acc_index] or video_key
+            acc_queue_index = acc_index
+        else:
+            acc_video_key = video_key
+            acc_queue_index = queue_index
+        slot = i if use_caption_rotate else 0
         publish_to_account.apply_async(
-            args=[automation_id, account_id, video_key, queue_index],
+            args=[automation_id, account_id, acc_video_key, acc_queue_index],
+            kwargs={"account_slot": slot},
             countdown=countdown,
         )
 
@@ -309,6 +337,11 @@ def execute_automation(self, automation_id: int) -> dict:
         "video_key": video_key,
         "video_name": video_name,
         "code": PLAYLIST_CODE,
+        "anti_farm": {
+            "stagger": use_stagger,
+            "media_rotate": rotate,
+            "caption_rotate": use_caption_rotate,
+        },
     }
 
 
@@ -357,6 +390,7 @@ def publish_to_account(
     account_id: int,
     video_key: str | None = None,
     queue_index: int | None = None,
+    account_slot: int | None = None,
 ) -> dict:
     with session_scope() as db:
         automation = db.get(Automation, automation_id)
@@ -395,12 +429,16 @@ def publish_to_account(
         if posted_index is None:
             posted_index = 0
 
+        slot = int(account_slot) if account_slot is not None else 0
+        caption = resolve_caption_for_slot(automation, slot)
+
         log.info(
-            "PLAYLIST %s publish automation=%s account=%s idx=%s key=%s",
+            "PLAYLIST %s publish automation=%s account=%s idx=%s slot=%s key=%s",
             PLAYLIST_CODE,
             automation_id,
             account.username,
             posted_index,
+            slot,
             vk,
         )
 
@@ -410,7 +448,7 @@ def publish_to_account(
                 account_id=account.id,
                 video_key=vk,
                 thumb_key=automation.thumb_key,
-                caption=automation.caption or "",
+                caption=caption,
                 content_type=automation.content_type or "reel",
                 story_link=automation.story_link,
                 story_sticker_text=automation.story_sticker_text,
@@ -438,6 +476,7 @@ def _execute_publish(
     playlist_index: int | None = None,
 ) -> dict:
     storage = get_storage()
+    meta_warmup_skip_reason: str | None = None
 
     with session_scope() as db:
         account = db.get(InstagramAccount, account_id)
@@ -466,6 +505,7 @@ def _execute_publish(
         meta_access_token = decrypt_secret(account.encrypted_meta_access_token)
         meta_ig_user_id = account.meta_ig_user_id
         user_meta_app_id = account.user_meta_app_id
+        account_created_at = account.created_at
         from core.web_cookies import decrypt_web_cookies
 
         web_cookies = decrypt_web_cookies(account.encrypted_web_cookies)
@@ -480,8 +520,59 @@ def _execute_publish(
             account.last_error = None
             account_status = "active"
 
+        if provider == "meta" and account_status not in (
+            "paused", "needs_login", "proxy_down", "banned", "deleted"
+        ):
+            anti = get_anti_farm_prefs_by_id(db, owner_user_id) if owner_user_id else {}
+            warmup_on = bool(anti.get("meta_warmup_enabled", True))
+            min_gap = meta_min_interval_for_account(
+                SimpleNamespace(provider="meta", created_at=account_created_at)
+            )
+            if not warmup_on:
+                # Sem aquecimento: só o piso Meta padrão (1h)
+                from app.utils.intervals import META_MIN_INTERVAL as _META_FLOOR
+                min_gap = _META_FLOOR
+            if min_gap > 0:
+                last_ok = db.scalars(
+                    select(PublishLog)
+                    .where(
+                        PublishLog.account_id == account_id,
+                        PublishLog.status == "success",
+                    )
+                    .order_by(PublishLog.created_at.desc())
+                    .limit(1)
+                ).first()
+                if last_ok and last_ok.created_at:
+                    last_at = last_ok.created_at
+                    if last_at.tzinfo is not None:
+                        last_at = last_at.astimezone(dt.timezone.utc).replace(tzinfo=None)
+                    age_min = (dt.datetime.utcnow() - last_at).total_seconds() / 60.0
+                    if age_min < min_gap:
+                        wait_left = int(min_gap - age_min) + 1
+                        meta_warmup_skip_reason = (
+                            f"meta_min_interval:{min_gap}m "
+                            f"(aguarde ~{wait_left} min; último post há {int(age_min)} min)"
+                        )
+                        db.add(
+                            PublishLog(
+                                automation_id=automation_id,
+                                account_id=account_id,
+                                status="skipped",
+                                content_type=content_type,
+                                error=meta_warmup_skip_reason[:2000],
+                            )
+                        )
+
     if account_status in ("paused", "needs_login", "proxy_down", "banned", "deleted"):
         return {"skipped": True, "reason": f"account_{account_status}"}
+
+    if meta_warmup_skip_reason:
+        log.info(
+            "Meta interval skip account=%s reason=%s",
+            account_id,
+            meta_warmup_skip_reason,
+        )
+        return {"skipped": True, "reason": "meta_min_interval"}
 
     if provider == "meta":
         if not user_meta_app_id:

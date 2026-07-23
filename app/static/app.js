@@ -816,25 +816,43 @@
       selects.forEach((select) => {
         const form = select.closest("form") || document;
         const metaMin = parseInt(select.dataset.metaMin || "60", 10) || 60;
+        const warmupDays = parseInt(select.dataset.metaWarmupDays || "7", 10) || 7;
+        const warmupMin = parseInt(select.dataset.metaWarmupMin || "180", 10) || 180;
+        const warmupEnabled = (select.dataset.metaWarmupEnabled || "1") !== "0";
         const checked = form.querySelectorAll('input[name="account_ids"]:checked');
         let hasMeta = false;
+        let hasWarmup = false;
+        let effectiveMin = metaMin;
         checked.forEach((cb) => {
-          if ((cb.dataset.provider || "") === "meta") hasMeta = true;
+          if ((cb.dataset.provider || "") !== "meta") return;
+          hasMeta = true;
+          if (!warmupEnabled) return;
+          const created = cb.dataset.createdAt;
+          if (!created) return;
+          const createdMs = Date.parse(created);
+          if (Number.isNaN(createdMs)) return;
+          const ageMs = Date.now() - createdMs;
+          if (ageMs < warmupDays * 86400000) {
+            hasWarmup = true;
+            effectiveMin = Math.max(effectiveMin, warmupMin);
+          }
         });
         const current = parseInt(select.value, 10);
         let firstVisible = null;
         Array.from(select.options).forEach((opt) => {
           const minutes = parseInt(opt.dataset.minutes || opt.value, 10);
-          const hide = hasMeta && minutes < metaMin;
+          const hide = hasMeta && minutes < effectiveMin;
           opt.hidden = hide;
           opt.disabled = hide;
           if (!hide && firstVisible === null) firstVisible = minutes;
         });
-        if (hasMeta && current < metaMin && firstVisible !== null) {
+        if (hasMeta && current < effectiveMin && firstVisible !== null) {
           select.value = String(firstVisible);
         }
         const hint = form.querySelector("#meta-interval-hint, .meta-interval-hint");
-        if (hint) hint.style.display = hasMeta ? "block" : "none";
+        if (hint) hint.style.display = hasMeta && !hasWarmup ? "block" : "none";
+        const warmHint = form.querySelector("#meta-warmup-hint, .meta-warmup-hint");
+        if (warmHint) warmHint.style.display = hasWarmup ? "block" : "none";
       });
     }
 

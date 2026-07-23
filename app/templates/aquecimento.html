@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Aquecimento — instablack{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h2>Aquecimento</h2>
+    <p class="muted page-header-sub">
+      Proteções anti-farm nas automações Meta: espaçar posts entre contas, variar vídeo/legenda
+      e aquecer contas novas com intervalo maior. Ligue ou desligue cada função abaixo.
+    </p>
+  </div>
+</div>
+
+{% if saved %}<div class="alert alert-ok">Preferências salvas. Valem para todas as suas automações.</div>{% endif %}
+
+<div class="panel" style="margin-bottom:20px">
+  <div class="panel-header"><h3>Por que isso existe?</h3></div>
+  <p class="muted" style="margin:0 0 10px;font-size:14px;line-height:1.5">
+    Quando várias contas publicam o <strong>mesmo vídeo</strong>, com a <strong>mesma legenda</strong>,
+    no <strong>mesmo minuto</strong>, a Meta detecta padrão de farm e pode restringir a conta
+    (“User is restricted”). Estas funções espalham e diversificam os posts automaticamente.
+  </p>
+  <p class="muted" style="margin:0;font-size:13px">
+    Configure também as <a href="/automations" data-nav="/automations">Automações</a>
+    (legendas alternativas e playlist com vários vídeos) para a rotação funcionar bem.
+  </p>
+</div>
+
+<form method="post" action="/aquecimento/prefs" class="form-card form-card--premium" style="margin-bottom:24px">
+  <header class="form-section-head" style="margin-bottom:16px">
+    <i data-lucide="shield-check"></i>
+    <div>
+      <h3 style="margin:0">Funções (ligar / desligar)</h3>
+      <p class="muted" style="margin:4px 0 0;font-size:13px">Padrão: tudo ligado. Desmarque o que não quiser usar.</p>
+    </div>
+  </header>
+
+  {% for key, meta in pref_labels.items() %}
+  <label class="checkbox-row" style="align-items:flex-start;margin-bottom:16px;gap:12px">
+    <input type="checkbox" name="{{ key }}" value="1" {% if prefs[key] %}checked{% endif %} style="margin-top:4px">
+    <span>
+      <strong style="display:block;margin-bottom:4px">{{ meta.title }}</strong>
+      <span class="muted" style="font-size:13px;line-height:1.45">{{ meta.help }}</span>
+    </span>
+  </label>
+  {% endfor %}
+
+  <button type="submit" class="btn btn-primary">Salvar preferências</button>
+</form>
+
+<div class="panel" style="margin-bottom:20px">
+  <div class="panel-header"><h3>Onde configurar na prática</h3></div>
+  <ul class="muted" style="margin:0;padding-left:18px;font-size:14px;line-height:1.7">
+    <li><strong>Espaçamento entre contas</strong> — automático no worker (sem campo extra).</li>
+    <li><strong>Vídeos diferentes</strong> — na automação, envie <strong>2 ou mais vídeos</strong> na playlist.</li>
+    <li><strong>Legendas diferentes</strong> — em Nova/Editar automação, preencha
+      <em>Legendas alternativas (uma por linha)</em>.</li>
+    <li><strong>Aquecimento Meta</strong> — automático por idade da conta; o intervalo mínimo sobe para 3h na criação/edição.</li>
+  </ul>
+</div>
+
+<div class="panel">
+  <div class="panel-header">
+    <h3>Suas contas Meta</h3>
+  </div>
+  {% if warmup_rows %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Conta</th>
+          <th>Idade no painel</th>
+          <th>Modo</th>
+          <th>Intervalo mínimo</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in warmup_rows %}
+        <tr>
+          <td>@{{ row.username }}</td>
+          <td class="muted">
+            {% if row.age_days is not none %}{{ row.age_days }} dia{{ 's' if row.age_days != 1 else '' }}
+            {% else %}—{% endif %}
+          </td>
+          <td>
+            {% if row.in_warmup and prefs.meta_warmup_enabled %}
+            <span class="og-badge badge-green">Aquecimento ({{ meta_warmup_days }} dias)</span>
+            {% elif not prefs.meta_warmup_enabled %}
+            <span class="og-badge">Aquecimento desligado</span>
+            {% else %}
+            <span class="og-badge">Normal</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if row.min_interval >= 180 %}3 horas
+            {% elif row.min_interval >= 60 %}1 hora
+            {% else %}{{ row.min_interval }} min{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="muted" style="margin:12px 0 0;font-size:12px">
+    Contas Meta com menos de {{ meta_warmup_days }} dias → mínimo {{ meta_warmup_min_interval }} min (3h) quando o aquecimento está ligado.
+    Depois disso → mínimo {{ meta_min_interval }} min (1h).
+  </p>
+  {% else %}
+  <p class="muted">Nenhuma conta Meta conectada. <a href="/accounts" data-nav="/accounts">Adicionar conta</a>.</p>
+  {% endif %}
+</div>
+{% endblock %}

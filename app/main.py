@@ -22,6 +22,7 @@ from app.config import settings
 from app.routes import (
     accounts,
     admin,
+    aquecimento,
     auth,
     automations,
     dashboard,
@@ -77,6 +78,7 @@ def create_app() -> FastAPI:
     app.include_router(accounts.router)
     app.include_router(meta_apps.router)
     app.include_router(automations.router)
+    app.include_router(aquecimento.router)
     app.include_router(profile.router)
     app.include_router(admin.router)
     app.include_router(notifications.router)

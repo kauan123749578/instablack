@@ -4,6 +4,9 @@
 <div class="page-header">
   <h2>Automações</h2>
   <div class="page-header-actions">
+    <a href="/aquecimento" class="btn btn-sm" data-nav="/aquecimento">
+      <i data-lucide="flame"></i> Aquecimento
+    </a>
     <a href="/automations/story-studio" class="btn btn-story-outline">
       <i data-lucide="link-2"></i> Story com link
     </a>
@@ -14,6 +17,18 @@
       <i data-lucide="plus"></i> Nova automação
     </a>
   </div>
+</div>
+
+{% set af = anti_farm_prefs or {} %}
+<div class="panel" style="margin-bottom:16px">
+  <p style="margin:0;font-size:14px;line-height:1.5">
+    <strong>Anti-farm ativo nas suas automações:</strong>
+    espaçamento entre contas {% if af.get('stagger_enabled', true) %}<span class="og-badge badge-green">ON</span>{% else %}<span class="og-badge">OFF</span>{% endif %}
+    · vídeos diferentes {% if af.get('media_rotate_enabled', true) %}<span class="og-badge badge-green">ON</span>{% else %}<span class="og-badge">OFF</span>{% endif %}
+    · legendas diferentes {% if af.get('caption_rotate_enabled', true) %}<span class="og-badge badge-green">ON</span>{% else %}<span class="og-badge">OFF</span>{% endif %}
+    · aquecimento Meta 3h {% if af.get('meta_warmup_enabled', true) %}<span class="og-badge badge-green">ON</span>{% else %}<span class="og-badge">OFF</span>{% endif %}
+    — <a href="/aquecimento" data-nav="/aquecimento">explicar e ligar/desligar</a>
+  </p>
 </div>
 
 {% if request.query_params.get('ok') == 'calendar' %}
@@ -203,13 +218,20 @@
             </select>
           </label>
           <label>Intervalo
-            <select name="interval_minutes" class="interval-minutes-select" data-meta-min="{{ meta_min_interval|default(60) }}">
+            <select name="interval_minutes" class="interval-minutes-select"
+                    data-meta-min="{{ meta_min_interval|default(60) }}"
+                    data-meta-warmup-days="{{ meta_warmup_days|default(7) }}"
+                    data-meta-warmup-min="{{ meta_warmup_min_interval|default(180) }}"
+                    data-meta-warmup-enabled="{{ '1' if (anti_farm_prefs or {}).get('meta_warmup_enabled', true) else '0' }}">
               {% for m in intervals %}
               <option value="{{ m }}" data-minutes="{{ m }}" {% if m == a.interval_minutes %}selected{% endif %}>{{ interval_label(m) }}</option>
               {% endfor %}
             </select>
             <span class="muted meta-interval-hint" style="display:none;margin-top:6px;font-size:12px">
               Contas da API oficial: intervalo mínimo de 1 hora.
+            </span>
+            <span class="muted meta-warmup-hint" style="display:none;margin-top:6px;font-size:12px">
+              Contas Meta com menos de 7 dias usam mínimo 3h entre posts.
             </span>
           </label>
           <fieldset>
@@ -234,6 +256,9 @@
           <label>Legenda
             <textarea name="caption" rows="3">{{ a.caption }}</textarea>
           </label>
+          <label>Legendas alternativas <span class="muted">(uma por linha)</span>
+            <textarea name="captions_alt" rows="3" placeholder="Opcional — rotação por conta">{{ captions_textarea_value(a.captions_json) }}</textarea>
+          </label>
           <label>Trocar capa (.jpg/.png)
             <input type="file" name="thumb" accept="image/jpeg,image/png,image/webp">
           </label>
@@ -250,6 +275,7 @@
               <label>
                 <input type="checkbox" name="account_ids" value="{{ ac.id }}"
                        data-provider="{{ ac.provider or 'instagrapi' }}"
+                       data-created-at="{{ ac.created_at.isoformat() if ac.created_at else '' }}"
                        {% if ac.id in selected_ids %}checked{% endif %}>
                 @{{ ac.username }}
                 {% if ac.provider == 'meta' %}<span class="og-badge badge-green" style="font-size:10px">API</span>{% endif %}

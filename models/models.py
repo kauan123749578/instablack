@@ -46,6 +46,7 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     account_limit: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=None)
     notification_prefs_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    anti_farm_prefs_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -192,6 +193,7 @@ class Automation(Base):
     name: Mapped[str] = mapped_column(String(255))
     content_type: Mapped[str] = mapped_column(String(16), default="reel")  # reel | story | photo
     caption: Mapped[str] = mapped_column(Text, default="")
+    captions_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # legendas alternativas JSON
     story_link: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     story_sticker_text: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     story_layout_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

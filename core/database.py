@@ -125,6 +125,8 @@ def _sqlite_migrate() -> None:
             conn.execute(text("ALTER TABLE automations ADD COLUMN story_layout_json TEXT"))
         if "videos_json" not in cols:
             conn.execute(text("ALTER TABLE automations ADD COLUMN videos_json TEXT"))
+        if "captions_json" not in cols:
+            conn.execute(text("ALTER TABLE automations ADD COLUMN captions_json TEXT"))
         if "current_index" not in cols:
             conn.execute(text("ALTER TABLE automations ADD COLUMN current_index INTEGER DEFAULT 0"))
         if "jitter_enabled" not in cols:
@@ -153,6 +155,8 @@ def _sqlite_migrate() -> None:
                 conn.execute(text("ALTER TABLE users ADD COLUMN account_limit INTEGER"))
             if "notification_prefs_json" not in ucols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN notification_prefs_json TEXT"))
+            if "anti_farm_prefs_json" not in ucols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN anti_farm_prefs_json TEXT"))
             conn.execute(text("UPDATE users SET is_admin = 1 WHERE username = 'admin'"))
         if "instagram_accounts" in insp.get_table_names():
             acols = {c["name"] for c in insp.get_columns("instagram_accounts")}
@@ -261,6 +265,8 @@ def _postgres_migrate() -> None:
                 conn.execute(text("ALTER TABLE automations ADD COLUMN story_layout_json TEXT"))
             if "videos_json" not in cols:
                 conn.execute(text("ALTER TABLE automations ADD COLUMN videos_json TEXT"))
+            if "captions_json" not in cols:
+                conn.execute(text("ALTER TABLE automations ADD COLUMN captions_json TEXT"))
             if "current_index" not in cols:
                 conn.execute(text("ALTER TABLE automations ADD COLUMN current_index INTEGER DEFAULT 0"))
             if "jitter_enabled" not in cols:
@@ -295,6 +301,8 @@ def _postgres_migrate() -> None:
                 conn.execute(text("ALTER TABLE users ADD COLUMN account_limit INTEGER"))
             if "notification_prefs_json" not in ucols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN notification_prefs_json TEXT"))
+            if "anti_farm_prefs_json" not in ucols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN anti_farm_prefs_json TEXT"))
             conn.execute(text("UPDATE users SET is_admin = TRUE WHERE username = 'admin' AND is_admin IS NOT TRUE"))
         if "instagram_accounts" in tables:
             acols = {c["name"] for c in insp.get_columns("instagram_accounts")}
