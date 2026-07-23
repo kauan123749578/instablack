@@ -21,7 +21,8 @@
       Agora:
       espaçamento {% if af.get('stagger_enabled', true) %}ligado{% else %}desligado{% endif %} ·
       vídeos {% if af.get('media_rotate_enabled', true) %}ligado{% else %}desligado{% endif %} ·
-      legendas {% if af.get('caption_rotate_enabled', true) %}ligado{% else %}desligado{% endif %} ·
+      legendas por conta {% if af.get('caption_rotate_by_account', true) %}ligado{% else %}desligado{% endif %} ·
+      legendas por Reel {% if af.get('caption_rotate_by_reel', false) %}ligado{% else %}desligado{% endif %} ·
       aquecimento {% if af.get('meta_warmup_enabled', true) %}ligado{% else %}desligado{% endif %}.
     </span>
   </p>
@@ -66,9 +67,22 @@
           <button type="button" class="btn btn-sm" data-caption-add>+ Adicionar legenda</button>
         </div>
         <div class="captions-rotator-list" data-captions-list></div>
-        <p class="muted" style="margin:8px 0 0;font-size:12px">
-          Cada caixa = uma legenda completa (pode ser bem longa). Conta 1 usa a 1ª, conta 2 a 2ª…
-        </p>
+        <fieldset style="margin-top:12px">
+          <legend>Como rotacionar</legend>
+          <label class="checkbox-row">
+            <input type="checkbox" name="caption_rotate_by_account" value="1"
+                   {% if (anti_farm_prefs or {}).get('caption_rotate_by_account', true) %}checked{% endif %}>
+            Por conta (cada @ no mesmo ciclo usa uma legenda diferente)
+          </label>
+          <label class="checkbox-row" style="margin-top:6px">
+            <input type="checkbox" name="caption_rotate_by_reel" value="1"
+                   {% if (anti_farm_prefs or {}).get('caption_rotate_by_reel', false) %}checked{% endif %}>
+            Por Reel (cada vídeo da playlist troca a legenda)
+          </label>
+          <p class="muted" style="margin:6px 0 0;font-size:12px">
+            Pode ligar os dois: a legenda fica (conta + índice do Reel). Sem lista de rotação, usa a principal.
+          </p>
+        </fieldset>
       </div>
     </div>
 

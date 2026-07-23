@@ -200,6 +200,8 @@ class Automation(Base):
     content_type: Mapped[str] = mapped_column(String(16), default="reel")  # reel | story | photo
     caption: Mapped[str] = mapped_column(Text, default="")
     captions_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # legendas alternativas JSON
+    caption_rotate_by_account: Mapped[bool] = mapped_column(Boolean, default=True)
+    caption_rotate_by_reel: Mapped[bool] = mapped_column(Boolean, default=False)
     story_link: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     story_sticker_text: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     story_layout_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

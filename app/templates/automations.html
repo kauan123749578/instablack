@@ -25,7 +25,8 @@
     <strong>Anti-farm ativo nas suas automações:</strong>
     espaçamento entre contas {% if af.get('stagger_enabled', true) %}<span class="og-badge badge-green">ON</span>{% else %}<span class="og-badge">OFF</span>{% endif %}
     · vídeos diferentes {% if af.get('media_rotate_enabled', true) %}<span class="og-badge badge-green">ON</span>{% else %}<span class="og-badge">OFF</span>{% endif %}
-    · legendas diferentes {% if af.get('caption_rotate_enabled', true) %}<span class="og-badge badge-green">ON</span>{% else %}<span class="og-badge">OFF</span>{% endif %}
+    · legendas por conta {% if af.get('caption_rotate_by_account', true) %}<span class="og-badge badge-green">ON</span>{% else %}<span class="og-badge">OFF</span>{% endif %}
+    · legendas por Reel {% if af.get('caption_rotate_by_reel', false) %}<span class="og-badge badge-green">ON</span>{% else %}<span class="og-badge">OFF</span>{% endif %}
     · aquecimento Meta {% if af.get('meta_warmup_enabled', true) %}<span class="og-badge badge-green">ON</span>{% else %}<span class="og-badge">OFF</span>{% endif %}
     — <a href="/aquecimento" data-nav="/aquecimento">ativar por conta + explicar</a>
   </p>
@@ -298,6 +299,19 @@
               </div>
               {% endfor %}
             </div>
+            <fieldset style="margin-top:10px">
+              <legend>Como rotacionar</legend>
+              <label class="checkbox-row">
+                <input type="checkbox" name="caption_rotate_by_account" value="1"
+                       {% if a.caption_rotate_by_account is not defined or a.caption_rotate_by_account %}checked{% endif %}>
+                Por conta
+              </label>
+              <label class="checkbox-row" style="margin-top:4px">
+                <input type="checkbox" name="caption_rotate_by_reel" value="1"
+                       {% if a.caption_rotate_by_reel %}checked{% endif %}>
+                Por Reel (cada vídeo da playlist)
+              </label>
+            </fieldset>
           </div>
           <label>Trocar capa (.jpg/.png)
             <input type="file" name="thumb" accept="image/jpeg,image/png,image/webp">

@@ -127,6 +127,10 @@ def _sqlite_migrate() -> None:
             conn.execute(text("ALTER TABLE automations ADD COLUMN videos_json TEXT"))
         if "captions_json" not in cols:
             conn.execute(text("ALTER TABLE automations ADD COLUMN captions_json TEXT"))
+        if "caption_rotate_by_account" not in cols:
+            conn.execute(text("ALTER TABLE automations ADD COLUMN caption_rotate_by_account BOOLEAN DEFAULT 1"))
+        if "caption_rotate_by_reel" not in cols:
+            conn.execute(text("ALTER TABLE automations ADD COLUMN caption_rotate_by_reel BOOLEAN DEFAULT 0"))
         if "current_index" not in cols:
             conn.execute(text("ALTER TABLE automations ADD COLUMN current_index INTEGER DEFAULT 0"))
         if "jitter_enabled" not in cols:
@@ -279,6 +283,14 @@ def _postgres_migrate() -> None:
                 conn.execute(text("ALTER TABLE automations ADD COLUMN videos_json TEXT"))
             if "captions_json" not in cols:
                 conn.execute(text("ALTER TABLE automations ADD COLUMN captions_json TEXT"))
+            if "caption_rotate_by_account" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE automations ADD COLUMN caption_rotate_by_account BOOLEAN DEFAULT TRUE"
+                ))
+            if "caption_rotate_by_reel" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE automations ADD COLUMN caption_rotate_by_reel BOOLEAN DEFAULT FALSE"
+                ))
             if "current_index" not in cols:
                 conn.execute(text("ALTER TABLE automations ADD COLUMN current_index INTEGER DEFAULT 0"))
             if "jitter_enabled" not in cols:

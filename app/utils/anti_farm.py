@@ -124,9 +124,40 @@ def captions_from_form(captions_alt: list[str] | str | None) -> list[str]:
 
 
 def resolve_caption_for_slot(automation: Automation, slot: int) -> str:
-    """Conta `slot` usa captions_json[i % n]; se vazio, usa automation.caption."""
+    """Compat: só por conta."""
+    return resolve_caption(
+        automation,
+        account_slot=slot,
+        reel_index=0,
+        by_account=True,
+        by_reel=False,
+    )
+
+
+def resolve_caption(
+    automation: Automation,
+    *,
+    account_slot: int = 0,
+    reel_index: int = 0,
+    by_account: bool = True,
+    by_reel: bool = False,
+) -> str:
+    """Resolve legenda da lista de rotação.
+
+    - só por conta: captions[account_slot % n]
+    - só por reel: captions[reel_index % n]
+    - os dois: captions[(account_slot + reel_index) % n]
+    - nenhum: caption principal (ou 1ª da lista)
+    """
     alts = parse_captions_json(getattr(automation, "captions_json", None))
-    if alts:
-        idx = slot % len(alts)
-        return alts[idx]
-    return (getattr(automation, "caption", None) or "") or ""
+    main = (getattr(automation, "caption", None) or "") or ""
+    if not alts:
+        return main
+    if not by_account and not by_reel:
+        return main or alts[0]
+    idx = 0
+    if by_reel:
+        idx += max(0, int(reel_index or 0))
+    if by_account:
+        idx += max(0, int(account_slot or 0))
+    return alts[idx % len(alts)]

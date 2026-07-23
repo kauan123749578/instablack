@@ -111,7 +111,8 @@ def save_aquecimento_prefs(
     stagger_min_minutes: int = Form(2),
     stagger_max_minutes: int = Form(8),
     media_rotate_enabled: str = Form(""),
-    caption_rotate_enabled: str = Form(""),
+    caption_rotate_by_account: str = Form(""),
+    caption_rotate_by_reel: str = Form(""),
     meta_warmup_enabled: str = Form(""),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -121,7 +122,8 @@ def save_aquecimento_prefs(
         stagger_min_minutes=stagger_min_minutes,
         stagger_max_minutes=stagger_max_minutes,
         media_rotate_enabled=media_rotate_enabled,
-        caption_rotate_enabled=caption_rotate_enabled,
+        caption_rotate_by_account=caption_rotate_by_account,
+        caption_rotate_by_reel=caption_rotate_by_reel,
         meta_warmup_enabled=meta_warmup_enabled,
     )
     save_anti_farm_prefs(db, user, prefs)

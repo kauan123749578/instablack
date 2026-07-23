@@ -32,7 +32,7 @@ from app.utils.anti_farm import (
     captions_textarea_value,
     captions_to_json,
     clamp_stagger_minutes,
-    parse_captions_json,
+    resolve_caption,
     resolve_stagger_config,
 )
 from app.utils.automation_schedule import (
@@ -206,12 +206,20 @@ def _schedule_humanize_fields(
     stagger_enabled: object = True,
     stagger_min_minutes: object = DEFAULT_STAGGER_MIN,
     stagger_max_minutes: object = DEFAULT_STAGGER_MAX,
+    caption_rotate_by_account: object = True,
+    caption_rotate_by_reel: object = False,
 ) -> dict[str, object]:
     lo, hi = clamp_stagger_minutes(stagger_min_minutes, stagger_max_minutes)
     if isinstance(stagger_enabled, bool):
         stagger_on = stagger_enabled
     else:
         stagger_on = str(stagger_enabled or "").strip().lower() in ("1", "on", "true", "yes")
+
+    def _flag(raw: object) -> bool:
+        if isinstance(raw, bool):
+            return raw
+        return str(raw or "").strip().lower() in ("1", "on", "true", "yes")
+
     return {
         "jitter_enabled": parse_jitter_enabled(jitter_enabled),
         "jitter_minutes": parse_jitter_minutes(jitter_minutes),
@@ -221,6 +229,8 @@ def _schedule_humanize_fields(
         "stagger_enabled": stagger_on,
         "stagger_min_minutes": lo,
         "stagger_max_minutes": hi,
+        "caption_rotate_by_account": _flag(caption_rotate_by_account),
+        "caption_rotate_by_reel": _flag(caption_rotate_by_reel),
     }
 
 
@@ -911,6 +921,8 @@ async def create_automation(
     stagger_enabled: str = Form(""),
     stagger_min_minutes: int = Form(DEFAULT_STAGGER_MIN),
     stagger_max_minutes: int = Form(DEFAULT_STAGGER_MAX),
+    caption_rotate_by_account: str = Form(""),
+    caption_rotate_by_reel: str = Form(""),
     thumb: UploadFile | None = File(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -923,6 +935,8 @@ async def create_automation(
         stagger_enabled=stagger_enabled,
         stagger_min_minutes=stagger_min_minutes,
         stagger_max_minutes=stagger_max_minutes,
+        caption_rotate_by_account=caption_rotate_by_account,
+        caption_rotate_by_reel=caption_rotate_by_reel,
     )
     captions_json = captions_to_json(captions_from_form(captions_alt))
     submitted_cal_times: list[str] = []
@@ -1118,14 +1132,26 @@ async def create_automation(
         use_stagger = bool(humanize["stagger_enabled"]) and bool(prefs.get("stagger_enabled", True))
         stagger_lo = int(humanize["stagger_min_minutes"])  # type: ignore[arg-type]
         stagger_hi = int(humanize["stagger_max_minutes"])  # type: ignore[arg-type]
-        use_caption_rotate = bool(prefs.get("caption_rotate_enabled", True))
-        alt_caps = parse_captions_json(captions_json) if use_caption_rotate else []
+        by_acc = bool(humanize["caption_rotate_by_account"]) and bool(
+            prefs.get("caption_rotate_by_account", True)
+        )
+        by_reel = bool(humanize["caption_rotate_by_reel"]) and bool(
+            prefs.get("caption_rotate_by_reel", False)
+        )
+        # stub mínimo para resolve_caption
+        class _Cap:
+            caption = caption
+            captions_json = captions_json
+
         for v_idx, entry in enumerate(video_entries):
             for acc_idx, acc in enumerate(accounts):
-                if alt_caps:
-                    acc_caption = alt_caps[acc_idx % len(alt_caps)]
-                else:
-                    acc_caption = caption
+                acc_caption = resolve_caption(
+                    _Cap(),  # type: ignore[arg-type]
+                    account_slot=acc_idx,
+                    reel_index=v_idx,
+                    by_account=by_acc,
+                    by_reel=by_reel,
+                )
                 stagger = (
                     account_publish_countdown(
                         acc_idx,
@@ -1250,6 +1276,8 @@ async def create_reel_upload_draft(
     stagger_enabled: str = Form(""),
     stagger_min_minutes: int = Form(DEFAULT_STAGGER_MIN),
     stagger_max_minutes: int = Form(DEFAULT_STAGGER_MAX),
+    caption_rotate_by_account: str = Form(""),
+    caption_rotate_by_reel: str = Form(""),
     thumb: UploadFile | None = File(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
@@ -1297,6 +1325,8 @@ async def create_reel_upload_draft(
         stagger_enabled=stagger_enabled,
         stagger_min_minutes=stagger_min_minutes,
         stagger_max_minutes=stagger_max_minutes,
+        caption_rotate_by_account=caption_rotate_by_account,
+        caption_rotate_by_reel=caption_rotate_by_reel,
     )
     captions_json = captions_to_json(captions_from_form(captions_alt))
     storage = get_storage()
@@ -1553,7 +1583,12 @@ def finish_reel_batch_upload(
         n_accounts = len(accounts)
         prefs = get_anti_farm_prefs(user)
         use_stagger, stagger_lo, stagger_hi = resolve_stagger_config(a, prefs)
-        use_caption_rotate = bool(prefs.get("caption_rotate_enabled", True))
+        by_acc = bool(prefs.get("caption_rotate_by_account", True)) and bool(
+            getattr(a, "caption_rotate_by_account", True)
+        )
+        by_reel = bool(prefs.get("caption_rotate_by_reel", False)) and bool(
+            getattr(a, "caption_rotate_by_reel", False)
+        )
         for index, entry in enumerate(entries):
             for account_index, account in enumerate(accounts):
                 stagger = (
@@ -1568,7 +1603,11 @@ def finish_reel_batch_upload(
                 )
                 publish_to_account.apply_async(
                     args=[a.id, account.id, entry["video_key"], index],
-                    kwargs={"account_slot": account_index if use_caption_rotate else 0},
+                    kwargs={
+                        "account_slot": account_index if by_acc else 0,
+                        "caption_by_account": by_acc,
+                        "caption_by_reel": by_reel,
+                    },
                     countdown=countdown + stagger,
                 )
             wave = (
@@ -1754,6 +1793,8 @@ def duplicate_automation(
         stagger_enabled=bool(getattr(src, "stagger_enabled", True)),
         stagger_min_minutes=int(getattr(src, "stagger_min_minutes", DEFAULT_STAGGER_MIN) or DEFAULT_STAGGER_MIN),
         stagger_max_minutes=int(getattr(src, "stagger_max_minutes", DEFAULT_STAGGER_MAX) or DEFAULT_STAGGER_MAX),
+        caption_rotate_by_account=bool(getattr(src, "caption_rotate_by_account", True)),
+        caption_rotate_by_reel=bool(getattr(src, "caption_rotate_by_reel", False)),
         posts_per_batch=int(getattr(src, "posts_per_batch", 0) or 0),
         rest_minutes=int(getattr(src, "rest_minutes", 0) or 0),
         posts_in_batch=0,
@@ -1786,6 +1827,8 @@ async def edit_automation(
     stagger_enabled: str = Form(""),
     stagger_min_minutes: int = Form(DEFAULT_STAGGER_MIN),
     stagger_max_minutes: int = Form(DEFAULT_STAGGER_MAX),
+    caption_rotate_by_account: str = Form(""),
+    caption_rotate_by_reel: str = Form(""),
     thumb: UploadFile | None = File(None),
     remove_thumb: bool = Form(False),
     db: Session = Depends(get_db),
@@ -1846,6 +1889,8 @@ async def edit_automation(
         stagger_enabled=stagger_enabled,
         stagger_min_minutes=stagger_min_minutes,
         stagger_max_minutes=stagger_max_minutes,
+        caption_rotate_by_account=caption_rotate_by_account,
+        caption_rotate_by_reel=caption_rotate_by_reel,
     )
     a.caption = caption
     a.captions_json = captions_to_json(captions_from_form(captions_alt))
@@ -1858,6 +1903,8 @@ async def edit_automation(
     a.stagger_enabled = bool(humanize["stagger_enabled"])
     a.stagger_min_minutes = int(humanize["stagger_min_minutes"])  # type: ignore[arg-type]
     a.stagger_max_minutes = int(humanize["stagger_max_minutes"])  # type: ignore[arg-type]
+    a.caption_rotate_by_account = bool(humanize["caption_rotate_by_account"])
+    a.caption_rotate_by_reel = bool(humanize["caption_rotate_by_reel"])
     a.accounts = list(accounts)
     if not accounts:
         a.status = "paused"

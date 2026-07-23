@@ -1586,6 +1586,10 @@
       if (jitter && jitter.checked) data.append("jitter_enabled", "1");
       const stagger = form.querySelector('[name="stagger_enabled"]');
       if (stagger && stagger.checked) data.append("stagger_enabled", "1");
+      const capAcc = form.querySelector('[name="caption_rotate_by_account"]');
+      if (capAcc && capAcc.checked) data.append("caption_rotate_by_account", "1");
+      const capReel = form.querySelector('[name="caption_rotate_by_reel"]');
+      if (capReel && capReel.checked) data.append("caption_rotate_by_reel", "1");
       form.querySelectorAll('[name="account_ids"]:checked').forEach((field) => {
         data.append("account_ids", field.value);
       });

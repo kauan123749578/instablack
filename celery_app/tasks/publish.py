@@ -21,7 +21,7 @@ from sqlalchemy import select, text
 
 from app.config import settings
 from app.security import decrypt_secret
-from app.utils.anti_farm import account_publish_countdown, resolve_caption_for_slot, resolve_stagger_config
+from app.utils.anti_farm import account_publish_countdown, resolve_caption, resolve_stagger_config
 from app.utils.auth_failures import (
     auth_status_reason,
     latest_auth_failure_reason,
@@ -214,6 +214,8 @@ def execute_automation(self, automation_id: int) -> dict:
     stagger_enabled = True
     stagger_min = 2
     stagger_max = 8
+    auto_caption_by_account = True
+    auto_caption_by_reel = False
 
     with session_scope() as db:
         automation = db.execute(
@@ -229,6 +231,8 @@ def execute_automation(self, automation_id: int) -> dict:
         stagger_enabled, stagger_min, stagger_max = resolve_stagger_config(
             automation, anti_prefs
         )
+        auto_caption_by_account = bool(getattr(automation, "caption_rotate_by_account", True))
+        auto_caption_by_reel = bool(getattr(automation, "caption_rotate_by_reel", False))
 
         # Dispara lazy-load das contas ainda com o row lock
         accounts = list(automation.accounts)
@@ -317,7 +321,12 @@ def execute_automation(self, automation_id: int) -> dict:
         and queue_index is not None
     )
     use_stagger = stagger_enabled
-    use_caption_rotate = bool(anti_prefs.get("caption_rotate_enabled", True))
+    use_caption_by_account = (
+        bool(anti_prefs.get("caption_rotate_by_account", True)) and auto_caption_by_account
+    )
+    use_caption_by_reel = (
+        bool(anti_prefs.get("caption_rotate_by_reel", False)) and auto_caption_by_reel
+    )
 
     for i, account_id in enumerate(account_ids):
         countdown = (
@@ -337,10 +346,13 @@ def execute_automation(self, automation_id: int) -> dict:
         else:
             acc_video_key = video_key
             acc_queue_index = queue_index
-        slot = i if use_caption_rotate else 0
         publish_to_account.apply_async(
             args=[automation_id, account_id, acc_video_key, acc_queue_index],
-            kwargs={"account_slot": slot},
+            kwargs={
+                "account_slot": i if use_caption_by_account else 0,
+                "caption_by_account": use_caption_by_account,
+                "caption_by_reel": use_caption_by_reel,
+            },
             countdown=countdown,
         )
 
@@ -357,7 +369,8 @@ def execute_automation(self, automation_id: int) -> dict:
             "stagger_min": stagger_min,
             "stagger_max": stagger_max,
             "media_rotate": rotate,
-            "caption_rotate": use_caption_rotate,
+            "caption_by_account": use_caption_by_account,
+            "caption_by_reel": use_caption_by_reel,
         },
     }
 
@@ -408,6 +421,8 @@ def publish_to_account(
     video_key: str | None = None,
     queue_index: int | None = None,
     account_slot: int | None = None,
+    caption_by_account: bool | None = None,
+    caption_by_reel: bool | None = None,
 ) -> dict:
     with session_scope() as db:
         automation = db.get(Automation, automation_id)
@@ -446,16 +461,38 @@ def publish_to_account(
         if posted_index is None:
             posted_index = 0
 
+        prefs = get_anti_farm_prefs_by_id(db, automation.user_id)
+        by_acc = (
+            bool(prefs.get("caption_rotate_by_account", True))
+            and bool(getattr(automation, "caption_rotate_by_account", True))
+        )
+        by_reel = (
+            bool(prefs.get("caption_rotate_by_reel", False))
+            and bool(getattr(automation, "caption_rotate_by_reel", False))
+        )
+        if caption_by_account is not None:
+            by_acc = bool(caption_by_account) and by_acc
+        if caption_by_reel is not None:
+            by_reel = bool(caption_by_reel) and by_reel
+
         slot = int(account_slot) if account_slot is not None else 0
-        caption = resolve_caption_for_slot(automation, slot)
+        caption = resolve_caption(
+            automation,
+            account_slot=slot,
+            reel_index=int(posted_index),
+            by_account=by_acc,
+            by_reel=by_reel,
+        )
 
         log.info(
-            "PLAYLIST %s publish automation=%s account=%s idx=%s slot=%s key=%s",
+            "PLAYLIST %s publish automation=%s account=%s idx=%s slot=%s by_acc=%s by_reel=%s key=%s",
             PLAYLIST_CODE,
             automation_id,
             account.username,
             posted_index,
             slot,
+            by_acc,
+            by_reel,
             vk,
         )
 
