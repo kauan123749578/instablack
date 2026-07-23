@@ -122,11 +122,14 @@
 
     <div id="interval-wrap">
       <label>Publicar a cada
-        <select name="interval_minutes">
+        <select name="interval_minutes" id="interval-minutes-select" data-meta-min="{{ meta_min_interval|default(60) }}">
           {% for m in intervals %}
-          <option value="{{ m }}">{{ interval_label(m) }}</option>
+          <option value="{{ m }}" data-minutes="{{ m }}">{{ interval_label(m) }}</option>
           {% endfor %}
         </select>
+        <span class="muted" id="meta-interval-hint" style="display:none;margin-top:6px;font-size:12px">
+          Contas da API oficial: intervalo mínimo de 1 hora.
+        </span>
       </label>
 
       <fieldset class="humanize-fieldset" style="margin-top:14px">
@@ -205,8 +208,11 @@
       <div class="checkbox-row">
         {% for ac in accounts %}
         <label>
-          <input type="checkbox" name="account_ids" value="{{ ac.id }}">
-          @{{ ac.username }} <span class="muted">({{ status_label(ac.status) }})</span>
+          <input type="checkbox" name="account_ids" value="{{ ac.id }}"
+                 data-provider="{{ ac.provider or 'instagrapi' }}">
+          @{{ ac.username }}
+          {% if ac.provider == 'meta' %}<span class="og-badge badge-green" style="font-size:10px">API</span>{% endif %}
+          <span class="muted">({{ status_label(ac.status) }})</span>
         </label>
         {% endfor %}
       </div>

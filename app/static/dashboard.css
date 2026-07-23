@@ -257,7 +257,8 @@ body.premium-app .shark-content { padding: 24px 32px 80px; }
   grid-row: 1 / span 2;
   align-self: stretch;
   min-height: 0;
-  max-height: 520px;
+  max-height: none;
+  height: 100%;
   display: flex;
   flex-direction: column;
 }
@@ -523,8 +524,8 @@ body.premium-app .shark-content { padding: 24px 32px 80px; }
 .og-top-players-shark {
   display: flex;
   flex-direction: column;
-  min-height: 420px;
-  max-height: 520px;
+  min-height: 0;
+  max-height: none;
   overflow: hidden;
 }
 .og-rank-head {

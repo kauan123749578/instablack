@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Contas de @{{ target.username }} — Admin{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2><i data-lucide="instagram" class="inline-icon"></i> Contas de @{{ target.username }}</h2>
+  <p class="muted page-header-sub">
+    Selecione contas da <strong>API oficial</strong> para repassar para <strong>@{{ user.username }}</strong>.
+    Contas de sessão/proxy não entram nesse fluxo.
+  </p>
+  <p style="margin:8px 0 0">
+    <a href="/admin" data-nav="/admin" class="og-link">← Voltar ao admin</a>
+  </p>
+</div>
+
+{% if ok == 'transferred' %}
+<div class="alert alert-ok">
+  {{ moved or 0 }} conta(s) Meta repassada(s) para você.
+  {% if skipped and skipped|int > 0 %} {{ skipped }} pulada(s) (você já tem o mesmo @).{% endif %}
+</div>
+{% endif %}
+{% if error == 'none' %}
+<div class="alert alert-error">Selecione ao menos uma conta Meta.</div>
+{% endif %}
+{% if error == 'self' %}
+<div class="alert alert-error">Não é possível repassar contas para o próprio usuário.</div>
+{% endif %}
+
+{% set meta_accounts = accounts | selectattr('provider', 'equalto', 'meta') | list %}
+{% set other_accounts = accounts | rejectattr('provider', 'equalto', 'meta') | list %}
+
+{% if meta_accounts %}
+<form method="post" action="/admin/users/{{ target.id }}/transfer-meta" class="og-glass-card" style="padding:18px;margin-bottom:16px"
+      onsubmit="return confirm('Repassar as contas Meta selecionadas para @{{ user.username }}? Elas saem das automações do usuário origem.');">
+  <div class="og-card-head" style="margin-bottom:12px">
+    <h3 class="og-card-title" style="margin:0;font-size:15px">API oficial (Meta)</h3>
+    <button type="submit" class="btn btn-primary btn-sm">
+      <i data-lucide="arrow-right-left"></i> Repassar para mim
+    </button>
+  </div>
+  <div class="checkbox-row" style="display:flex;flex-direction:column;gap:8px">
+    {% for acc in meta_accounts %}
+    <label style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02)">
+      <input type="checkbox" name="account_ids" value="{{ acc.id }}" checked>
+      <span>
+        <strong>@{{ acc.username }}</strong>
+        <span class="muted" style="display:block;font-size:12px">
+          {{ status_label(acc.status) }}
+          {% if acc.followers_count is not none %} · {{ format_count(acc.followers_count) }} seguidores{% endif %}
+        </span>
+      </span>
+    </label>
+    {% endfor %}
+  </div>
+</form>
+{% else %}
+<div class="og-glass-card" style="padding:18px;margin-bottom:16px">
+  <p class="og-empty" style="margin:0">Nenhuma conta Meta neste usuário.</p>
+</div>
+{% endif %}
+
+{% if other_accounts %}
+<div class="og-glass-card" style="padding:18px">
+  <h3 class="og-card-title" style="margin:0 0 10px;font-size:15px">Outras contas (sessão / proxy)</h3>
+  <p class="muted" style="margin:0 0 10px;font-size:12px">Somente visualização — não podem ser repassadas por este fluxo.</p>
+  <ul class="og-dash-list">
+    {% for acc in other_accounts %}
+    <li class="og-dash-list-item">
+      <div class="og-dash-list-body">
+        <strong>@{{ acc.username }}</strong>
+        <span>{{ status_label(acc.status) }} · {{ acc.provider or 'instagrapi' }}</span>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+{% endblock %}

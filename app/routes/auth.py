@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.security import hash_password, verify_password
 from app.templating import templates
-from app.utils.invite_codes import is_valid_invite_code
+from app.utils.invite_codes import consume_invite, is_valid_invite_code, normalize_invite_code
 from core.database import get_db
 from models.models import User
 
@@ -53,7 +53,11 @@ def login(
 def register_page(request: Request):
     if not settings.allow_registration:
         return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
-    return templates.TemplateResponse("register.html", {"request": request, "error": None})
+    invite_prefill = normalize_invite_code(request.query_params.get("invite") or "")
+    return templates.TemplateResponse(
+        "register.html",
+        {"request": request, "error": None, "invite_prefill": invite_prefill},
+    )
 
 
 @router.post("/register")
@@ -69,10 +73,11 @@ def register(
         return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
 
     username_norm = username.strip().lower()
+    invite_norm = normalize_invite_code(invite_code)
     error: str | None = None
 
-    if not is_valid_invite_code(invite_code):
-        error = "Código de convite inválido."
+    if not is_valid_invite_code(db, invite_norm):
+        error = "Código de convite inválido ou esgotado."
 
     if not error:
         if not username_norm or len(username_norm) < 3:
@@ -87,7 +92,7 @@ def register(
     if error:
         return templates.TemplateResponse(
             "register.html",
-            {"request": request, "error": error},
+            {"request": request, "error": error, "invite_prefill": invite_norm},
             status_code=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -98,6 +103,8 @@ def register(
     )
     db.add(user)
     db.commit()
+    db.refresh(user)
+    consume_invite(db, invite_norm, user)
     request.session["user_id"] = user.id
     return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
 

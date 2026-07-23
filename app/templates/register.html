@@ -28,7 +28,8 @@
     <form method="post" action="/register">
       <label>Código de convite
         <input type="text" name="invite_code" required autofocus
-               placeholder="IB-XXXXXXXX" autocomplete="off" spellcheck="false"
+               value="{{ invite_prefill or '' }}"
+               placeholder="Cole o código do link" autocomplete="off" spellcheck="false"
                style="text-transform:uppercase">
       </label>
       <label>Usuário

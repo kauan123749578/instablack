@@ -808,6 +808,41 @@
     update();
   }
 
+  function initMetaIntervalFilter() {
+    function applyFilter(root) {
+      const scope = root || document;
+      const selects = scope.querySelectorAll("#interval-minutes-select, .interval-minutes-select");
+      selects.forEach((select) => {
+        const form = select.closest("form") || document;
+        const metaMin = parseInt(select.dataset.metaMin || "60", 10) || 60;
+        const checked = form.querySelectorAll('input[name="account_ids"]:checked');
+        let hasMeta = false;
+        checked.forEach((cb) => {
+          if ((cb.dataset.provider || "") === "meta") hasMeta = true;
+        });
+        const current = parseInt(select.value, 10);
+        let firstVisible = null;
+        Array.from(select.options).forEach((opt) => {
+          const minutes = parseInt(opt.dataset.minutes || opt.value, 10);
+          const hide = hasMeta && minutes < metaMin;
+          opt.hidden = hide;
+          opt.disabled = hide;
+          if (!hide && firstVisible === null) firstVisible = minutes;
+        });
+        if (hasMeta && current < metaMin && firstVisible !== null) {
+          select.value = String(firstVisible);
+        }
+        const hint = form.querySelector("#meta-interval-hint, .meta-interval-hint");
+        if (hint) hint.style.display = hasMeta ? "block" : "none";
+      });
+    }
+
+    document.querySelectorAll('input[name="account_ids"]').forEach((cb) => {
+      cb.addEventListener("change", () => applyFilter(cb.closest("form") || document));
+    });
+    applyFilter(document);
+  }
+
   function normalizeProxyValue(raw) {
     const value = raw.trim();
     if (!value || value.includes("://")) return value;
@@ -1709,6 +1744,7 @@
     initContentTypeForm();
     initThumbPreview();
     initScheduleMode();
+    initMetaIntervalFilter();
     initAutomationForm();
     initAutomationPlaylistUploads();
     initOgDashboard();

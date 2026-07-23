@@ -203,11 +203,14 @@
             </select>
           </label>
           <label>Intervalo
-            <select name="interval_minutes">
+            <select name="interval_minutes" class="interval-minutes-select" data-meta-min="{{ meta_min_interval|default(60) }}">
               {% for m in intervals %}
-              <option value="{{ m }}" {% if m == a.interval_minutes %}selected{% endif %}>{{ interval_label(m) }}</option>
+              <option value="{{ m }}" data-minutes="{{ m }}" {% if m == a.interval_minutes %}selected{% endif %}>{{ interval_label(m) }}</option>
               {% endfor %}
             </select>
+            <span class="muted meta-interval-hint" style="display:none;margin-top:6px;font-size:12px">
+              Contas da API oficial: intervalo mínimo de 1 hora.
+            </span>
           </label>
           <fieldset>
             <legend>Variação de horário</legend>
@@ -246,8 +249,10 @@
               {% for ac in all_accounts %}
               <label>
                 <input type="checkbox" name="account_ids" value="{{ ac.id }}"
+                       data-provider="{{ ac.provider or 'instagrapi' }}"
                        {% if ac.id in selected_ids %}checked{% endif %}>
                 @{{ ac.username }}
+                {% if ac.provider == 'meta' %}<span class="og-badge badge-green" style="font-size:10px">API</span>{% endif %}
               </label>
               {% endfor %}
             </div>

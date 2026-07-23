@@ -166,8 +166,9 @@ Configure nos **3 services** (ou use Shared Variables):
 APP_ENV=production
 SECRET_KEY=<gere: python -c "import secrets; print(secrets.token_urlsafe(48))">
 
-ALLOW_REGISTRATION=false
-INVITE_CODE=<codigo-secreto-unico>
+ALLOW_REGISTRATION=true
+# Opcional (legado). Preferir gerar links em /admin → Gerar link de convite.
+# INVITE_CODE=
 
 DATABASE_URL=${{Postgres.DATABASE_URL}}
 REDIS_URL=${{Redis.REDIS_URL}}
@@ -228,7 +229,7 @@ O código converte `postgres://` para `postgresql+psycopg2://` automaticamente.
 - [ ] CORS do R2 permite `PUT` vindo do domínio público do `web`
 - [ ] `/readyz` → `storage: s3:seu-bucket` ok
 - [ ] `SECRET_KEY` forte (32+ chars)
-- [ ] `INVITE_CODE` definido (código único de cadastro)
+- [ ] Gerar links de convite em `/admin` (ou `INVITE_CODE` legado no env)
 - [ ] **VAPID no web e no worker** (push no celular com PC desligado)
 - [ ] Domínio público no web
 - [ ] `/healthz` retorna 200

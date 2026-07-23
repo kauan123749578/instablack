@@ -37,7 +37,12 @@ from app.utils.automation_videos import (
     parse_videos_json,
     videos_to_json,
 )
-from app.utils.intervals import ALLOWED_INTERVALS, interval_label
+from app.utils.intervals import (
+    ALLOWED_INTERVALS,
+    META_MIN_INTERVAL,
+    interval_label,
+    validate_interval_for_accounts,
+)
 from celery_app.tasks.publish import publish_once, publish_to_account
 from core.database import get_db
 from core.storage import get_storage
@@ -220,6 +225,7 @@ def list_automations(
             "automations": automations,
             "all_accounts": all_accounts,
             "intervals": ALLOWED_INTERVALS,
+            "meta_min_interval": META_MIN_INTERVAL,
         },
     )
 
@@ -252,6 +258,7 @@ def new_automation_page(
             "user": user,
             "accounts": accounts,
             "intervals": ALLOWED_INTERVALS,
+            "meta_min_interval": META_MIN_INTERVAL,
             "content_types": CONTENT_TYPES,
             "default_content_type": default_type,
             "error": err_msg,
@@ -281,6 +288,7 @@ def new_story_page(
             "user": user,
             "accounts": accounts,
             "intervals": ALLOWED_INTERVALS,
+            "meta_min_interval": META_MIN_INTERVAL,
             "content_types": CONTENT_TYPES,
             "default_content_type": "story",
             "error": None,
@@ -966,6 +974,10 @@ async def create_automation(
         ).all())
         if len(accounts) != len(set(account_ids)):
             error = "Alguma conta selecionada não existe."
+        elif schedule_mode == "recurring":
+            iv_err = validate_interval_for_accounts(interval_minutes, accounts)
+            if iv_err:
+                error = iv_err
 
     if error:
         all_accounts = db.scalars(
@@ -981,6 +993,7 @@ async def create_automation(
                 "user": user,
                 "accounts": all_accounts,
                 "intervals": ALLOWED_INTERVALS,
+                "meta_min_interval": META_MIN_INTERVAL,
                 "content_types": CONTENT_TYPES,
                 "default_content_type": content_type if content_type in CONTENT_TYPES else "reel",
                 "error": error,
@@ -1013,6 +1026,7 @@ async def create_automation(
                 "user": user,
                 "accounts": all_accounts,
                 "intervals": ALLOWED_INTERVALS,
+                "meta_min_interval": META_MIN_INTERVAL,
                 "content_types": CONTENT_TYPES,
                 "default_content_type": content_type if content_type in CONTENT_TYPES else "reel",
                 "error": msg,
@@ -1177,6 +1191,10 @@ async def create_reel_upload_draft(
     ).all())
     if len(accounts) != len(set(account_ids)):
         return JSONResponse({"error": "Alguma conta selecionada não existe."}, status_code=400)
+    if schedule_mode == "recurring":
+        iv_err = validate_interval_for_accounts(interval_minutes, accounts)
+        if iv_err:
+            return JSONResponse({"error": iv_err}, status_code=400)
 
     humanize = _schedule_humanize_fields(
         jitter_enabled=jitter_enabled,
@@ -1657,6 +1675,9 @@ async def edit_automation(
     ).all()
     if len(accounts) != len(set(account_ids)):
         raise HTTPException(status_code=400, detail="Conta inválida")
+    iv_err = validate_interval_for_accounts(interval_minutes, accounts)
+    if iv_err:
+        raise HTTPException(status_code=400, detail=iv_err)
 
     storage = get_storage()
     if remove_thumb and a.thumb_key:

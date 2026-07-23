@@ -59,6 +59,93 @@
 <div class="alert alert-error">Informe um número válido para o limite de contas.</div>
 {% endif %}
 
+{% if ok == 'invite' %}
+<div class="alert alert-ok">
+  Link de convite gerado.
+  {% if new_invite_url %}
+  <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <input type="text" readonly value="{{ new_invite_url }}" id="invite-link-output"
+           style="flex:1;min-width:220px;font-size:12px">
+    <button type="button" class="btn btn-sm btn-primary"
+            onclick="navigator.clipboard.writeText(document.getElementById('invite-link-output').value);this.textContent='Copiado!';">
+      Copiar link
+    </button>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+{% if ok == 'invite_off' %}
+<div class="alert alert-ok">Convite desativado.</div>
+{% endif %}
+{% if ok == 'limit' %}
+<div class="alert alert-ok">Limite de contas atualizado.</div>
+{% endif %}
+
+<div class="og-glass-card" style="margin-bottom:16px;padding:18px">
+  <h3 style="margin:0 0 4px;font-size:15px">
+    <i data-lucide="link" class="inline-icon"></i> Gerar link de convite
+  </h3>
+  <p class="muted" style="margin:0 0 12px;font-size:12px">
+    Cada link cadastra até o número de usos definido. Depois disso, deixa de funcionar.
+  </p>
+  <form method="post" action="/admin/invites/create" class="form-grid admin-invite-form"
+        style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">
+    <label>Usos máximos
+      <input type="number" name="max_uses" min="1" max="1000" value="1" style="width:100px">
+    </label>
+    <label style="flex:1;min-width:180px">Nota (opcional)
+      <input type="text" name="note" maxlength="120" placeholder="Ex.: parceiro João">
+    </label>
+    <button type="submit" class="btn btn-primary">
+      <i data-lucide="plus"></i> Gerar link
+    </button>
+  </form>
+
+  {% if invites %}
+  <div class="og-table-wrap" style="margin-top:16px">
+    <table class="og-table">
+      <thead>
+        <tr>
+          <th>Código</th>
+          <th>Usos</th>
+          <th>Status</th>
+          <th>Nota</th>
+          <th>Link</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for inv in invites[:20] %}
+        <tr>
+          <td><code>{{ inv.code }}</code></td>
+          <td>{{ inv.use_count }}/{{ inv.max_uses }}</td>
+          <td>
+            {% if inv.is_active and inv.use_count < inv.max_uses %}
+            <span class="og-badge badge-green">Ativo</span>
+            {% else %}
+            <span class="og-badge badge-red">Esgotado</span>
+            {% endif %}
+          </td>
+          <td class="og-muted">{{ inv.note or '—' }}</td>
+          <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+            <a href="{{ invite_base }}/register?invite={{ inv.code }}" target="_blank" rel="noopener">abrir</a>
+          </td>
+          <td>
+            {% if inv.is_active %}
+            <form method="post" action="/admin/invites/{{ inv.id }}/deactivate"
+                  onsubmit="return confirm('Desativar este convite?');">
+              <button type="submit" class="btn btn-sm">Desativar</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
 {% if is_owner %}
 <div class="og-glass-card" style="margin-bottom:16px;padding:18px">
   <h3 style="margin:0 0 4px;font-size:15px">
@@ -153,12 +240,17 @@
           </td>
           <td class="og-muted">{{ u.created_at | localtime('%d/%m/%Y') }}</td>
           <td>
-            {% if u.id == user.id %}
-            <span class="og-muted">você</span>
-            {% elif u.is_owner %}
-            <span class="og-muted">owner</span>
-            {% elif is_owner %}
             <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end">
+              {% if u.id != user.id %}
+              <a class="btn btn-sm" href="/admin/users/{{ u.id }}/accounts" data-nav="/admin/users/{{ u.id }}/accounts">
+                <i data-lucide="instagram"></i> Ver contas
+              </a>
+              {% endif %}
+              {% if u.id == user.id %}
+              <span class="og-muted">você</span>
+              {% elif u.is_owner %}
+              <span class="og-muted">owner</span>
+              {% elif is_owner %}
               <form method="post" action="/admin/users/{{ u.id }}/toggle-private"
                     onsubmit="return confirm('{% if u.owner_private %}Mostrar @{{ u.username }} para os outros admins?{% else %}Esconder @{{ u.username }} dos outros admins (ficar só na sua lista)?{% endif %}');">
                 <button type="submit" class="btn btn-sm">
@@ -190,9 +282,7 @@
                   <i data-lucide="trash-2"></i> Excluir
                 </button>
               </form>
-            </div>
-            {% elif user.is_admin %}
-            <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end">
+              {% elif user.is_admin and not u.is_owner %}
               {% if u.is_active %}
               <form method="post" action="/admin/users/{{ u.id }}/toggle-ban"
                     onsubmit="return confirm('Banir @{{ u.username }}? Ele não conseguirá mais entrar.');">
@@ -212,10 +302,8 @@
                   <i data-lucide="trash-2"></i> Excluir
                 </button>
               </form>
+              {% endif %}
             </div>
-            {% else %}
-            <span class="og-muted">—</span>
-            {% endif %}
           </td>
         </tr>
         {% else %}

@@ -3,19 +3,25 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.deps import get_admin_user, get_owner_user
 from app.utils.account_limits import account_limit_label
 from app.templating import templates
+from app.utils.invite_codes import (
+    create_invite,
+    deactivate_invite,
+    invite_public_url,
+    list_invites,
+)
 from app.utils.platform_settings import (
     META_SETUP_YOUTUBE_URL,
     META_TOKEN_YOUTUBE_URL,
     get_platform_setting,
 )
 from core.database import get_db
-from models.models import Automation, InstagramAccount, User
+from models.models import Automation, InstagramAccount, InviteCode, User, UserMetaApp, automation_accounts
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -92,6 +98,9 @@ def admin_dashboard(
             "rows": rows,
             "ok": request.query_params.get("ok"),
             "error": request.query_params.get("error"),
+            "invites": list_invites(db),
+            "invite_base": str(request.base_url).rstrip("/"),
+            "new_invite_url": request.query_params.get("link") or "",
             "meta_setup_youtube_url": get_platform_setting(db, META_SETUP_YOUTUBE_URL)
             if is_owner
             else "",
@@ -99,6 +108,37 @@ def admin_dashboard(
             if is_owner
             else "",
         },
+    )
+
+
+@router.post("/invites/create")
+def admin_create_invite(
+    request: Request,
+    max_uses: int = Form(1),
+    note: str = Form(""),
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_admin_user),
+):
+    invite = create_invite(db, created_by=admin, max_uses=max_uses, note=note)
+    link = invite_public_url(str(request.base_url), invite.code)
+    from urllib.parse import quote
+
+    return RedirectResponse(
+        f"/admin?ok=invite&link={quote(link, safe='')}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post("/invites/{invite_id}/deactivate")
+def admin_deactivate_invite(
+    invite_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_admin_user),
+):
+    deactivate_invite(db, invite_id)
+    return RedirectResponse(
+        "/admin?ok=invite_off",
+        status_code=status.HTTP_303_SEE_OTHER,
     )
 
 
@@ -253,6 +293,132 @@ def toggle_user_admin(
     db.commit()
     return RedirectResponse(
         "/admin?ok=admin",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.get("/users/{user_id}/accounts")
+def admin_user_accounts(
+    user_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_admin_user),
+):
+    target = _require_visible(admin, db.get(User, user_id))
+    accounts = db.scalars(
+        select(InstagramAccount)
+        .where(InstagramAccount.user_id == target.id)
+        .order_by(InstagramAccount.username.asc())
+    ).all()
+    return templates.TemplateResponse(
+        "admin_user_accounts.html",
+        {
+            "request": request,
+            "user": admin,
+            "target": target,
+            "accounts": accounts,
+            "ok": request.query_params.get("ok"),
+            "error": request.query_params.get("error"),
+            "moved": request.query_params.get("n"),
+            "skipped": request.query_params.get("skip"),
+        },
+    )
+
+
+def _ensure_dest_meta_app(
+    db: Session,
+    *,
+    dest_user_id: int,
+    source_app: UserMetaApp | None,
+) -> UserMetaApp | None:
+    """Garante que o destino tem o mesmo app Meta (reusa ou clona)."""
+    if source_app is None:
+        return None
+    existing = db.scalar(
+        select(UserMetaApp).where(
+            UserMetaApp.user_id == dest_user_id,
+            UserMetaApp.ig_app_id == source_app.ig_app_id,
+        )
+    )
+    if existing:
+        return existing
+    clone = UserMetaApp(
+        user_id=dest_user_id,
+        name=source_app.name or f"App {source_app.ig_app_id}",
+        ig_app_id=source_app.ig_app_id,
+        encrypted_ig_app_secret=source_app.encrypted_ig_app_secret,
+    )
+    db.add(clone)
+    db.flush()
+    return clone
+
+
+@router.post("/users/{user_id}/transfer-meta")
+def transfer_meta_accounts(
+    user_id: int,
+    account_ids: list[int] = Form(default=[]),
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_admin_user),
+):
+    """Repassa contas Meta selecionadas do usuário origem para o admin logado."""
+    target = _require_visible(admin, db.get(User, user_id))
+    if target.id == admin.id:
+        return RedirectResponse(
+            f"/admin/users/{user_id}/accounts?error=self",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    ids = [int(x) for x in (account_ids or []) if str(x).isdigit() or isinstance(x, int)]
+    if not ids:
+        return RedirectResponse(
+            f"/admin/users/{user_id}/accounts?error=none",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    accounts = list(
+        db.scalars(
+            select(InstagramAccount).where(
+                InstagramAccount.user_id == target.id,
+                InstagramAccount.id.in_(ids),
+                InstagramAccount.provider == "meta",
+            )
+        ).all()
+    )
+    if not accounts:
+        return RedirectResponse(
+            f"/admin/users/{user_id}/accounts?error=none",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    moved = 0
+    skipped = 0
+    for acc in accounts:
+        conflict = db.scalar(
+            select(InstagramAccount.id).where(
+                InstagramAccount.user_id == admin.id,
+                InstagramAccount.username == acc.username,
+            )
+        )
+        if conflict:
+            skipped += 1
+            continue
+
+        source_app = None
+        if acc.user_meta_app_id:
+            source_app = db.get(UserMetaApp, acc.user_meta_app_id)
+        dest_app = _ensure_dest_meta_app(db, dest_user_id=admin.id, source_app=source_app)
+
+        db.execute(
+            delete(automation_accounts).where(
+                automation_accounts.c.account_id == acc.id
+            )
+        )
+        acc.user_id = admin.id
+        acc.user_meta_app_id = dest_app.id if dest_app else None
+        moved += 1
+
+    db.commit()
+    return RedirectResponse(
+        f"/admin/users/{user_id}/accounts?ok=transferred&n={moved}&skip={skipped}",
         status_code=status.HTTP_303_SEE_OTHER,
     )
 
