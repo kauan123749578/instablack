@@ -346,13 +346,10 @@ def execute_automation(self, automation_id: int) -> dict:
         else:
             acc_video_key = video_key
             acc_queue_index = queue_index
+        # Só account_slot nos kwargs — params extras quebram worker antigo (TypeError)
         publish_to_account.apply_async(
             args=[automation_id, account_id, acc_video_key, acc_queue_index],
-            kwargs={
-                "account_slot": i if use_caption_by_account else 0,
-                "caption_by_account": use_caption_by_account,
-                "caption_by_reel": use_caption_by_reel,
-            },
+            kwargs={"account_slot": i if use_caption_by_account else 0},
             countdown=countdown,
         )
 
@@ -421,9 +418,9 @@ def publish_to_account(
     video_key: str | None = None,
     queue_index: int | None = None,
     account_slot: int | None = None,
-    caption_by_account: bool | None = None,
-    caption_by_reel: bool | None = None,
+    **_compat_kwargs,
 ) -> dict:
+    # _compat_kwargs: ignora caption_by_* de mensagens antigas na fila (não quebra o worker)
     with session_scope() as db:
         automation = db.get(Automation, automation_id)
         account = db.get(InstagramAccount, account_id)
@@ -461,7 +458,12 @@ def publish_to_account(
         if posted_index is None:
             posted_index = 0
 
-        prefs = get_anti_farm_prefs_by_id(db, automation.user_id)
+        try:
+            prefs = get_anti_farm_prefs_by_id(db, automation.user_id)
+        except Exception:
+            log.exception("anti_farm prefs falhou user=%s — usando defaults", automation.user_id)
+            prefs = {}
+
         by_acc = (
             bool(prefs.get("caption_rotate_by_account", True))
             and bool(getattr(automation, "caption_rotate_by_account", True))
@@ -470,22 +472,29 @@ def publish_to_account(
             bool(prefs.get("caption_rotate_by_reel", False))
             and bool(getattr(automation, "caption_rotate_by_reel", False))
         )
-        if caption_by_account is not None:
-            by_acc = bool(caption_by_account) and by_acc
-        if caption_by_reel is not None:
-            by_reel = bool(caption_by_reel) and by_reel
 
         slot = int(account_slot) if account_slot is not None else 0
-        caption = resolve_caption(
-            automation,
-            account_slot=slot,
-            reel_index=int(posted_index),
-            by_account=by_acc,
-            by_reel=by_reel,
-        )
+        try:
+            caption = resolve_caption(
+                automation,
+                account_slot=slot,
+                reel_index=int(posted_index),
+                by_account=by_acc,
+                by_reel=by_reel,
+            )
+        except Exception:
+            log.exception(
+                "resolve_caption falhou automation=%s — usando caption principal",
+                automation_id,
+            )
+            caption = automation.caption or ""
+
+        # Garantia: nunca postar sem legenda se a principal existir
+        if not (caption or "").strip():
+            caption = automation.caption or ""
 
         log.info(
-            "PLAYLIST %s publish automation=%s account=%s idx=%s slot=%s by_acc=%s by_reel=%s key=%s",
+            "PLAYLIST %s publish automation=%s account=%s idx=%s slot=%s by_acc=%s by_reel=%s cap_len=%s key=%s",
             PLAYLIST_CODE,
             automation_id,
             account.username,
@@ -493,6 +502,7 @@ def publish_to_account(
             slot,
             by_acc,
             by_reel,
+            len(caption or ""),
             vk,
         )
 

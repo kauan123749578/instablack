@@ -78,10 +78,17 @@ def resolve_stagger_config(
 def parse_captions_json(raw: str | None) -> list[str]:
     if not raw:
         return []
-    try:
-        data = json.loads(raw)
-    except (json.JSONDecodeError, TypeError):
+    text_raw = str(raw).strip()
+    if not text_raw:
         return []
+    try:
+        data = json.loads(text_raw)
+    except (json.JSONDecodeError, TypeError):
+        # Texto cru (não-JSON) = uma legenda só
+        return [text_raw]
+    if isinstance(data, str):
+        one = data.strip()
+        return [one] if one else []
     if not isinstance(data, list):
         return []
     out: list[str] = []
@@ -144,20 +151,31 @@ def resolve_caption(
 ) -> str:
     """Resolve legenda da lista de rotação.
 
+    - sem lista de rotação → sempre a legenda principal (1 legenda)
     - só por conta: captions[account_slot % n]
     - só por reel: captions[reel_index % n]
     - os dois: captions[(account_slot + reel_index) % n]
-    - nenhum: caption principal (ou 1ª da lista)
+    - rotação desligada: principal (ou 1ª da lista)
     """
-    alts = parse_captions_json(getattr(automation, "captions_json", None))
     main = (getattr(automation, "caption", None) or "") or ""
+    alts = parse_captions_json(getattr(automation, "captions_json", None))
+
+    # Caso mais comum: só a legenda principal — nunca depender da rotação
     if not alts:
         return main
+
     if not by_account and not by_reel:
         return main or alts[0]
+
+    # Uma única alternativa = essa legenda para todas as contas/reels
+    if len(alts) == 1:
+        return alts[0] or main
+
     idx = 0
     if by_reel:
         idx += max(0, int(reel_index or 0))
     if by_account:
         idx += max(0, int(account_slot or 0))
-    return alts[idx % len(alts)]
+    chosen = alts[idx % len(alts)]
+    # Nunca publicar vazio se ainda houver principal
+    return chosen or main or alts[0]

@@ -1603,11 +1603,7 @@ def finish_reel_batch_upload(
                 )
                 publish_to_account.apply_async(
                     args=[a.id, account.id, entry["video_key"], index],
-                    kwargs={
-                        "account_slot": account_index if by_acc else 0,
-                        "caption_by_account": by_acc,
-                        "caption_by_reel": by_reel,
-                    },
+                    kwargs={"account_slot": account_index if by_acc else 0},
                     countdown=countdown + stagger,
                 )
             wave = (
