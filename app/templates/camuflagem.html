@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+{% block title %}Camuflagem — instablack{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="/static/camuflagem.css?v=1" />
+
+<div class="page-header">
+  <div>
+    <h2>Camuflagem</h2>
+    <p class="muted page-header-sub">
+      Ferramenta privada (owner). Processamento 100% no navegador — Chrome/Edge recomendado.
+    </p>
+  </div>
+</div>
+
+<nav class="camu-tabs" role="tablist" data-camu-tabs>
+  <button type="button" class="camu-tab is-active" data-tab="texto" role="tab" aria-selected="true">Texto</button>
+  <button type="button" class="camu-tab" data-tab="imagem" role="tab" aria-selected="false">Imagem</button>
+  <button type="button" class="camu-tab" data-tab="video" role="tab" aria-selected="false">Vídeo</button>
+  <button type="button" class="camu-tab" data-tab="meta" role="tab" aria-selected="false">Metadados</button>
+</nav>
+
+<!-- ═══════ TEXTO ═══════ -->
+<section class="camu-panel is-active" data-panel="texto" role="tabpanel">
+  <div class="camu-split">
+    <div class="camu-card">
+      <header class="camu-card-head">
+        <i data-lucide="file-text"></i>
+        <strong>1. Texto original</strong>
+      </header>
+      <div class="camu-checks">
+        <label class="camu-check">
+          <input type="checkbox" id="camu-homo" checked>
+          <span>Substituir letras (Homóglifos)</span>
+        </label>
+        <label class="camu-check">
+          <input type="checkbox" id="camu-zw" checked>
+          <span>Injetar caracteres invisíveis (ZW)</span>
+        </label>
+      </div>
+      <textarea id="camu-text-in" rows="12" placeholder="Cole seu texto sensível aqui para camuflagem…"></textarea>
+    </div>
+    <div class="camu-card camu-card--out">
+      <header class="camu-card-head">
+        <i data-lucide="shield"></i>
+        <strong>2. Resultado blindado</strong>
+        <div class="camu-badges">
+          <span class="camu-badge" id="badge-homo">Homóglifos</span>
+          <span class="camu-badge" id="badge-zw">Invisíveis</span>
+        </div>
+      </header>
+      <textarea id="camu-text-out" rows="12" readonly placeholder="O texto camuflado aparecerá aqui automaticamente…"></textarea>
+      <button type="button" class="btn btn-primary camu-btn-block" id="camu-text-copy">
+        <i data-lucide="copy"></i> Copiar resultado
+      </button>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════ IMAGEM ═══════ -->
+<section class="camu-panel" data-panel="imagem" role="tabpanel" hidden>
+  <div class="camu-mode-row" data-img-modes>
+    <button type="button" class="camu-mode" data-mode="basica">
+      <i data-lucide="zap"></i>
+      <strong>Básica</strong>
+      <span>Rápida, discreta</span>
+    </button>
+    <button type="button" class="camu-mode is-active" data-mode="normal">
+      <i data-lucide="shield"></i>
+      <strong>Normal</strong>
+      <span>Equilíbrio ideal</span>
+    </button>
+    <button type="button" class="camu-mode" data-mode="agressiva">
+      <i data-lucide="flame"></i>
+      <strong>Agressiva</strong>
+      <span>Distorção + anti-IA</span>
+    </button>
+  </div>
+
+  <div class="camu-split">
+    <div class="camu-drop" data-drop="img-main">
+      <input type="file" id="camu-img-main" accept="image/jpeg,image/png,image/webp" multiple hidden>
+      <i data-lucide="images"></i>
+      <strong>Criativos principais</strong>
+      <p>As imagens que você quer enviar</p>
+      <span class="camu-drop-hint">Clique ou arraste · JPG, PNG, WEBP · até 50</span>
+      <ul class="camu-file-list" id="camu-img-main-list"></ul>
+    </div>
+    <div class="camu-drop camu-drop--muted" data-drop="img-cover">
+      <input type="file" id="camu-img-cover" accept="image/jpeg,image/png,image/webp" hidden>
+      <i data-lucide="image"></i>
+      <strong>Imagem de capa (opcional)</strong>
+      <p>Misturada por cima dos criativos</p>
+      <span class="camu-drop-hint">1 imagem · JPG, PNG, WEBP</span>
+      <ul class="camu-file-list" id="camu-img-cover-list"></ul>
+    </div>
+  </div>
+
+  <div class="camu-card" style="margin-top:16px">
+    <header class="camu-card-head">
+      <strong>Intensidade do ruído</strong>
+      <span class="camu-noise-val" id="camu-noise-val">6</span>
+    </header>
+    <p class="muted" style="margin:0 0 10px;font-size:13px">Ruído adversarial anti-IA — maior = mais proteção.</p>
+    <input type="range" id="camu-noise" min="0" max="20" value="6" class="camu-range">
+    <div class="camu-range-labels"><span>0 — Sem ruído</span><span>20 — Máxima</span></div>
+  </div>
+
+  <div class="camu-card" style="margin-top:16px">
+    <header class="camu-card-head"><strong>Perfil de nicho</strong></header>
+    <p class="muted" style="margin:0 0 12px;font-size:13px">
+      Sem perfil: gera imagem PNG. Com HOT/Outro: saída vira video.mp4 (WebCodecs — Chrome/Edge).
+    </p>
+    <div class="camu-niche" data-niche>
+      <label class="camu-niche-opt is-active"><input type="radio" name="niche" value="default" checked> Imagem padrão</label>
+      <label class="camu-niche-opt"><input type="radio" name="niche" value="hot"> HOT</label>
+      <label class="camu-niche-opt"><input type="radio" name="niche" value="other"> Outro</label>
+    </div>
+  </div>
+
+  <div class="camu-actions">
+    <button type="button" class="btn btn-primary" id="camu-img-run" disabled>
+      <i data-lucide="wand-2"></i> Camuflar imagens
+    </button>
+    <p class="muted camu-progress" id="camu-img-progress"></p>
+  </div>
+  <div class="camu-results" id="camu-img-results"></div>
+</section>
+
+<!-- ═══════ VÍDEO ═══════ -->
+<section class="camu-panel" data-panel="video" role="tabpanel" hidden>
+  <div class="camu-mode-row" data-vid-modes>
+    <button type="button" class="camu-mode is-active" data-vmode="normal">
+      <i data-lucide="shield"></i>
+      <strong>Normal</strong>
+      <span>Overlay da capa 10%</span>
+    </button>
+    <button type="button" class="camu-mode" data-vmode="agressiva">
+      <i data-lucide="flame"></i>
+      <strong>Agressiva</strong>
+      <span>Distorção + anti-IA + metadados</span>
+    </button>
+  </div>
+  <p class="camu-mode-hint" id="camu-vid-hint">Mistura a imagem de camuflagem a 10% em cada frame. Chrome/Edge.</p>
+
+  <div class="camu-split">
+    <div class="camu-drop" data-drop="vid-main">
+      <input type="file" id="camu-vid-main" accept="video/mp4,video/quicktime,video/x-msvideo,video/webm" multiple hidden>
+      <i data-lucide="video"></i>
+      <strong>Vídeos originais</strong>
+      <p>Selecione até 20 vídeos para camuflar</p>
+      <span class="camu-drop-hint">MP4, AVI, MOV · máx ~5 min · 50MB · até 20</span>
+      <ul class="camu-file-list" id="camu-vid-main-list"></ul>
+    </div>
+    <div class="camu-drop camu-drop--blue" data-drop="vid-cover">
+      <input type="file" id="camu-vid-cover" accept="image/jpeg,image/png,image/webp" hidden>
+      <i data-lucide="image"></i>
+      <strong>Imagem de camuflagem</strong>
+      <p>Usada em todos os vídeos</p>
+      <span class="camu-drop-hint">1 imagem · JPG, PNG, WEBP</span>
+      <ul class="camu-file-list" id="camu-vid-cover-list"></ul>
+    </div>
+  </div>
+
+  <div class="camu-actions">
+    <button type="button" class="btn btn-primary" id="camu-vid-run" disabled>
+      <i data-lucide="wand-2"></i> Camuflar vídeos
+    </button>
+    <p class="muted camu-progress" id="camu-vid-progress"></p>
+  </div>
+  <div class="camu-results" id="camu-vid-results"></div>
+</section>
+
+<!-- ═══════ METADADOS ═══════ -->
+<section class="camu-panel" data-panel="meta" role="tabpanel" hidden>
+  <div class="camu-card">
+    <header class="camu-card-head">
+      <i data-lucide="file-x"></i>
+      <div>
+        <strong>Limpar metadados</strong>
+        <p class="muted" style="margin:4px 0 0;font-size:13px">
+          Remove GPS, câmera, EXIF, software, timestamps. 100% no navegador.
+        </p>
+      </div>
+    </header>
+    <span class="camu-pill"><i data-lucide="cog"></i> Canvas + FFmpeg.wasm — sem upload ao servidor</span>
+  </div>
+
+  <div class="camu-drop camu-drop--wide" data-drop="meta-files" style="margin-top:16px">
+    <input type="file" id="camu-meta-files" accept="image/*,video/*,audio/*" multiple hidden>
+    <i data-lucide="upload-cloud"></i>
+    <strong>Clique para enviar arquivos</strong>
+    <p>ou arraste e solte aqui</p>
+    <span class="camu-drop-hint">MP4, MOV, AVI, MKV, MP3, WAV, AAC, M4A, JPG, PNG · vídeos até 200MB</span>
+    <ul class="camu-file-list" id="camu-meta-list"></ul>
+  </div>
+
+  <div class="camu-meta-feats">
+    <div><strong>GPS</strong><span>Localização removida</span></div>
+    <div><strong>EXIF</strong><span>Câmera e software</span></div>
+    <div><strong>ID3 / Codec</strong><span>Tags de áudio/vídeo</span></div>
+  </div>
+
+  <div class="camu-actions">
+    <button type="button" class="btn btn-primary" id="camu-meta-run" disabled>
+      <i data-lucide="eraser"></i> Limpar metadados
+    </button>
+    <p class="muted camu-progress" id="camu-meta-progress"></p>
+  </div>
+  <div class="camu-results" id="camu-meta-results"></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="/static/camuflagem.js?v=1"></script>
+{% endblock %}

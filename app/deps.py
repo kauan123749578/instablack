@@ -65,3 +65,15 @@ def get_owner_user(
             headers={"Location": "/admin" if user.is_admin else "/"},
         )
     return user
+
+
+def get_owner_only(
+    user: User = Depends(get_current_user),
+) -> User:
+    """Acesso exclusivo ao dono (is_owner). Admin sem owner (ex.: Caue) é bloqueado."""
+    if not getattr(user, "is_owner", False):
+        raise HTTPException(
+            status_code=status.HTTP_303_SEE_OTHER,
+            headers={"Location": "/"},
+        )
+    return user

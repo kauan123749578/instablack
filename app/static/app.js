@@ -35,7 +35,11 @@
   setActiveNav(window.location.pathname);
 
   async function navigateTo(url, push = true) {
-    if (url.startsWith("/automations/new") || url.startsWith("/automations/story-studio")) {
+    if (
+      url.startsWith("/automations/new") ||
+      url.startsWith("/automations/story-studio") ||
+      url.startsWith("/camuflagem")
+    ) {
       window.location.href = url;
       return;
     }

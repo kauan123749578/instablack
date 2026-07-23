@@ -25,6 +25,7 @@ from app.routes import (
     aquecimento,
     auth,
     automations,
+    camuflagem,
     dashboard,
     logs,
     meta_apps,
@@ -79,6 +80,7 @@ def create_app() -> FastAPI:
     app.include_router(meta_apps.router)
     app.include_router(automations.router)
     app.include_router(aquecimento.router)
+    app.include_router(camuflagem.router)
     app.include_router(profile.router)
     app.include_router(admin.router)
     app.include_router(notifications.router)

@@ -91,6 +91,12 @@
             <i data-lucide="flame" class="nav-icon"></i>
             <span class="nav-text">Aquecimento</span>
           </a>
+          {% if user.is_owner %}
+          <a href="/camuflagem" class="nav-link" data-nav="/camuflagem">
+            <i data-lucide="shield" class="nav-icon"></i>
+            <span class="nav-text">Camuflagem</span>
+          </a>
+          {% endif %}
 
           <div class="nav-section-label">Relatórios</div>
           <a href="/analytics" class="nav-link" data-nav="/analytics">
@@ -207,7 +213,9 @@
         <a href="/automations/story-studio" data-nav="/automations/story-studio"><i data-lucide="link-2"></i><span>Story Link Studio</span></a>
         <a href="/automations/new/story"><i data-lucide="circle-dot"></i><span>Agendar Story</span></a>
         <a href="/aquecimento" data-nav="/aquecimento"><i data-lucide="flame"></i><span>Aquecimento</span></a>
-        {# Warmup removido da interface (não é mais necessário) #}
+        {% if user.is_owner %}
+        <a href="/camuflagem" data-nav="/camuflagem"><i data-lucide="shield"></i><span>Camuflagem</span></a>
+        {% endif %}
         <div class="drawer-divider"></div>
         <a href="/analytics" data-nav="/analytics"><i data-lucide="chart-no-axes-combined"></i><span>Analytics</span></a>
         <a href="/logs" data-nav="/logs"><i data-lucide="scroll-text"></i><span>Logs</span></a>
@@ -237,7 +245,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/lucide@0.475.0/dist/umd/lucide.min.js" crossorigin="anonymous"></script>
-  <script src="/static/app.js?v=54"></script>
+  <script src="/static/app.js?v=55"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>
