@@ -77,6 +77,9 @@
 {% if ok == 'invite_off' %}
 <div class="alert alert-ok">Convite desativado.</div>
 {% endif %}
+{% if ok == 'invite_deleted' %}
+<div class="alert alert-ok">{{ request.query_params.get('n') or 0 }} convite(s) excluído(s).</div>
+{% endif %}
 {% if ok == 'limit' %}
 <div class="alert alert-ok">Limite de contas atualizado.</div>
 {% endif %}
@@ -102,47 +105,66 @@
   </form>
 
   {% if invites %}
-  <div class="og-table-wrap" style="margin-top:16px">
-    <table class="og-table">
-      <thead>
-        <tr>
-          <th>Código</th>
-          <th>Usos</th>
-          <th>Status</th>
-          <th>Nota</th>
-          <th>Link</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for inv in invites[:20] %}
-        <tr>
-          <td><code>{{ inv.code }}</code></td>
-          <td>{{ inv.use_count }}/{{ inv.max_uses }}</td>
-          <td>
-            {% if inv.is_active and inv.use_count < inv.max_uses %}
-            <span class="og-badge badge-green">Ativo</span>
-            {% else %}
-            <span class="og-badge badge-red">Esgotado</span>
-            {% endif %}
-          </td>
-          <td class="og-muted">{{ inv.note or '—' }}</td>
-          <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-            <a href="{{ invite_base }}/register?invite={{ inv.code }}" target="_blank" rel="noopener">abrir</a>
-          </td>
-          <td>
-            {% if inv.is_active %}
-            <form method="post" action="/admin/invites/{{ inv.id }}/deactivate"
-                  onsubmit="return confirm('Desativar este convite?');">
-              <button type="submit" class="btn btn-sm">Desativar</button>
-            </form>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+  <form method="post" action="/admin/invites/delete" class="admin-scroll-card" style="margin-top:16px;padding:0;border:1px solid rgba(255,255,255,0.06);border-radius:14px;overflow:hidden"
+        onsubmit="return confirm('Excluir os convites esgotados selecionados?');">
+    <div class="admin-scroll-card-head" style="padding:12px 14px;border-bottom:1px solid rgba(255,255,255,0.06)">
+      <strong style="font-size:13px">Convites gerados</strong>
+      <button type="submit" class="btn btn-sm btn-danger">
+        <i data-lucide="trash-2"></i> Excluir selecionados
+      </button>
+    </div>
+    <div class="admin-scroll-card-body" style="max-height:280px">
+      <div class="og-table-wrap" style="margin:0">
+        <table class="og-table" style="margin:0">
+          <thead>
+            <tr>
+              <th style="width:36px"></th>
+              <th>Código</th>
+              <th>Usos</th>
+              <th>Status</th>
+              <th>Nota</th>
+              <th>Link</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for inv in invites %}
+            {% set exhausted = (not inv.is_active) or (inv.use_count >= inv.max_uses) %}
+            <tr>
+              <td>
+                {% if exhausted %}
+                <input type="checkbox" name="invite_ids" value="{{ inv.id }}">
+                {% endif %}
+              </td>
+              <td><code>{{ inv.code }}</code></td>
+              <td>{{ inv.use_count }}/{{ inv.max_uses }}</td>
+              <td>
+                {% if not exhausted %}
+                <span class="og-badge badge-green">Ativo</span>
+                {% elif inv.use_count >= inv.max_uses %}
+                <span class="og-badge badge-red">Esgotado</span>
+                {% else %}
+                <span class="og-badge badge-red">Desativado</span>
+                {% endif %}
+              </td>
+              <td class="og-muted">{{ inv.note or '—' }}</td>
+              <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                <a href="{{ invite_base }}/register?invite={{ inv.code }}" target="_blank" rel="noopener">abrir</a>
+              </td>
+              <td>
+                {% if not exhausted %}
+                <button type="submit" formaction="/admin/invites/{{ inv.id }}/deactivate" formmethod="post"
+                        class="btn btn-sm"
+                        onclick="return confirm('Desativar este convite?');">Desativar</button>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </form>
   {% endif %}
 </div>
 

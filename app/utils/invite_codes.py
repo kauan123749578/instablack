@@ -108,6 +108,26 @@ def deactivate_invite(db: Session, invite_id: int) -> bool:
     return True
 
 
+def delete_invites(db: Session, invite_ids: list[int]) -> int:
+    """Apaga convites do banco (tipicamente esgotados/inativos)."""
+    if not invite_ids:
+        return 0
+    rows = list(
+        db.scalars(select(InviteCode).where(InviteCode.id.in_(invite_ids))).all()
+    )
+    deleted = 0
+    for row in rows:
+        db.delete(row)
+        deleted += 1
+    if deleted:
+        db.commit()
+    return deleted
+
+
+def invite_is_exhausted(inv: InviteCode) -> bool:
+    return (not inv.is_active) or int(inv.use_count or 0) >= int(inv.max_uses or 1)
+
+
 def invite_public_url(request_base: str, code: str) -> str:
     base = (request_base or "").rstrip("/")
     return f"{base}/register?invite={normalize_invite_code(code)}"

@@ -12,6 +12,8 @@ from app.templating import templates
 from app.utils.invite_codes import (
     create_invite,
     deactivate_invite,
+    delete_invites,
+    invite_is_exhausted,
     invite_public_url,
     list_invites,
 )
@@ -138,6 +140,23 @@ def admin_deactivate_invite(
     deactivate_invite(db, invite_id)
     return RedirectResponse(
         "/admin?ok=invite_off",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post("/invites/delete")
+def admin_delete_invites(
+    invite_ids: list[int] = Form(default=[]),
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_admin_user),
+):
+    ids = [int(x) for x in (invite_ids or [])]
+    # Só apaga esgotados/inativos
+    rows = list(db.scalars(select(InviteCode).where(InviteCode.id.in_(ids))).all()) if ids else []
+    to_delete = [r.id for r in rows if invite_is_exhausted(r)]
+    n = delete_invites(db, to_delete)
+    return RedirectResponse(
+        f"/admin?ok=invite_deleted&n={n}",
         status_code=status.HTTP_303_SEE_OTHER,
     )
 
@@ -305,9 +324,14 @@ def admin_user_accounts(
     admin: User = Depends(get_admin_user),
 ):
     target = _require_visible(admin, db.get(User, user_id))
+    # Só API oficial ativa — esta tela é só para repasse Meta
     accounts = db.scalars(
         select(InstagramAccount)
-        .where(InstagramAccount.user_id == target.id)
+        .where(
+            InstagramAccount.user_id == target.id,
+            InstagramAccount.provider == "meta",
+            InstagramAccount.status != "deleted",
+        )
         .order_by(InstagramAccount.username.asc())
     ).all()
     return templates.TemplateResponse(
