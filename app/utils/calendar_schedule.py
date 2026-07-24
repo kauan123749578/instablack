@@ -118,3 +118,13 @@ def next_calendar_run(
             if slot > now_brt:
                 return slot.astimezone(dt.timezone.utc).replace(tzinfo=None)
     return None
+
+
+def utc_to_brt_hhmm(when: dt.datetime) -> str:
+    """Converte UTC (naive ou aware) para HH:MM em BRT."""
+    if when.tzinfo is None:
+        aware = when.replace(tzinfo=dt.timezone.utc)
+    else:
+        aware = when
+    brt = aware.astimezone(BRT)
+    return f"{brt.hour:02d}:{brt.minute:02d}"

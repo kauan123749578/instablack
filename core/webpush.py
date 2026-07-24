@@ -183,9 +183,9 @@ def notify_user_account_offline(user_id: int, username: str, reason: str) -> Non
     notify_user_push(
         user_id,
         {
-            "title": f"Conta @{username} fora do ar",
-            "body": (reason or "Sessão ou proxy com problema")[:160],
-            "url": "/accounts",
+            "title": f"Sessão expirada: @{username}",
+            "body": (reason or "Reconecte a conta em Contas conectadas")[:160],
+            "url": "/accounts/connected",
             "tag": f"offline-{username}",
         },
         kind="offline",

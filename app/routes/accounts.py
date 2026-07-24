@@ -8,10 +8,10 @@ import secrets
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.deps import get_current_user, get_effective_user
-from app.security import encrypt_secret
+from app.security import decrypt_secret, encrypt_secret
 from app.templating import templates
 from app.config import get_settings
 from app.utils.account_health import offline_accounts
@@ -113,12 +113,32 @@ def _backfill_proxy_meta(db: Session, accounts: list[InstagramAccount]) -> None:
 def _load_user_accounts(db: Session, user: User) -> list[InstagramAccount]:
     return db.scalars(
         select(InstagramAccount)
+        .options(selectinload(InstagramAccount.meta_app))
         .where(
             InstagramAccount.user_id == user.id,
             InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
         )
         .order_by(InstagramAccount.username.asc())
     ).all()
+
+
+def _meta_account_display(accounts: list[InstagramAccount]) -> dict[int, dict[str, str]]:
+    """App name + token plaintext para UI (embassado no front)."""
+    out: dict[int, dict[str, str]] = {}
+    for acc in accounts:
+        if (acc.provider or "") != "meta":
+            continue
+        app_name = ""
+        if acc.meta_app is not None:
+            app_name = (acc.meta_app.name or "").strip() or f"App #{acc.meta_app.id}"
+        token = ""
+        if acc.encrypted_meta_access_token:
+            try:
+                token = decrypt_secret(acc.encrypted_meta_access_token)
+            except Exception:
+                token = ""
+        out[acc.id] = {"app_name": app_name, "token": token}
+    return out
 
 
 def _store_meta_account(
@@ -472,6 +492,7 @@ def connected_accounts(
             **_accounts_page_context(request, user, accounts, ok=ok_msg, error=err_msg or None),
             "offline_accounts": offline,
             "cookie_flags": cookie_flags,
+            "meta_display": _meta_account_display(accounts),
         },
     )
 

@@ -41,10 +41,21 @@
   <div class="table-wrap">
     <table class="table">
       <thead>
-        <tr><th>@</th><th>Conexão</th><th>Status</th><th>Proxy</th><th>IP</th><th>Último login</th><th></th></tr>
+        <tr>
+          <th>@</th>
+          <th>Conexão</th>
+          <th>App Meta</th>
+          <th>Token</th>
+          <th>Status</th>
+          <th>Proxy</th>
+          <th>IP</th>
+          <th>Último login</th>
+          <th></th>
+        </tr>
       </thead>
       <tbody>
         {% for acc in accounts %}
+        {% set meta = meta_display.get(acc.id) if meta_display else none %}
         <tr>
           <td class="ig-handle">@{{ acc.username }}</td>
           <td>
@@ -54,6 +65,30 @@
             <span class="og-badge badge-green">Cookies web</span>
             {% else %}
             <span class="og-badge">Instagrapi</span>
+            {% endif %}
+          </td>
+          <td class="meta-app-cell">
+            {% if meta and meta.app_name %}
+            <strong>{{ meta.app_name }}</strong>
+            {% else %}
+            <span class="muted">—</span>
+            {% endif %}
+          </td>
+          <td class="meta-token-cell">
+            {% if meta and meta.token %}
+            <div class="meta-token-reveal" data-revealed="0">
+              <code class="meta-token-value token-blurred" title="Clique no olho para visualizar">{{ meta.token }}</code>
+              <div class="meta-token-actions">
+                <button type="button" class="btn btn-sm meta-token-toggle" title="Mostrar / ocultar token" aria-label="Mostrar token">
+                  <i data-lucide="eye"></i>
+                </button>
+                <button type="button" class="btn btn-sm copy-url-btn" data-copy="{{ meta.token }}" data-copy-label="Copiar" data-copy-ok-label="OK" title="Copiar token">
+                  Copiar
+                </button>
+              </div>
+            </div>
+            {% else %}
+            <span class="muted">—</span>
             {% endif %}
           </td>
           <td><span class="og-badge {{ status_badge_class(acc.status) }}">{{ status_label(acc.status) }}</span></td>

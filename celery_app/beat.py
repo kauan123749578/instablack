@@ -27,10 +27,12 @@ def tick() -> dict:
     now = dt.datetime.utcnow()
     dispatched: list[int] = []
     healed = 0
+    # (automation_id, scheduled_at ISO) — scheduled_at = slot que disparou
+    to_run: list[tuple[int, str | None]] = []
 
     with session_scope() as db:
-        # Automações por intervalo/calendário ativas sem Próxima nunca disparam.
-        # (ex.: ficaram presas após “Postar agora”/defer). Recoloca na fila.
+        # Automações por intervalo ativas sem Próxima nunca disparam.
+        # Calendário: cura para o próximo slot real (nunca "agora").
         stuck = db.scalars(
             select(Automation).where(
                 Automation.status == "active",
@@ -40,6 +42,27 @@ def tick() -> dict:
         for a in stuck:
             mode = (a.start_mode or "").strip().lower()
             if mode == "now":
+                continue
+            if (
+                (a.schedule_type or "") == "calendar"
+                and a.calendar_days
+                and a.calendar_time
+            ):
+                nxt = next_calendar_run(
+                    parse_calendar_days(a.calendar_days),
+                    a.calendar_time,
+                    now,
+                ) or (now + dt.timedelta(days=1))
+                db.execute(
+                    text("UPDATE automations SET next_run_at = :nxt WHERE id = :id"),
+                    {"nxt": nxt, "id": a.id},
+                )
+                healed += 1
+                log.warning(
+                    "tick heal: calendar automation=%s sem next_run_at — próximo slot %s",
+                    a.id,
+                    nxt.isoformat(),
+                )
                 continue
             db.execute(
                 text("UPDATE automations SET next_run_at = :nxt WHERE id = :id"),
@@ -60,8 +83,8 @@ def tick() -> dict:
             )
         ).all()
 
-        ids_to_dispatch: list[int] = []
         for a in due:
+            scheduled_at = a.next_run_at
             calendar_next = None
             if a.schedule_type == "calendar" and a.calendar_days and a.calendar_time:
                 calendar_next = next_calendar_run(
@@ -70,7 +93,9 @@ def tick() -> dict:
                     now,
                 ) or (now + dt.timedelta(days=1))
 
-            meta_floor = effective_meta_min_interval(a.accounts or [])
+            meta_floor = 0
+            if (a.schedule_type or "") != "calendar":
+                meta_floor = effective_meta_min_interval(a.accounts or [])
             nxt, posts_in_batch = compute_next_run_after_dispatch(
                 a,
                 now,
@@ -84,10 +109,15 @@ def tick() -> dict:
                 ),
                 {"nxt": nxt, "pib": posts_in_batch, "id": a.id},
             )
-            ids_to_dispatch.append(a.id)
+            to_run.append(
+                (
+                    a.id,
+                    scheduled_at.isoformat() if scheduled_at is not None else None,
+                )
+            )
 
-    for aid in ids_to_dispatch:
-        execute_automation.delay(aid)
+    for aid, scheduled_iso in to_run:
+        execute_automation.delay(aid, scheduled_iso)
         dispatched.append(aid)
 
     log.info("tick: %d automações disparadas heal=%d", len(dispatched), healed)

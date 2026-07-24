@@ -115,6 +115,26 @@
   }
 
   document.addEventListener("click", async (e) => {
+    const tokenToggle = e.target.closest(".meta-token-toggle");
+    if (tokenToggle) {
+      e.preventDefault();
+      e.stopPropagation();
+      const wrap = tokenToggle.closest(".meta-token-reveal");
+      if (!wrap) return;
+      const revealed = wrap.getAttribute("data-revealed") === "1";
+      wrap.setAttribute("data-revealed", revealed ? "0" : "1");
+      const icon = tokenToggle.querySelector("[data-lucide]");
+      if (icon) {
+        icon.setAttribute("data-lucide", revealed ? "eye" : "eye-off");
+        if (window.lucide?.createIcons) window.lucide.createIcons({ nodes: [tokenToggle] });
+      }
+      tokenToggle.setAttribute(
+        "aria-label",
+        revealed ? "Mostrar token" : "Ocultar token"
+      );
+      return;
+    }
+
     const copyBtn = e.target.closest(".copy-url-btn");
     if (copyBtn) {
       e.preventDefault();
@@ -429,7 +449,7 @@
     const dot = document.getElementById("notif-dot");
     if (!list) return;
     try {
-      const res = await fetch("/api/notifications");
+      const res = await fetch("/api/notifications?push_fallback=true");
       if (!res.ok) throw new Error("fail");
       const data = await res.json();
       if (dot) {
@@ -439,6 +459,10 @@
         list.innerHTML = '<li class="notif-empty">Nenhuma notificação ainda.</li>';
         return;
       }
+      const hasOffline = data.items.some(
+        (n) => !n.is_read && (n.kind === "offline" || /sess[aã]o|expir|offline|login/i.test(n.title || ""))
+      );
+      if (hasOffline) showOfflineToastFromNotif(data.items);
       list.innerHTML = data.items.map((n) => {
         const cls = `notif-kind-${n.kind || "info"}${n.is_read ? "" : " unread"}`;
         const body = n.body ? `<span>${escapeHtml(n.body)}</span>` : "";
@@ -452,6 +476,62 @@
     } catch {
       list.innerHTML = '<li class="notif-empty">Não foi possível carregar.</li>';
     }
+  }
+
+  function offlineToastStorageKey(key) {
+    return "og_offline_toast_dismissed:" + (key || "default");
+  }
+
+  function initOfflineToast() {
+    const el = document.getElementById("og-offline-toast");
+    if (!el) return;
+    const key = el.dataset.offlineKey || "";
+    try {
+      if (sessionStorage.getItem(offlineToastStorageKey(key)) === "1") return;
+    } catch (_) {}
+    el.hidden = false;
+    if (window.lucide?.createIcons) window.lucide.createIcons({ nodes: [el] });
+    el.querySelector(".og-offline-toast-dismiss")?.addEventListener("click", () => {
+      el.hidden = true;
+      try {
+        sessionStorage.setItem(offlineToastStorageKey(key), "1");
+      } catch (_) {}
+    });
+  }
+
+  function showOfflineToastFromNotif(items) {
+    if (document.getElementById("og-offline-toast") && !document.getElementById("og-offline-toast").hidden) {
+      return;
+    }
+    if (document.getElementById("og-offline-toast-float")) return;
+    const offline = (items || []).filter((n) => !n.is_read && n.kind === "offline");
+    if (!offline.length) return;
+    const key = offline.map((n) => n.id).join(",");
+    try {
+      if (sessionStorage.getItem(offlineToastStorageKey("float:" + key)) === "1") return;
+    } catch (_) {}
+    const first = offline[0];
+    const el = document.createElement("div");
+    el.id = "og-offline-toast-float";
+    el.className = "og-offline-toast og-offline-toast--float";
+    el.setAttribute("role", "status");
+    el.innerHTML =
+      '<div class="og-offline-toast-body"><i data-lucide="alert-triangle"></i><div>' +
+      "<strong>" +
+      escapeHtml(first.title || "Conta offline") +
+      "</strong>" +
+      (first.body ? "<p>" + escapeHtml(first.body) + "</p>" : "") +
+      '</div></div><div class="og-offline-toast-actions">' +
+      '<a href="/accounts/connected" class="btn btn-sm btn-primary">Ver contas</a>' +
+      '<button type="button" class="btn btn-sm og-offline-toast-dismiss">Fechar</button></div>';
+    document.body.appendChild(el);
+    if (window.lucide?.createIcons) window.lucide.createIcons({ nodes: [el] });
+    el.querySelector(".og-offline-toast-dismiss")?.addEventListener("click", () => {
+      el.remove();
+      try {
+        sessionStorage.setItem(offlineToastStorageKey("float:" + key), "1");
+      } catch (_) {}
+    });
   }
 
   function escapeHtml(s) {
@@ -1314,8 +1394,8 @@
 
       if (help) {
         help.textContent = files.length
-          ? `${files.length} mídia(s): escolha um horário diferente para cada Story.`
-          : "Ex.: Story 1 às 12:00 e Story 2 às 18:00.";
+          ? `${files.length} Story(s): horário diferente para cada uma · repete nos dias do mês selecionados.`
+          : "Ex.: selecione o mês todo + Story 1 às 12:00 e Story 2 às 18:00.";
       }
     }
 
@@ -2102,6 +2182,7 @@
     initWebPush();
     initProfileNotifications();
     initNotifCard();
+    initOfflineToast();
     initDashActivityPoll();
     initLogsClearForm();
     initLogsWatchPoll();

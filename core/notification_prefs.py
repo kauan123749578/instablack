@@ -23,8 +23,8 @@ DEFAULT_BOOL_PREFS: dict[str, bool] = {
 }
 
 DEFAULT_COPY: dict[str, str] = {
-    "publish_title": "{label} publicado",
-    "publish_body": "",
+    "publish_title": "{label} publicado com sucesso",
+    "publish_body": "@{username}",
 }
 
 # Compat: código antigo importa DEFAULT_PREFS como só bools

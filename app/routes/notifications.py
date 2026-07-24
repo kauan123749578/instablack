@@ -50,16 +50,72 @@ class SubscriptionIn(BaseModel):
     keys: dict
 
 
+def _sync_notifications_from_logs(db: Session, user: User) -> list[PublishLog]:
+    """Cria notificações in-app para logs recentes (sucesso e falha) sem notificação vinculada."""
+    from core.notification_prefs import format_publish_copy, get_notification_prefs
+    from core.notifications import content_label
+
+    since = dt.datetime.utcnow() - dt.timedelta(hours=6)
+    recent = list(
+        db.scalars(
+            select(PublishLog)
+            .join(PublishLog.account)
+            .outerjoin(
+                AppNotification,
+                (AppNotification.publish_log_id == PublishLog.id)
+                & (AppNotification.user_id == user.id),
+            )
+            .where(
+                InstagramAccount.user_id == user.id,
+                PublishLog.status.in_(("success", "failed")),
+                PublishLog.created_at >= since,
+                AppNotification.id.is_(None),
+            )
+            .options(selectinload(PublishLog.account), selectinload(PublishLog.automation))
+            .order_by(PublishLog.created_at.asc())
+            .limit(30)
+        ).all()
+    )
+    if not recent:
+        return []
+
+    prefs = get_notification_prefs(user)
+    for plog in recent:
+        uname = plog.account.username if plog.account else "?"
+        ct = _resolve_log_content_type(plog)
+        if plog.status == "success":
+            title, body = format_publish_copy(prefs, uname, ct)
+            kind = "publish"
+        else:
+            label = content_label(ct)
+            title = f"Erro ao publicar {label}"
+            err = (plog.error or "Falha na publicação")[:180]
+            body = f"@{uname}: {err}"
+            kind = "warning"
+        db.add(
+            AppNotification(
+                user_id=user.id,
+                title=title,
+                body=body,
+                kind=kind,
+                link="/logs",
+                publish_log_id=plog.id,
+                is_read=False,
+                created_at=plog.created_at,
+            )
+        )
+    db.commit()
+    return recent
+
+
 def _maybe_push_for_new_logs(user_id: int, rows: list[PublishLog]) -> None:
     """Fallback de push quando o worker não enviou (ex.: VAPID só no web)."""
     global _recent_push_log_ids
     if not rows:
         return
-    from core.webpush import notify_user_publish_success
+    from core.webpush import notify_user_publish_error, notify_user_publish_success
 
     for plog in rows:
-        if plog.status != "success":
-            continue
         if plog.id in _recent_push_log_ids:
             continue
         _recent_push_log_ids.add(plog.id)
@@ -68,7 +124,15 @@ def _maybe_push_for_new_logs(user_id: int, rows: list[PublishLog]) -> None:
         uname = plog.account.username if plog.account else "?"
         ct = _resolve_log_content_type(plog)
         try:
-            notify_user_publish_success(user_id, uname, content_type=ct)
+            if plog.status == "success":
+                notify_user_publish_success(user_id, uname, content_type=ct)
+            elif plog.status == "failed":
+                notify_user_publish_error(
+                    user_id,
+                    uname,
+                    plog.error or "Falha na publicação",
+                    content_type=ct,
+                )
         except Exception:
             log.exception("Fallback push falhou log=%s user=%s", plog.id, user_id)
 
@@ -113,7 +177,6 @@ def _maybe_push_for_inapp_notifications(user_id: int, rows: list[AppNotification
             )
         except Exception:
             log.exception("Fallback push notif falhou id=%s user=%s", n.id, user_id)
-
 
 
 @router.get("/api/vapid-public-key")
@@ -246,57 +309,6 @@ def _resolve_log_content_type(plog: PublishLog) -> str:
     if plog.automation and plog.automation.content_type:
         return plog.automation.content_type
     return "reel"
-
-
-def _sync_notifications_from_logs(db: Session, user: User) -> list[PublishLog]:
-    """Cria notificações in-app para logs de sucesso recentes sem notificação vinculada."""
-    from core.notification_prefs import format_publish_copy, get_notification_prefs
-
-    since = dt.datetime.utcnow() - dt.timedelta(hours=6)
-    recent_ok = list(
-        db.scalars(
-            select(PublishLog)
-            .join(PublishLog.account)
-            .outerjoin(
-                AppNotification,
-                (AppNotification.publish_log_id == PublishLog.id)
-                & (AppNotification.user_id == user.id),
-            )
-            .where(
-                InstagramAccount.user_id == user.id,
-                PublishLog.status == "success",
-                PublishLog.created_at >= since,
-                AppNotification.id.is_(None),
-            )
-            .options(selectinload(PublishLog.account), selectinload(PublishLog.automation))
-            .order_by(PublishLog.created_at.asc())
-            .limit(20)
-        ).all()
-    )
-    if not recent_ok:
-        return []
-
-    for plog in recent_ok:
-        uname = plog.account.username if plog.account else "?"
-        title, body = format_publish_copy(
-            get_notification_prefs(user),
-            uname,
-            _resolve_log_content_type(plog),
-        )
-        db.add(
-            AppNotification(
-                user_id=user.id,
-                title=title,
-                body=body,
-                kind="publish",
-                link="/logs",
-                publish_log_id=plog.id,
-                is_read=False,
-                created_at=plog.created_at,
-            )
-        )
-    db.commit()
-    return recent_ok
 
 
 @router.get("/api/notifications")

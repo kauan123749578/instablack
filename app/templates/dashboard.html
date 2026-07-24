@@ -4,6 +4,34 @@
 {% block content %}
 <div class="og-dash">
 
+  {% if offline_accounts %}
+  <div
+    id="og-offline-toast"
+    class="og-offline-toast"
+    role="status"
+    data-offline-key="{{ offline_accounts | map(attribute='username') | join(',') }}"
+    hidden
+  >
+    <div class="og-offline-toast-body">
+      <i data-lucide="alert-triangle"></i>
+      <div>
+        <strong>
+          {% if offline_accounts|length == 1 %}
+          Conta @{{ offline_accounts[0].username }} precisa de atenção
+          {% else %}
+          {{ offline_accounts|length }} contas com sessão/proxy fora do ar
+          {% endif %}
+        </strong>
+        <p>Reconecte em Contas conectadas para voltar a publicar.</p>
+      </div>
+    </div>
+    <div class="og-offline-toast-actions">
+      <a href="/accounts/connected" class="btn btn-sm btn-primary" data-nav="/accounts/connected">Ver contas</a>
+      <button type="button" class="btn btn-sm og-offline-toast-dismiss" aria-label="Fechar">Fechar</button>
+    </div>
+  </div>
+  {% endif %}
+
   <div class="og-kpi-row">
     <article class="og-glass-card og-kpi-card">
       <div class="og-kpi-top">

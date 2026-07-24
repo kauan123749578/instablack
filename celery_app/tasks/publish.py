@@ -167,8 +167,17 @@ def _download_media(storage, key: str, dest_path: Path) -> None:
             ) from web_exc
 
 
-def _claim_next_slot(db, automation: Automation, items: list[dict]) -> tuple[int, str, str] | None:
+def _claim_next_slot(
+    db,
+    automation: Automation,
+    items: list[dict],
+    *,
+    scheduled_at: dt.datetime | None = None,
+) -> tuple[int, str, str] | None:
     """Reserva o vídeo atual e avança current_index imediatamente.
+
+    Story calendário com calendar_time por item: escolhe a mídia do horário
+    que disparou (BRT), não FIFO cego.
 
     Retorna (queue_index, video_key, video_name) ou None se esgotou.
     """
@@ -181,11 +190,50 @@ def _claim_next_slot(db, automation: Automation, items: list[dict]) -> tuple[int
             entry.get("video_original_name") or entry["video_key"],
         )
 
-    idx = int(automation.current_index or 0)
-    if idx < 0:
-        idx = 0
-    if idx >= len(items):
-        return None
+    is_story_cal = (
+        (automation.content_type or "").lower() == "story"
+        and (automation.schedule_type or "") == "calendar"
+        and any(str(it.get("calendar_time") or "").strip() for it in items)
+    )
+
+    idx: int | None = None
+    if is_story_cal and scheduled_at is not None:
+        from app.utils.calendar_schedule import _normalize_hhmm, utc_to_brt_hhmm
+
+        target = utc_to_brt_hhmm(scheduled_at)
+        for i, entry in enumerate(items):
+            norm = _normalize_hhmm(str(entry.get("calendar_time") or ""))
+            if norm == target:
+                idx = i
+                break
+        if idx is None:
+            # Tolerância ±1 min (atraso do tick)
+            for i, entry in enumerate(items):
+                norm = _normalize_hhmm(str(entry.get("calendar_time") or ""))
+                if not norm:
+                    continue
+                th, tm = map(int, norm.split(":"))
+                sh, sm = map(int, target.split(":"))
+                if abs((th * 60 + tm) - (sh * 60 + sm)) <= 1:
+                    idx = i
+                    break
+        if idx is not None:
+            log.info(
+                "PLAYLIST %s STORY SLOT automation=%s slot=%s → idx=%s/%s key=%s",
+                PLAYLIST_CODE,
+                automation.id,
+                target,
+                idx + 1,
+                len(items),
+                items[idx]["video_key"],
+            )
+
+    if idx is None:
+        idx = int(automation.current_index or 0)
+        if idx < 0:
+            idx = 0
+        if idx >= len(items):
+            return None
 
     entry = items[idx]
     video_key = entry["video_key"]
@@ -249,7 +297,7 @@ def _claim_next_slot(db, automation: Automation, items: list[dict]) -> tuple[int
 
 
 @celery_app.task(name="celery_app.tasks.publish.execute_automation", bind=True, max_retries=0)
-def execute_automation(self, automation_id: int) -> dict:
+def execute_automation(self, automation_id: int, scheduled_at: str | None = None) -> dict:
     done = None
     account_ids: list[int] = []
     video_key = None
@@ -331,7 +379,21 @@ def execute_automation(self, automation_id: int) -> dict:
             )
             done = (automation.user_id, automation.name, len(items))
         else:
-            claimed = _claim_next_slot(db, automation, items)
+            scheduled_dt: dt.datetime | None = None
+            if scheduled_at:
+                try:
+                    scheduled_dt = dt.datetime.fromisoformat(
+                        str(scheduled_at).replace("Z", "+00:00")
+                    )
+                    if scheduled_dt.tzinfo is not None:
+                        scheduled_dt = scheduled_dt.astimezone(dt.timezone.utc).replace(
+                            tzinfo=None
+                        )
+                except ValueError:
+                    scheduled_dt = None
+            claimed = _claim_next_slot(
+                db, automation, items, scheduled_at=scheduled_dt
+            )
             if claimed is None:
                 automation.status = "completed"
                 automation.next_run_at = None
@@ -1373,10 +1435,10 @@ def _mark_account_needs_login(account_id: int, reason: str) -> None:
     if prev != "needs_login":
         create_notification(
             uid,
-            f"Conta @{uname} fora do ar",
-            reason[:200] or "Sessão expirada — reconecte a conta",
+            f"Sessão expirada: @{uname}",
+            reason[:200] or "A conta precisa ser reconectada para voltar a publicar.",
             kind="offline",
-            link="/accounts",
+            link="/accounts/connected",
         )
 
 
@@ -1395,8 +1457,8 @@ def _mark_account_proxy_down(account_id: int, reason: str) -> None:
     if prev != "proxy_down":
         create_notification(
             uid,
-            f"Conta @{uname} fora do ar",
-            reason[:200] or "Proxy inválido ou fora do ar",
+            f"Proxy fora: @{uname}",
+            reason[:200] or "Proxy inválido ou fora do ar — atualize em Contas conectadas.",
             kind="offline",
-            link="/accounts",
+            link="/accounts/connected",
         )

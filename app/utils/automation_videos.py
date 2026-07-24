@@ -28,15 +28,38 @@ def parse_videos_json(raw: str | None) -> list[dict[str, str]]:
         if not key or key in seen:
             continue
         seen.add(key)
-        out.append({
+        entry: dict[str, str] = {
             "video_key": key,
             "video_original_name": str(item.get("video_original_name") or ""),
-        })
+        }
+        cal_t = str(item.get("calendar_time") or "").strip()
+        if cal_t:
+            entry["calendar_time"] = cal_t
+        out.append(entry)
     return out
 
 
 def videos_to_json(entries: list[dict[str, str]]) -> str:
-    cleaned = parse_videos_json(json.dumps(entries or []))
+    """Serializa playlist preservando calendar_time por item (Story calendário)."""
+    if not entries:
+        return "[]"
+    cleaned: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in entries:
+        if not isinstance(item, dict):
+            continue
+        key = str(item.get("video_key") or "").strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        row: dict[str, str] = {
+            "video_key": key,
+            "video_original_name": str(item.get("video_original_name") or ""),
+        }
+        cal_t = str(item.get("calendar_time") or "").strip()
+        if cal_t:
+            row["calendar_time"] = cal_t
+        cleaned.append(row)
     return json.dumps(cleaned, ensure_ascii=False)
 
 

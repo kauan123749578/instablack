@@ -726,6 +726,16 @@ async def story_studio_schedule(
             ),
         )
 
+    # Pareia mídia ↔ horário (ordem crescente) e grava no JSON da playlist.
+    ordered = sorted(
+        zip(cal_times[: len(video_entries)], video_entries),
+        key=lambda pair: pair[0],
+    )
+    cal_times = [pair[0] for pair in ordered]
+    video_entries = [pair[1] for pair in ordered]
+    for t, entry in zip(cal_times, video_entries):
+        entry["calendar_time"] = t
+
     sticker_text = (text or "").strip()[:60] or None
     auto_name = (name or "").strip() or f"Story Studio · {dt.datetime.now().strftime('%d/%m %H:%M')}"
     time_stored = times_to_storage(cal_times)
@@ -1145,6 +1155,11 @@ async def create_automation(
         video_original_name = video_entries[0]["video_original_name"]
     else:
         video_original_name = f"{len(video_entries)} vídeos"
+    # Story calendário: grava horário BRT em cada item da playlist (pairing estável).
+    if content_type == "story" and schedule_mode == "calendar" and cal_times:
+        for i, entry in enumerate(video_entries):
+            if i < len(cal_times):
+                entry["calendar_time"] = cal_times[i]
     # Sempre persiste a lista completa — sem isso o worker republica só o 1º
     videos_json = videos_to_json(video_entries)
     log.info(

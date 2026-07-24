@@ -56,6 +56,7 @@ def compute_next_run_after_dispatch(
     rest_minutes > 0, após N posts agenda o descanso e zera o contador.
 
     min_gap_minutes: piso (ex.: 60 Meta) — jitter negativo não pode furar esse intervalo.
+    Calendário (Story/Reel): horário absoluto — sem jitter, descanso nem floor Meta.
     """
     posts_per_batch = int(getattr(automation, "posts_per_batch", 0) or 0)
     rest_minutes = int(getattr(automation, "rest_minutes", 0) or 0)
@@ -64,6 +65,16 @@ def compute_next_run_after_dispatch(
     jitter_on = bool(getattr(automation, "jitter_enabled", False))
     jitter_m = int(getattr(automation, "jitter_minutes", 10) or 10)
     floor_gap = max(0, int(min_gap_minutes or 0))
+    is_calendar = (
+        getattr(automation, "schedule_type", "interval") == "calendar"
+        and calendar_next is not None
+    )
+
+    if is_calendar:
+        nxt = calendar_next
+        if nxt <= now:
+            nxt = now + dt.timedelta(minutes=1)
+        return nxt, posts_in_batch
 
     def _finalize(nxt: dt.datetime) -> dt.datetime:
         nxt = apply_time_jitter(nxt, enabled=jitter_on, jitter_minutes=jitter_m)
@@ -79,13 +90,10 @@ def compute_next_run_after_dispatch(
         nxt = now + dt.timedelta(minutes=rest_minutes)
         return _finalize(nxt), 0
 
-    if getattr(automation, "schedule_type", "interval") == "calendar" and calendar_next is not None:
-        nxt = calendar_next
-    else:
-        interval = max(int(getattr(automation, "interval_minutes", 60) or 60), 1)
-        if floor_gap > 0:
-            interval = max(interval, floor_gap)
-        hold = max(interval * 60, 90)
-        nxt = now + dt.timedelta(seconds=hold)
+    interval = max(int(getattr(automation, "interval_minutes", 60) or 60), 1)
+    if floor_gap > 0:
+        interval = max(interval, floor_gap)
+    hold = max(interval * 60, 90)
+    nxt = now + dt.timedelta(seconds=hold)
 
     return _finalize(nxt), posts_in_batch

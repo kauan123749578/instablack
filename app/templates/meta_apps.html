@@ -23,31 +23,13 @@
     <li>Em <strong>Instagram → API setup with Instagram login</strong>, cole estas URLs nos <strong>3 campos de callback</strong>:</li>
   </ol>
 
-  {% if app_rows %}
-  {% for row in app_rows %}
-  <div class="og-glass-card" style="padding:14px;margin-bottom:12px;background:rgba(255,255,255,0.03)">
-    <strong>{{ row.app.name }}</strong> <span class="og-muted">· App ID {{ row.app.ig_app_id }}</span>
-    <div class="meta-copy-list" style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
-      {% for label, url in [
-        ('Redirect OAuth (callback)', row.urls.callback),
-        ('Deauthorize callback', row.urls.deauthorize),
-        ('Data deletion callback', row.urls.data_deletion)
-      ] %}
-      <label class="meta-copy-field" style="display:block;font-size:12px">
-        <span class="og-muted">{{ label }}</span>
-        <div style="display:flex;gap:8px;margin-top:4px;align-items:center;flex-wrap:wrap">
-          <input type="text" readonly value="{{ url }}" class="meta-copy-input" style="flex:1;min-width:200px;font-size:11px">
-          <button type="button" class="btn btn-sm copy-url-btn" data-copy="{{ url }}" data-copy-label="Copiar">Copiar</button>
-        </div>
-      </label>
-      {% endfor %}
-    </div>
-  </div>
-  {% endfor %}
-  {% else %}
-  <p class="muted" style="font-size:13px">Cadastre um app na aba <strong>Meus apps</strong> (+ Novo App) para gerar as URLs. O padrão é:</p>
+  <p class="muted" style="font-size:13px;margin-bottom:8px">
+    As URLs exatas de cada app ficam na aba <strong>Meus apps</strong> (não listamos seus apps aqui).
+    O padrão é:
+  </p>
   <code style="font-size:11px;display:block;margin:8px 0">{{ public_origin }}/accounts/meta/callback/<em>id_do_app</em></code>
-  {% endif %}
+  <code style="font-size:11px;display:block;margin:8px 0">{{ public_origin }}/accounts/meta/deauthorize/<em>id_do_app</em></code>
+  <code style="font-size:11px;display:block;margin:8px 0">{{ public_origin }}/accounts/meta/data-deletion/<em>id_do_app</em></code>
 
   <ol class="muted" style="line-height:1.75;font-size:14px;padding-left:20px;margin-top:16px" start="4">
     <li>Adicione as permissões: <code>instagram_business_basic</code>, <code>instagram_business_content_publish</code>, <code>instagram_business_manage_insights</code>.</li>

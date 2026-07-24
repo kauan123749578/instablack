@@ -210,7 +210,9 @@ BOOTSTRAP_ADMIN_IS_ADMIN=true
 OWNER_USERNAME=kauawqi
 
 # Web Push — MESMAS keys no web E no worker (cooperative-dream)
-# Sem isso no worker: sino funciona, celular não (ex.: "Conta fora do ar")
+# Sem isso no worker: sino funciona, celular NÃO recebe Story/erro/sessão expirada
+# (só às vezes sucesso via fallback do browser aberto).
+# No Railway: Variables → Shared / worker service → copie VAPID_* do web.
 VAPID_PUBLIC_KEY=<mesma do web>
 VAPID_PRIVATE_KEY=<mesma do web>
 VAPID_SUBJECT=mailto:seu-email@dominio.com
@@ -230,6 +232,6 @@ O código converte `postgres://` para `postgresql+psycopg2://` automaticamente.
 - [ ] `/readyz` → `storage: s3:seu-bucket` ok
 - [ ] `SECRET_KEY` forte (32+ chars)
 - [ ] Gerar links de convite em `/admin` (ou `INVITE_CODE` legado no env)
-- [ ] **VAPID no web e no worker** (push no celular com PC desligado)
+- [ ] **VAPID no web e no worker** (obrigatório para push no celular: Reel, Story, erro, conta expirada)
 - [ ] Domínio público no web
 - [ ] `/healthz` retorna 200

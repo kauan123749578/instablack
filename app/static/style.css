@@ -782,6 +782,42 @@ body.privacy-blur-handles .ig-handle * {
 .official-api-actions {
   display: block;
 }
+.meta-token-cell { min-width: 220px; max-width: 320px; }
+.meta-token-reveal {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+.meta-token-value {
+  display: block;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 1.4;
+  padding: 4px 6px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.06);
+  user-select: none;
+  transition: filter 0.2s ease, user-select 0.2s;
+}
+.meta-token-value.token-blurred {
+  filter: blur(5px);
+  -webkit-filter: blur(5px);
+  cursor: default;
+}
+.meta-token-reveal[data-revealed="1"] .meta-token-value {
+  filter: none;
+  -webkit-filter: none;
+  user-select: text;
+  white-space: normal;
+  word-break: break-all;
+}
+.meta-token-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.meta-app-cell strong { font-weight: 600; }
 .meta-token-connect { width: 100%; max-width: 480px; }
 .meta-token-connect > summary { list-style: none; cursor: pointer; }
 .meta-token-connect > summary::-webkit-details-marker { display: none; }
