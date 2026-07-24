@@ -75,41 +75,57 @@ def apply_camouflage_overlay(
     *,
     opacity: float = 0.10,
 ) -> Path:
-    """Mistura imagem de camuflagem por cima do vídeo (alpha 0.01–0.40)."""
+    """Mistura imagem de camuflagem por cima do vídeo (alpha 0.01–0.40).
+
+    A capa é redimensionada para o frame do vídeo e aplicada em todos os frames.
+    """
     alpha = max(0.01, min(0.40, float(opacity or 0.10)))
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    # Escala a capa para o tamanho do vídeo e faz overlay com alpha
     filter_complex = (
-        f"[1:v][0:v]scale2ref[cov][vid];"
+        f"[1:v][0:v]scale2ref=flags=bicubic[cov][vid];"
         f"[cov]format=rgba,colorchannelmixer=aa={alpha:.4f}[ov];"
-        f"[vid][ov]overlay=(W-w)/2:(H-h)/2:format=auto"
+        f"[vid][ov]overlay=0:0:shortest=1[outv]"
     )
+    cmd = [
+        settings.ffmpeg_bin,
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-i",
+        str(video_path),
+        "-loop",
+        "1",
+        "-framerate",
+        "30",
+        "-i",
+        str(cover_path),
+        "-filter_complex",
+        filter_complex,
+        "-map",
+        "[outv]",
+        "-map",
+        "0:a?",
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "20",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        "-shortest",
+        "-movflags",
+        "+faststart",
+        str(output_path),
+    ]
     try:
         proc = subprocess.run(
-            [
-                settings.ffmpeg_bin,
-                "-y",
-                "-i",
-                str(video_path),
-                "-loop",
-                "1",
-                "-i",
-                str(cover_path),
-                "-filter_complex",
-                filter_complex,
-                "-shortest",
-                "-c:v",
-                "libx264",
-                "-preset",
-                "veryfast",
-                "-crf",
-                "20",
-                "-c:a",
-                "copy",
-                "-movflags",
-                "+faststart",
-                str(output_path),
-            ],
+            cmd,
             capture_output=True,
             text=True,
             timeout=600,

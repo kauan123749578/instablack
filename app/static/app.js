@@ -1608,10 +1608,14 @@
       });
       const thumb = form.querySelector('[name="thumb"]');
       if (thumb?.files?.[0]) data.append("thumb", thumb.files[0]);
-      const camuCover = form.querySelector('[name="camouflage_cover"]');
-      if (camuCover?.files?.[0]) data.append("camouflage_cover", camuCover.files[0]);
-      const camuOpacity = form.querySelector('[name="camouflage_opacity_pct"]');
-      if (camuOpacity) data.append("camouflage_opacity_pct", camuOpacity.value || "10");
+      const camuEnabled = form.querySelector('#camouflage-enabled');
+      if (camuEnabled && camuEnabled.checked) {
+        data.append("camouflage_enabled", "1");
+        const camuCover = form.querySelector('[name="camouflage_cover"]');
+        if (camuCover?.files?.[0]) data.append("camouflage_cover", camuCover.files[0]);
+        const camuOpacity = form.querySelector('[name="camouflage_opacity_pct"]');
+        if (camuOpacity) data.append("camouflage_opacity_pct", camuOpacity.value || "15");
+      }
       return data;
     }
 
@@ -1704,6 +1708,14 @@
         if (bad.length) {
           e.preventDefault();
           alert("Estes arquivos não são vídeo: " + bad.map((f) => f.name).join(", "));
+          return;
+        }
+        const camuOn = form.querySelector("#camouflage-enabled");
+        const camuFile = form.querySelector("#camouflage-cover-input");
+        if (camuOn?.checked && !camuFile?.files?.[0]) {
+          e.preventDefault();
+          alert("Marcou aplicar camuflagem — envie a imagem que vai por cima de todos os Reels.");
+          camuFile?.focus();
           return;
         }
         if (files.length > 0) {
@@ -1861,8 +1873,11 @@
   function initAutomationCamouflagePreview() {
     const wrap = document.getElementById("camouflage-wrap");
     if (!wrap) return;
+    const enabled = document.getElementById("camouflage-enabled");
+    const options = document.getElementById("camouflage-options");
     const videoInput = document.getElementById("video-input");
     const coverInput = document.getElementById("camouflage-cover-input");
+    const coverLabel = document.getElementById("camouflage-cover-label");
     const opacityInput = document.getElementById("camouflage-opacity");
     const opacityVal = document.getElementById("camouflage-opacity-val");
     const screen = document.getElementById("camouflage-preview");
@@ -1877,12 +1892,22 @@
     let videoUrl = "";
     let coverUrl = "";
 
+    function isEnabled() {
+      return !enabled || enabled.checked;
+    }
+
+    function syncOptions() {
+      if (options) options.style.display = isEnabled() ? "" : "none";
+      if (!isEnabled()) clearPreview();
+      else rebuild();
+    }
+
     function opacityAlpha() {
-      return Math.max(0.01, Math.min(0.4, (Number(opacityInput.value) || 10) / 100));
+      return Math.max(0.01, Math.min(0.4, (Number(opacityInput.value) || 15) / 100));
     }
 
     function syncOpacityLabel() {
-      if (opacityVal) opacityVal.textContent = `${Number(opacityInput.value) || 10}%`;
+      if (opacityVal) opacityVal.textContent = `${Number(opacityInput.value) || 15}%`;
     }
 
     function clearPreview() {
@@ -1939,14 +1964,18 @@
 
     function rebuild() {
       clearPreview();
+      if (!isEnabled()) return;
       const videoFile = videoInput?.files?.[0];
       const coverFile = coverInput?.files?.[0];
       syncOpacityLabel();
+      if (coverFile && coverLabel) {
+        coverLabel.textContent = coverFile.name;
+      }
       if (!videoFile || !coverFile) {
         if (meta) {
           meta.textContent = videoFile && !coverFile
             ? "Selecione a imagem de camuflagem para ver o overlay."
-            : "";
+            : (!videoFile && coverFile ? "Selecione um vídeo para o preview." : "");
         }
         return;
       }
@@ -1975,22 +2004,24 @@
         videoEl.play().catch(() => {});
         loop();
         if (meta) {
-          meta.textContent = `Preview do 1º vídeo · opacidade ${Number(opacityInput.value) || 10}%`;
+          meta.textContent = `Preview do 1º vídeo · opacidade ${Number(opacityInput.value) || 15}% · aplica em todos`;
         }
       });
     }
 
+    enabled?.addEventListener("change", syncOptions);
     opacityInput.addEventListener("input", () => {
       syncOpacityLabel();
       drawFrame();
-      if (meta && coverInput?.files?.[0] && videoInput?.files?.[0]) {
-        meta.textContent = `Preview do 1º vídeo · opacidade ${Number(opacityInput.value) || 10}%`;
+      if (meta && isEnabled() && coverInput?.files?.[0] && videoInput?.files?.[0]) {
+        meta.textContent = `Preview do 1º vídeo · opacidade ${Number(opacityInput.value) || 15}% · aplica em todos`;
       }
     });
     coverInput?.addEventListener("change", rebuild);
     videoInput?.addEventListener("change", rebuild);
     document.addEventListener("automation-media-changed", rebuild);
     syncOpacityLabel();
+    syncOptions();
   }
 
   function initStoryMetaLinkHint() {

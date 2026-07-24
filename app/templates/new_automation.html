@@ -137,33 +137,39 @@
         <div>
           <h3 style="margin:0;font-size:15px">Camuflagem do Reel</h3>
           <p class="muted" style="margin:4px 0 0;font-size:12px">
-            Overlay aplicado no momento do post (FFmpeg). Preview 9:16 ao vivo.
+            A mesma imagem é misturada em <strong>todos</strong> os Reels no momento do post.
           </p>
         </div>
       </header>
-      <label class="dropzone-field">Imagem de camuflagem (opcional)
-        <div class="dropzone dropzone--sm">
-          <i data-lucide="image"></i>
-          <span>Misturada por cima de cada Reel</span>
-          <input type="file" id="camouflage-cover-input" name="camouflage_cover" accept="image/jpeg,image/png,image/webp">
-        </div>
+      <label class="checkbox-row" style="margin-bottom:12px">
+        <input type="checkbox" id="camouflage-enabled" name="camouflage_enabled" value="1">
+        <strong>Aplicar camuflagem</strong> em todos os Reels desta automação
       </label>
-      <label style="margin-top:12px;display:block">Opacidade
-        <div style="display:flex;align-items:center;gap:12px">
-          <input type="range" id="camouflage-opacity" name="camouflage_opacity_pct" min="1" max="40" value="10" style="flex:1">
-          <strong id="camouflage-opacity-val" style="min-width:42px;color:var(--primary-hover,#3d82ff)">10%</strong>
-        </div>
-      </label>
-      <div class="camu-phone" style="margin-top:14px">
-        <div class="camu-phone-notch"></div>
-        <div class="camu-phone-screen" id="camouflage-preview">
-          <div class="camu-preview-empty" id="camouflage-preview-empty">
-            <strong>Preview</strong>
-            Selecione um vídeo + imagem de camuflagem.
+      <div id="camouflage-options" style="display:none">
+        <label class="dropzone-field">Imagem de camuflagem <strong style="color:var(--red)">*</strong>
+          <div class="dropzone dropzone--sm">
+            <i data-lucide="image"></i>
+            <span id="camouflage-cover-label">Escolha a imagem que vai por cima de cada Reel</span>
+            <input type="file" id="camouflage-cover-input" name="camouflage_cover" accept="image/jpeg,image/png,image/webp">
+          </div>
+        </label>
+        <label style="margin-top:12px;display:block">Opacidade
+          <div style="display:flex;align-items:center;gap:12px">
+            <input type="range" id="camouflage-opacity" name="camouflage_opacity_pct" min="1" max="40" value="15" style="flex:1">
+            <strong id="camouflage-opacity-val" style="min-width:42px;color:var(--primary-hover,#3d82ff)">15%</strong>
+          </div>
+        </label>
+        <div class="camu-phone" style="margin-top:14px">
+          <div class="camu-phone-notch"></div>
+          <div class="camu-phone-screen" id="camouflage-preview">
+            <div class="camu-preview-empty" id="camouflage-preview-empty">
+              <strong>Preview</strong>
+              Selecione um vídeo + imagem de camuflagem.
+            </div>
           </div>
         </div>
+        <p class="muted" id="camouflage-preview-meta" style="text-align:center;font-size:12px;margin-top:8px"></p>
       </div>
-      <p class="muted" id="camouflage-preview-meta" style="text-align:center;font-size:12px;margin-top:8px"></p>
     </div>
   </section>
 

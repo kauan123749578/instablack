@@ -828,6 +828,12 @@ def _execute_publish(
             ):
                 cover_raw = tmp_dir / f"camu_cover{Path(camouflage_cover_key).suffix or '.jpg'}"
                 camu_out = tmp_dir / "camu_overlay.mp4"
+                log.info(
+                    "CAMOUFLAGE start automation=%s key=%s opacity=%.2f",
+                    automation_id,
+                    camouflage_cover_key,
+                    camouflage_opacity,
+                )
                 try:
                     _download_media(storage, camouflage_cover_key, cover_raw)
                     apply_camouflage_overlay(
@@ -838,16 +844,33 @@ def _execute_publish(
                     )
                     work_path = camu_out
                     log.info(
-                        "CAMOUFLAGE overlay automation=%s opacity=%.2f",
+                        "CAMOUFLAGE ok automation=%s size=%s",
                         automation_id,
-                        camouflage_opacity,
+                        camu_out.stat().st_size,
                     )
                 except Exception as camu_exc:
-                    log.warning(
-                        "Camuflagem falhou automation=%s — seguindo sem overlay: %s",
+                    log.exception(
+                        "Camuflagem falhou automation=%s key=%s",
                         automation_id,
-                        camu_exc,
+                        camouflage_cover_key,
                     )
+                    create_notification(
+                        owner_user_id,
+                        "Falha na camuflagem do Reel",
+                        f"@{username}: {camu_exc}",
+                        kind="warning",
+                        link="/logs",
+                    )
+                    # Com camuflagem pedida, não publica o original sem overlay
+                    _log_failure(
+                        automation_id,
+                        account_id,
+                        f"camuflagem: {camu_exc}",
+                        content_type=content_type,
+                        owner_user_id=owner_user_id,
+                        username=username,
+                    )
+                    raise
 
             clean_path, meta_info = prepare_clean_media(
                 work_path,

@@ -931,8 +931,9 @@ async def create_automation(
     caption_rotate_by_account: str = Form(""),
     caption_rotate_by_reel: str = Form(""),
     thumb: UploadFile | None = File(None),
+    camouflage_enabled: str = Form(""),
     camouflage_cover: UploadFile | None = File(None),
-    camouflage_opacity_pct: str = Form("10"),
+    camouflage_opacity_pct: str = Form("15"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -1131,16 +1132,44 @@ async def create_automation(
     )
 
     thumb_key, thumb_original_name = _save_thumb(storage, thumb)
-    camouflage_cover_key = (
-        _save_camouflage_cover(storage, camouflage_cover) if content_type == "reel" else None
-    )
-    camouflage_opacity = (
-        _clamp_camouflage_opacity(float(camouflage_opacity_pct or "10") / 100.0)
-        if content_type == "reel"
-        else 0.10
-    )
+    want_camu = bool(str(camouflage_enabled or "").strip()) and content_type == "reel"
+    camouflage_cover_key = None
+    camouflage_opacity = 0.15
+    if want_camu:
+        if not camouflage_cover or not camouflage_cover.filename:
+            error = "Marcou aplicar camuflagem — envie a imagem de camuflagem."
+        else:
+            camouflage_cover_key = _save_camouflage_cover(storage, camouflage_cover)
+            camouflage_opacity = _clamp_camouflage_opacity(
+                float(camouflage_opacity_pct or "15") / 100.0
+            )
     warn_q = f"&warn={len(upload_warnings)}" if upload_warnings else ""
     has_accounts = bool(accounts)
+
+    if error:
+        all_accounts = db.scalars(
+            select(InstagramAccount).where(
+                InstagramAccount.user_id == user.id,
+                InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
+            )
+        ).all()
+        return templates.TemplateResponse(
+            "new_automation.html",
+            {
+                "request": request,
+                "user": user,
+                "accounts": all_accounts,
+                "intervals": ALLOWED_INTERVALS,
+                "meta_min_interval": META_MIN_INTERVAL,
+                "meta_warmup_days": META_WARMUP_DAYS,
+                "meta_warmup_min_interval": META_WARMUP_MIN_INTERVAL,
+                "anti_farm_prefs": get_anti_farm_prefs(user),
+                "content_types": CONTENT_TYPES,
+                "default_content_type": content_type if content_type in CONTENT_TYPES else "reel",
+                "error": error,
+            },
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
 
     if schedule_mode == "now" and has_accounts:
         countdown = 0
@@ -1304,8 +1333,9 @@ async def create_reel_upload_draft(
     caption_rotate_by_account: str = Form(""),
     caption_rotate_by_reel: str = Form(""),
     thumb: UploadFile | None = File(None),
+    camouflage_enabled: str = Form(""),
     camouflage_cover: UploadFile | None = File(None),
-    camouflage_opacity_pct: str = Form("10"),
+    camouflage_opacity_pct: str = Form("15"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -1358,10 +1388,19 @@ async def create_reel_upload_draft(
     captions_json = captions_to_json(captions_from_form(captions_alt))
     storage = get_storage()
     thumb_key, thumb_original_name = _save_thumb(storage, thumb)
-    camouflage_cover_key = _save_camouflage_cover(storage, camouflage_cover)
-    camouflage_opacity = _clamp_camouflage_opacity(
-        float(camouflage_opacity_pct or "10") / 100.0
-    )
+    want_camu = bool(str(camouflage_enabled or "").strip())
+    camouflage_cover_key = None
+    camouflage_opacity = 0.15
+    if want_camu:
+        if not camouflage_cover or not camouflage_cover.filename:
+            return JSONResponse(
+                {"error": "Marcou aplicar camuflagem — envie a imagem de camuflagem."},
+                status_code=400,
+            )
+        camouflage_cover_key = _save_camouflage_cover(storage, camouflage_cover)
+        camouflage_opacity = _clamp_camouflage_opacity(
+            float(camouflage_opacity_pct or "15") / 100.0
+        )
     automation = Automation(
         user_id=user.id,
         name=name.strip(),
@@ -1862,6 +1901,7 @@ async def edit_automation(
     caption_rotate_by_reel: str = Form(""),
     thumb: UploadFile | None = File(None),
     remove_thumb: bool = Form(False),
+    camouflage_enabled: str = Form(""),
     camouflage_cover: UploadFile | None = File(None),
     remove_camouflage: bool = Form(False),
     camouflage_opacity_pct: str = Form(""),
@@ -1924,21 +1964,23 @@ async def edit_automation(
                     storage.delete(old_camu)
                 except Exception:
                     pass
-        a.camouflage_opacity = 0.10
+        a.camouflage_opacity = 0.15
     else:
+        want_camu = bool(str(camouflage_enabled or "").strip())
         if camouflage_opacity_pct not in ("", None):
             a.camouflage_opacity = _clamp_camouflage_opacity(
                 float(camouflage_opacity_pct) / 100.0
             )
-        if remove_camouflage and a.camouflage_cover_key:
-            old_camu = a.camouflage_cover_key
-            a.camouflage_cover_key = None
-            if not media_key_referenced_elsewhere(db, old_camu, exclude_automation_id=a.id):
-                try:
-                    storage.delete(old_camu)
-                except Exception:
-                    pass
-        if camouflage_cover and camouflage_cover.filename:
+        if remove_camouflage or not want_camu:
+            if a.camouflage_cover_key:
+                old_camu = a.camouflage_cover_key
+                a.camouflage_cover_key = None
+                if not media_key_referenced_elsewhere(db, old_camu, exclude_automation_id=a.id):
+                    try:
+                        storage.delete(old_camu)
+                    except Exception:
+                        pass
+        if want_camu and camouflage_cover and camouflage_cover.filename:
             old_camu = a.camouflage_cover_key
             a.camouflage_cover_key = _save_camouflage_cover(storage, camouflage_cover)
             if old_camu and not media_key_referenced_elsewhere(
@@ -1948,6 +1990,11 @@ async def edit_automation(
                     storage.delete(old_camu)
                 except Exception:
                     pass
+        if want_camu and not a.camouflage_cover_key:
+            raise HTTPException(
+                status_code=400,
+                detail="Marcou aplicar camuflagem — envie a imagem de camuflagem.",
+            )
 
     humanize = _schedule_humanize_fields(
         jitter_enabled=jitter_enabled,
