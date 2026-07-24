@@ -436,7 +436,13 @@ def _validate_public_media_url(
         ) from last_exc
 
 
-def _wait_container(container_id: str, access_token: str) -> None:
+def _wait_container(
+    container_id: str,
+    access_token: str,
+    *,
+    settle_seconds: float = 2.0,
+) -> None:
+    """Aguarda status FINISHED antes do media_publish (docs Meta / erro 9007)."""
     for _ in range(60):
         response = requests.get(
             _graph_url(container_id),
@@ -446,11 +452,53 @@ def _wait_container(container_id: str, access_token: str) -> None:
         data = _json_or_error(response, "Falha ao consultar processamento da mídia")
         status = str(data.get("status_code") or data.get("status") or "").upper()
         if status in ("FINISHED", "PUBLISHED"):
+            # Mesmo com FINISHED a Meta às vezes ainda rejeita publish (race 9007).
+            if settle_seconds > 0:
+                time.sleep(settle_seconds)
             return
         if status in ("ERROR", "EXPIRED"):
             raise MetaInstagramError(f"Container da Meta terminou com status {status}.")
         time.sleep(5)
     raise MetaInstagramError("A Meta demorou mais de 5 minutos para processar a mídia.")
+
+
+def _is_media_not_ready(exc: MetaInstagramError) -> bool:
+    if exc.code == 9007 or exc.subcode == 2207027:
+        return True
+    msg = str(exc).lower()
+    return "media id is not available" in msg or "not ready for publishing" in msg
+
+
+def _publish_container(
+    *,
+    ig_user_id: str,
+    container_id: str,
+    access_token: str,
+) -> dict:
+    """Chama media_publish; re-tenta se a Meta ainda não liberou o container (9007)."""
+    last_exc: MetaInstagramError | None = None
+    for attempt in range(8):
+        try:
+            publish_response = requests.post(
+                _graph_url(f"{ig_user_id}/media_publish"),
+                data={"creation_id": container_id, "access_token": access_token},
+                timeout=60,
+            )
+            return _json_or_error(
+                publish_response, "Falha ao publicar container da Meta"
+            )
+        except MetaInstagramError as exc:
+            if not _is_media_not_ready(exc):
+                raise
+            last_exc = exc
+            # Reconfirma FINISHED e espera um pouco mais a cada tentativa.
+            _wait_container(
+                container_id,
+                access_token,
+                settle_seconds=2.0 + attempt * 2.0,
+            )
+    assert last_exc is not None
+    raise last_exc
 
 
 def publish_media(
@@ -529,15 +577,14 @@ def publish_media(
     if not container_id:
         raise MetaInstagramError("A Meta não retornou o ID do container.")
 
-    if is_video:
-        _wait_container(container_id, access_token)
-
-    publish_response = requests.post(
-        _graph_url(f"{ig_user_id}/media_publish"),
-        data={"creation_id": container_id, "access_token": access_token},
-        timeout=60,
+    # Foto e vídeo: a Meta exige container FINISHED antes do publish
+    # (erro 9007/2207027 se publicar cedo demais — comum em Story imagem).
+    _wait_container(container_id, access_token)
+    published = _publish_container(
+        ig_user_id=ig_user_id,
+        container_id=container_id,
+        access_token=access_token,
     )
-    published = _json_or_error(publish_response, "Falha ao publicar container da Meta")
     media_id = str(published.get("id") or "")
     if not media_id:
         raise MetaInstagramError("A Meta não retornou o ID da publicação.")
