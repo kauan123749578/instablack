@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.deps import get_current_user
+from app.deps import get_current_user, get_effective_user
 from app.security import encrypt_secret
 from app.templating import templates
 from app.config import get_settings
@@ -177,7 +177,7 @@ def _store_meta_account(
 def list_accounts(
     request: Request,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_effective_user),
 ):
     """Página de adicionar conta (só o formulário)."""
     accounts = _load_user_accounts(db, user)
@@ -436,7 +436,7 @@ async def meta_data_deletion(
 def connected_accounts(
     request: Request,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_effective_user),
 ):
     """Página de gestão das contas já conectadas."""
     accounts = _load_user_accounts(db, user)

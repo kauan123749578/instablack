@@ -101,6 +101,18 @@ def _json_or_error(response: requests.Response, action: str) -> dict:
         detail = detail or response.text[:500]
         code = error.get("code") if isinstance(error, dict) else None
         subcode = error.get("error_subcode") if isinstance(error, dict) else None
+        message_l = (str(error.get("message") or "") if isinstance(error, dict) else "").lower()
+        if (
+            "permission" in message_l
+            or "instagram_content_publish" in message_l
+            or "instagram_business_content_publish" in message_l
+            or code in (10, 200)
+        ):
+            detail = (
+                "Sem permissão para publicar (instagram_content_publish). "
+                "Reconecte a conta Meta concedendo publicação de conteúdo. "
+                f"Detalhe: {detail}"
+            )
         raise MetaInstagramError(
             f"{action}: {detail}",
             code=int(code) if isinstance(code, int) or str(code).isdigit() else None,

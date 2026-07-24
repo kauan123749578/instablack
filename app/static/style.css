@@ -1392,3 +1392,29 @@ input[type="checkbox"]:checked::after {
   .btn { padding: 10px 14px; }
   .logs-stats { flex-direction: column; }
 }
+
+/* Owner view-as banner */
+.view-as-banner {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 10px 16px;
+  background: linear-gradient(90deg, #1e3a8a, #1161FE 55%, #1e3a8a);
+  color: #fff;
+  font-size: 13px;
+  text-align: center;
+}
+.view-as-banner a.view-as-exit {
+  color: #fff;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+body.is-view-as .app {
+  padding-top: 0;
+}

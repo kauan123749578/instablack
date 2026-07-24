@@ -6,7 +6,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from app.deps import get_admin_user, get_owner_user
+from app.deps import get_admin_user, get_owner_user, get_owner_only, get_current_user
 from app.utils.account_limits import account_limit_label
 from app.templating import templates
 from app.utils.invite_codes import (
@@ -111,6 +111,36 @@ def admin_dashboard(
             else "",
         },
     )
+
+
+@router.post("/users/{user_id}/impersonate")
+def impersonate_user(
+    request: Request,
+    user_id: int,
+    db: Session = Depends(get_db),
+    owner: User = Depends(get_owner_only),
+):
+    """Owner entra em visão read-only da conta do usuário."""
+    target = db.get(User, user_id)
+    target = _require_visible(owner, target)
+    if target.id == owner.id:
+        return RedirectResponse("/admin?error=view_as_self", status_code=status.HTTP_303_SEE_OTHER)
+    if not target.is_active:
+        return RedirectResponse("/admin?error=view_as_inactive", status_code=status.HTTP_303_SEE_OTHER)
+    request.session["view_as_user_id"] = target.id
+    return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.get("/stop-view-as")
+@router.post("/stop-view-as")
+def stop_view_as(
+    request: Request,
+    user: User = Depends(get_current_user),
+):
+    request.session.pop("view_as_user_id", None)
+    if getattr(user, "is_owner", False):
+        return RedirectResponse("/admin", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/invites/create")

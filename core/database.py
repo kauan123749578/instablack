@@ -143,6 +143,10 @@ def _sqlite_migrate() -> None:
             conn.execute(text("ALTER TABLE automations ADD COLUMN stagger_min_minutes INTEGER DEFAULT 2"))
         if "stagger_max_minutes" not in cols:
             conn.execute(text("ALTER TABLE automations ADD COLUMN stagger_max_minutes INTEGER DEFAULT 8"))
+        if "camouflage_cover_key" not in cols:
+            conn.execute(text("ALTER TABLE automations ADD COLUMN camouflage_cover_key VARCHAR(512)"))
+        if "camouflage_opacity" not in cols:
+            conn.execute(text("ALTER TABLE automations ADD COLUMN camouflage_opacity REAL DEFAULT 0.10"))
         if "posts_per_batch" not in cols:
             conn.execute(text("ALTER TABLE automations ADD COLUMN posts_per_batch INTEGER DEFAULT 0"))
         if "rest_minutes" not in cols:
@@ -303,6 +307,12 @@ def _postgres_migrate() -> None:
                 conn.execute(text("ALTER TABLE automations ADD COLUMN stagger_min_minutes INTEGER DEFAULT 2"))
             if "stagger_max_minutes" not in cols:
                 conn.execute(text("ALTER TABLE automations ADD COLUMN stagger_max_minutes INTEGER DEFAULT 8"))
+            if "camouflage_cover_key" not in cols:
+                conn.execute(text("ALTER TABLE automations ADD COLUMN camouflage_cover_key VARCHAR(512)"))
+            if "camouflage_opacity" not in cols:
+                conn.execute(text(
+                    "ALTER TABLE automations ADD COLUMN camouflage_opacity DOUBLE PRECISION DEFAULT 0.10"
+                ))
             if "posts_per_batch" not in cols:
                 conn.execute(text("ALTER TABLE automations ADD COLUMN posts_per_batch INTEGER DEFAULT 0"))
             if "rest_minutes" not in cols:

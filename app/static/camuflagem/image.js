@@ -30,7 +30,7 @@ function loadImageFromFile(file) {
   });
 }
 
-export function processImage(img, cover, index, blend, noiseLevel, mode) {
+export function processImage(img, cover, index, blend, noiseLevel, mode, coverOpacity = null) {
   const cfg = MODE_CFG[mode] || MODE_CFG.normal;
   const intensity = cfg.intensity;
   const w = img.naturalWidth;
@@ -48,8 +48,18 @@ export function processImage(img, cover, index, blend, noiseLevel, mode) {
   ctx.filter = "none";
 
   if (cover) {
-    ctx.globalAlpha = 1 - (blend ?? cfg.blend);
-    ctx.drawImage(cover, 0, 0, w, h);
+    const alpha =
+      coverOpacity != null
+        ? Math.max(0.01, Math.min(0.4, Number(coverOpacity)))
+        : 1 - (blend ?? cfg.blend);
+    ctx.globalAlpha = alpha;
+    // cover-fit no canvas do criativo
+    const cw = cover.naturalWidth || cover.width;
+    const ch = cover.naturalHeight || cover.height;
+    const scale = Math.max(w / cw, h / ch);
+    const dw = cw * scale;
+    const dh = ch * scale;
+    ctx.drawImage(cover, (w - dw) / 2, (h - dh) / 2, dw, dh);
     ctx.globalAlpha = 1;
   }
 
@@ -94,12 +104,13 @@ export async function processImagesBatch(files, coverFile, opts, onProgress) {
   const mode = opts.mode || "normal";
   const noise = opts.noiseLevel ?? 6;
   const blend = MODE_CFG[mode]?.blend ?? 0.9;
+  const coverOpacity = opts.coverOpacity ?? null;
   const cover = coverFile ? await loadImageFromFile(coverFile) : null;
   const out = [];
   for (let i = 0; i < files.length; i++) {
     onProgress?.(i + 1, files.length, files[i].name);
     const img = await loadImageFromFile(files[i]);
-    const result = processImage(img, cover, i, blend, noise, mode);
+    const result = processImage(img, cover, i, blend, noise, mode, coverOpacity);
     const blob = await (await fetch(result.dataUrl)).blob();
     out.push({ blob, name: result.fileName, canvas: result.canvas, img });
   }

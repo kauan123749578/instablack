@@ -14,7 +14,7 @@ from PIL import Image, ImageOps
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.deps import get_current_user
+from app.deps import get_current_user, get_effective_user
 from app.templating import templates
 from app.utils.calendar_schedule import (
     days_to_json,
@@ -189,6 +189,32 @@ def _save_thumb(storage, thumb: UploadFile | None) -> tuple[str | None, str | No
         raise HTTPException(status_code=400, detail="A capa enviada não é uma imagem válida.") from exc
 
 
+def _clamp_camouflage_opacity(raw: str | float | None) -> float:
+    try:
+        value = float(raw if raw is not None else 0.10)
+    except (TypeError, ValueError):
+        value = 0.10
+    return max(0.01, min(0.40, value))
+
+
+def _save_camouflage_cover(storage, cover: UploadFile | None) -> str | None:
+    if not cover or not cover.filename:
+        return None
+    try:
+        cover.file.seek(0)
+    except Exception:
+        pass
+    try:
+        with Image.open(cover.file) as source:
+            normalized = ImageOps.exif_transpose(source).convert("RGB")
+            output = io.BytesIO()
+            normalized.save(output, format="JPEG", quality=90, optimize=True)
+            output.seek(0)
+            return storage.save(output, suggested_ext=".jpg")
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="A capa de camuflagem não é uma imagem válida.") from exc
+
+
 def _activation_next_run(automation: Automation) -> dt.datetime:
     if automation.schedule_type == "calendar":
         days = parse_calendar_days(automation.calendar_days or "[]")
@@ -238,7 +264,7 @@ def _schedule_humanize_fields(
 def list_automations(
     request: Request,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_effective_user),
 ):
     automations = db.scalars(
         select(Automation)
@@ -273,7 +299,7 @@ def list_automations(
 def new_automation_page(
     request: Request,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_effective_user),
 ):
     accounts = db.scalars(
         select(InstagramAccount)
@@ -312,7 +338,7 @@ def new_automation_page(
 def new_story_page(
     request: Request,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_effective_user),
 ):
     """Atalho direto para criar automação de Story."""
     accounts = db.scalars(
@@ -385,7 +411,7 @@ def _parse_story_layout_form(
 def story_studio_page(
     request: Request,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_effective_user),
 ):
     """Editor visual de Story com link (somente contas com cookies web)."""
     all_accounts = db.scalars(
@@ -736,7 +762,7 @@ async def story_studio_schedule(
 def media_library(
     request: Request,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_effective_user),
 ):
     automations = db.scalars(
         select(Automation)
@@ -753,7 +779,7 @@ def media_library(
 def new_calendar_page(
     request: Request,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_effective_user),
 ):
     accounts = db.scalars(
         select(InstagramAccount)
@@ -817,27 +843,8 @@ async def create_calendar_automation(
         if len(accounts) != len(set(account_ids)):
             error = "Alguma conta selecionada não existe."
         elif any((acc.provider or "instagrapi") == "meta" for acc in accounts):
-            # A Content Publishing API oficial é mais restritiva que o
-            # Instagrapi. Validamos antes de salvar para evitar falha tardia.
-            if content_type == "reel":
-                bad = [
-                    f.filename for f in upload_files
-                    if Path(f.filename or "").suffix.lower() != ".mp4"
-                ]
-                if bad:
-                    error = "A API oficial aceita Reels em MP4: " + ", ".join(bad)
-            elif content_type == "story":
-                meta_story_ext = {".jpg", ".jpeg", ".mp4"}
-                bad = [
-                    f.filename for f in upload_files
-                    if Path(f.filename or "").suffix.lower() not in meta_story_ext
-                ]
-                if bad:
-                    error = "Para contas oficiais, Stories devem ser JPG ou MP4: " + ", ".join(bad)
-            elif content_type == "photo":
-                ext = Path(upload_files[0].filename or "").suffix.lower()
-                if ext not in {".jpg", ".jpeg"}:
-                    error = "A API oficial aceita fotos em JPG."
+            if Path(video.filename or "").suffix.lower() != ".mp4":
+                error = "A API oficial aceita Reels em MP4."
 
     if error:
         all_accounts = db.scalars(
@@ -924,6 +931,8 @@ async def create_automation(
     caption_rotate_by_account: str = Form(""),
     caption_rotate_by_reel: str = Form(""),
     thumb: UploadFile | None = File(None),
+    camouflage_cover: UploadFile | None = File(None),
+    camouflage_opacity_pct: str = Form("10"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -1122,6 +1131,14 @@ async def create_automation(
     )
 
     thumb_key, thumb_original_name = _save_thumb(storage, thumb)
+    camouflage_cover_key = (
+        _save_camouflage_cover(storage, camouflage_cover) if content_type == "reel" else None
+    )
+    camouflage_opacity = (
+        _clamp_camouflage_opacity(float(camouflage_opacity_pct or "10") / 100.0)
+        if content_type == "reel"
+        else 0.10
+    )
     warn_q = f"&warn={len(upload_warnings)}" if upload_warnings else ""
     has_accounts = bool(accounts)
 
@@ -1172,6 +1189,10 @@ async def create_automation(
                         _story_link_value(content_type, story_link),
                         _story_sticker_text_value(content_type, story_sticker_text),
                     ],
+                    kwargs={
+                        "camouflage_cover_key": camouflage_cover_key,
+                        "camouflage_opacity": camouflage_opacity,
+                    },
                     countdown=countdown + stagger,
                 )
             if len(video_entries) > 1:
@@ -1208,6 +1229,8 @@ async def create_automation(
             current_index=0,
             thumb_key=thumb_key,
             thumb_original_name=thumb_original_name,
+            camouflage_cover_key=camouflage_cover_key,
+            camouflage_opacity=camouflage_opacity,
             story_link=_story_link_value(content_type, story_link),
             story_sticker_text=_story_sticker_text_value(content_type, story_sticker_text),
             schedule_type="calendar",
@@ -1239,6 +1262,8 @@ async def create_automation(
         current_index=0,
         thumb_key=thumb_key,
         thumb_original_name=thumb_original_name,
+        camouflage_cover_key=camouflage_cover_key,
+        camouflage_opacity=camouflage_opacity,
         story_link=_story_link_value(content_type, story_link),
         story_sticker_text=_story_sticker_text_value(content_type, story_sticker_text),
         schedule_type="interval",
@@ -1279,6 +1304,8 @@ async def create_reel_upload_draft(
     caption_rotate_by_account: str = Form(""),
     caption_rotate_by_reel: str = Form(""),
     thumb: UploadFile | None = File(None),
+    camouflage_cover: UploadFile | None = File(None),
+    camouflage_opacity_pct: str = Form("10"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -1331,6 +1358,10 @@ async def create_reel_upload_draft(
     captions_json = captions_to_json(captions_from_form(captions_alt))
     storage = get_storage()
     thumb_key, thumb_original_name = _save_thumb(storage, thumb)
+    camouflage_cover_key = _save_camouflage_cover(storage, camouflage_cover)
+    camouflage_opacity = _clamp_camouflage_opacity(
+        float(camouflage_opacity_pct or "10") / 100.0
+    )
     automation = Automation(
         user_id=user.id,
         name=name.strip(),
@@ -1343,6 +1374,8 @@ async def create_reel_upload_draft(
         current_index=0,
         thumb_key=thumb_key,
         thumb_original_name=thumb_original_name,
+        camouflage_cover_key=camouflage_cover_key,
+        camouflage_opacity=camouflage_opacity,
         story_link=_story_link_value(content_type, story_link),
         schedule_type="calendar" if schedule_mode == "calendar" else "interval",
         start_mode=schedule_mode,
@@ -1777,6 +1810,8 @@ def duplicate_automation(
         video_original_name=src.video_original_name,
         thumb_key=src.thumb_key,
         thumb_original_name=src.thumb_original_name,
+        camouflage_cover_key=getattr(src, "camouflage_cover_key", None),
+        camouflage_opacity=float(getattr(src, "camouflage_opacity", 0.10) or 0.10),
         videos_json=src.videos_json,
         current_index=0,
         interval_minutes=src.interval_minutes,
@@ -1827,6 +1862,9 @@ async def edit_automation(
     caption_rotate_by_reel: str = Form(""),
     thumb: UploadFile | None = File(None),
     remove_thumb: bool = Form(False),
+    camouflage_cover: UploadFile | None = File(None),
+    remove_camouflage: bool = Form(False),
+    camouflage_opacity_pct: str = Form(""),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -1876,6 +1914,40 @@ async def edit_automation(
                 storage.delete(old_thumb)
             except Exception:
                 pass
+
+    if content_type != "reel":
+        if a.camouflage_cover_key:
+            old_camu = a.camouflage_cover_key
+            a.camouflage_cover_key = None
+            if not media_key_referenced_elsewhere(db, old_camu, exclude_automation_id=a.id):
+                try:
+                    storage.delete(old_camu)
+                except Exception:
+                    pass
+        a.camouflage_opacity = 0.10
+    else:
+        if camouflage_opacity_pct not in ("", None):
+            a.camouflage_opacity = _clamp_camouflage_opacity(
+                float(camouflage_opacity_pct) / 100.0
+            )
+        if remove_camouflage and a.camouflage_cover_key:
+            old_camu = a.camouflage_cover_key
+            a.camouflage_cover_key = None
+            if not media_key_referenced_elsewhere(db, old_camu, exclude_automation_id=a.id):
+                try:
+                    storage.delete(old_camu)
+                except Exception:
+                    pass
+        if camouflage_cover and camouflage_cover.filename:
+            old_camu = a.camouflage_cover_key
+            a.camouflage_cover_key = _save_camouflage_cover(storage, camouflage_cover)
+            if old_camu and not media_key_referenced_elsewhere(
+                db, old_camu, exclude_automation_id=a.id
+            ):
+                try:
+                    storage.delete(old_camu)
+                except Exception:
+                    pass
 
     humanize = _schedule_humanize_fields(
         jitter_enabled=jitter_enabled,
@@ -1936,7 +2008,7 @@ def automation_logs(
     request: Request,
     automation_id: int,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_effective_user),
 ):
     a = _get_owned(db, automation_id, user)
     logs = db.scalars(

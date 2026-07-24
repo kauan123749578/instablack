@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{% if default_content_type == 'story' %}Agendar Story{% else %}Nova automação{% endif %}{% endblock %}
 {% block content %}
+<link rel="stylesheet" href="/static/camuflagem.css?v=3" />
 <div class="page-header">
   <h2>{% if default_content_type == 'story' %}Agendar Story{% else %}Nova automação{% endif %}</h2>
   {% if default_content_type == 'story' %}
@@ -93,6 +94,10 @@
       <label style="margin-top:10px">Texto do botão (opcional)
         <input type="text" name="story_sticker_text" maxlength="60" placeholder="Ex.: GOOGLE.COM ou CLIQUE AQUI">
       </label>
+      <p class="muted" id="story-link-meta-hint" style="display:none;margin-top:8px;font-size:12px;color:#f59e0b">
+        Contas só pela API Meta: Stories publicam foto/vídeo normalmente, mas o sticker de link clicável
+        <strong>não se aplica</strong> (só login/senha ou cookies). Desmarque as contas API ou use outra conta para o link.
+      </p>
     </div>
   </section>
 
@@ -124,6 +129,41 @@
         </div>
         <img id="thumb-preview" style="display:none;margin-top:8px;max-width:120px;border-radius:8px" alt="Preview">
       </label>
+    </div>
+
+    <div id="camouflage-wrap" class="camu-auto-block">
+      <header class="form-section-head" style="margin:18px 0 10px">
+        <i data-lucide="shield"></i>
+        <div>
+          <h3 style="margin:0;font-size:15px">Camuflagem do Reel</h3>
+          <p class="muted" style="margin:4px 0 0;font-size:12px">
+            Overlay aplicado no momento do post (FFmpeg). Preview 9:16 ao vivo.
+          </p>
+        </div>
+      </header>
+      <label class="dropzone-field">Imagem de camuflagem (opcional)
+        <div class="dropzone dropzone--sm">
+          <i data-lucide="image"></i>
+          <span>Misturada por cima de cada Reel</span>
+          <input type="file" id="camouflage-cover-input" name="camouflage_cover" accept="image/jpeg,image/png,image/webp">
+        </div>
+      </label>
+      <label style="margin-top:12px;display:block">Opacidade
+        <div style="display:flex;align-items:center;gap:12px">
+          <input type="range" id="camouflage-opacity" name="camouflage_opacity_pct" min="1" max="40" value="10" style="flex:1">
+          <strong id="camouflage-opacity-val" style="min-width:42px;color:var(--primary-hover,#3d82ff)">10%</strong>
+        </div>
+      </label>
+      <div class="camu-phone" style="margin-top:14px">
+        <div class="camu-phone-notch"></div>
+        <div class="camu-phone-screen" id="camouflage-preview">
+          <div class="camu-preview-empty" id="camouflage-preview-empty">
+            <strong>Preview</strong>
+            Selecione um vídeo + imagem de camuflagem.
+          </div>
+        </div>
+      </div>
+      <p class="muted" id="camouflage-preview-meta" style="text-align:center;font-size:12px;margin-top:8px"></p>
     </div>
   </section>
 

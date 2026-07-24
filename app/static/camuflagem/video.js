@@ -57,10 +57,11 @@ function seek(video, t) {
   });
 }
 
-export async function processVideoFile(file, coverImg, mode, onProgress) {
+export async function processVideoFile(file, coverImg, mode, onProgress, opacity = 0.1) {
   if (typeof VideoEncoder === "undefined") {
     throw new Error("WebCodecs indisponível — use Chrome ou Edge.");
   }
+  const alpha = Math.max(0.01, Math.min(0.4, Number(opacity) || 0.1));
   const { video, url } = await loadVideo(file);
   const width = video.videoWidth || 1080;
   const height = video.videoHeight || 1920;
@@ -106,7 +107,7 @@ export async function processVideoFile(file, coverImg, mode, onProgress) {
     await seek(video, t);
     ctx.drawImage(video, 0, 0, width, height);
 
-    ctx.globalAlpha = 0.1;
+    ctx.globalAlpha = alpha;
     ctx.drawImage(coverImg, 0, 0, width, height);
     ctx.globalAlpha = 1;
 

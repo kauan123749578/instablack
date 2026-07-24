@@ -109,11 +109,14 @@ def playlist_is_exhausted(automation: Automation) -> bool:
 
 
 def media_keys_for_automation(automation: Automation) -> list[str]:
-    """Todas as keys de mídia referenciadas (vídeos + capa)."""
+    """Todas as keys de mídia referenciadas (vídeos + capa + camuflagem)."""
     keys = list(all_video_keys(automation))
     thumb = getattr(automation, "thumb_key", None)
     if thumb and thumb not in keys:
         keys.append(str(thumb))
+    camu = getattr(automation, "camouflage_cover_key", None)
+    if camu and camu not in keys:
+        keys.append(str(camu))
     return [k for k in keys if k]
 
 
@@ -130,6 +133,7 @@ def media_key_referenced_elsewhere(db, key: str, *, exclude_automation_id: int) 
         or_(
             Automation.video_key == key,
             Automation.thumb_key == key,
+            Automation.camouflage_cover_key == key,
             Automation.videos_json.contains(key),
         ),
     ).limit(1)

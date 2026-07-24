@@ -14,12 +14,20 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bricolage+Grotesque:wght@600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=39" />
+  <link rel="stylesheet" href="/static/style.css?v=40" />
   <link rel="stylesheet" href="/static/dashboard.css?v=40" />
   {% block head %}{% endblock %}
 </head>
-<body class="app-body premium-app">
+<body class="app-body premium-app{% if request.state.view_as_active %} is-view-as{% endif %}">
+  {% set nav_auth = request.state.auth_user if request.state.view_as_active and request.state.auth_user else user %}
   <div class="ambient-grid"></div>
+
+  {% if request.state.view_as_active %}
+  <div class="view-as-banner" role="status">
+    <span>Vendo como <strong>@{{ request.state.view_as_username or (request.state.view_as_user.username if request.state.view_as_user else 'usuário') }}</strong> — somente leitura</span>
+    <a href="/admin/stop-view-as" class="view-as-exit">Sair da visão</a>
+  </div>
+  {% endif %}
 
   <div class="app" id="app">
     <aside class="sidebar" id="sidebar">
@@ -91,7 +99,7 @@
             <i data-lucide="flame" class="nav-icon"></i>
             <span class="nav-text">Aquecimento</span>
           </a>
-          {% if user.is_owner %}
+          {% if nav_auth.is_owner %}
           <a href="/camuflagem" class="nav-link" data-nav="/camuflagem">
             <i data-lucide="shield" class="nav-icon"></i>
             <span class="nav-text">Camuflagem</span>
@@ -113,7 +121,7 @@
             <i data-lucide="settings" class="nav-icon"></i>
             <span class="nav-text">Configurações</span>
           </a>
-          {% if user.is_admin %}
+          {% if nav_auth.is_admin %}
           <a href="/admin" class="nav-link" data-nav="/admin">
             <i data-lucide="shield" class="nav-icon"></i>
             <span class="nav-text">Admin</span>
@@ -213,14 +221,14 @@
         <a href="/automations/story-studio" data-nav="/automations/story-studio"><i data-lucide="link-2"></i><span>Story Link Studio</span></a>
         <a href="/automations/new/story"><i data-lucide="circle-dot"></i><span>Agendar Story</span></a>
         <a href="/aquecimento" data-nav="/aquecimento"><i data-lucide="flame"></i><span>Aquecimento</span></a>
-        {% if user.is_owner %}
+        {% if nav_auth.is_owner %}
         <a href="/camuflagem" data-nav="/camuflagem"><i data-lucide="shield"></i><span>Camuflagem</span></a>
         {% endif %}
         <div class="drawer-divider"></div>
         <a href="/analytics" data-nav="/analytics"><i data-lucide="chart-no-axes-combined"></i><span>Analytics</span></a>
         <a href="/logs" data-nav="/logs"><i data-lucide="scroll-text"></i><span>Logs</span></a>
         <a href="/perfil" data-nav="/perfil"><i data-lucide="settings"></i><span>Configurações</span></a>
-        {% if user.is_admin %}
+        {% if nav_auth.is_admin %}
         <a href="/admin" data-nav="/admin"><i data-lucide="shield"></i><span>Admin</span></a>
         {% endif %}
       </nav>
@@ -245,7 +253,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/lucide@0.475.0/dist/umd/lucide.min.js" crossorigin="anonymous"></script>
-  <script src="/static/app.js?v=55"></script>
+  <script src="/static/app.js?v=56"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

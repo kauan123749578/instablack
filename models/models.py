@@ -7,6 +7,7 @@ from typing import List, Optional
 from sqlalchemy import (
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -209,6 +210,9 @@ class Automation(Base):
     video_original_name: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     thumb_key: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     thumb_original_name: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    # Camuflagem no publish (overlay de imagem no Reel)
+    camouflage_cover_key: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    camouflage_opacity: Mapped[float] = mapped_column(Float, default=0.10)
     videos_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # playlist: [{video_key, video_original_name}]
     current_index: Mapped[int] = mapped_column(Integer, default=0)
 

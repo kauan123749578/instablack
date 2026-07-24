@@ -33,11 +33,17 @@ from app.routes import (
     profile,
 )
 from app.templating import templates
-from core.database import init_db
+from core.database import SessionLocal, init_db
 from core.health import check_database, check_redis, check_storage
 from core.storage import get_storage
+from models.models import User
 
 log = logging.getLogger(__name__)
+
+_VIEW_AS_MUTATION_ALLOW = {
+    "/logout",
+    "/admin/stop-view-as",
+}
 
 
 @asynccontextmanager
@@ -68,6 +74,80 @@ def create_app() -> FastAPI:
         https_only=settings.app_env == "production",
         max_age=60 * 60 * 24 * 14,  # 14 dias
     )
+
+    @app.middleware("http")
+    async def view_as_readonly_middleware(request: Request, call_next):
+        view_as_id = request.session.get("view_as_user_id")
+        auth_id = request.session.get("user_id")
+        request.state.auth_user = None
+        request.state.view_as_user = None
+        request.state.view_as_username = None
+        request.state.view_as_active = False
+
+        if auth_id:
+            db = SessionLocal()
+            try:
+                auth_user = db.get(User, auth_id)
+                if auth_user is not None:
+                    _ = (
+                        auth_user.username,
+                        auth_user.is_admin,
+                        getattr(auth_user, "is_owner", False),
+                    )
+                    db.expunge(auth_user)
+                    request.state.auth_user = auth_user
+                if (
+                    view_as_id
+                    and auth_user is not None
+                    and getattr(auth_user, "is_owner", False)
+                ):
+                    try:
+                        target = db.get(User, int(view_as_id))
+                    except (TypeError, ValueError):
+                        target = None
+                    if target and target.is_active and target.id != auth_user.id:
+                        request.state.view_as_username = target.username
+                        request.state.view_as_active = True
+                        db.expunge(target)
+                        request.state.view_as_user = target
+                    else:
+                        request.session.pop("view_as_user_id", None)
+            except Exception:
+                log.exception("Falha ao resolver visão owner")
+            finally:
+                db.close()
+
+        if request.state.view_as_active and request.method in ("POST", "PUT", "PATCH", "DELETE"):
+            path = request.url.path.rstrip("/") or "/"
+            allowed = {p.rstrip("/") or "/" for p in _VIEW_AS_MUTATION_ALLOW}
+            if path not in allowed:
+                accept = request.headers.get("accept", "")
+                msg = (
+                    "Modo somente leitura: você está vendo a conta de outro usuário. "
+                    "Saia da visão para fazer alterações."
+                )
+                if "application/json" in accept or "fetch" in (
+                    request.headers.get("x-requested-with") or ""
+                ).lower():
+                    return JSONResponse({"error": msg}, status_code=403)
+                return HTMLResponse(
+                    f"""<!doctype html><html lang="pt-br"><head><meta charset="utf-8">
+                    <title>Somente leitura</title>
+                    <meta name="viewport" content="width=device-width, initial-scale=1">
+                    <style>
+                      body{{font-family:system-ui,sans-serif;background:#0b0d12;color:#e8eaed;
+                      display:grid;place-items:center;min-height:100vh;margin:0;padding:24px}}
+                      .box{{max-width:420px;background:#141824;border:1px solid #2a3142;border-radius:12px;padding:24px}}
+                      a{{color:#3d82ff}}
+                    </style></head><body><div class="box">
+                    <h1 style="font-size:1.2rem;margin:0 0 8px">Somente leitura</h1>
+                    <p>{msg}</p>
+                    <p><a href="/admin/stop-view-as">Sair da visão</a> · <a href="/">Voltar</a></p>
+                    </div></body></html>""",
+                    status_code=403,
+                )
+
+        return await call_next(request)
 
     static_dir = Path(__file__).resolve().parent / "static"
     static_dir.mkdir(parents=True, exist_ok=True)

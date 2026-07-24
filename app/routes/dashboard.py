@@ -9,7 +9,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.deps import get_current_user, maybe_current_user
+from app.deps import get_current_user, maybe_current_user, maybe_effective_user
 from app.templating import templates
 from app.utils.account_health import offline_accounts
 from app.utils.charts import attach_chart_paths
@@ -312,7 +312,7 @@ def home(
     request: Request,
     days: int = 7,
     db: Session = Depends(get_db),
-    user: User | None = Depends(maybe_current_user),
+    user: User | None = Depends(maybe_effective_user),
 ):
     if user is None:
         return RedirectResponse("/login", status_code=303)
@@ -494,7 +494,7 @@ def analytics_page(
     days: int = 7,
     account_id: int | None = None,
     db: Session = Depends(get_db),
-    user: User | None = Depends(maybe_current_user),
+    user: User | None = Depends(maybe_effective_user),
 ):
     if user is None:
         return RedirectResponse("/login", status_code=303)

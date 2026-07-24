@@ -134,6 +134,8 @@ function initImageTab() {
   const coverInput = $("#camu-img-cover");
   const noise = $("#camu-noise");
   const noiseVal = $("#camu-noise-val");
+  const opacityInput = $("#camu-img-opacity");
+  const opacityVal = $("#camu-img-opacity-val");
   const runBtn = $("#camu-img-run");
   const progress = $("#camu-img-progress");
   const results = $("#camu-img-results");
@@ -142,6 +144,10 @@ function initImageTab() {
   const previewMeta = $("#camu-img-preview-meta");
   let mode = "normal";
   let previewToken = 0;
+
+  function coverOpacity() {
+    return Math.max(0.01, Math.min(0.4, (Number(opacityInput?.value) || 10) / 100));
+  }
 
   const refreshPreview = debounce(async () => {
     const file = mainInput?.files?.[0];
@@ -158,7 +164,7 @@ function initImageTab() {
       if (token !== previewToken) return;
       const noiseLevel = Number(noise?.value || 6);
       const blend = MODE_CFG[mode]?.blend ?? 0.9;
-      const result = processImage(img, cover, 0, blend, noiseLevel, mode);
+      const result = processImage(img, cover, 0, blend, noiseLevel, mode, coverOpacity());
       if (token !== previewToken) return;
       const imgEl = document.createElement("img");
       imgEl.alt = "Preview camuflado";
@@ -166,10 +172,11 @@ function initImageTab() {
       setPreviewMedia(previewFrame, previewEmpty, imgEl);
       if (previewMeta) {
         const niche = document.querySelector('input[name="niche"]:checked')?.value || "default";
+        const pct = Math.round(coverOpacity() * 100);
         previewMeta.textContent =
           niche === "default"
-            ? `Modo ${mode} · ruído ${noiseLevel} · saída PNG`
-            : `Modo ${mode} · ruído ${noiseLevel} · perfil ${niche.toUpperCase()} (MP4 no export)`;
+            ? `Modo ${mode} · capa ${pct}% · ruído ${noiseLevel} · PNG`
+            : `Modo ${mode} · capa ${pct}% · perfil ${niche.toUpperCase()} (MP4)`;
       }
     } catch (err) {
       console.error(err);
@@ -196,6 +203,10 @@ function initImageTab() {
 
   noise?.addEventListener("input", () => {
     if (noiseVal) noiseVal.textContent = noise.value;
+    refreshPreview();
+  });
+  opacityInput?.addEventListener("input", () => {
+    if (opacityVal) opacityVal.textContent = `${opacityInput.value}%`;
     refreshPreview();
   });
 
@@ -237,7 +248,7 @@ function initImageTab() {
         const out = await processImagesBatch(
           files,
           coverFile,
-          { mode, noiseLevel },
+          { mode, noiseLevel, coverOpacity: coverOpacity() },
           (i, n, name) => {
             if (progress) progress.textContent = `Imagem ${i}/${n}: ${name}`;
           }
@@ -256,7 +267,7 @@ function initImageTab() {
           const processed = await processImagesBatch(
             [files[i]],
             coverFile,
-            { mode, noiseLevel },
+            { mode, noiseLevel, coverOpacity: coverOpacity() },
             () => {}
           );
           const mainImg = processed[0].img;
@@ -286,12 +297,18 @@ function initVideoTab() {
   const progress = $("#camu-vid-progress");
   const results = $("#camu-vid-results");
   const hint = $("#camu-vid-hint");
+  const opacityInput = $("#camu-vid-opacity");
+  const opacityVal = $("#camu-vid-opacity-val");
   const previewFrame = $("#camu-vid-preview");
   const previewEmpty = $("#camu-vid-preview-empty");
   const previewMeta = $("#camu-vid-preview-meta");
   let mode = "normal";
   let previewToken = 0;
   let previewUrl = null;
+
+  function coverOpacity() {
+    return Math.max(0.01, Math.min(0.4, (Number(opacityInput?.value) || 10) / 100));
+  }
 
   const refreshPreview = debounce(async () => {
     const videoFile = mainInput?.files?.[0];
@@ -323,24 +340,32 @@ function initVideoTab() {
       const coverImg = await loadImageFromFile(coverFile);
       if (token !== previewToken) return;
 
-      const w = video.videoWidth || 720;
-      const h = video.videoHeight || 1280;
+      const w = 540;
+      const h = 960;
       const canvas = document.createElement("canvas");
-      const maxW = 720;
-      const scale = Math.min(1, maxW / w);
-      canvas.width = Math.round(w * scale);
-      canvas.height = Math.round(h * scale);
+      canvas.width = w;
+      canvas.height = h;
       const ctx = canvas.getContext("2d", { willReadFrequently: true });
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      ctx.globalAlpha = 0.1;
-      ctx.drawImage(coverImg, 0, 0, canvas.width, canvas.height);
+
+      // cover-fit do vídeo no 9:16
+      const vw = video.videoWidth || w;
+      const vh = video.videoHeight || h;
+      const vScale = Math.max(w / vw, h / vh);
+      const dw = vw * vScale;
+      const dh = vh * vScale;
+      ctx.drawImage(video, (w - dw) / 2, (h - dh) / 2, dw, dh);
+
+      const alpha = coverOpacity();
+      ctx.globalAlpha = alpha;
+      const cw = coverImg.naturalWidth || coverImg.width;
+      const ch = coverImg.naturalHeight || coverImg.height;
+      const cScale = Math.max(w / cw, h / ch);
+      const cdw = cw * cScale;
+      const cdh = ch * cScale;
+      ctx.drawImage(coverImg, (w - cdw) / 2, (h - cdh) / 2, cdw, cdh);
       ctx.globalAlpha = 1;
       if (mode === "agressiva") {
         adversarialNoise(ctx, 4);
-        ctx.globalAlpha = 0.2;
-        ctx.fillStyle = "#0000ff";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.globalAlpha = 1;
       }
 
       const img = document.createElement("img");
@@ -348,10 +373,11 @@ function initVideoTab() {
       img.src = canvas.toDataURL("image/jpeg", 0.92);
       setPreviewMedia(previewFrame, previewEmpty, img);
       if (previewMeta) {
+        const pct = Math.round(alpha * 100);
         previewMeta.textContent =
           mode === "agressiva"
-            ? "Modo agressiva · overlay 10% + ruído (sample do 1º frame)"
-            : "Modo normal · overlay da capa a 10% (sample do 1º frame)";
+            ? `Agressiva · capa ${pct}% + ruído (1º frame)`
+            : `Normal · capa ${pct}% (1º frame)`;
       }
     } catch (err) {
       console.error(err);
@@ -372,10 +398,15 @@ function initVideoTab() {
         hint.textContent =
           mode === "agressiva"
             ? "Aplica distorção por frame, ruído anti-IA e flashes. Mais lento."
-            : "Mistura a imagem de camuflagem a 10% em cada frame. Chrome/Edge.";
+            : "Mistura a imagem de camuflagem em cada frame. Ajuste a opacidade abaixo.";
       }
       refreshPreview();
     });
+  });
+
+  opacityInput?.addEventListener("input", () => {
+    if (opacityVal) opacityVal.textContent = `${opacityInput.value}%`;
+    refreshPreview();
   });
 
   const syncBtn = () => {
@@ -414,11 +445,17 @@ function initVideoTab() {
       const coverImg = await loadImageFromFile(coverFile);
       const out = [];
       for (let i = 0; i < videos.length; i++) {
-        const blob = await processVideoFile(videos[i], coverImg, mode, (p, msg) => {
-          if (progress) {
-            progress.textContent = `Vídeo ${i + 1}/${videos.length}: ${msg} (${Math.round(p * 100)}%)`;
-          }
-        });
+        const blob = await processVideoFile(
+          videos[i],
+          coverImg,
+          mode,
+          (p, msg) => {
+            if (progress) {
+              progress.textContent = `Vídeo ${i + 1}/${videos.length}: ${msg} (${Math.round(p * 100)}%)`;
+            }
+          },
+          coverOpacity()
+        );
         out.push({
           blob,
           name: `camuflado_vid_${mode}_${i + 1}_${Date.now()}.mp4`,

@@ -267,6 +267,13 @@
               <a class="btn btn-sm" href="/admin/users/{{ u.id }}/accounts" data-nav="/admin/users/{{ u.id }}/accounts">
                 <i data-lucide="instagram"></i> Ver contas
               </a>
+              {% if is_owner %}
+              <form method="post" action="/admin/users/{{ u.id }}/impersonate">
+                <button type="submit" class="btn btn-sm btn-primary" title="Ver painel deste usuário (somente leitura)">
+                  <i data-lucide="eye"></i> Ver como
+                </button>
+              </form>
+              {% endif %}
               {% endif %}
               {% if u.id == user.id %}
               <span class="og-muted">você</span>

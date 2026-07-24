@@ -6,7 +6,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import delete, desc, func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.deps import get_current_user
+from app.deps import get_current_user, get_effective_user
 from app.templating import templates
 from core.database import get_db
 from models.models import InstagramAccount, PublishLog, User
@@ -19,7 +19,7 @@ VISIBLE_ACCOUNT_STATUSES = ("active", "paused", "needs_login", "proxy_down", "ba
 def user_logs(
     request: Request,
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_effective_user),
 ):
     status_filter = request.query_params.get("status", "").strip()
     account_filter = request.query_params.get("account_id", "").strip()

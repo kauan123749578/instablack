@@ -708,6 +708,7 @@
     const mediaLabel = document.getElementById("media-label");
     const captionWrap = document.getElementById("caption-wrap");
     const thumbWrap = document.getElementById("thumb-wrap");
+    const camouflageWrap = document.getElementById("camouflage-wrap");
     const storyLinkWrap = document.getElementById("story-link-wrap");
     const videoInput = document.getElementById("video-input");
     const videoList = document.getElementById("video-file-list");
@@ -729,6 +730,7 @@
         }
         if (captionWrap) captionWrap.style.display = "none";
         if (thumbWrap) thumbWrap.style.display = "none";
+        if (camouflageWrap) camouflageWrap.style.display = "none";
         if (storyLinkWrap) storyLinkWrap.style.display = "";
         if (reelUploadHelp) reelUploadHelp.style.display = "none";
       } else if (t === "photo") {
@@ -741,6 +743,7 @@
         if (videoList) videoList.style.display = "none";
         if (captionWrap) captionWrap.style.display = "";
         if (thumbWrap) thumbWrap.style.display = "none";
+        if (camouflageWrap) camouflageWrap.style.display = "none";
         if (storyLinkWrap) storyLinkWrap.style.display = "none";
         if (reelUploadHelp) reelUploadHelp.style.display = "none";
       } else {
@@ -752,6 +755,7 @@
         }
         if (captionWrap) captionWrap.style.display = "";
         if (thumbWrap) thumbWrap.style.display = "";
+        if (camouflageWrap) camouflageWrap.style.display = "";
         if (storyLinkWrap) storyLinkWrap.style.display = "none";
         if (reelUploadHelp) reelUploadHelp.style.display = "block";
       }
@@ -1599,6 +1603,10 @@
       });
       const thumb = form.querySelector('[name="thumb"]');
       if (thumb?.files?.[0]) data.append("thumb", thumb.files[0]);
+      const camuCover = form.querySelector('[name="camouflage_cover"]');
+      if (camuCover?.files?.[0]) data.append("camouflage_cover", camuCover.files[0]);
+      const camuOpacity = form.querySelector('[name="camouflage_opacity_pct"]');
+      if (camuOpacity) data.append("camouflage_opacity_pct", camuOpacity.value || "10");
       return data;
     }
 
@@ -1845,6 +1853,168 @@
     });
   }
 
+  function initAutomationCamouflagePreview() {
+    const wrap = document.getElementById("camouflage-wrap");
+    if (!wrap) return;
+    const videoInput = document.getElementById("video-input");
+    const coverInput = document.getElementById("camouflage-cover-input");
+    const opacityInput = document.getElementById("camouflage-opacity");
+    const opacityVal = document.getElementById("camouflage-opacity-val");
+    const screen = document.getElementById("camouflage-preview");
+    const empty = document.getElementById("camouflage-preview-empty");
+    const meta = document.getElementById("camouflage-preview-meta");
+    if (!screen || !opacityInput) return;
+
+    let videoEl = null;
+    let coverImg = null;
+    let canvas = null;
+    let raf = 0;
+    let videoUrl = "";
+    let coverUrl = "";
+
+    function opacityAlpha() {
+      return Math.max(0.01, Math.min(0.4, (Number(opacityInput.value) || 10) / 100));
+    }
+
+    function syncOpacityLabel() {
+      if (opacityVal) opacityVal.textContent = `${Number(opacityInput.value) || 10}%`;
+    }
+
+    function clearPreview() {
+      if (raf) cancelAnimationFrame(raf);
+      raf = 0;
+      if (videoEl) {
+        videoEl.pause();
+        videoEl.removeAttribute("src");
+        videoEl.load();
+        videoEl = null;
+      }
+      if (videoUrl) URL.revokeObjectURL(videoUrl);
+      if (coverUrl) URL.revokeObjectURL(coverUrl);
+      videoUrl = "";
+      coverUrl = "";
+      coverImg = null;
+      canvas = null;
+      screen.innerHTML = "";
+      if (empty) {
+        empty.style.display = "";
+        screen.appendChild(empty);
+      }
+      if (meta) meta.textContent = "";
+    }
+
+    function drawFrame() {
+      if (!canvas || !videoEl || videoEl.readyState < 2) return;
+      const ctx = canvas.getContext("2d");
+      const cw = canvas.width;
+      const ch = canvas.height;
+      const vw = videoEl.videoWidth || 1080;
+      const vh = videoEl.videoHeight || 1920;
+      const scale = Math.max(cw / vw, ch / vh);
+      const dw = vw * scale;
+      const dh = vh * scale;
+      const dx = (cw - dw) / 2;
+      const dy = (ch - dh) / 2;
+      ctx.clearRect(0, 0, cw, ch);
+      ctx.drawImage(videoEl, dx, dy, dw, dh);
+      if (coverImg && coverImg.complete) {
+        ctx.globalAlpha = opacityAlpha();
+        const cs = Math.max(cw / coverImg.naturalWidth, ch / coverImg.naturalHeight);
+        const cdw = coverImg.naturalWidth * cs;
+        const cdh = coverImg.naturalHeight * cs;
+        ctx.drawImage(coverImg, (cw - cdw) / 2, (ch - cdh) / 2, cdw, cdh);
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    function loop() {
+      drawFrame();
+      raf = requestAnimationFrame(loop);
+    }
+
+    function rebuild() {
+      clearPreview();
+      const videoFile = videoInput?.files?.[0];
+      const coverFile = coverInput?.files?.[0];
+      syncOpacityLabel();
+      if (!videoFile || !coverFile) {
+        if (meta) {
+          meta.textContent = videoFile && !coverFile
+            ? "Selecione a imagem de camuflagem para ver o overlay."
+            : "";
+        }
+        return;
+      }
+      if (empty) empty.style.display = "none";
+      canvas = document.createElement("canvas");
+      canvas.width = 540;
+      canvas.height = 960;
+      canvas.style.width = "100%";
+      canvas.style.height = "100%";
+      canvas.style.objectFit = "cover";
+      screen.appendChild(canvas);
+
+      videoUrl = URL.createObjectURL(videoFile);
+      coverUrl = URL.createObjectURL(coverFile);
+      coverImg = new Image();
+      coverImg.onload = () => drawFrame();
+      coverImg.src = coverUrl;
+
+      videoEl = document.createElement("video");
+      videoEl.muted = true;
+      videoEl.playsInline = true;
+      videoEl.loop = true;
+      videoEl.preload = "auto";
+      videoEl.src = videoUrl;
+      videoEl.addEventListener("loadeddata", () => {
+        videoEl.play().catch(() => {});
+        loop();
+        if (meta) {
+          meta.textContent = `Preview do 1º vídeo · opacidade ${Number(opacityInput.value) || 10}%`;
+        }
+      });
+    }
+
+    opacityInput.addEventListener("input", () => {
+      syncOpacityLabel();
+      drawFrame();
+      if (meta && coverInput?.files?.[0] && videoInput?.files?.[0]) {
+        meta.textContent = `Preview do 1º vídeo · opacidade ${Number(opacityInput.value) || 10}%`;
+      }
+    });
+    coverInput?.addEventListener("change", rebuild);
+    videoInput?.addEventListener("change", rebuild);
+    document.addEventListener("automation-media-changed", rebuild);
+    syncOpacityLabel();
+  }
+
+  function initStoryMetaLinkHint() {
+    const hint = document.getElementById("story-link-meta-hint");
+    const wrap = document.getElementById("story-link-wrap");
+    const form = document.getElementById("automation-form");
+    if (!hint || !wrap || !form) return;
+
+    function sync() {
+      if (wrap.style.display === "none") {
+        hint.style.display = "none";
+        return;
+      }
+      const checked = Array.from(form.querySelectorAll('[name="account_ids"]:checked'));
+      if (!checked.length) {
+        hint.style.display = "none";
+        return;
+      }
+      const onlyMeta = checked.every((el) => (el.getAttribute("data-provider") || "instagrapi") === "meta");
+      hint.style.display = onlyMeta ? "block" : "none";
+    }
+
+    form.addEventListener("change", (e) => {
+      if (e.target && e.target.name === "account_ids") sync();
+    });
+    document.addEventListener("automation-media-changed", sync);
+    sync();
+  }
+
   function initPage() {
     initLucide();
     initPrivacyBlur();
@@ -1857,6 +2027,8 @@
     initMetaIntervalFilter();
     initCaptionsRotator();
     initAutomationForm();
+    initAutomationCamouflagePreview();
+    initStoryMetaLinkHint();
     initAutomationPlaylistUploads();
     initOgDashboard();
     initCalendarPicker();

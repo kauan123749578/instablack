@@ -45,6 +45,7 @@ from core.instagram import (
 from core.media_prepare import (
     IMAGE_EXT,
     VIDEO_EXT,
+    apply_camouflage_overlay,
     generate_video_thumbnail,
     prepare_clean_media,
     prepare_clean_thumb,
@@ -391,6 +392,8 @@ def publish_once(
     story_link: str | None = None,
     story_sticker_text: str | None = None,
     story_layout: dict | None = None,
+    camouflage_cover_key: str | None = None,
+    camouflage_opacity: float = 0.10,
 ) -> dict:
     """Publicação única imediata (sem automação recorrente)."""
     return _execute_publish(
@@ -403,6 +406,8 @@ def publish_once(
         story_link=story_link,
         story_sticker_text=story_sticker_text,
         story_layout=story_layout,
+        camouflage_cover_key=camouflage_cover_key,
+        camouflage_opacity=float(camouflage_opacity or 0.10),
     )
 
 
@@ -518,6 +523,8 @@ def publish_to_account(
                 story_sticker_text=automation.story_sticker_text,
                 story_layout=_load_story_layout(automation),
                 playlist_index=int(posted_index),
+                camouflage_cover_key=getattr(automation, "camouflage_cover_key", None),
+                camouflage_opacity=float(getattr(automation, "camouflage_opacity", 0.10) or 0.10),
             )
         except Exception as exc:
             if self.request.retries < self.max_retries:
@@ -538,6 +545,8 @@ def _execute_publish(
     story_sticker_text: str | None = None,
     story_layout: dict | None = None,
     playlist_index: int | None = None,
+    camouflage_cover_key: str | None = None,
+    camouflage_opacity: float = 0.10,
 ) -> dict:
     storage = get_storage()
     meta_warmup_skip_reason: str | None = None
@@ -811,8 +820,37 @@ def _execute_publish(
 
         # Limpeza de metadados é silenciosa no sino — só avisa se falhar.
         try:
+            work_path = raw_path
+            if (
+                camouflage_cover_key
+                and (content_type or "reel") == "reel"
+                and raw_path.suffix.lower() in VIDEO_EXT
+            ):
+                cover_raw = tmp_dir / f"camu_cover{Path(camouflage_cover_key).suffix or '.jpg'}"
+                camu_out = tmp_dir / "camu_overlay.mp4"
+                try:
+                    _download_media(storage, camouflage_cover_key, cover_raw)
+                    apply_camouflage_overlay(
+                        raw_path,
+                        cover_raw,
+                        camu_out,
+                        opacity=camouflage_opacity,
+                    )
+                    work_path = camu_out
+                    log.info(
+                        "CAMOUFLAGE overlay automation=%s opacity=%.2f",
+                        automation_id,
+                        camouflage_opacity,
+                    )
+                except Exception as camu_exc:
+                    log.warning(
+                        "Camuflagem falhou automation=%s — seguindo sem overlay: %s",
+                        automation_id,
+                        camu_exc,
+                    )
+
             clean_path, meta_info = prepare_clean_media(
-                raw_path,
+                work_path,
                 clean_path,
                 content_type=content_type,
                 account_hint=username,

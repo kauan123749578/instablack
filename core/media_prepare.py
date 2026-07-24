@@ -68,6 +68,65 @@ def prepare_clean_thumb(raw_path: Path, clean_path: Path) -> Path:
     return clean_path
 
 
+def apply_camouflage_overlay(
+    video_path: Path,
+    cover_path: Path,
+    output_path: Path,
+    *,
+    opacity: float = 0.10,
+) -> Path:
+    """Mistura imagem de camuflagem por cima do vídeo (alpha 0.01–0.40)."""
+    alpha = max(0.01, min(0.40, float(opacity or 0.10)))
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    # Escala a capa para o tamanho do vídeo e faz overlay com alpha
+    filter_complex = (
+        f"[1:v][0:v]scale2ref[cov][vid];"
+        f"[cov]format=rgba,colorchannelmixer=aa={alpha:.4f}[ov];"
+        f"[vid][ov]overlay=(W-w)/2:(H-h)/2:format=auto"
+    )
+    try:
+        proc = subprocess.run(
+            [
+                settings.ffmpeg_bin,
+                "-y",
+                "-i",
+                str(video_path),
+                "-loop",
+                "1",
+                "-i",
+                str(cover_path),
+                "-filter_complex",
+                filter_complex,
+                "-shortest",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "veryfast",
+                "-crf",
+                "20",
+                "-c:a",
+                "copy",
+                "-movflags",
+                "+faststart",
+                str(output_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=600,
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        raise MetadataStripError(
+            f"FFmpeg não encontrado (FFMPEG_BIN={settings.ffmpeg_bin})."
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise MetadataStripError("FFmpeg excedeu o tempo na camuflagem.") from exc
+    if proc.returncode != 0 or not output_path.exists() or output_path.stat().st_size <= 0:
+        detail = (proc.stderr or proc.stdout or "erro desconhecido")[-700:]
+        raise MetadataStripError(f"Falha ao aplicar camuflagem: {detail}")
+    return output_path
+
+
 def generate_video_thumbnail(video_path: Path, output_path: Path) -> Path:
     """Extrai um frame JPEG para evitar geração interna frágil do Instagrapi."""
     output_path.parent.mkdir(parents=True, exist_ok=True)

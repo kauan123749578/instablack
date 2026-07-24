@@ -321,6 +321,24 @@
             <input type="checkbox" name="remove_thumb" value="true"> Remover capa atual
           </label>
           {% endif %}
+          {% if a.content_type == 'reel' %}
+          <fieldset>
+            <legend>Camuflagem do Reel</legend>
+            <label>Imagem de camuflagem
+              <input type="file" name="camouflage_cover" accept="image/jpeg,image/png,image/webp">
+            </label>
+            {% if a.camouflage_cover_key %}
+            <label class="checkbox-row">
+              <input type="checkbox" name="remove_camouflage" value="true"> Remover camuflagem atual
+            </label>
+            <p class="muted" style="margin:4px 0 0;font-size:12px">Camuflagem ativa nesta automação.</p>
+            {% endif %}
+            <label style="margin-top:8px;display:block">Opacidade (%)
+              <input type="number" name="camouflage_opacity_pct" min="1" max="40"
+                     value="{{ ((a.camouflage_opacity or 0.10) * 100)|round|int }}">
+            </label>
+          </fieldset>
+          {% endif %}
           <fieldset>
             <legend>Contas <span class="muted">(pode deixar vazio para rascunho)</span></legend>
             <div class="checkbox-row">
