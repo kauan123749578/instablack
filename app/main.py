@@ -64,17 +64,9 @@ def create_app() -> FastAPI:
         redoc_url=None,
     )
 
-    if settings.trust_proxy:
-        app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
-
-    app.add_middleware(
-        SessionMiddleware,
-        secret_key=settings.secret_key,
-        same_site="lax",
-        https_only=settings.app_env == "production",
-        max_age=60 * 60 * 24 * 14,  # 14 dias
-    )
-
+    # Ordem importa: @middleware http entra ANTES do SessionMiddleware.
+    # Session/Proxy são add_middleware por último → ficam por fora e
+    # request.session já existe quando o view-as roda.
     @app.middleware("http")
     async def view_as_readonly_middleware(request: Request, call_next):
         view_as_id = request.session.get("view_as_user_id")
@@ -148,6 +140,16 @@ def create_app() -> FastAPI:
                 )
 
         return await call_next(request)
+
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=settings.secret_key,
+        same_site="lax",
+        https_only=settings.app_env == "production",
+        max_age=60 * 60 * 24 * 14,  # 14 dias
+    )
+    if settings.trust_proxy:
+        app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
     static_dir = Path(__file__).resolve().parent / "static"
     static_dir.mkdir(parents=True, exist_ok=True)
