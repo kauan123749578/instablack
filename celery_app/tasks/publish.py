@@ -499,7 +499,7 @@ def publish_to_account(
             caption = automation.caption or ""
 
         log.info(
-            "PLAYLIST %s publish automation=%s account=%s idx=%s slot=%s by_acc=%s by_reel=%s cap_len=%s key=%s",
+            "PLAYLIST %s publish automation=%s account=%s idx=%s slot=%s by_acc=%s by_reel=%s cap_len=%s key=%s camu=%s opacity=%.2f",
             PLAYLIST_CODE,
             automation_id,
             account.username,
@@ -509,6 +509,8 @@ def publish_to_account(
             by_reel,
             len(caption or ""),
             vk,
+            getattr(automation, "camouflage_cover_key", None) or "-",
+            float(getattr(automation, "camouflage_opacity", 0.25) or 0.25),
         )
 
         try:
@@ -524,7 +526,7 @@ def publish_to_account(
                 story_layout=_load_story_layout(automation),
                 playlist_index=int(posted_index),
                 camouflage_cover_key=getattr(automation, "camouflage_cover_key", None),
-                camouflage_opacity=float(getattr(automation, "camouflage_opacity", 0.10) or 0.10),
+                camouflage_opacity=float(getattr(automation, "camouflage_opacity", 0.25) or 0.25),
             )
         except Exception as exc:
             if self.request.retries < self.max_retries:

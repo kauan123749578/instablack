@@ -153,10 +153,10 @@
             <input type="file" id="camouflage-cover-input" name="camouflage_cover" accept="image/jpeg,image/png,image/webp">
           </div>
         </label>
-        <label style="margin-top:12px;display:block">Opacidade
+        <label style="margin-top:12px;display:block">Opacidade (recomendado 20–30%)
           <div style="display:flex;align-items:center;gap:12px">
-            <input type="range" id="camouflage-opacity" name="camouflage_opacity_pct" min="1" max="40" value="15" style="flex:1">
-            <strong id="camouflage-opacity-val" style="min-width:42px;color:var(--primary-hover,#3d82ff)">15%</strong>
+            <input type="range" id="camouflage-opacity" name="camouflage_opacity_pct" min="5" max="40" value="25" style="flex:1">
+            <strong id="camouflage-opacity-val" style="min-width:42px;color:var(--primary-hover,#3d82ff)">25%</strong>
           </div>
         </label>
         <div class="camu-phone" style="margin-top:14px">
@@ -222,8 +222,10 @@
           <option value="{{ m }}" data-minutes="{{ m }}">{{ interval_label(m) }}</option>
           {% endfor %}
         </select>
-        <span class="muted" id="meta-interval-hint" style="display:none;margin-top:6px;font-size:12px">
-          Contas da API oficial: intervalo mínimo de 1 hora.
+        <span class="muted" id="meta-interval-hint" style="display:none;margin-top:6px;font-size:12px;color:#f59e0b">
+          Contas API Meta: mínimo <strong>1 hora</strong> entre posts na mesma conta.
+          Se o intervalo for menor, os posts caem como <strong>Ignorada</strong> (meta_min_interval).
+          “Postar agora” com vários vídeos também respeita 1h por conta.
         </span>
         <span class="muted" id="meta-warmup-hint" style="display:none;margin-top:6px;font-size:12px">
           Contas Meta com menos de 7 dias usam mínimo 3h entre posts.

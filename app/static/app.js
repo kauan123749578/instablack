@@ -1614,7 +1614,7 @@
         const camuCover = form.querySelector('[name="camouflage_cover"]');
         if (camuCover?.files?.[0]) data.append("camouflage_cover", camuCover.files[0]);
         const camuOpacity = form.querySelector('[name="camouflage_opacity_pct"]');
-        if (camuOpacity) data.append("camouflage_opacity_pct", camuOpacity.value || "15");
+      if (camuOpacity) data.append("camouflage_opacity_pct", camuOpacity.value || "25");
       }
       return data;
     }
@@ -1903,11 +1903,11 @@
     }
 
     function opacityAlpha() {
-      return Math.max(0.01, Math.min(0.4, (Number(opacityInput.value) || 15) / 100));
+      return Math.max(0.05, Math.min(0.4, (Number(opacityInput.value) || 25) / 100));
     }
 
     function syncOpacityLabel() {
-      if (opacityVal) opacityVal.textContent = `${Number(opacityInput.value) || 15}%`;
+      if (opacityVal) opacityVal.textContent = `${Number(opacityInput.value) || 25}%`;
     }
 
     function clearPreview() {
@@ -2017,7 +2017,14 @@
         meta.textContent = `Preview do 1º vídeo · opacidade ${Number(opacityInput.value) || 15}% · aplica em todos`;
       }
     });
-    coverInput?.addEventListener("change", rebuild);
+    coverInput?.addEventListener("change", () => {
+      if (coverInput.files?.[0] && enabled && !enabled.checked) {
+        enabled.checked = true;
+        syncOptions();
+      } else {
+        rebuild();
+      }
+    });
     videoInput?.addEventListener("change", rebuild);
     document.addEventListener("automation-media-changed", rebuild);
     syncOpacityLabel();

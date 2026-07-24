@@ -189,6 +189,13 @@ def _save_thumb(storage, thumb: UploadFile | None) -> tuple[str | None, str | No
         raise HTTPException(status_code=400, detail="A capa enviada não é uma imagem válida.") from exc
 
 
+def _want_camouflage(enabled: str | None, cover: UploadFile | None) -> bool:
+    """Ativa se o checkbox veio marcado OU se veio arquivo de capa."""
+    if str(enabled or "").strip():
+        return True
+    return bool(cover and getattr(cover, "filename", None))
+
+
 def _clamp_camouflage_opacity(raw: str | float | None) -> float:
     try:
         value = float(raw if raw is not None else 0.10)
@@ -1132,16 +1139,16 @@ async def create_automation(
     )
 
     thumb_key, thumb_original_name = _save_thumb(storage, thumb)
-    want_camu = bool(str(camouflage_enabled or "").strip()) and content_type == "reel"
+    want_camu = _want_camouflage(camouflage_enabled, camouflage_cover) and content_type == "reel"
     camouflage_cover_key = None
-    camouflage_opacity = 0.15
+    camouflage_opacity = 0.25
     if want_camu:
         if not camouflage_cover or not camouflage_cover.filename:
             error = "Marcou aplicar camuflagem — envie a imagem de camuflagem."
         else:
             camouflage_cover_key = _save_camouflage_cover(storage, camouflage_cover)
             camouflage_opacity = _clamp_camouflage_opacity(
-                float(camouflage_opacity_pct or "15") / 100.0
+                float(camouflage_opacity_pct or "25") / 100.0
             )
     warn_q = f"&warn={len(upload_warnings)}" if upload_warnings else ""
     has_accounts = bool(accounts)
@@ -1388,9 +1395,9 @@ async def create_reel_upload_draft(
     captions_json = captions_to_json(captions_from_form(captions_alt))
     storage = get_storage()
     thumb_key, thumb_original_name = _save_thumb(storage, thumb)
-    want_camu = bool(str(camouflage_enabled or "").strip())
+    want_camu = _want_camouflage(camouflage_enabled, camouflage_cover)
     camouflage_cover_key = None
-    camouflage_opacity = 0.15
+    camouflage_opacity = 0.25
     if want_camu:
         if not camouflage_cover or not camouflage_cover.filename:
             return JSONResponse(
@@ -1399,8 +1406,15 @@ async def create_reel_upload_draft(
             )
         camouflage_cover_key = _save_camouflage_cover(storage, camouflage_cover)
         camouflage_opacity = _clamp_camouflage_opacity(
-            float(camouflage_opacity_pct or "15") / 100.0
+            float(camouflage_opacity_pct or "25") / 100.0
         )
+    log.info(
+        "reel-draft camuflagem user=%s enabled=%s key=%s opacity=%.2f",
+        user.id,
+        want_camu,
+        camouflage_cover_key,
+        camouflage_opacity,
+    )
     automation = Automation(
         user_id=user.id,
         name=name.strip(),
@@ -1966,7 +1980,7 @@ async def edit_automation(
                     pass
         a.camouflage_opacity = 0.15
     else:
-        want_camu = bool(str(camouflage_enabled or "").strip())
+        want_camu = _want_camouflage(camouflage_enabled, camouflage_cover)
         if camouflage_opacity_pct not in ("", None):
             a.camouflage_opacity = _clamp_camouflage_opacity(
                 float(camouflage_opacity_pct) / 100.0
@@ -1995,6 +2009,8 @@ async def edit_automation(
                 status_code=400,
                 detail="Marcou aplicar camuflagem — envie a imagem de camuflagem.",
             )
+        if want_camu and a.camouflage_opacity < 0.05:
+            a.camouflage_opacity = 0.25
 
     humanize = _schedule_humanize_fields(
         jitter_enabled=jitter_enabled,

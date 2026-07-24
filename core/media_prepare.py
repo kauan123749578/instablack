@@ -84,7 +84,7 @@ def apply_camouflage_overlay(
     filter_complex = (
         f"[1:v][0:v]scale2ref=flags=bicubic[cov][vid];"
         f"[cov]format=rgba,colorchannelmixer=aa={alpha:.4f}[ov];"
-        f"[vid][ov]overlay=0:0:shortest=1[outv]"
+        f"[vid][ov]overlay=0:0:shortest=1:format=auto[outv]"
     )
     cmd = [
         settings.ffmpeg_bin,
