@@ -7,6 +7,7 @@ import io
 import logging
 import uuid
 from pathlib import Path
+from types import SimpleNamespace
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import JSONResponse, RedirectResponse, Response
@@ -1206,16 +1207,14 @@ async def create_automation(
         by_reel = bool(humanize["caption_rotate_by_reel"]) and bool(
             prefs.get("caption_rotate_by_reel", False)
         )
-        # stub mínimo para resolve_caption
-        class _Cap:
-            caption = caption
-            captions_json = captions_json
+        # stub mínimo para resolve_caption (SimpleNamespace — class body não captura locals)
+        cap_stub = SimpleNamespace(caption=caption, captions_json=captions_json)
 
         try:
             for v_idx, entry in enumerate(video_entries):
                 for acc_idx, acc in enumerate(accounts):
                     acc_caption = resolve_caption(
-                        _Cap(),  # type: ignore[arg-type]
+                        cap_stub,  # type: ignore[arg-type]
                         account_slot=acc_idx,
                         reel_index=v_idx,
                         by_account=by_acc,

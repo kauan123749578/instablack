@@ -697,13 +697,14 @@ body.premium-app .shark-content { padding: 24px 32px 80px; }
   overflow-y: auto;
   flex: 1 1 auto;
   min-height: 0;
-  padding-right: 4px;
-  scrollbar-width: thin;
-  scrollbar-color: #1161FE rgba(255,255,255,0.06);
+  padding-right: 0;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
-.og-rank-list--card::-webkit-scrollbar { width: 6px; }
-.og-rank-list--card::-webkit-scrollbar-thumb {
-  background: #1161FE; border-radius: 99px;
+.og-rank-list--card::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
 }
 .og-rank-row {
   display: flex; align-items: center; gap: 10px;
