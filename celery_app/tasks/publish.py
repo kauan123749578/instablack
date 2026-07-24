@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import shutil
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -73,6 +74,52 @@ def _load_story_layout(automation: Automation) -> dict | None:
     except (TypeError, ValueError):
         return None
     return data if isinstance(data, dict) else None
+
+
+def _render_camouflage_reel(
+    storage,
+    *,
+    video_key: str,
+    camouflage_cover_key: str,
+    camouflage_opacity: float,
+    tmp_dir: Path,
+    automation_id: int | None = None,
+    video_path: Path | None = None,
+) -> Path:
+    """Baixa vídeo + capa e gera MP4 com overlay (camuflagem)."""
+    if video_path is None:
+        ext = Path(video_key).suffix or ".mp4"
+        raw_path = tmp_dir / f"camu_raw{ext}"
+        _download_media(storage, video_key, raw_path)
+    else:
+        raw_path = video_path
+    cover_raw = tmp_dir / f"camu_cover{Path(camouflage_cover_key).suffix or '.jpg'}"
+    camu_out = tmp_dir / "camu_overlay.mp4"
+    log.info(
+        "CAMOUFLAGE start automation=%s video=%s cover=%s opacity=%.2f",
+        automation_id,
+        video_key,
+        camouflage_cover_key,
+        camouflage_opacity,
+    )
+    _download_media(storage, camouflage_cover_key, cover_raw)
+    apply_camouflage_overlay(
+        raw_path,
+        cover_raw,
+        camu_out,
+        opacity=camouflage_opacity,
+    )
+    log.info(
+        "CAMOUFLAGE ok automation=%s size=%s",
+        automation_id,
+        camu_out.stat().st_size,
+    )
+    return camu_out
+
+
+def _upload_temp_media(storage, path: Path, *, suggested_ext: str = ".mp4") -> str:
+    with path.open("rb") as fh:
+        return storage.save(fh, suggested_ext)
 
 
 def _download_media(storage, key: str, dest_path: Path) -> None:
@@ -701,32 +748,101 @@ def _execute_publish(
         if not meta_access_token or not meta_ig_user_id:
             _mark_account_needs_login(account_id, "Token da API oficial ausente. Reconecte a conta.")
             return {"error": "meta_token_missing"}
+
+        publish_key = video_key
+        temp_camu_key: str | None = None
+        tmp_dir: Path | None = None
         try:
-            result = publish_meta_media(
-                access_token=meta_access_token,
-                ig_user_id=meta_ig_user_id,
-                media_key=video_key,
-                content_type=content_type,
-                caption=caption,
-                cover_key=thumb_key if content_type == "reel" else None,
-            )
-        except MetaInstagramError as exc:
-            _log_failure(
-                automation_id,
-                account_id,
-                f"API oficial: {exc}",
-                content_type=content_type,
-                owner_user_id=owner_user_id,
-                username=username,
-            )
-            if exc.code in (102, 190):
-                _mark_account_needs_login(account_id, str(exc))
-                return {"error": "meta_auth"}
-            # Conta IG restringida / checkpoint pela Meta (API code 25 / 2207050)
-            if exc.code == 25 or exc.subcode == 2207050 or _meta_user_restricted(exc):
-                _mark_account_meta_restricted(account_id, str(exc))
-                return {"error": "meta_restricted"}
-            raise
+            if (
+                camouflage_cover_key
+                and (content_type or "reel") == "reel"
+                and Path(video_key).suffix.lower() in VIDEO_EXT
+            ):
+                tmp_dir = Path(tempfile.mkdtemp(prefix="meta_camu_"))
+                try:
+                    camu_path = _render_camouflage_reel(
+                        storage,
+                        video_key=video_key,
+                        camouflage_cover_key=camouflage_cover_key,
+                        camouflage_opacity=float(camouflage_opacity or 0.25),
+                        tmp_dir=tmp_dir,
+                        automation_id=automation_id,
+                    )
+                    # Limpa metadados antes da Meta baixar o arquivo público.
+                    clean_path = tmp_dir / "camu_clean.mp4"
+                    try:
+                        upload_path, _ = prepare_clean_media(
+                            camu_path,
+                            clean_path,
+                            content_type="reel",
+                            account_hint=username,
+                        )
+                    except MetadataStripError:
+                        upload_path = camu_path
+                    temp_camu_key = _upload_temp_media(storage, upload_path, suggested_ext=".mp4")
+                    publish_key = temp_camu_key
+                    log.info(
+                        "CAMOUFLAGE meta uploaded automation=%s temp_key=%s",
+                        automation_id,
+                        temp_camu_key,
+                    )
+                except Exception as camu_exc:
+                    log.exception(
+                        "Camuflagem Meta falhou automation=%s key=%s",
+                        automation_id,
+                        camouflage_cover_key,
+                    )
+                    create_notification(
+                        owner_user_id,
+                        "Falha na camuflagem do Reel",
+                        f"@{username}: {camu_exc}",
+                        kind="warning",
+                        link="/logs",
+                    )
+                    _log_failure(
+                        automation_id,
+                        account_id,
+                        f"camuflagem: {camu_exc}",
+                        content_type=content_type,
+                        owner_user_id=owner_user_id,
+                        username=username,
+                    )
+                    raise
+
+            try:
+                result = publish_meta_media(
+                    access_token=meta_access_token,
+                    ig_user_id=meta_ig_user_id,
+                    media_key=publish_key,
+                    content_type=content_type,
+                    caption=caption,
+                    cover_key=thumb_key if content_type == "reel" else None,
+                )
+            except MetaInstagramError as exc:
+                _log_failure(
+                    automation_id,
+                    account_id,
+                    f"API oficial: {exc}",
+                    content_type=content_type,
+                    owner_user_id=owner_user_id,
+                    username=username,
+                )
+                if exc.code in (102, 190):
+                    _mark_account_needs_login(account_id, str(exc))
+                    return {"error": "meta_auth"}
+                # Conta IG restringida / checkpoint pela Meta (API code 25 / 2207050)
+                if exc.code == 25 or exc.subcode == 2207050 or _meta_user_restricted(exc):
+                    _mark_account_meta_restricted(account_id, str(exc))
+                    return {"error": "meta_restricted"}
+                raise
+        finally:
+            if temp_camu_key:
+                try:
+                    storage.delete(temp_camu_key)
+                except Exception:
+                    log.warning("Falha ao apagar temp camuflagem key=%s", temp_camu_key)
+            if tmp_dir is not None:
+                shutil.rmtree(tmp_dir, ignore_errors=True)
 
         cover_error = str(result.get("cover_error") or "")
         if cover_error:
@@ -784,6 +900,7 @@ def _execute_publish(
             "playlist_code": PLAYLIST_CODE,
             "playlist_index": playlist_index,
             "video_key": video_key,
+            "camouflage_applied": bool(camouflage_cover_key and (content_type or "reel") == "reel"),
             **result,
         }
 
@@ -862,27 +979,15 @@ def _execute_publish(
                 and (content_type or "reel") == "reel"
                 and raw_path.suffix.lower() in VIDEO_EXT
             ):
-                cover_raw = tmp_dir / f"camu_cover{Path(camouflage_cover_key).suffix or '.jpg'}"
-                camu_out = tmp_dir / "camu_overlay.mp4"
-                log.info(
-                    "CAMOUFLAGE start automation=%s key=%s opacity=%.2f",
-                    automation_id,
-                    camouflage_cover_key,
-                    camouflage_opacity,
-                )
                 try:
-                    _download_media(storage, camouflage_cover_key, cover_raw)
-                    apply_camouflage_overlay(
-                        raw_path,
-                        cover_raw,
-                        camu_out,
-                        opacity=camouflage_opacity,
-                    )
-                    work_path = camu_out
-                    log.info(
-                        "CAMOUFLAGE ok automation=%s size=%s",
-                        automation_id,
-                        camu_out.stat().st_size,
+                    work_path = _render_camouflage_reel(
+                        storage,
+                        video_key=video_key,
+                        camouflage_cover_key=camouflage_cover_key,
+                        camouflage_opacity=float(camouflage_opacity or 0.25),
+                        tmp_dir=tmp_dir,
+                        automation_id=automation_id,
+                        video_path=raw_path,
                     )
                 except Exception as camu_exc:
                     log.exception(
