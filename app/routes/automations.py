@@ -1057,6 +1057,16 @@ async def create_automation(
             if iv_err:
                 error = iv_err
 
+    # API Meta não aplica sticker de link em Stories (só foto/vídeo).
+    if (
+        not error
+        and content_type == "story"
+        and accounts
+        and all((getattr(a, "provider", None) or "instagrapi") == "meta" for a in accounts)
+    ):
+        story_link = ""
+        story_sticker_text = ""
+
     if error:
         all_accounts = db.scalars(
             select(InstagramAccount).where(

@@ -2032,23 +2032,42 @@
   }
 
   function initStoryMetaLinkHint() {
-    const hint = document.getElementById("story-link-meta-hint");
     const wrap = document.getElementById("story-link-wrap");
+    const fields = document.getElementById("story-link-fields");
+    const metaOnly = document.getElementById("story-link-meta-only");
+    const linkInput = document.getElementById("story-link-input");
+    const stickerInput = document.getElementById("story-sticker-input");
     const form = document.getElementById("automation-form");
-    if (!hint || !wrap || !form) return;
+    if (!wrap || !form) return;
 
     function sync() {
       if (wrap.style.display === "none") {
-        hint.style.display = "none";
+        if (fields) fields.style.display = "none";
+        if (metaOnly) metaOnly.style.display = "none";
         return;
       }
       const checked = Array.from(form.querySelectorAll('[name="account_ids"]:checked'));
-      if (!checked.length) {
-        hint.style.display = "none";
-        return;
+      const onlyMeta =
+        checked.length > 0 &&
+        checked.every((el) => (el.getAttribute("data-provider") || "instagrapi") === "meta");
+
+      if (onlyMeta) {
+        if (fields) fields.style.display = "none";
+        if (metaOnly) metaOnly.style.display = "block";
+        if (linkInput) {
+          linkInput.value = "";
+          linkInput.disabled = true;
+        }
+        if (stickerInput) {
+          stickerInput.value = "";
+          stickerInput.disabled = true;
+        }
+      } else {
+        if (fields) fields.style.display = "";
+        if (metaOnly) metaOnly.style.display = "none";
+        if (linkInput) linkInput.disabled = false;
+        if (stickerInput) stickerInput.disabled = false;
       }
-      const onlyMeta = checked.every((el) => (el.getAttribute("data-provider") || "instagrapi") === "meta");
-      hint.style.display = onlyMeta ? "block" : "none";
     }
 
     form.addEventListener("change", (e) => {

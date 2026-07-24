@@ -5,7 +5,7 @@
 <div class="page-header">
   <h2>{% if default_content_type == 'story' %}Agendar Story{% else %}Nova automação{% endif %}</h2>
   {% if default_content_type == 'story' %}
-  <p class="muted page-header-sub">Agende ou poste Story com link — foto recomendada.</p>
+  <p class="muted page-header-sub">Agende ou poste Story (foto/vídeo). Link clicável só com login/senha ou cookies — não com API Meta.</p>
   {% else %}
   <p class="muted page-header-sub">Reels: selecione vários vídeos e uma capa única.</p>
   {% endif %}
@@ -88,15 +88,23 @@
     </div>
 
     <div id="story-link-wrap">
-      <label>Link do Story (URL clicável)
-        <input type="url" name="story_link" placeholder="https://seusite.com/pagina">
-      </label>
-      <label style="margin-top:10px">Texto do botão (opcional)
-        <input type="text" name="story_sticker_text" maxlength="60" placeholder="Ex.: GOOGLE.COM ou CLIQUE AQUI">
-      </label>
-      <p class="muted" id="story-link-meta-hint" style="display:none;margin-top:8px;font-size:12px;color:#f59e0b">
-        Contas só pela API Meta: Stories publicam foto/vídeo normalmente, mas o sticker de link clicável
-        <strong>não se aplica</strong> (só login/senha ou cookies). Desmarque as contas API ou use outra conta para o link.
+      <p class="muted" style="margin:0 0 10px;font-size:12px;line-height:1.45">
+        <strong>Link clicável no Story</strong> funciona só com
+        <strong>login/senha (instagrapi)</strong> ou <strong>API web (cookies)</strong>.
+        Contas da <strong>API oficial (Meta)</strong> publicam o Story normalmente,
+        mas <strong>sem</strong> sticker de link — a Meta não oferece esse recurso.
+      </p>
+      <div id="story-link-fields">
+        <label>Link do Story (URL clicável)
+          <input type="url" name="story_link" id="story-link-input" placeholder="https://seusite.com/pagina">
+        </label>
+        <label style="margin-top:10px">Texto do botão (opcional)
+          <input type="text" name="story_sticker_text" id="story-sticker-input" maxlength="60" placeholder="Ex.: GOOGLE.COM ou CLIQUE AQUI">
+        </label>
+      </div>
+      <p class="muted" id="story-link-meta-only" style="display:none;margin-top:8px;font-size:12px;color:#f59e0b">
+        Só contas API Meta selecionadas — campos de link ocultos. O Story será publicado
+        <strong>sem link</strong> (foto/vídeo ok). Para link, use conta login/senha ou cookies.
       </p>
     </div>
   </section>

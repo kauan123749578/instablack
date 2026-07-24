@@ -193,7 +193,7 @@ def _top_platform_players(
     end: dt.datetime,
     viewer: User | None = None,
     *,
-    limit: int = 12,
+    limit: int = 50,
 ) -> list[dict]:
     """Top usuários da plataforma por publicações no período.
 
@@ -221,7 +221,7 @@ def _top_platform_players(
         query
         .group_by(User.id, User.username, User.display_name, User.avatar_key)
         .order_by(desc(func.count(PublishLog.id)))
-        .limit(max(1, min(int(limit or 12), 30)))
+        .limit(max(1, min(int(limit or 50), 100)))
     ).all()
     return [
         {
@@ -303,7 +303,7 @@ def _top_platform_players_week(db: Session, day: dt.date, viewer: User | None = 
     start_day = day - dt.timedelta(days=6)
     start, _ = _brt_day_bounds(start_day)
     _, end = _brt_day_bounds(day)
-    items = _top_platform_players(db, start, end, viewer=viewer, limit=12)
+    items = _top_platform_players(db, start, end, viewer=viewer, limit=50)
     return [{**item, "posts_today": item["post_count"]} for item in items]
 
 
@@ -416,7 +416,7 @@ def home(
     month_start_dt, _ = _brt_day_bounds(month_start)
     _, month_end_dt = _brt_day_bounds(today)
     top_players_month = _top_platform_players(
-        db, month_start_dt, month_end_dt, viewer=user, limit=12
+        db, month_start_dt, month_end_dt, viewer=user, limit=50
     )
     week_start_day = today - dt.timedelta(days=6)
     week_start_dt, _ = _brt_day_bounds(week_start_day)

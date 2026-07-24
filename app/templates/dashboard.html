@@ -270,7 +270,7 @@
       <div class="og-rank-panel active" id="rank-panel-today" role="tabpanel">
         {% if top_players %}
         <ol class="og-rank-list og-rank-list--card">
-          {% for item in top_players[:5] %}
+          {% for item in top_players %}
           <li class="og-rank-row{% if loop.index == 1 %} og-rank-row--gold{% elif loop.index == 2 %} og-rank-row--silver{% elif loop.index == 3 %} og-rank-row--bronze{% endif %}">
             <div class="og-rank-avatar{% if item.avatar_url %} og-rank-avatar--photo{% endif %}{% if loop.index == 1 %} og-rank-avatar--gold{% endif %}">
               {% if item.avatar_url %}
@@ -295,7 +295,7 @@
       <div class="og-rank-panel" id="rank-panel-month" role="tabpanel" hidden>
         {% if top_players_month %}
         <ol class="og-rank-list og-rank-list--card">
-          {% for item in top_players_month[:5] %}
+          {% for item in top_players_month %}
           <li class="og-rank-row{% if loop.index == 1 %} og-rank-row--gold{% elif loop.index == 2 %} og-rank-row--silver{% elif loop.index == 3 %} og-rank-row--bronze{% endif %}">
             <div class="og-rank-avatar{% if item.avatar_url %} og-rank-avatar--photo{% endif %}{% if loop.index == 1 %} og-rank-avatar--gold{% endif %}">
               {% if item.avatar_url %}
