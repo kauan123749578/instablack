@@ -35,6 +35,11 @@
   setActiveNav(window.location.pathname);
 
   async function navigateTo(url, push = true) {
+    // Em "Ver como", força reload completo para todas as abas usarem o usuário alvo.
+    if (document.body.classList.contains("is-view-as")) {
+      window.location.href = url;
+      return;
+    }
     if (
       url.startsWith("/automations/new") ||
       url.startsWith("/automations/story-studio") ||

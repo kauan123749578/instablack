@@ -6,8 +6,9 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from app.deps import get_admin_user, get_owner_user, get_current_user
+from app.deps import get_admin_user, get_owner_user, get_auth_user
 from app.utils.account_limits import account_limit_label
+from app.utils.account_health import VISIBLE_ACCOUNT_STATUSES
 from app.templating import templates
 from app.utils.invite_codes import (
     create_invite,
@@ -79,7 +80,10 @@ def admin_dashboard(
         if not _admin_can_see(admin, u):
             continue
         ig_count = db.scalar(
-            select(func.count(InstagramAccount.id)).where(InstagramAccount.user_id == u.id)
+            select(func.count(InstagramAccount.id)).where(
+                InstagramAccount.user_id == u.id,
+                InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
+            )
         ) or 0
         auto_count = db.scalar(
             select(func.count(Automation.id)).where(Automation.user_id == u.id)
@@ -137,7 +141,7 @@ def impersonate_user(
 @router.post("/stop-view-as")
 def stop_view_as(
     request: Request,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_auth_user),
 ):
     request.session.pop("view_as_user_id", None)
     if getattr(user, "is_admin", False):
