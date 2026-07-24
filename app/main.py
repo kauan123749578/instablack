@@ -91,13 +91,19 @@ def create_app() -> FastAPI:
                 if (
                     view_as_id
                     and auth_user is not None
-                    and getattr(auth_user, "is_owner", False)
+                    and getattr(auth_user, "is_admin", False)
                 ):
                     try:
                         target = db.get(User, int(view_as_id))
                     except (TypeError, ValueError):
                         target = None
-                    if target and target.is_active and target.id != auth_user.id:
+                    allowed = bool(target and target.is_active and target.id != auth_user.id)
+                    if allowed and not getattr(auth_user, "is_owner", False):
+                        if getattr(target, "is_owner", False) or getattr(
+                            target, "owner_private", False
+                        ):
+                            allowed = False
+                    if allowed:
                         request.state.view_as_username = target.username
                         request.state.view_as_active = True
                         db.expunge(target)

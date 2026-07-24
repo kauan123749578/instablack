@@ -65,7 +65,7 @@ def maybe_effective_user(
 
 def _resolve_effective(request: Request, db: Session, auth_user: User) -> User:
     view_as_id = request.session.get("view_as_user_id")
-    if not view_as_id or not getattr(auth_user, "is_owner", False):
+    if not view_as_id or not getattr(auth_user, "is_admin", False):
         return auth_user
     try:
         target_id = int(view_as_id)
@@ -76,6 +76,11 @@ def _resolve_effective(request: Request, db: Session, auth_user: User) -> User:
     if target is None or not target.is_active or target.id == auth_user.id:
         request.session.pop("view_as_user_id", None)
         return auth_user
+    # Admin não-owner não vê o owner nem usuários marcados como privados do owner
+    if not getattr(auth_user, "is_owner", False):
+        if getattr(target, "is_owner", False) or getattr(target, "owner_private", False):
+            request.session.pop("view_as_user_id", None)
+            return auth_user
     return target
 
 
