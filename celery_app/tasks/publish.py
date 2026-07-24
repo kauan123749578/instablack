@@ -396,7 +396,7 @@ def publish_once(
     camouflage_opacity: float = 0.10,
 ) -> dict:
     """Publicação única imediata (sem automação recorrente)."""
-    return _execute_publish(
+    result = _execute_publish(
         automation_id=None,
         account_id=account_id,
         video_key=video_key,
@@ -409,6 +409,31 @@ def publish_once(
         camouflage_cover_key=camouflage_cover_key,
         camouflage_opacity=float(camouflage_opacity or 0.10),
     )
+    if result.get("deferred"):
+        wait = max(60, min(int(result.get("wait_seconds") or 3600), 6 * 3600))
+        log.info(
+            "Meta defer publish_once account=%s wait=%ss reason=%s",
+            account_id,
+            wait,
+            result.get("reason"),
+        )
+        publish_once.apply_async(
+            kwargs={
+                "account_id": account_id,
+                "video_key": video_key,
+                "thumb_key": thumb_key,
+                "caption": caption or "",
+                "content_type": content_type or "reel",
+                "story_link": story_link,
+                "story_sticker_text": story_sticker_text,
+                "story_layout": story_layout,
+                "camouflage_cover_key": camouflage_cover_key,
+                "camouflage_opacity": float(camouflage_opacity or 0.10),
+            },
+            countdown=wait,
+        )
+        return {**result, "countdown": wait}
+    return result
 
 
 @celery_app.task(
@@ -514,7 +539,7 @@ def publish_to_account(
         )
 
         try:
-            return _execute_publish(
+            result = _execute_publish(
                 automation_id=automation.id,
                 account_id=account.id,
                 video_key=vk,
@@ -535,6 +560,25 @@ def publish_to_account(
             _mark_now_automation_failed(automation.id)
             return {"error": "publish_failed", "detail": str(exc)[:500]}
 
+        if result.get("deferred"):
+            wait = max(60, min(int(result.get("wait_seconds") or 3600), 6 * 3600))
+            log.info(
+                "Meta defer automation=%s account=%s wait=%ss reason=%s",
+                automation_id,
+                account_id,
+                wait,
+                result.get("reason"),
+            )
+            publish_to_account.apply_async(
+                args=[automation_id, account_id, vk, posted_index],
+                kwargs={
+                    "account_slot": int(account_slot) if account_slot is not None else 0,
+                },
+                countdown=wait,
+            )
+            return {**result, "countdown": wait}
+        return result
+
 
 def _execute_publish(
     automation_id: int | None,
@@ -551,7 +595,6 @@ def _execute_publish(
     camouflage_opacity: float = 0.10,
 ) -> dict:
     storage = get_storage()
-    meta_warmup_skip_reason: str | None = None
 
     with session_scope() as db:
         account = db.get(InstagramAccount, account_id)
@@ -631,31 +674,22 @@ def _execute_publish(
                         last_at = last_at.astimezone(dt.timezone.utc).replace(tzinfo=None)
                     age_min = (dt.datetime.utcnow() - last_at).total_seconds() / 60.0
                     if age_min < min_gap:
-                        wait_left = int(min_gap - age_min) + 1
-                        meta_warmup_skip_reason = (
-                            f"meta_min_interval:{min_gap}m "
-                            f"(aguarde ~{wait_left} min; último post há {int(age_min)} min)"
-                        )
-                        db.add(
-                            PublishLog(
-                                automation_id=automation_id,
-                                account_id=account_id,
-                                status="skipped",
-                                content_type=content_type,
-                                error=meta_warmup_skip_reason[:2000],
-                            )
-                        )
+                        wait_left = max(1, int(min_gap - age_min) + 1)
+                        # Não marca Ignorada — remarca o post para quando a conta puder.
+                        return {
+                            "deferred": True,
+                            "wait_seconds": wait_left * 60,
+                            "reason": (
+                                f"meta_defer:{min_gap}m "
+                                f"(reagendado +{wait_left} min; "
+                                f"último post há {int(age_min)} min)"
+                            ),
+                            "account_id": account_id,
+                            "automation_id": automation_id,
+                        }
 
     if account_status in ("paused", "needs_login", "proxy_down", "banned", "deleted"):
         return {"skipped": True, "reason": f"account_{account_status}"}
-
-    if meta_warmup_skip_reason:
-        log.info(
-            "Meta interval skip account=%s reason=%s",
-            account_id,
-            meta_warmup_skip_reason,
-        )
-        return {"skipped": True, "reason": "meta_min_interval"}
 
     if provider == "meta":
         if not user_meta_app_id:

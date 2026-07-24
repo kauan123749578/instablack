@@ -223,9 +223,9 @@
           {% endfor %}
         </select>
         <span class="muted" id="meta-interval-hint" style="display:none;margin-top:6px;font-size:12px;color:#f59e0b">
-          Contas API Meta: mínimo <strong>1 hora</strong> entre posts na mesma conta.
-          Se o intervalo for menor, os posts caem como <strong>Ignorada</strong> (meta_min_interval).
-          “Postar agora” com vários vídeos também respeita 1h por conta.
+          Contas API Meta: mínimo <strong>1 hora</strong> entre posts na <strong>mesma conta</strong>
+          (limite diário ~25). Variação de horário não antecipa abaixo de 1h.
+          Se ainda estiver cedo demais, o post é reagendado — não fica Ignorada.
         </span>
         <span class="muted" id="meta-warmup-hint" style="display:none;margin-top:6px;font-size:12px">
           Contas Meta com menos de 7 dias usam mínimo 3h entre posts.

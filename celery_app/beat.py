@@ -8,6 +8,7 @@ from sqlalchemy import select, text
 
 from app.utils.automation_schedule import compute_next_run_after_dispatch
 from app.utils.calendar_schedule import next_calendar_run, parse_calendar_days
+from app.utils.intervals import effective_meta_min_interval
 from celery_app.config import celery_app
 from celery_app.tasks.publish import execute_automation
 from core.database import session_scope
@@ -45,10 +46,12 @@ def tick() -> dict:
                     now,
                 ) or (now + dt.timedelta(days=1))
 
+            meta_floor = effective_meta_min_interval(a.accounts or [])
             nxt, posts_in_batch = compute_next_run_after_dispatch(
                 a,
                 now,
                 calendar_next=calendar_next,
+                min_gap_minutes=meta_floor,
             )
 
             db.execute(
