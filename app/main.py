@@ -227,16 +227,34 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(RequestValidationError)
     async def form_validation_error(request: Request, exc: RequestValidationError):
-        """Evita JSON cru quando falta arquivo em formulários multipart."""
-        if request.method == "POST" and request.url.path.startswith("/automations"):
+        """Evita JSON cru / 500 opaco em formulários multipart de automações."""
+        if request.method == "POST" and "/automations" in request.url.path:
             missing_video = any(
-                e.get("loc") == ("body", "video") for e in exc.errors()
+                ("video" in e.get("loc", ()) or "videos" in e.get("loc", ()))
+                for e in exc.errors()
             )
             if missing_video:
+                dest = "/automations/new/story" if "/story" in request.url.path else "/automations/new"
                 return RedirectResponse(
-                    "/automations/new?error=video",
+                    f"{dest}?error=video",
                     status_code=303,
                 )
+            log.warning("Validação automação falhou path=%s errors=%s", request.url.path, exc.errors())
+            detail = "; ".join(
+                f"{'.'.join(str(x) for x in e.get('loc', ()))}: {e.get('msg')}"
+                for e in exc.errors()[:4]
+            )
+            return HTMLResponse(
+                f"""<!doctype html><html lang="pt-br"><head><meta charset="utf-8">
+                <title>Erro no formulário</title></head><body style="font-family:system-ui;background:#0b0d12;color:#eee;padding:24px">
+                <h1>Não deu para criar a automação</h1>
+                <p>Confira os campos (mídia, contas, intervalo) e tente de novo.</p>
+                <p style="color:#9ca3af;font-size:13px">{detail}</p>
+                <p><a href="/automations/new" style="color:#3d82ff">Voltar</a>
+                · <a href="/automations/new/story" style="color:#3d82ff">Agendar Story</a></p>
+                </body></html>""",
+                status_code=400,
+            )
         return JSONResponse(status_code=422, content={"detail": exc.errors()})
 
     @app.api_route(

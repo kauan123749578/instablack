@@ -922,7 +922,7 @@ async def create_automation(
     story_link: str = Form(""),
     story_sticker_text: str = Form(""),
     schedule_mode: str = Form("recurring"),
-    interval_minutes: int = Form(60),
+    interval_minutes: str = Form("60"),
     calendar_days: str = Form(""),
     calendar_time: str = Form("10:00"),
     calendar_times: list[str] = Form(default=[]),
@@ -944,6 +944,11 @@ async def create_automation(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    try:
+        interval_minutes_int = int(str(interval_minutes or "60").strip() or "60")
+    except (TypeError, ValueError):
+        interval_minutes_int = 60
+    interval_minutes = interval_minutes_int
     humanize = _schedule_humanize_fields(
         jitter_enabled=jitter_enabled,
         jitter_minutes=jitter_minutes,
@@ -1206,53 +1211,87 @@ async def create_automation(
             caption = caption
             captions_json = captions_json
 
-        for v_idx, entry in enumerate(video_entries):
-            for acc_idx, acc in enumerate(accounts):
-                acc_caption = resolve_caption(
-                    _Cap(),  # type: ignore[arg-type]
-                    account_slot=acc_idx,
-                    reel_index=v_idx,
-                    by_account=by_acc,
-                    by_reel=by_reel,
-                )
-                stagger = (
-                    account_publish_countdown(
-                        acc_idx,
-                        n_accounts,
-                        min_minutes=stagger_lo,
-                        max_minutes=stagger_hi,
+        try:
+            for v_idx, entry in enumerate(video_entries):
+                for acc_idx, acc in enumerate(accounts):
+                    acc_caption = resolve_caption(
+                        _Cap(),  # type: ignore[arg-type]
+                        account_slot=acc_idx,
+                        reel_index=v_idx,
+                        by_account=by_acc,
+                        by_reel=by_reel,
                     )
-                    if use_stagger
-                    else 0
-                )
-                publish_once.apply_async(
-                    args=[
-                        acc.id,
-                        entry["video_key"],
-                        thumb_key,
-                        acc_caption,
-                        content_type,
-                        _story_link_value(content_type, story_link),
-                        _story_sticker_text_value(content_type, story_sticker_text),
-                    ],
-                    kwargs={
-                        "camouflage_cover_key": camouflage_cover_key,
-                        "camouflage_opacity": camouflage_opacity,
-                    },
-                    countdown=countdown + stagger,
-                )
-            if len(video_entries) > 1:
-                wave = (
-                    account_publish_countdown(
-                        max(n_accounts - 1, 0),
-                        n_accounts,
-                        min_minutes=stagger_lo,
-                        max_minutes=stagger_hi,
+                    stagger = (
+                        account_publish_countdown(
+                            acc_idx,
+                            n_accounts,
+                            min_minutes=stagger_lo,
+                            max_minutes=stagger_hi,
+                        )
+                        if use_stagger
+                        else 0
                     )
-                    if use_stagger
-                    else 0
+                    publish_once.apply_async(
+                        args=[
+                            acc.id,
+                            entry["video_key"],
+                            thumb_key,
+                            acc_caption,
+                            content_type,
+                            _story_link_value(content_type, story_link),
+                            _story_sticker_text_value(content_type, story_sticker_text),
+                        ],
+                        kwargs={
+                            "camouflage_cover_key": camouflage_cover_key,
+                            "camouflage_opacity": camouflage_opacity,
+                        },
+                        countdown=countdown + stagger,
+                    )
+                if len(video_entries) > 1:
+                    wave = (
+                        account_publish_countdown(
+                            max(n_accounts - 1, 0),
+                            n_accounts,
+                            min_minutes=stagger_lo,
+                            max_minutes=stagger_hi,
+                        )
+                        if use_stagger
+                        else 0
+                    )
+                    countdown += wave + max(90, 60)
+        except Exception:
+            log.exception(
+                "Falha ao enfileirar publish_once user=%s type=%s accounts=%s",
+                user.id,
+                content_type,
+                len(accounts),
+            )
+            all_accounts = db.scalars(
+                select(InstagramAccount).where(
+                    InstagramAccount.user_id == user.id,
+                    InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
                 )
-                countdown += wave + max(90, 60)
+            ).all()
+            return templates.TemplateResponse(
+                "new_automation.html",
+                {
+                    "request": request,
+                    "user": user,
+                    "accounts": all_accounts,
+                    "intervals": ALLOWED_INTERVALS,
+                    "meta_min_interval": META_MIN_INTERVAL,
+                    "meta_warmup_days": META_WARMUP_DAYS,
+                    "meta_warmup_min_interval": META_WARMUP_MIN_INTERVAL,
+                    "anti_farm_prefs": get_anti_farm_prefs(user),
+                    "content_types": CONTENT_TYPES,
+                    "default_content_type": content_type if content_type in CONTENT_TYPES else "reel",
+                    "error": (
+                        "Não deu para enfileirar a publicação (Redis/worker). "
+                        "Tente de novo em alguns segundos."
+                    ),
+                },
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         return RedirectResponse(
             f"/logs?watch=1&n={len(video_entries)}{warn_q}",
             status_code=status.HTTP_303_SEE_OTHER,

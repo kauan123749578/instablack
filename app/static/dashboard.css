@@ -231,56 +231,74 @@ body.premium-app .shark-content { padding: 24px 32px 80px; }
 /* ===== Bottom row ===== */
 .og-bottom-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr 1.2fr;
-  grid-template-rows: auto auto;
+  grid-template-columns: 1fr 1fr minmax(260px, 1.15fr);
+  grid-template-rows: 300px 248px;
   gap: 14px;
   align-items: stretch;
 }
-.og-panel-activity { grid-column: 1; grid-row: 1; }
+.og-panel-activity {
+  grid-column: 1;
+  grid-row: 1;
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
 .og-warmup-panel {
   grid-column: 2;
   grid-row: 1;
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  max-height: 320px;
-  min-height: 0;
-  overflow: hidden;
+  box-sizing: border-box;
 }
 .og-warmup-panel .og-dash-list {
   flex: 1 1 auto;
   min-height: 0;
   max-height: none;
   margin-top: 10px;
+  overflow-y: auto;
 }
 .og-top-players-shark {
   grid-column: 3;
   grid-row: 1 / span 2;
-  align-self: stretch;
+  height: 100%;
   min-height: 0;
   max-height: none;
-  height: 100%;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
+  align-self: stretch;
 }
 .og-panel-accounts {
   grid-column: 1;
   grid-row: 2;
-  align-self: start;
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+  align-self: stretch;
 }
 .og-failed-panel {
   grid-column: 2;
   grid-row: 2;
-  align-self: start;
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+  align-self: stretch;
 }
 .og-bottom-span-2 { grid-column: span 2; }
 
-/* Contas + Falhas — mesma altura fixa (não encolhe nem estica) */
+/* Contas + Falhas — mesma altura da linha 2 */
 .og-panel-accounts,
 .og-failed-panel {
   width: 100%;
-  height: 248px;
-  min-height: 248px;
-  max-height: 248px;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
@@ -375,7 +393,17 @@ body.premium-app .shark-content { padding: 24px 32px 80px; }
 .og-bar-label { font-size: 10px; color: var(--og-muted); margin-top: 10px; font-weight: 500; }
 
 /* Atividade recente — timeline vertical */
-.og-panel-activity { min-height: 220px; }
+.og-panel-activity .og-card-head { flex-shrink: 0; }
+.og-panel-activity .og-timeline {
+  list-style: none; margin: 0; padding: 4px 0 0 6px;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+  position: relative;
+  scrollbar-width: thin;
+  scrollbar-color: #1161FE rgba(255,255,255,0.06);
+}
 .og-live-badge {
   font-size: 9px; font-weight: 700; letter-spacing: 0.08em;
   padding: 3px 8px; border-radius: 0;
@@ -987,26 +1015,41 @@ body.premium-app .shark-content { padding: 24px 32px 80px; }
   .og-main-grid { grid-template-columns: 1fr 1fr; }
   .og-next-panel { grid-column: span 1; }
   .og-kpi-row { grid-template-columns: repeat(3, 1fr); }
-  .og-bottom-grid { grid-template-columns: 1fr 1fr; }
-  .og-top-players-shark { grid-column: 1 / -1; grid-row: auto; min-height: 360px; max-height: none; }
+  .og-bottom-grid {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto;
+  }
+  .og-top-players-shark {
+    grid-column: 1 / -1;
+    grid-row: auto;
+    height: auto;
+    min-height: 360px;
+    max-height: 480px;
+  }
   .og-panel-activity, .og-warmup-panel, .og-failed-panel,
-  .og-panel-accounts, .og-bar-panel { grid-column: auto; grid-row: auto; }
-  .og-warmup-panel { max-height: 280px; }
+  .og-panel-accounts, .og-bar-panel { grid-column: auto; grid-row: auto; height: auto; }
+  .og-panel-activity, .og-warmup-panel { min-height: 260px; max-height: 320px; }
+  .og-panel-accounts, .og-failed-panel { height: 248px; max-height: 248px; }
 }
 @media (max-width: 768px) {
   body.premium-app .shark-content { padding: 16px 14px 88px; }
   .og-kpi-row { grid-template-columns: repeat(2, 1fr); gap: 10px; }
   .og-kpi-value { font-size: 24px; }
   .og-main-grid,
-  .og-bottom-grid { grid-template-columns: 1fr; gap: 12px; }
+  .og-bottom-grid { grid-template-columns: 1fr; grid-template-rows: auto; gap: 12px; }
   .og-bottom-span-2,
   .og-top-players-shark {
     grid-column: span 1;
     grid-row: auto;
-    min-height: 420px;
-    max-height: none;
+    height: auto;
+    min-height: 360px;
+    max-height: 520px;
   }
   .og-panel-accounts,
+  .og-failed-panel {
+    height: 248px;
+    max-height: 248px;
+  }
   .og-failed-panel {
     height: 340px;
     min-height: 340px;
