@@ -691,49 +691,62 @@ def _execute_publish(
         if provider == "meta" and account_status not in (
             "paused", "needs_login", "proxy_down", "banned", "deleted"
         ):
-            anti = get_anti_farm_prefs_by_id(db, owner_user_id) if owner_user_id else {}
-            warmup_on = bool(anti.get("meta_warmup_enabled", True))
-            min_gap = meta_min_interval_for_account(
-                SimpleNamespace(
-                    provider="meta",
-                    warmup_enabled=account_warmup_enabled,
-                    warmup_days=account_warmup_days,
-                    warmup_started_at=account_warmup_started_at,
-                    created_at=account_created_at,
+            # "Postar agora" (start_mode=now): o usuário pediu imediato — não reagenda.
+            # Só o agendamento recorrente (beat) respeita o piso de 60 min por conta.
+            force_now = False
+            if automation_id is not None:
+                auto_row = db.get(Automation, automation_id)
+                force_now = bool(auto_row and (auto_row.start_mode or "") == "now")
+            if force_now:
+                log.info(
+                    "Meta interval bypass (Postar agora) automation=%s account=%s",
+                    automation_id,
+                    account_id,
                 )
-            )
-            if not warmup_on:
-                from app.utils.intervals import META_MIN_INTERVAL as _META_FLOOR
-                min_gap = _META_FLOOR
-            if min_gap > 0:
-                last_ok = db.scalars(
-                    select(PublishLog)
-                    .where(
-                        PublishLog.account_id == account_id,
-                        PublishLog.status == "success",
+            else:
+                anti = get_anti_farm_prefs_by_id(db, owner_user_id) if owner_user_id else {}
+                warmup_on = bool(anti.get("meta_warmup_enabled", True))
+                min_gap = meta_min_interval_for_account(
+                    SimpleNamespace(
+                        provider="meta",
+                        warmup_enabled=account_warmup_enabled,
+                        warmup_days=account_warmup_days,
+                        warmup_started_at=account_warmup_started_at,
+                        created_at=account_created_at,
                     )
-                    .order_by(PublishLog.created_at.desc())
-                    .limit(1)
-                ).first()
-                if last_ok and last_ok.created_at:
-                    last_at = last_ok.created_at
-                    if last_at.tzinfo is not None:
-                        last_at = last_at.astimezone(dt.timezone.utc).replace(tzinfo=None)
-                    age_min = (dt.datetime.utcnow() - last_at).total_seconds() / 60.0
-                    if age_min < min_gap:
-                        wait_left = max(1, int(min_gap - age_min) + 1)
-                        # Não marca Ignorada — remarca o post para quando a conta puder.
-                        return {
-                            "deferred": True,
-                            "wait_seconds": wait_left * 60,
-                            "reason": (
-                                f"meta_defer:{min_gap}m "
-                                f"(reagendado +{wait_left} min; "
-                                f"último post há {int(age_min)} min)"
-                            ),
-                            "account_id": account_id,
-                            "automation_id": automation_id,
-                        }
+                )
+                if not warmup_on:
+                    from app.utils.intervals import META_MIN_INTERVAL as _META_FLOOR
+                    min_gap = _META_FLOOR
+                if min_gap > 0:
+                    last_ok = db.scalars(
+                        select(PublishLog)
+                        .where(
+                            PublishLog.account_id == account_id,
+                            PublishLog.status == "success",
+                        )
+                        .order_by(PublishLog.created_at.desc())
+                        .limit(1)
+                    ).first()
+                    if last_ok and last_ok.created_at:
+                        last_at = last_ok.created_at
+                        if last_at.tzinfo is not None:
+                            last_at = last_at.astimezone(dt.timezone.utc).replace(tzinfo=None)
+                        age_min = (dt.datetime.utcnow() - last_at).total_seconds() / 60.0
+                        if age_min < min_gap:
+                            wait_left = max(1, int(min_gap - age_min) + 1)
+                            # Não marca Ignorada — remarca o post para quando a conta puder.
+                            return {
+                                "deferred": True,
+                                "wait_seconds": wait_left * 60,
+                                "reason": (
+                                    f"meta_defer:{min_gap}m "
+                                    f"(reagendado +{wait_left} min; "
+                                    f"último post há {int(age_min)} min)"
+                                ),
+                                "account_id": account_id,
+                                "automation_id": automation_id,
+                            }
 
     if account_status in ("paused", "needs_login", "proxy_down", "banned", "deleted"):
         return {"skipped": True, "reason": f"account_{account_status}"}
