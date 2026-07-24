@@ -152,9 +152,7 @@ def resolve_caption(
     """Resolve legenda da lista de rotação.
 
     - sem lista de rotação → sempre a legenda principal (1 legenda)
-    - só por conta: captions[account_slot % n]
-    - só por reel: captions[reel_index % n]
-    - os dois: captions[(account_slot + reel_index) % n]
+    - rotação ligada: usa principal + alternativas (principal no índice 0)
     - rotação desligada: principal (ou 1ª da lista)
     """
     main = (getattr(automation, "caption", None) or "") or ""
@@ -167,15 +165,25 @@ def resolve_caption(
     if not by_account and not by_reel:
         return main or alts[0]
 
-    # Uma única alternativa = essa legenda para todas as contas/reels
-    if len(alts) == 1:
-        return alts[0] or main
+    # Pool completo: principal (se existir) + alternativas, sem duplicar.
+    # Antes a principal era ignorada quando havia alternativas — conta 0
+    # recebia só alts[0] e parecia "post sem legenda" se a alt estava vazia/curta.
+    pool: list[str] = []
+    if main.strip():
+        pool.append(main)
+    for alt in alts:
+        if alt and alt not in pool:
+            pool.append(alt)
+    if not pool:
+        return main or alts[0]
+
+    if len(pool) == 1:
+        return pool[0]
 
     idx = 0
     if by_reel:
         idx += max(0, int(reel_index or 0))
     if by_account:
         idx += max(0, int(account_slot or 0))
-    chosen = alts[idx % len(alts)]
-    # Nunca publicar vazio se ainda houver principal
-    return chosen or main or alts[0]
+    chosen = pool[idx % len(pool)]
+    return chosen or main or pool[0]

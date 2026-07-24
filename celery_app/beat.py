@@ -26,8 +26,32 @@ def tick() -> dict:
     """
     now = dt.datetime.utcnow()
     dispatched: list[int] = []
+    healed = 0
 
     with session_scope() as db:
+        # Automações por intervalo/calendário ativas sem Próxima nunca disparam.
+        # (ex.: ficaram presas após “Postar agora”/defer). Recoloca na fila.
+        stuck = db.scalars(
+            select(Automation).where(
+                Automation.status == "active",
+                Automation.next_run_at.is_(None),
+            )
+        ).all()
+        for a in stuck:
+            mode = (a.start_mode or "").strip().lower()
+            if mode == "now":
+                continue
+            db.execute(
+                text("UPDATE automations SET next_run_at = :nxt WHERE id = :id"),
+                {"nxt": now, "id": a.id},
+            )
+            healed += 1
+            log.warning(
+                "tick heal: automation=%s sem next_run_at — reagendada agora (mode=%s)",
+                a.id,
+                mode or a.schedule_type or "recurring",
+            )
+
         due = db.scalars(
             select(Automation).where(
                 Automation.status == "active",
@@ -66,5 +90,5 @@ def tick() -> dict:
         execute_automation.delay(aid)
         dispatched.append(aid)
 
-    log.info("tick: %d automações disparadas", len(dispatched))
-    return {"now": now.isoformat(), "dispatched": dispatched}
+    log.info("tick: %d automações disparadas heal=%d", len(dispatched), healed)
+    return {"now": now.isoformat(), "dispatched": dispatched, "healed": healed}

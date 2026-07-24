@@ -566,9 +566,21 @@ def publish_to_account(
             )
             caption = automation.caption or ""
 
-        # Garantia: nunca postar sem legenda se a principal existir
+        # Garantia: nunca postar sem legenda se a principal ou alternativas existirem
         if not (caption or "").strip():
-            caption = automation.caption or ""
+            caption = (automation.caption or "").strip()
+        if not (caption or "").strip():
+            from app.utils.anti_farm import parse_captions_json
+
+            alts = parse_captions_json(getattr(automation, "captions_json", None))
+            caption = (alts[0] if alts else "") or ""
+        if not (caption or "").strip():
+            log.warning(
+                "PLAYLIST %s EMPTY CAPTION automation=%s account=%s — publicando sem legenda",
+                PLAYLIST_CODE,
+                automation_id,
+                account.username,
+            )
 
         log.info(
             "PLAYLIST %s publish automation=%s account=%s idx=%s slot=%s by_acc=%s by_reel=%s cap_len=%s key=%s camu=%s opacity=%.2f",
