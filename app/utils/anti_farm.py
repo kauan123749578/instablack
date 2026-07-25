@@ -99,8 +99,22 @@ def parse_captions_json(raw: str | None) -> list[str]:
     return out
 
 
+def normalize_caption_text(text: str | None) -> str:
+    """Limpa legenda para a Meta: remove \\r (quebra caption no Instagram), trim."""
+    if text is None:
+        return ""
+    s = str(text).replace("\r\n", "\n").replace("\r", "\n")
+    # Evita espaços estranhos no fim de cada linha
+    s = "\n".join(line.rstrip() for line in s.split("\n"))
+    return s.strip()
+
+
 def captions_to_json(captions: list[str] | None) -> str | None:
-    cleaned = [str(c or "").strip() for c in (captions or []) if str(c or "").strip()]
+    cleaned = [
+        normalize_caption_text(c)
+        for c in (captions or [])
+        if normalize_caption_text(c)
+    ]
     if not cleaned:
         return None
     return json.dumps(cleaned, ensure_ascii=False)
@@ -109,7 +123,11 @@ def captions_to_json(captions: list[str] | None) -> str | None:
 def captions_from_textarea(raw: str | None) -> list[str]:
     if not raw:
         return []
-    return [line.strip() for line in str(raw).splitlines() if line.strip()]
+    return [
+        line
+        for line in (normalize_caption_text(x) for x in str(raw).splitlines())
+        if line
+    ]
 
 
 def captions_textarea_value(raw_json: str | None) -> str:
@@ -124,7 +142,7 @@ def captions_from_form(captions_alt: list[str] | str | None) -> list[str]:
         return captions_from_textarea(captions_alt)
     out: list[str] = []
     for item in captions_alt:
-        text = str(item or "").strip()
+        text = normalize_caption_text(item)
         if text:
             out.append(text)
     return out
@@ -154,10 +172,15 @@ def resolve_caption(
     - sem lista de rotação → sempre a legenda principal (1 legenda)
     - rotação ligada: usa principal + alternativas (principal no índice 0)
     - rotação desligada: principal (ou 1ª da lista)
+    - 1 legenda única no pool → todas as contas/reels usam a mesma (ignora slots)
     Nunca devolve string vazia se existir qualquer legenda salva.
     """
-    main = str(getattr(automation, "caption", None) or "").strip()
-    alts = [a.strip() for a in parse_captions_json(getattr(automation, "captions_json", None)) if a and str(a).strip()]
+    main = normalize_caption_text(getattr(automation, "caption", None))
+    alts = [
+        normalize_caption_text(a)
+        for a in parse_captions_json(getattr(automation, "captions_json", None))
+        if normalize_caption_text(a)
+    ]
 
     # Caso mais comum: só a legenda principal — nunca depender da rotação
     if not alts:
@@ -176,6 +199,7 @@ def resolve_caption(
     if not pool:
         return main or (alts[0] if alts else "")
 
+    # Uma só legenda → todo mundo recebe a mesma, sem indexar por slot
     if len(pool) == 1:
         return pool[0]
 
@@ -184,18 +208,18 @@ def resolve_caption(
         idx += max(0, int(reel_index or 0))
     if by_account:
         idx += max(0, int(account_slot or 0))
-    chosen = (pool[idx % len(pool)] or "").strip()
+    chosen = normalize_caption_text(pool[idx % len(pool)])
     return chosen or main or pool[0]
 
 
 def best_available_caption(automation: Automation) -> str:
     """Qualquer legenda não-vazia da automação (principal ou 1ª alt)."""
-    main = str(getattr(automation, "caption", None) or "").strip()
+    main = normalize_caption_text(getattr(automation, "caption", None))
     if main:
         return main
     alts = parse_captions_json(getattr(automation, "captions_json", None))
     for alt in alts:
-        text = str(alt or "").strip()
+        text = normalize_caption_text(alt)
         if text:
             return text
     return ""

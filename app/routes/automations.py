@@ -33,6 +33,7 @@ from app.utils.anti_farm import (
     captions_textarea_value,
     captions_to_json,
     clamp_stagger_minutes,
+    normalize_caption_text,
     resolve_caption,
     resolve_stagger_config,
 )
@@ -971,6 +972,7 @@ async def create_automation(
         caption_rotate_by_account=caption_rotate_by_account,
         caption_rotate_by_reel=caption_rotate_by_reel,
     )
+    caption = normalize_caption_text(caption)
     captions_json = captions_to_json(captions_from_form(captions_alt))
     submitted_cal_times: list[str] = []
     for raw_time in (calendar_times or [calendar_time]):
@@ -1455,6 +1457,7 @@ async def create_reel_upload_draft(
         caption_rotate_by_account=caption_rotate_by_account,
         caption_rotate_by_reel=caption_rotate_by_reel,
     )
+    caption = normalize_caption_text(caption)
     captions_json = captions_to_json(captions_from_form(captions_alt))
     storage = get_storage()
     thumb_key, thumb_original_name = _save_thumb(storage, thumb)
@@ -2086,7 +2089,7 @@ async def edit_automation(
         caption_rotate_by_account=caption_rotate_by_account,
         caption_rotate_by_reel=caption_rotate_by_reel,
     )
-    a.caption = caption
+    a.caption = normalize_caption_text(caption)
     a.captions_json = captions_to_json(captions_from_form(captions_alt))
     a.content_type = content_type
     a.interval_minutes = interval_minutes

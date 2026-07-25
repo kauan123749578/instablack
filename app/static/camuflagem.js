@@ -9,7 +9,6 @@ import {
 } from "./camuflagem/image.js";
 import { encodeHotMp4 } from "./camuflagem/hot.js";
 import { processVideoFile, adversarialNoise } from "./camuflagem/video.js";
-import { stripMetadataBatch } from "./camuflagem/metadata.js";
 import JSZip from "https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm";
 
 function $(sel, root = document) {
@@ -473,50 +472,10 @@ function initVideoTab() {
   });
 }
 
-function initMetaTab() {
-  const input = $("#camu-meta-files");
-  const runBtn = $("#camu-meta-run");
-  const progress = $("#camu-meta-progress");
-  const results = $("#camu-meta-results");
-
-  const syncBtn = () => {
-    if (runBtn) runBtn.disabled = !(input?.files?.length);
-  };
-
-  bindDrop($('[data-drop="meta-files"]'), input, {
-    multiple: true,
-    onChange: () => {
-      listFiles($("#camu-meta-list"), input.files);
-      syncBtn();
-    },
-  });
-
-  runBtn?.addEventListener("click", async () => {
-    const files = [...(input?.files || [])];
-    if (!files.length) return;
-    runBtn.disabled = true;
-    results.innerHTML = "";
-    try {
-      const out = await stripMetadataBatch(files, (p, msg) => {
-        if (progress) progress.textContent = `${msg} (${Math.round(p * 100)}%)`;
-      });
-      renderResults(results, out);
-      await downloadMany(out);
-      if (progress) progress.textContent = `${out.length} arquivo(s) limpo(s).`;
-    } catch (err) {
-      console.error(err);
-      if (progress) progress.textContent = err.message || String(err);
-    } finally {
-      syncBtn();
-    }
-  });
-}
-
 document.addEventListener("DOMContentLoaded", () => {
   initTabs();
   initTextTab();
   initImageTab();
   initVideoTab();
-  initMetaTab();
   window.lucide?.createIcons?.();
 });

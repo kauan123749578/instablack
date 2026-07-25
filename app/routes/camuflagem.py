@@ -15,7 +15,6 @@ def camuflagem_page(
     request: Request,
     user: User = Depends(get_current_user),
 ):
-    # COOP/COEP: necessário para FFmpeg.wasm (SharedArrayBuffer) na aba Metadados
     resp = templates.TemplateResponse(
         "camuflagem.html",
         {
@@ -23,6 +22,7 @@ def camuflagem_page(
             "user": user,
         },
     )
+    # Isola a página (processamento pesado de imagem/vídeo no browser)
     resp.headers["Cross-Origin-Opener-Policy"] = "same-origin"
     resp.headers["Cross-Origin-Embedder-Policy"] = "require-corp"
     return resp

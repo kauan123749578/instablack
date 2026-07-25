@@ -25,6 +25,7 @@ from app.security import decrypt_secret
 from app.utils.anti_farm import (
     account_publish_countdown,
     best_available_caption,
+    normalize_caption_text,
     resolve_caption,
     resolve_stagger_config,
 )
@@ -56,7 +57,11 @@ from core.media_prepare import (
     prepare_clean_media,
     prepare_clean_thumb,
 )
-from core.meta_instagram import MetaInstagramError, publish_media as publish_meta_media
+from core.meta_instagram import (
+    MetaInstagramError,
+    publish_media as publish_meta_media,
+    uniquify_caption_for_account,
+)
 from core.metadata import MetadataStripError
 from core.notifications import create_notification, notify_publish_success
 from core.storage import get_storage
@@ -633,26 +638,66 @@ def publish_to_account(
             )
             caption = automation.caption or ""
 
-        caption = (caption or "").strip()
+        caption = normalize_caption_text(caption)
         # Garantia absoluta: se a automação tem legenda salva, NUNCA publica vazia.
         if not caption:
             caption = best_available_caption(automation)
-        if not caption:
+        caption = normalize_caption_text(caption)
+
+        content_type = automation.content_type or "reel"
+        # Reel/foto: se tem legenda no banco e mesmo assim ficou vazia → ABORTA (não posta sem texto)
+        if content_type in ("reel", "photo") and not caption:
+            saved = best_available_caption(automation)
+            if saved:
+                caption = saved
+            else:
+                # Tem campo no DB mas só lixo/\r? tenta raw
+                caption = normalize_caption_text(automation.caption or "")
+                if not caption:
+                    from app.utils.anti_farm import parse_captions_json
+
+                    for alt in parse_captions_json(getattr(automation, "captions_json", None)):
+                        caption = normalize_caption_text(alt)
+                        if caption:
+                            break
+
+        if content_type in ("reel", "photo") and not caption:
             log.error(
-                "PLAYLIST %s EMPTY CAPTION automation=%s account=%s caption_db_len=%s alts=%s — publicando SEM legenda",
+                "PLAYLIST %s ABORT EMPTY CAPTION automation=%s account=%s — NÃO publica Reel/Foto sem legenda",
                 PLAYLIST_CODE,
                 automation_id,
                 account.username,
-                len(automation.caption or ""),
-                getattr(automation, "captions_json", None) or "-",
+            )
+            _log_failure(
+                automation_id,
+                account.id,
+                "Abortado: automação sem legenda (não publica Reel/Foto vazio)",
+                content_type=content_type,
+                owner_user_id=automation.user_id,
+                username=account.username,
+            )
+            return {"error": "empty_caption", "aborted": True}
+
+        # Mesma legenda em N contas: fingerprint invisível por slot (Meta dropa spam idêntico)
+        if caption and content_type in ("reel", "photo"):
+            caption = uniquify_caption_for_account(caption, slot)
+
+        if not caption:
+            log.warning(
+                "PLAYLIST %s EMPTY CAPTION automation=%s account=%s type=%s — seguindo (story)",
+                PLAYLIST_CODE,
+                automation_id,
+                account.username,
+                content_type,
             )
         else:
             log.info(
-                "PLAYLIST %s CAPTION READY automation=%s account=%s cap_len=%s preview=%r",
+                "PLAYLIST %s CAPTION READY automation=%s account=%s cap_len=%s cr=%s preview=%r",
                 PLAYLIST_CODE,
                 automation_id,
                 account.username,
                 len(caption),
+                "\\r" in (automation.caption or ""),
                 caption[:48],
             )
 
@@ -678,7 +723,7 @@ def publish_to_account(
                 video_key=vk,
                 thumb_key=automation.thumb_key,
                 caption=caption,
-                content_type=automation.content_type or "reel",
+                content_type=content_type,
                 story_link=automation.story_link,
                 story_sticker_text=automation.story_sticker_text,
                 story_layout=_load_story_layout(automation),
@@ -957,6 +1002,22 @@ def _execute_publish(
                 f"@{username}: a Meta recusou a capa, mas o Reels foi publicado. {cover_error[:140]}",
                 kind="warning",
                 link="/logs",
+            )
+
+        # Meta aceitou o post mas engoliu a legenda → alerta forte
+        if result.get("caption_verified") is False and (caption or "").strip():
+            log.error(
+                "META REEL SEM LEGENDA no Instagram account=%s media=%s sent_len=%s",
+                username,
+                result.get("id"),
+                result.get("caption_sent_len"),
+            )
+            create_notification(
+                owner_user_id,
+                "Reels publicado SEM legenda (Meta)",
+                f"@{username}: enviamos a legenda, mas o Instagram não gravou. Abra o post e edite manualmente se precisar.",
+                kind="error",
+                link=str(result.get("url") or "/logs"),
             )
 
         publish_log_id: int | None = None
