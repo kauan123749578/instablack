@@ -22,7 +22,12 @@ from sqlalchemy import select, text
 
 from app.config import settings
 from app.security import decrypt_secret
-from app.utils.anti_farm import account_publish_countdown, resolve_caption, resolve_stagger_config
+from app.utils.anti_farm import (
+    account_publish_countdown,
+    best_available_caption,
+    resolve_caption,
+    resolve_stagger_config,
+)
 from app.utils.auth_failures import (
     auth_status_reason,
     latest_auth_failure_reason,
@@ -628,20 +633,27 @@ def publish_to_account(
             )
             caption = automation.caption or ""
 
-        # Garantia: nunca postar sem legenda se a principal ou alternativas existirem
-        if not (caption or "").strip():
-            caption = (automation.caption or "").strip()
-        if not (caption or "").strip():
-            from app.utils.anti_farm import parse_captions_json
-
-            alts = parse_captions_json(getattr(automation, "captions_json", None))
-            caption = (alts[0] if alts else "") or ""
-        if not (caption or "").strip():
-            log.warning(
-                "PLAYLIST %s EMPTY CAPTION automation=%s account=%s — publicando sem legenda",
+        caption = (caption or "").strip()
+        # Garantia absoluta: se a automação tem legenda salva, NUNCA publica vazia.
+        if not caption:
+            caption = best_available_caption(automation)
+        if not caption:
+            log.error(
+                "PLAYLIST %s EMPTY CAPTION automation=%s account=%s caption_db_len=%s alts=%s — publicando SEM legenda",
                 PLAYLIST_CODE,
                 automation_id,
                 account.username,
+                len(automation.caption or ""),
+                getattr(automation, "captions_json", None) or "-",
+            )
+        else:
+            log.info(
+                "PLAYLIST %s CAPTION READY automation=%s account=%s cap_len=%s preview=%r",
+                PLAYLIST_CODE,
+                automation_id,
+                account.username,
+                len(caption),
+                caption[:48],
             )
 
         log.info(

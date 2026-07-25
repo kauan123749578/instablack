@@ -22,6 +22,17 @@ META_SCOPES = (
 )
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm", ".m4v"}
 DEFAULT_PUBLIC_BASE_URL = "https://instablack-production.up.railway.app"
+# Limite da Graph API / Instagram para caption de Reel/Foto.
+META_CAPTION_MAX = 2200
+
+
+def _prepare_meta_caption(caption: str | None) -> str:
+    text = str(caption or "").strip()
+    if not text:
+        return ""
+    if len(text) > META_CAPTION_MAX:
+        text = text[: META_CAPTION_MAX - 1].rstrip() + "…"
+    return text
 
 
 @dataclass(frozen=True)
@@ -513,6 +524,7 @@ def publish_media(
     """Cria container, aguarda o processamento e publica."""
     media_url = public_media_url(media_key)
     is_video = Path(media_key).suffix.lower() in VIDEO_EXTENSIONS
+    caption_text = _prepare_meta_caption(caption)
     _validate_public_media_url(
         media_url,
         expected_prefix="video/" if is_video else "image/",
@@ -522,8 +534,8 @@ def publish_media(
 
     if content_type == "reel":
         payload.update({"media_type": "REELS", "video_url": media_url})
-        if caption:
-            payload["caption"] = caption
+        if caption_text:
+            payload["caption"] = caption_text
         if cover_key:
             cover_url = public_media_url(cover_key)
             _validate_public_media_url(
@@ -537,11 +549,28 @@ def publish_media(
         payload["video_url" if is_video else "image_url"] = media_url
     elif content_type == "photo":
         payload["image_url"] = media_url
-        if caption:
-            payload["caption"] = caption
+        if caption_text:
+            payload["caption"] = caption_text
     else:
         raise MetaInstagramError(f"Tipo de conteúdo não suportado: {content_type}")
 
+    if content_type in ("reel", "photo") and not caption_text:
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "META publish SEM caption content_type=%s ig_user=%s key=%s",
+            content_type,
+            ig_user_id,
+            media_key,
+        )
+    elif caption_text:
+        import logging
+
+        logging.getLogger(__name__).info(
+            "META publish caption content_type=%s len=%s",
+            content_type,
+            len(caption_text),
+        )
     cover_error: str | None = None
     try:
         create_response = requests.post(

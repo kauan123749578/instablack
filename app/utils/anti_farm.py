@@ -154,9 +154,10 @@ def resolve_caption(
     - sem lista de rotação → sempre a legenda principal (1 legenda)
     - rotação ligada: usa principal + alternativas (principal no índice 0)
     - rotação desligada: principal (ou 1ª da lista)
+    Nunca devolve string vazia se existir qualquer legenda salva.
     """
-    main = (getattr(automation, "caption", None) or "") or ""
-    alts = parse_captions_json(getattr(automation, "captions_json", None))
+    main = str(getattr(automation, "caption", None) or "").strip()
+    alts = [a.strip() for a in parse_captions_json(getattr(automation, "captions_json", None)) if a and str(a).strip()]
 
     # Caso mais comum: só a legenda principal — nunca depender da rotação
     if not alts:
@@ -166,16 +167,14 @@ def resolve_caption(
         return main or alts[0]
 
     # Pool completo: principal (se existir) + alternativas, sem duplicar.
-    # Antes a principal era ignorada quando havia alternativas — conta 0
-    # recebia só alts[0] e parecia "post sem legenda" se a alt estava vazia/curta.
     pool: list[str] = []
-    if main.strip():
+    if main:
         pool.append(main)
     for alt in alts:
         if alt and alt not in pool:
             pool.append(alt)
     if not pool:
-        return main or alts[0]
+        return main or (alts[0] if alts else "")
 
     if len(pool) == 1:
         return pool[0]
@@ -185,5 +184,18 @@ def resolve_caption(
         idx += max(0, int(reel_index or 0))
     if by_account:
         idx += max(0, int(account_slot or 0))
-    chosen = pool[idx % len(pool)]
+    chosen = (pool[idx % len(pool)] or "").strip()
     return chosen or main or pool[0]
+
+
+def best_available_caption(automation: Automation) -> str:
+    """Qualquer legenda não-vazia da automação (principal ou 1ª alt)."""
+    main = str(getattr(automation, "caption", None) or "").strip()
+    if main:
+        return main
+    alts = parse_captions_json(getattr(automation, "captions_json", None))
+    for alt in alts:
+        text = str(alt or "").strip()
+        if text:
+            return text
+    return ""
