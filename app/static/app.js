@@ -454,15 +454,17 @@
       const data = await res.json();
       if (dot) {
         if (data.unread > 0) { dot.hidden = false; } else { dot.hidden = true; }
+        const hasOffline = (data.items || []).some(
+          (n) => !n.is_read && n.kind === "offline"
+        );
+        dot.classList.toggle("notif-dot--alert", Boolean(hasOffline));
       }
+      // Remove popup flutuante antigo se ainda existir no DOM
+      document.getElementById("og-offline-toast-float")?.remove();
       if (!data.items || !data.items.length) {
         list.innerHTML = '<li class="notif-empty">Nenhuma notificação ainda.</li>';
         return;
       }
-      const hasOffline = data.items.some(
-        (n) => !n.is_read && (n.kind === "offline" || /sess[aã]o|expir|offline|login/i.test(n.title || ""))
-      );
-      if (hasOffline) showOfflineToastFromNotif(data.items);
       list.innerHTML = data.items.map((n) => {
         const cls = `notif-kind-${n.kind || "info"}${n.is_read ? "" : " unread"}`;
         const body = n.body ? `<span>${escapeHtml(n.body)}</span>` : "";
@@ -476,62 +478,6 @@
     } catch {
       list.innerHTML = '<li class="notif-empty">Não foi possível carregar.</li>';
     }
-  }
-
-  function offlineToastStorageKey(key) {
-    return "og_offline_toast_dismissed:" + (key || "default");
-  }
-
-  function initOfflineToast() {
-    const el = document.getElementById("og-offline-toast");
-    if (!el) return;
-    const key = el.dataset.offlineKey || "";
-    try {
-      if (sessionStorage.getItem(offlineToastStorageKey(key)) === "1") return;
-    } catch (_) {}
-    el.hidden = false;
-    el.querySelector(".og-offline-toast-dismiss")?.addEventListener("click", () => {
-      el.hidden = true;
-      try {
-        sessionStorage.setItem(offlineToastStorageKey(key), "1");
-      } catch (_) {}
-    });
-  }
-
-  function showOfflineToastFromNotif(items) {
-    if (document.getElementById("og-offline-toast") && !document.getElementById("og-offline-toast").hidden) {
-      return;
-    }
-    if (document.getElementById("og-offline-toast-float")) return;
-    const offline = (items || []).filter((n) => !n.is_read && n.kind === "offline");
-    if (!offline.length) return;
-    const key = offline.map((n) => n.id).join(",");
-    try {
-      if (sessionStorage.getItem(offlineToastStorageKey("float:" + key)) === "1") return;
-    } catch (_) {}
-    const first = offline[0];
-    const shortTitle = String(first.title || "Conta offline")
-      .replace(/^Sessão expirada:\s*/i, "")
-      .replace(/^Proxy fora:\s*/i, "")
-      .slice(0, 42);
-    const el = document.createElement("div");
-    el.id = "og-offline-toast-float";
-    el.className = "og-offline-toast og-offline-toast--float";
-    el.setAttribute("role", "status");
-    el.innerHTML =
-      '<span class="og-offline-toast-dot" aria-hidden="true"></span>' +
-      '<p class="og-offline-toast-text"><strong>' +
-      escapeHtml(shortTitle) +
-      "</strong> precisa reconectar</p>" +
-      '<a href="/accounts/connected" class="og-offline-toast-link">Ver</a>' +
-      '<button type="button" class="og-offline-toast-dismiss" aria-label="Fechar">×</button>';
-    document.body.appendChild(el);
-    el.querySelector(".og-offline-toast-dismiss")?.addEventListener("click", () => {
-      el.remove();
-      try {
-        sessionStorage.setItem(offlineToastStorageKey("float:" + key), "1");
-      } catch (_) {}
-    });
   }
 
   function escapeHtml(s) {
@@ -2182,7 +2128,6 @@
     initWebPush();
     initProfileNotifications();
     initNotifCard();
-    initOfflineToast();
     initDashActivityPoll();
     initLogsClearForm();
     initLogsWatchPoll();

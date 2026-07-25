@@ -4,27 +4,6 @@
 {% block content %}
 <div class="og-dash">
 
-  {% if offline_accounts %}
-  <div
-    id="og-offline-toast"
-    class="og-offline-toast"
-    role="status"
-    data-offline-key="{{ offline_accounts | map(attribute='username') | join(',') }}"
-    hidden
-  >
-    <span class="og-offline-toast-dot" aria-hidden="true"></span>
-    <p class="og-offline-toast-text">
-      {% if offline_accounts|length == 1 %}
-      <strong>@{{ offline_accounts[0].username }}</strong> precisa reconectar
-      {% else %}
-      <strong>{{ offline_accounts|length }} contas</strong> precisam reconectar
-      {% endif %}
-    </p>
-    <a href="/accounts/connected" class="og-offline-toast-link" data-nav="/accounts/connected">Ver</a>
-    <button type="button" class="og-offline-toast-dismiss" aria-label="Fechar">×</button>
-  </div>
-  {% endif %}
-
   <div class="og-kpi-row">
     <article class="og-glass-card og-kpi-card">
       <div class="og-kpi-top">

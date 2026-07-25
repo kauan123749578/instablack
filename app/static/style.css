@@ -400,6 +400,12 @@ body.privacy-blur-handles .ig-handle * {
   position: absolute; top: 6px; right: 6px; width: 7px; height: 7px;
   background: var(--danger); border-radius: 50%; border: 2px solid var(--bg);
 }
+.notif-dot.notif-dot--alert {
+  width: 8px;
+  height: 8px;
+  background: #1161FE;
+  box-shadow: 0 0 0 3px rgba(17, 97, 254, 0.25);
+}
 .notif-wrap { position: relative; }
 .notif-card {
   position: absolute; right: 0; top: calc(100% + 10px); z-index: 80;
