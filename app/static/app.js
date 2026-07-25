@@ -490,7 +490,6 @@
       if (sessionStorage.getItem(offlineToastStorageKey(key)) === "1") return;
     } catch (_) {}
     el.hidden = false;
-    if (window.lucide?.createIcons) window.lucide.createIcons({ nodes: [el] });
     el.querySelector(".og-offline-toast-dismiss")?.addEventListener("click", () => {
       el.hidden = true;
       try {
@@ -511,21 +510,22 @@
       if (sessionStorage.getItem(offlineToastStorageKey("float:" + key)) === "1") return;
     } catch (_) {}
     const first = offline[0];
+    const shortTitle = String(first.title || "Conta offline")
+      .replace(/^Sessão expirada:\s*/i, "")
+      .replace(/^Proxy fora:\s*/i, "")
+      .slice(0, 42);
     const el = document.createElement("div");
     el.id = "og-offline-toast-float";
     el.className = "og-offline-toast og-offline-toast--float";
     el.setAttribute("role", "status");
     el.innerHTML =
-      '<div class="og-offline-toast-body"><i data-lucide="alert-triangle"></i><div>' +
-      "<strong>" +
-      escapeHtml(first.title || "Conta offline") +
-      "</strong>" +
-      (first.body ? "<p>" + escapeHtml(first.body) + "</p>" : "") +
-      '</div></div><div class="og-offline-toast-actions">' +
-      '<a href="/accounts/connected" class="btn btn-sm btn-primary">Ver contas</a>' +
-      '<button type="button" class="btn btn-sm og-offline-toast-dismiss">Fechar</button></div>';
+      '<span class="og-offline-toast-dot" aria-hidden="true"></span>' +
+      '<p class="og-offline-toast-text"><strong>' +
+      escapeHtml(shortTitle) +
+      "</strong> precisa reconectar</p>" +
+      '<a href="/accounts/connected" class="og-offline-toast-link">Ver</a>' +
+      '<button type="button" class="og-offline-toast-dismiss" aria-label="Fechar">×</button>';
     document.body.appendChild(el);
-    if (window.lucide?.createIcons) window.lucide.createIcons({ nodes: [el] });
     el.querySelector(".og-offline-toast-dismiss")?.addEventListener("click", () => {
       el.remove();
       try {
@@ -610,7 +610,7 @@
     form.dataset.bound = "1";
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      if (!confirm("Apagar TODO o histórico de logs? Esta ação não pode ser desfeita.")) {
+      if (!confirm("Limpar a aba de logs? O ranking e as visualizações NÃO serão apagados.")) {
         return;
       }
       const btn = document.getElementById("logs-clear-btn");

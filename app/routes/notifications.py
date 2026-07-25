@@ -277,6 +277,9 @@ def api_logs_latest(
         .order_by(PublishLog.created_at.desc())
         .limit(20)
     )
+    cleared_at = getattr(user, "logs_cleared_at", None)
+    if cleared_at is not None:
+        q = q.where(PublishLog.created_at > cleared_at)
     if since_id > 0:
         q = q.where(PublishLog.id > since_id)
     rows = list(db.scalars(q).all())

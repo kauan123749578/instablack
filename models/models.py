@@ -48,6 +48,10 @@ class User(Base):
     account_limit: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=None)
     notification_prefs_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     anti_farm_prefs_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Esconde logs da aba /logs sem apagar PublishLog (rank/insights continuam).
+    logs_cleared_at: Mapped[Optional[dt.datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

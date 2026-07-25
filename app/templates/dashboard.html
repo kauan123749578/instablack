@@ -12,23 +12,16 @@
     data-offline-key="{{ offline_accounts | map(attribute='username') | join(',') }}"
     hidden
   >
-    <div class="og-offline-toast-body">
-      <i data-lucide="alert-triangle"></i>
-      <div>
-        <strong>
-          {% if offline_accounts|length == 1 %}
-          Conta @{{ offline_accounts[0].username }} precisa de atenção
-          {% else %}
-          {{ offline_accounts|length }} contas com sessão/proxy fora do ar
-          {% endif %}
-        </strong>
-        <p>Reconecte em Contas conectadas para voltar a publicar.</p>
-      </div>
-    </div>
-    <div class="og-offline-toast-actions">
-      <a href="/accounts/connected" class="btn btn-sm btn-primary" data-nav="/accounts/connected">Ver contas</a>
-      <button type="button" class="btn btn-sm og-offline-toast-dismiss" aria-label="Fechar">Fechar</button>
-    </div>
+    <span class="og-offline-toast-dot" aria-hidden="true"></span>
+    <p class="og-offline-toast-text">
+      {% if offline_accounts|length == 1 %}
+      <strong>@{{ offline_accounts[0].username }}</strong> precisa reconectar
+      {% else %}
+      <strong>{{ offline_accounts|length }} contas</strong> precisam reconectar
+      {% endif %}
+    </p>
+    <a href="/accounts/connected" class="og-offline-toast-link" data-nav="/accounts/connected">Ver</a>
+    <button type="button" class="og-offline-toast-dismiss" aria-label="Fechar">×</button>
   </div>
   {% endif %}
 
@@ -311,7 +304,12 @@
               <strong>{{ item.display_name }} <span class="og-rank-badge">#{{ loop.index }}</span></strong>
               <span class="og-rank-tier">{{ item.tier }}</span>
             </div>
-            <span class="og-rank-score-pill">{{ item.posts_today }}</span>
+            <div class="og-rank-score-stack">
+              <span class="og-rank-score-pill">{{ item.posts_today }}</span>
+              {% if item.view_count %}
+              <span class="og-rank-views">{{ format_count(item.view_count) }} views</span>
+              {% endif %}
+            </div>
           </li>
           {% endfor %}
         </ol>
@@ -336,7 +334,12 @@
               <strong>{{ item.display_name }} <span class="og-rank-badge">#{{ loop.index }}</span></strong>
               <span class="og-rank-tier">{{ item.tier }}</span>
             </div>
-            <span class="og-rank-score-pill">{{ item.post_count }}</span>
+            <div class="og-rank-score-stack">
+              <span class="og-rank-score-pill">{{ item.post_count }}</span>
+              {% if item.view_count %}
+              <span class="og-rank-views">{{ format_count(item.view_count) }} views</span>
+              {% endif %}
+            </div>
           </li>
           {% endfor %}
         </ol>
@@ -426,7 +429,7 @@
           </div>
           <strong>{{ p2.display_name }}</strong>
           <span class="rank-podium-tier">{{ p2.tier }}</span>
-          <span class="rank-podium-score">{{ p2.posts_today }} posts</span>
+          <span class="rank-podium-score">{{ p2.posts_today }} posts{% if p2.view_count %} · {{ format_count(p2.view_count) }} views{% endif %}</span>
           {% endif %}
           <div class="rank-podium-block"><span>2</span></div>
         </div>
@@ -437,7 +440,7 @@
           </div>
           <strong>{{ p1.display_name }}</strong>
           <span class="rank-podium-tier">{{ p1.tier }}</span>
-          <span class="rank-podium-score">{{ p1.posts_today }} posts</span>
+          <span class="rank-podium-score">{{ p1.posts_today }} posts{% if p1.view_count %} · {{ format_count(p1.view_count) }} views{% endif %}</span>
           <div class="rank-podium-block"><span>1</span></div>
         </div>
         <div class="rank-podium-slot rank-podium-slot--3{% if not p3 %} is-empty{% endif %}">
@@ -447,7 +450,7 @@
           </div>
           <strong>{{ p3.display_name }}</strong>
           <span class="rank-podium-tier">{{ p3.tier }}</span>
-          <span class="rank-podium-score">{{ p3.posts_today }} posts</span>
+          <span class="rank-podium-score">{{ p3.posts_today }} posts{% if p3.view_count %} · {{ format_count(p3.view_count) }} views{% endif %}</span>
           {% endif %}
           <div class="rank-podium-block"><span>3</span></div>
         </div>
@@ -464,7 +467,10 @@
             <strong>{{ item.display_name }}</strong>
             <span class="og-rank-tier">{{ item.tier }}</span>
           </div>
-          <span class="og-rank-score-pill">{{ item.posts_today }}</span>
+          <div class="og-rank-score-stack">
+            <span class="og-rank-score-pill">{{ item.posts_today }}</span>
+            {% if item.view_count %}<span class="og-rank-views">{{ format_count(item.view_count) }} views</span>{% endif %}
+          </div>
         </li>
         {% endfor %}
       </ol>
@@ -475,7 +481,7 @@
       <div class="rank-modal-you">
         <span>SUA POSIÇÃO</span>
         {% if my_rank_week and my_rank_week.rank %}
-        <strong>#{{ my_rank_week.rank }} · {{ my_rank_week.post_count }} posts</strong>
+        <strong>#{{ my_rank_week.rank }} · {{ my_rank_week.post_count }} posts{% if my_rank_week.view_count %} · {{ format_count(my_rank_week.view_count) }} views{% endif %}</strong>
         {% else %}
         <strong>Sem publicações ainda</strong>
         {% endif %}
@@ -495,7 +501,7 @@
           </div>
           <strong>{{ m2.display_name }}</strong>
           <span class="rank-podium-tier">{{ m2.tier }}</span>
-          <span class="rank-podium-score">{{ m2.post_count }} posts</span>
+          <span class="rank-podium-score">{{ m2.post_count }} posts{% if m2.view_count %} · {{ format_count(m2.view_count) }} views{% endif %}</span>
           {% endif %}
           <div class="rank-podium-block"><span>2</span></div>
         </div>
@@ -506,7 +512,7 @@
           </div>
           <strong>{{ m1.display_name }}</strong>
           <span class="rank-podium-tier">{{ m1.tier }}</span>
-          <span class="rank-podium-score">{{ m1.post_count }} posts</span>
+          <span class="rank-podium-score">{{ m1.post_count }} posts{% if m1.view_count %} · {{ format_count(m1.view_count) }} views{% endif %}</span>
           <div class="rank-podium-block"><span>1</span></div>
         </div>
         <div class="rank-podium-slot rank-podium-slot--3{% if not m3 %} is-empty{% endif %}">
@@ -516,7 +522,7 @@
           </div>
           <strong>{{ m3.display_name }}</strong>
           <span class="rank-podium-tier">{{ m3.tier }}</span>
-          <span class="rank-podium-score">{{ m3.post_count }} posts</span>
+          <span class="rank-podium-score">{{ m3.post_count }} posts{% if m3.view_count %} · {{ format_count(m3.view_count) }} views{% endif %}</span>
           {% endif %}
           <div class="rank-podium-block"><span>3</span></div>
         </div>
@@ -533,7 +539,10 @@
             <strong>{{ item.display_name }}</strong>
             <span class="og-rank-tier">{{ item.tier }}</span>
           </div>
-          <span class="og-rank-score-pill">{{ item.post_count }}</span>
+          <div class="og-rank-score-stack">
+            <span class="og-rank-score-pill">{{ item.post_count }}</span>
+            {% if item.view_count %}<span class="og-rank-views">{{ format_count(item.view_count) }} views</span>{% endif %}
+          </div>
         </li>
         {% endfor %}
       </ol>
@@ -544,7 +553,7 @@
       <div class="rank-modal-you">
         <span>SUA POSIÇÃO</span>
         {% if my_rank_month and my_rank_month.rank %}
-        <strong>#{{ my_rank_month.rank }} · {{ my_rank_month.post_count }} posts</strong>
+        <strong>#{{ my_rank_month.rank }} · {{ my_rank_month.post_count }} posts{% if my_rank_month.view_count %} · {{ format_count(my_rank_month.view_count) }} views{% endif %}</strong>
         {% else %}
         <strong>Sem publicações ainda</strong>
         {% endif %}

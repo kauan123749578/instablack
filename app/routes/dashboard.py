@@ -206,6 +206,7 @@ def _top_platform_players(
             User.display_name,
             User.avatar_key,
             func.count(PublishLog.id).label("post_count"),
+            func.coalesce(func.sum(PublishLog.play_count), 0).label("view_count"),
         )
         .join(InstagramAccount, InstagramAccount.user_id == User.id)
         .join(PublishLog, PublishLog.account_id == InstagramAccount.id)
@@ -230,6 +231,7 @@ def _top_platform_players(
             "display_name": (r.display_name or r.username),
             "avatar_url": f"/media/{r.avatar_key}" if r.avatar_key else None,
             "post_count": int(r.post_count),
+            "view_count": int(r.view_count or 0),
             "tier": _rank_tier(int(r.post_count)),
         }
         for r in rows
@@ -266,6 +268,17 @@ def _viewer_rank_entry(
         )
     ) or 0
     my_count = int(my_count)
+    my_views = db.scalar(
+        select(func.coalesce(func.sum(PublishLog.play_count), 0))
+        .join(InstagramAccount, PublishLog.account_id == InstagramAccount.id)
+        .where(
+            InstagramAccount.user_id == viewer.id,
+            PublishLog.status == "success",
+            PublishLog.created_at >= _utc_naive(start),
+            PublishLog.created_at < _utc_naive(end),
+        )
+    ) or 0
+    my_views = int(my_views)
 
     better_filters = [
         PublishLog.status == "success",
@@ -293,6 +306,7 @@ def _viewer_rank_entry(
         "display_name": (viewer.display_name or viewer.username),
         "avatar_url": f"/media/{viewer.avatar_key}" if viewer.avatar_key else None,
         "post_count": my_count,
+        "view_count": my_views,
         "rank": better + 1 if my_count > 0 else None,
         "tier": _rank_tier(my_count),
     }

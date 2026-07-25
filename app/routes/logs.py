@@ -1,9 +1,11 @@
 """Logs globais de publicação."""
 from __future__ import annotations
 
+import datetime as dt
+
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import RedirectResponse
-from sqlalchemy import delete, desc, func, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.deps import get_current_user, get_effective_user
@@ -15,6 +17,11 @@ router = APIRouter(prefix="/logs", tags=["logs"])
 VISIBLE_ACCOUNT_STATUSES = ("active", "paused", "needs_login", "proxy_down", "banned")
 
 
+def _logs_visible_after(user: User) -> dt.datetime | None:
+    """Cutoff da aba Logs — rank/insights ignoram este filtro."""
+    return getattr(user, "logs_cleared_at", None)
+
+
 @router.get("")
 def user_logs(
     request: Request,
@@ -23,6 +30,7 @@ def user_logs(
 ):
     status_filter = request.query_params.get("status", "").strip()
     account_filter = request.query_params.get("account_id", "").strip()
+    cleared_at = _logs_visible_after(user)
 
     q = (
         select(PublishLog)
@@ -32,6 +40,8 @@ def user_logs(
         .order_by(desc(PublishLog.created_at))
         .limit(500)
     )
+    if cleared_at is not None:
+        q = q.where(PublishLog.created_at > cleared_at)
     if status_filter in ("success", "failed", "skipped"):
         q = q.where(PublishLog.status == status_filter)
     if account_filter.isdigit():
@@ -47,14 +57,15 @@ def user_logs(
         .order_by(InstagramAccount.username.asc())
     ).all()
 
-    counts = dict(
-        db.execute(
-            select(PublishLog.status, func.count(PublishLog.id))
-            .join(PublishLog.account)
-            .where(InstagramAccount.user_id == user.id)
-            .group_by(PublishLog.status)
-        ).all()
+    counts_q = (
+        select(PublishLog.status, func.count(PublishLog.id))
+        .join(PublishLog.account)
+        .where(InstagramAccount.user_id == user.id)
+        .group_by(PublishLog.status)
     )
+    if cleared_at is not None:
+        counts_q = counts_q.where(PublishLog.created_at > cleared_at)
+    counts = dict(db.execute(counts_q).all())
 
     return templates.TemplateResponse(
         "logs.html",
@@ -77,12 +88,10 @@ def clear_user_logs(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Apaga o histórico de logs de publicação do usuário."""
-    account_ids = db.scalars(
-        select(InstagramAccount.id).where(InstagramAccount.user_id == user.id)
-    ).all()
-    if account_ids:
-        db.execute(delete(PublishLog).where(PublishLog.account_id.in_(list(account_ids))))
+    """Limpa só a aba Logs — NÃO apaga PublishLog (rank e views permanecem)."""
+    db_user = db.get(User, user.id)
+    if db_user is not None:
+        db_user.logs_cleared_at = dt.datetime.utcnow()
         db.commit()
     wants_json = "application/json" in (request.headers.get("accept") or "").lower()
     if wants_json or request.headers.get("x-requested-with") == "XMLHttpRequest":
