@@ -760,6 +760,8 @@
           videoInput.accept = "image/jpeg,image/png,image/webp,video/mp4,video/quicktime";
         }
         if (captionWrap) captionWrap.style.display = "none";
+        const capField = document.getElementById("caption-field");
+        if (capField) capField.removeAttribute("required");
         if (thumbWrap) thumbWrap.style.display = "none";
         if (camouflageWrap) camouflageWrap.style.display = "none";
         if (storyLinkWrap) storyLinkWrap.style.display = "";
@@ -773,6 +775,8 @@
         }
         if (videoList) videoList.style.display = "none";
         if (captionWrap) captionWrap.style.display = "";
+        const capFieldPhoto = document.getElementById("caption-field");
+        if (capFieldPhoto) capFieldPhoto.setAttribute("required", "required");
         if (thumbWrap) thumbWrap.style.display = "none";
         if (camouflageWrap) camouflageWrap.style.display = "none";
         if (storyLinkWrap) storyLinkWrap.style.display = "none";
@@ -785,6 +789,8 @@
           videoInput.accept = "video/mp4,video/quicktime,video/webm";
         }
         if (captionWrap) captionWrap.style.display = "";
+        const capFieldReel = document.getElementById("caption-field");
+        if (capFieldReel) capFieldReel.setAttribute("required", "required");
         if (thumbWrap) thumbWrap.style.display = "";
         if (camouflageWrap) camouflageWrap.style.display = "";
         if (storyLinkWrap) storyLinkWrap.style.display = "none";
@@ -1661,6 +1667,15 @@
     form.addEventListener("submit", async (e) => {
       const files = videoInput?.files ? Array.from(videoInput.files) : [];
       const isReel = contentType?.value === "reel";
+      const isPhoto = contentType?.value === "photo";
+      const captionField = form.querySelector('[name="caption"]');
+      const captionText = (captionField?.value || "").trim();
+      if ((isReel || isPhoto) && !captionText) {
+        e.preventDefault();
+        alert("Legenda obrigatória. Cole o texto do Reel/Foto antes de criar.");
+        captionField?.focus();
+        return;
+      }
       if (!files.length) {
         e.preventDefault();
         alert(isReel

@@ -980,6 +980,8 @@ async def create_automation(
     error: str | None = None
     if content_type not in CONTENT_TYPES:
         error = "Tipo de conteúdo inválido."
+    elif content_type in ("reel", "photo") and not caption:
+        error = "Legenda obrigatória para Reel/Foto. Cole o texto antes de criar."
     elif schedule_mode not in ("now", "recurring", "calendar"):
         error = "Modo de publicação inválido."
     elif schedule_mode == "recurring" and interval_minutes not in ALLOWED_INTERVALS:
@@ -1445,6 +1447,11 @@ async def create_reel_upload_draft(
     )
     caption = normalize_caption_text(caption)
     captions_json = None  # rotação removida — só legenda fixa
+    if not caption:
+        return JSONResponse(
+            {"error": "Legenda obrigatória para Reel. Cole o texto antes de criar."},
+            status_code=400,
+        )
     storage = get_storage()
     thumb_key, thumb_original_name = _save_thumb(storage, thumb)
     want_camu = _want_camouflage(camouflage_enabled, camouflage_cover)
@@ -2069,7 +2076,13 @@ async def edit_automation(
         caption_rotate_by_account=caption_rotate_by_account,
         caption_rotate_by_reel=caption_rotate_by_reel,
     )
-    a.caption = normalize_caption_text(caption)
+    caption_clean = normalize_caption_text(caption)
+    if content_type in ("reel", "photo") and not caption_clean:
+        raise HTTPException(
+            status_code=400,
+            detail="Legenda obrigatória para Reel/Foto.",
+        )
+    a.caption = caption_clean
     a.captions_json = None  # limpa lista de rotação legada
     a.content_type = content_type
     a.interval_minutes = interval_minutes

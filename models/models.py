@@ -288,6 +288,8 @@ class PublishLog(Base):
     )
     error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     video_key: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    # True = Meta confirmou caption; False = postou sem legenda; None = não verificado
+    caption_ok: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
     metadata_fingerprint: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     raw_sha256: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     clean_sha256: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)

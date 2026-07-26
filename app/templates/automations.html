@@ -278,11 +278,11 @@
               <input type="number" name="rest_minutes" min="0" max="10080" value="{{ a.rest_minutes or 0 }}">
             </label>
           </fieldset>
-          <label>Legenda (fixa para todos os Reels/contas)
-            <textarea name="caption" rows="8">{{ a.caption }}</textarea>
+          <label>Legenda (obrigatória · fixa para todos)
+            <textarea name="caption" rows="8" required>{{ a.caption }}</textarea>
           </label>
           <p class="muted" style="margin:6px 0;font-size:12px">
-            Sem rotação: o mesmo texto em todas as contas e vídeos. Reel/Foto sem legenda não publica.
+            Reel/Foto sem legenda não salva e não publica.
           </p>
           <label>Trocar capa (.jpg/.png)
             <input type="file" name="thumb" accept="image/jpeg,image/png,image/webp">

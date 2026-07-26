@@ -230,6 +230,8 @@ def _sqlite_migrate() -> None:
                 conn.execute(text("ALTER TABLE publish_logs ADD COLUMN clean_sha256 VARCHAR(64)"))
             if "clean_size" not in pcols:
                 conn.execute(text("ALTER TABLE publish_logs ADD COLUMN clean_size INTEGER"))
+            if "caption_ok" not in pcols:
+                conn.execute(text("ALTER TABLE publish_logs ADD COLUMN caption_ok BOOLEAN"))
             conn.execute(
                 text(
                     "CREATE INDEX IF NOT EXISTS ix_publish_logs_account_created "
@@ -404,6 +406,8 @@ def _postgres_migrate() -> None:
                 conn.execute(text("ALTER TABLE publish_logs ADD COLUMN clean_sha256 VARCHAR(64)"))
             if "clean_size" not in pcols:
                 conn.execute(text("ALTER TABLE publish_logs ADD COLUMN clean_size INTEGER"))
+            if "caption_ok" not in pcols:
+                conn.execute(text("ALTER TABLE publish_logs ADD COLUMN caption_ok BOOLEAN"))
             conn.execute(
                 text(
                     "CREATE INDEX IF NOT EXISTS ix_publish_logs_account_created "

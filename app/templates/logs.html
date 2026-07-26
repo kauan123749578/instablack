@@ -55,6 +55,7 @@
           <th>Conta</th>
           <th>Automação</th>
           <th>Status</th>
+          <th>Legenda</th>
           <th>Detalhe</th>
         </tr>
       </thead>
@@ -68,11 +69,27 @@
           </td>
           <td><span class="og-badge {{ status_badge_class(log.status) }}">{{ status_label(log.status) }}</span></td>
           <td>
+            {% if log.content_type in ('reel', 'photo') %}
+              {% if log.caption_ok is true %}
+              <span class="og-badge badge-green">Com legenda</span>
+              {% elif log.caption_ok is false %}
+              <span class="og-badge badge-red">SEM LEGENDA</span>
+              {% else %}
+              <span class="og-badge">Não verificado</span>
+              {% endif %}
+            {% else %}
+              <span class="og-muted">—</span>
+            {% endif %}
+          </td>
+          <td>
             {% if log.media_url %}
             <a href="{{ log.media_url }}" target="_blank" rel="noopener">Abrir post</a>
-            {% elif log.error %}
-            <span class="og-muted log-error-cell">{{ log.error }}</span>
-            {% else %}—{% endif %}
+            {% endif %}
+            {% if log.error %}
+            <span class="og-muted log-error-cell"{% if log.media_url %} style="display:block;margin-top:4px"{% endif %}>{{ log.error }}</span>
+            {% elif not log.media_url %}
+            —
+            {% endif %}
           </td>
         </tr>
         {% endfor %}

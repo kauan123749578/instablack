@@ -950,7 +950,18 @@ def _execute_publish(
             )
 
         # Meta aceitou o post mas engoliu a legenda → alerta forte
-        if result.get("caption_verified") is False and (caption or "").strip():
+        caption_verified = result.get("caption_verified")
+        caption_ok: bool | None = None
+        if (content_type or "reel") in ("reel", "photo"):
+            if caption_verified is True:
+                caption_ok = True
+            elif caption_verified is False:
+                caption_ok = False
+            elif (caption or "").strip():
+                # Enviamos caption mas a API não confirmou o campo
+                caption_ok = None
+
+        if caption_ok is False:
             log.error(
                 "META REEL SEM LEGENDA no Instagram account=%s media=%s sent_len=%s",
                 username,
@@ -978,14 +989,21 @@ def _execute_publish(
                 if auto:
                     auto.last_run_at = dt.datetime.utcnow()
                     auto.total_runs = (auto.total_runs or 0) + 1
+            log_status = "success"
+            log_error = None
+            if caption_ok is False:
+                log_status = "failed"
+                log_error = "Reel/Foto publicado mas SEM legenda (Meta dropou o texto)"
             plog = PublishLog(
                 automation_id=automation_id,
                 account_id=account_id,
-                status="success",
+                status=log_status,
                 content_type=content_type or "reel",
                 media_id=result.get("id"),
                 media_url=result.get("url"),
                 video_key=video_key,
+                caption_ok=caption_ok,
+                error=log_error,
             )
             db.add(plog)
             db.flush()
@@ -993,19 +1011,21 @@ def _execute_publish(
             if auto and (auto.start_mode or "") == "now":
                 _complete_now_automation_if_ready(db, auto)
 
-        notify_publish_success(
-            owner_user_id,
-            username,
-            content_type=content_type or "reel",
-            publish_log_id=publish_log_id,
-        )
+        if caption_ok is not False:
+            notify_publish_success(
+                owner_user_id,
+                username,
+                content_type=content_type or "reel",
+                publish_log_id=publish_log_id,
+            )
         return {
-            "ok": True,
+            "ok": caption_ok is not False,
             "provider": "meta",
             "playlist_code": PLAYLIST_CODE,
             "playlist_index": playlist_index,
             "video_key": video_key,
             "camouflage_applied": bool(camouflage_cover_key and (content_type or "reel") == "reel"),
+            "caption_ok": caption_ok,
             **result,
         }
 
@@ -1275,6 +1295,8 @@ def _execute_publish(
                 media_id=result.get("id"),
                 media_url=result.get("url"),
                 video_key=video_key,
+                # instagrapi: enviamos caption → assumimos OK (API não devolve verificação)
+                caption_ok=True if (caption or "").strip() and (content_type or "reel") in ("reel", "photo") else None,
                 metadata_fingerprint=(meta_info or {}).get("fingerprint"),
                 raw_sha256=(meta_info or {}).get("raw_sha256"),
                 clean_sha256=(meta_info or {}).get("clean_sha256"),
