@@ -22,7 +22,7 @@
     if (label) label.textContent = pinned ? "Desafixar sidebar" : "Fixar sidebar";
     const icon = sidebarPinBtn.querySelector("[data-lucide]");
     if (icon) {
-      icon.setAttribute("data-lucide", pinned ? "pin-off" : "pin");
+      icon.setAttribute("data-lucide", pinned ? "panel-left-close" : "panel-left");
       try {
         if (window.lucide) lucide.createIcons({ nodes: [sidebarPinBtn] });
       } catch (_) {}
