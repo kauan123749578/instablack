@@ -64,7 +64,7 @@ def fetch_media_caption(access_token: str, media_id: str) -> str | None:
     response = requests.get(
         _graph_url(media_id),
         params={
-            "fields": "caption",
+            "fields": "caption,media_type,media_product_type",
             "access_token": access_token,
         },
         timeout=30,
@@ -73,6 +73,82 @@ def fetch_media_caption(access_token: str, media_id: str) -> str | None:
     if "caption" not in data:
         return None
     return str(data.get("caption") or "")
+
+
+def verify_published_caption(
+    access_token: str,
+    media_id: str,
+    *,
+    expected_min_len: int = 1,
+    attempts: int = 8,
+) -> bool:
+    """Confirma que o Instagram gravou legenda. Retry agressivo (Reels demoram a indexar).
+
+    Returns:
+        True  — caption presente e não-vazia
+        False — confirmado vazio OU campo nunca apareceu após todas as tentativas
+    """
+    import logging
+
+    _log = logging.getLogger(__name__)
+    # Espera crescente: ~2+3+4+5+6+8+10+12 ≈ 50s no pior caso
+    delays = (2.0, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0, 12.0)
+    last_raw: str | None = None
+    saw_field = False
+
+    for i in range(max(1, attempts)):
+        wait = delays[i] if i < len(delays) else delays[-1]
+        time.sleep(wait)
+        try:
+            raw = fetch_media_caption(access_token, media_id)
+        except MetaInstagramError as exc:
+            _log.warning(
+                "META caption verify attempt=%s/%s media=%s err=%s",
+                i + 1,
+                attempts,
+                media_id,
+                exc,
+            )
+            continue
+
+        if raw is None:
+            _log.info(
+                "META caption verify attempt=%s/%s media=%s field_missing",
+                i + 1,
+                attempts,
+                media_id,
+            )
+            continue
+
+        saw_field = True
+        last_raw = raw
+        got = (
+            raw.replace("\u200b", "")
+            .replace(_BLANK_LINE_GUARD, "")
+            .strip()
+        )
+        if len(got) >= max(1, int(expected_min_len or 1)):
+            _log.info(
+                "META caption verify ok media=%s attempt=%s got_len=%s",
+                media_id,
+                i + 1,
+                len(got),
+            )
+            return True
+        _log.warning(
+            "META caption verify empty media=%s attempt=%s raw_len=%s",
+            media_id,
+            i + 1,
+            len(raw),
+        )
+
+    _log.error(
+        "META caption verify FAILED media=%s saw_field=%s last_raw_len=%s",
+        media_id,
+        saw_field,
+        len(last_raw or ""),
+    )
+    return False
 
 
 @dataclass(frozen=True)
@@ -611,10 +687,12 @@ def publish_media(
     cover_error: str | None = None
 
     def _create_container(body: dict[str, str]) -> dict:
-        # Form body UTF-8 (não querystring) — captions longas/emoji quebram na URL.
+        # Encode UTF-8 explícito — evita Meta engolir caption com emoji/quebra.
+        encoded = urlencode(body, doseq=True, encoding="utf-8", errors="strict")
         create_response = requests.post(
             _graph_url(f"{ig_user_id}/media"),
-            data=body,
+            data=encoded.encode("utf-8"),
+            headers={"Content-Type": "application/x-www-form-urlencoded; charset=utf-8"},
             timeout=60,
         )
         return _json_or_error(create_response, "Falha ao criar container da Meta")
@@ -660,41 +738,21 @@ def publish_media(
     except MetaInstagramError:
         permalink = None
 
+    # Reel/Foto COM legenda: só True conta. Sem confirmação após retries = False.
     caption_verified: bool | None = None
     if caption_text and content_type in ("reel", "photo"):
-        try:
-            # A API às vezes demora um pouco a indexar a caption
-            time.sleep(1.5)
-            published_caption = fetch_media_caption(access_token, media_id)
-            if published_caption is None:
-                caption_verified = None
-                _log.warning(
-                    "META caption verify skipped (campo ausente) media=%s",
-                    media_id,
-                )
-            else:
-                # Compara sem ZWSP / braille — só se sobrou texto visível
-                got = (
-                    published_caption.replace("\u200b", "")
-                    .replace(_BLANK_LINE_GUARD, "")
-                    .strip()
-                )
-                caption_verified = bool(got)
-                if not got:
-                    _log.error(
-                        "META caption DROPPED após publish media=%s sent_len=%s got=%r",
-                        media_id,
-                        len(caption_text),
-                        published_caption[:80] if published_caption else "",
-                    )
-                else:
-                    _log.info(
-                        "META caption verify ok media=%s got_len=%s",
-                        media_id,
-                        len(got),
-                    )
-        except MetaInstagramError as verify_exc:
-            _log.warning("META caption verify falhou media=%s: %s", media_id, verify_exc)
+        caption_verified = verify_published_caption(
+            access_token,
+            media_id,
+            expected_min_len=1,
+            attempts=8,
+        )
+        if not caption_verified:
+            _log.error(
+                "META caption DROPPED/UNVERIFIED media=%s sent_len=%s",
+                media_id,
+                len(caption_text),
+            )
 
     return {
         "id": media_id,

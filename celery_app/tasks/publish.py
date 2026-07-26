@@ -949,29 +949,28 @@ def _execute_publish(
                 link="/logs",
             )
 
-        # Meta aceitou o post mas engoliu a legenda → alerta forte
+        # Meta: só "Com legenda" (True) é sucesso. Não verificado / SEM = falha.
         caption_verified = result.get("caption_verified")
         caption_ok: bool | None = None
         if (content_type or "reel") in ("reel", "photo"):
             if caption_verified is True:
                 caption_ok = True
-            elif caption_verified is False:
+            else:
+                # False OU None (API não confirmou) → falha de legenda
                 caption_ok = False
-            elif (caption or "").strip():
-                # Enviamos caption mas a API não confirmou o campo
-                caption_ok = None
 
-        if caption_ok is False:
+        if caption_ok is not True and (content_type or "reel") in ("reel", "photo"):
             log.error(
-                "META REEL SEM LEGENDA no Instagram account=%s media=%s sent_len=%s",
+                "META REEL SEM LEGENDA CONFIRMADA account=%s media=%s sent_len=%s verified=%s",
                 username,
                 result.get("id"),
                 result.get("caption_sent_len"),
+                caption_verified,
             )
             create_notification(
                 owner_user_id,
-                "Reels publicado SEM legenda (Meta)",
-                f"@{username}: enviamos a legenda, mas o Instagram não gravou. Abra o post e edite manualmente se precisar.",
+                "Reels SEM legenda confirmada",
+                f"@{username}: o post saiu, mas não confirmamos a legenda no Instagram. Abra o post e edite se estiver vazio.",
                 kind="error",
                 link=str(result.get("url") or "/logs"),
             )
@@ -991,9 +990,13 @@ def _execute_publish(
                     auto.total_runs = (auto.total_runs or 0) + 1
             log_status = "success"
             log_error = None
-            if caption_ok is False:
+            if (content_type or "reel") in ("reel", "photo") and caption_ok is not True:
                 log_status = "failed"
-                log_error = "Reel/Foto publicado mas SEM legenda (Meta dropou o texto)"
+                log_error = (
+                    "Reel/Foto SEM legenda confirmada pela Meta "
+                    "(post pode ter saído vazio — confira no Instagram)"
+                )
+                caption_ok = False
             plog = PublishLog(
                 automation_id=automation_id,
                 account_id=account_id,
@@ -1011,7 +1014,7 @@ def _execute_publish(
             if auto and (auto.start_mode or "") == "now":
                 _complete_now_automation_if_ready(db, auto)
 
-        if caption_ok is not False:
+        if caption_ok is True or (content_type or "reel") not in ("reel", "photo"):
             notify_publish_success(
                 owner_user_id,
                 username,
@@ -1019,7 +1022,7 @@ def _execute_publish(
                 publish_log_id=publish_log_id,
             )
         return {
-            "ok": caption_ok is not False,
+            "ok": caption_ok is True or (content_type or "reel") not in ("reel", "photo"),
             "provider": "meta",
             "playlist_code": PLAYLIST_CODE,
             "playlist_index": playlist_index,
