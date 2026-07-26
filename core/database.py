@@ -31,17 +31,15 @@ def _is_already_exists(exc: Exception) -> bool:
 def _engine_kwargs() -> dict:
     if settings.is_sqlite:
         return {"connect_args": {"check_same_thread": False}}
-    # connect_timeout evita hang infinito no boot (Railway/Postgres inacessível).
-    # statement_timeout evita migrate travado em lock de outro worker.
+    # connect_timeout evita hang infinito se o Postgres estiver inacessível.
+    # Sem statement_timeout global: no boot (web+worker+beat) ele cancelava
+    # a migração/inspeção e gerava QueryCanceled + upstream error.
     return {
         "pool_pre_ping": True,
         "pool_size": 5,
         "max_overflow": 10,
         "pool_timeout": 30,
-        "connect_args": {
-            "connect_timeout": 10,
-            "options": "-c statement_timeout=30000",
-        },
+        "connect_args": {"connect_timeout": 10},
     }
 
 
@@ -274,151 +272,132 @@ def _sqlite_migrate() -> None:
 
 
 def _postgres_migrate() -> None:
-    """Adiciona colunas novas em Postgres sem Alembic."""
+    """Adiciona colunas novas em Postgres sem Alembic.
+
+    Usa ADD COLUMN IF NOT EXISTS (leve e seguro sob corrida web/worker/beat)
+    em vez de inspect.get_columns(), que no catálogo do PG pode demorar/travar.
+    """
     if settings.is_sqlite:
         return
-    insp = inspect(engine)
-    tables = set(insp.get_table_names())
+
+    def _table_exists(conn, name: str) -> bool:
+        return bool(
+            conn.execute(
+                text("SELECT to_regclass(:reg)"),
+                {"reg": f"public.{name}"},
+            ).scalar()
+        )
+
+    def _add_columns(conn, table: str, columns: list[tuple[str, str]]) -> None:
+        if not _table_exists(conn, table):
+            return
+        for col, ddl in columns:
+            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {ddl}"))
+
     with engine.begin() as conn:
-        if "automations" in tables:
-            cols = {c["name"] for c in insp.get_columns("automations")}
-            if "content_type" not in cols:
-                conn.execute(text("ALTER TABLE automations ADD COLUMN content_type VARCHAR(16) DEFAULT 'reel'"))
-            if "schedule_type" not in cols:
-                conn.execute(text("ALTER TABLE automations ADD COLUMN schedule_type VARCHAR(16) DEFAULT 'interval'"))
-            if "start_mode" not in cols:
-                conn.execute(text("ALTER TABLE automations ADD COLUMN start_mode VARCHAR(16) DEFAULT 'recurring'"))
-            if "calendar_days" not in cols:
-                conn.execute(text("ALTER TABLE automations ADD COLUMN calendar_days TEXT"))
-            if "calendar_time" not in cols:
-                conn.execute(text("ALTER TABLE automations ADD COLUMN calendar_time VARCHAR(8)"))
-            if "story_link" not in cols:
-                conn.execute(text("ALTER TABLE automations ADD COLUMN story_link VARCHAR(512)"))
-            if "story_sticker_text" not in cols:
-                conn.execute(text("ALTER TABLE automations ADD COLUMN story_sticker_text VARCHAR(64)"))
-            if "story_layout_json" not in cols:
-                conn.execute(text("ALTER TABLE automations ADD COLUMN story_layout_json TEXT"))
-            if "videos_json" not in cols:
-                conn.execute(text("ALTER TABLE automations ADD COLUMN videos_json TEXT"))
-            if "captions_json" not in cols:
-                conn.execute(text("ALTER TABLE automations ADD COLUMN captions_json TEXT"))
-            if "caption_rotate_by_account" not in cols:
-                conn.execute(text(
-                    "ALTER TABLE automations ADD COLUMN caption_rotate_by_account BOOLEAN DEFAULT TRUE"
-                ))
-            if "caption_rotate_by_reel" not in cols:
-                conn.execute(text(
-                    "ALTER TABLE automations ADD COLUMN caption_rotate_by_reel BOOLEAN DEFAULT FALSE"
-                ))
-            if "current_index" not in cols:
-                conn.execute(text("ALTER TABLE automations ADD COLUMN current_index INTEGER DEFAULT 0"))
-            if "jitter_enabled" not in cols:
-                conn.execute(text("ALTER TABLE automations ADD COLUMN jitter_enabled BOOLEAN DEFAULT FALSE"))
-            if "jitter_minutes" not in cols:
-                conn.execute(text("ALTER TABLE automations ADD COLUMN jitter_minutes INTEGER DEFAULT 10"))
-            if "stagger_enabled" not in cols:
-                conn.execute(text("ALTER TABLE automations ADD COLUMN stagger_enabled BOOLEAN DEFAULT TRUE"))
-            if "stagger_min_minutes" not in cols:
-                conn.execute(text("ALTER TABLE automations ADD COLUMN stagger_min_minutes INTEGER DEFAULT 2"))
-            if "stagger_max_minutes" not in cols:
-                conn.execute(text("ALTER TABLE automations ADD COLUMN stagger_max_minutes INTEGER DEFAULT 8"))
-            if "camouflage_cover_key" not in cols:
-                conn.execute(text("ALTER TABLE automations ADD COLUMN camouflage_cover_key VARCHAR(512)"))
-            if "camouflage_opacity" not in cols:
-                conn.execute(text(
-                    "ALTER TABLE automations ADD COLUMN camouflage_opacity DOUBLE PRECISION DEFAULT 0.10"
-                ))
-            if "posts_per_batch" not in cols:
-                conn.execute(text("ALTER TABLE automations ADD COLUMN posts_per_batch INTEGER DEFAULT 0"))
-            if "rest_minutes" not in cols:
-                conn.execute(text("ALTER TABLE automations ADD COLUMN rest_minutes INTEGER DEFAULT 0"))
-            if "posts_in_batch" not in cols:
-                conn.execute(text("ALTER TABLE automations ADD COLUMN posts_in_batch INTEGER DEFAULT 0"))
+        _add_columns(
+            conn,
+            "automations",
+            [
+                ("content_type", "VARCHAR(16) DEFAULT 'reel'"),
+                ("schedule_type", "VARCHAR(16) DEFAULT 'interval'"),
+                ("start_mode", "VARCHAR(16) DEFAULT 'recurring'"),
+                ("calendar_days", "TEXT"),
+                ("calendar_time", "VARCHAR(8)"),
+                ("story_link", "VARCHAR(512)"),
+                ("story_sticker_text", "VARCHAR(64)"),
+                ("story_layout_json", "TEXT"),
+                ("videos_json", "TEXT"),
+                ("captions_json", "TEXT"),
+                ("caption_rotate_by_account", "BOOLEAN DEFAULT TRUE"),
+                ("caption_rotate_by_reel", "BOOLEAN DEFAULT FALSE"),
+                ("current_index", "INTEGER DEFAULT 0"),
+                ("jitter_enabled", "BOOLEAN DEFAULT FALSE"),
+                ("jitter_minutes", "INTEGER DEFAULT 10"),
+                ("stagger_enabled", "BOOLEAN DEFAULT TRUE"),
+                ("stagger_min_minutes", "INTEGER DEFAULT 2"),
+                ("stagger_max_minutes", "INTEGER DEFAULT 8"),
+                ("camouflage_cover_key", "VARCHAR(512)"),
+                ("camouflage_opacity", "DOUBLE PRECISION DEFAULT 0.10"),
+                ("posts_per_batch", "INTEGER DEFAULT 0"),
+                ("rest_minutes", "INTEGER DEFAULT 0"),
+                ("posts_in_batch", "INTEGER DEFAULT 0"),
+            ],
+        )
+        if _table_exists(conn, "automations"):
             try:
-                conn.execute(text(
-                    "ALTER TABLE automations ALTER COLUMN calendar_time TYPE TEXT"
-                ))
+                conn.execute(text("ALTER TABLE automations ALTER COLUMN calendar_time TYPE TEXT"))
             except Exception:
                 pass
-        if "users" in tables:
-            ucols = {c["name"] for c in insp.get_columns("users")}
-            if "display_name" not in ucols:
-                conn.execute(text("ALTER TABLE users ADD COLUMN display_name VARCHAR(255)"))
-            if "avatar_key" not in ucols:
-                conn.execute(text("ALTER TABLE users ADD COLUMN avatar_key VARCHAR(512)"))
-            if "is_admin" not in ucols:
-                conn.execute(text("ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT FALSE"))
-            if "is_owner" not in ucols:
-                conn.execute(text("ALTER TABLE users ADD COLUMN is_owner BOOLEAN DEFAULT FALSE"))
-            if "owner_private" not in ucols:
-                conn.execute(text("ALTER TABLE users ADD COLUMN owner_private BOOLEAN DEFAULT FALSE"))
-            if "account_limit" not in ucols:
-                conn.execute(text("ALTER TABLE users ADD COLUMN account_limit INTEGER"))
-            if "notification_prefs_json" not in ucols:
-                conn.execute(text("ALTER TABLE users ADD COLUMN notification_prefs_json TEXT"))
-            if "anti_farm_prefs_json" not in ucols:
-                conn.execute(text("ALTER TABLE users ADD COLUMN anti_farm_prefs_json TEXT"))
-            if "logs_cleared_at" not in ucols:
-                conn.execute(text("ALTER TABLE users ADD COLUMN logs_cleared_at TIMESTAMPTZ"))
-            conn.execute(text("UPDATE users SET is_admin = TRUE WHERE username = 'admin' AND is_admin IS NOT TRUE"))
-        if "instagram_accounts" in tables:
-            acols = {c["name"] for c in insp.get_columns("instagram_accounts")}
-            if "provider" not in acols:
-                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN provider VARCHAR(24) DEFAULT 'instagrapi'"))
-            if "meta_ig_user_id" not in acols:
-                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN meta_ig_user_id VARCHAR(64)"))
-            if "encrypted_meta_access_token" not in acols:
-                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN encrypted_meta_access_token TEXT"))
-            if "meta_token_expires_at" not in acols:
-                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN meta_token_expires_at TIMESTAMPTZ"))
-            if "last_health_check_at" not in acols:
-                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN last_health_check_at TIMESTAMPTZ"))
-            if "proxy_ip" not in acols:
-                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN proxy_ip VARCHAR(45)"))
-            if "proxy_geo" not in acols:
-                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN proxy_geo VARCHAR(64)"))
-            if "encrypted_web_cookies" not in acols:
-                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN encrypted_web_cookies TEXT"))
-            if "user_meta_app_id" not in acols:
-                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN user_meta_app_id INTEGER"))
-            if "followers_count" not in acols:
-                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN followers_count INTEGER"))
-            if "followers_updated_at" not in acols:
-                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN followers_updated_at TIMESTAMPTZ"))
-            if "warmup_enabled" not in acols:
-                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN warmup_enabled BOOLEAN DEFAULT FALSE"))
-            if "warmup_days" not in acols:
-                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN warmup_days INTEGER DEFAULT 7"))
-            if "warmup_started_at" not in acols:
-                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN warmup_started_at TIMESTAMPTZ"))
+
+        _add_columns(
+            conn,
+            "users",
+            [
+                ("display_name", "VARCHAR(255)"),
+                ("avatar_key", "VARCHAR(512)"),
+                ("is_admin", "BOOLEAN DEFAULT FALSE"),
+                ("is_owner", "BOOLEAN DEFAULT FALSE"),
+                ("owner_private", "BOOLEAN DEFAULT FALSE"),
+                ("account_limit", "INTEGER"),
+                ("notification_prefs_json", "TEXT"),
+                ("anti_farm_prefs_json", "TEXT"),
+                ("logs_cleared_at", "TIMESTAMPTZ"),
+            ],
+        )
+        if _table_exists(conn, "users"):
+            conn.execute(
+                text(
+                    "UPDATE users SET is_admin = TRUE "
+                    "WHERE username = 'admin' AND is_admin IS NOT TRUE"
+                )
+            )
+
+        _add_columns(
+            conn,
+            "instagram_accounts",
+            [
+                ("provider", "VARCHAR(24) DEFAULT 'instagrapi'"),
+                ("meta_ig_user_id", "VARCHAR(64)"),
+                ("encrypted_meta_access_token", "TEXT"),
+                ("meta_token_expires_at", "TIMESTAMPTZ"),
+                ("last_health_check_at", "TIMESTAMPTZ"),
+                ("proxy_ip", "VARCHAR(45)"),
+                ("proxy_geo", "VARCHAR(64)"),
+                ("encrypted_web_cookies", "TEXT"),
+                ("user_meta_app_id", "INTEGER"),
+                ("followers_count", "INTEGER"),
+                ("followers_updated_at", "TIMESTAMPTZ"),
+                ("warmup_enabled", "BOOLEAN DEFAULT FALSE"),
+                ("warmup_days", "INTEGER DEFAULT 7"),
+                ("warmup_started_at", "TIMESTAMPTZ"),
+            ],
+        )
+        if _table_exists(conn, "instagram_accounts"):
             conn.execute(
                 text(
                     "CREATE INDEX IF NOT EXISTS ix_instagram_accounts_user_status "
                     "ON instagram_accounts (user_id, status)"
                 )
             )
-        if "publish_logs" in tables:
-            pcols = {c["name"] for c in insp.get_columns("publish_logs")}
-            if "play_count" not in pcols:
-                conn.execute(text("ALTER TABLE publish_logs ADD COLUMN play_count INTEGER"))
-            if "like_count" not in pcols:
-                conn.execute(text("ALTER TABLE publish_logs ADD COLUMN like_count INTEGER"))
-            if "insights_fetched_at" not in pcols:
-                conn.execute(text("ALTER TABLE publish_logs ADD COLUMN insights_fetched_at TIMESTAMPTZ"))
-            if "content_type" not in pcols:
-                conn.execute(text("ALTER TABLE publish_logs ADD COLUMN content_type VARCHAR(16)"))
-            if "video_key" not in pcols:
-                conn.execute(text("ALTER TABLE publish_logs ADD COLUMN video_key VARCHAR(512)"))
-            if "metadata_fingerprint" not in pcols:
-                conn.execute(text("ALTER TABLE publish_logs ADD COLUMN metadata_fingerprint VARCHAR(64)"))
-            if "raw_sha256" not in pcols:
-                conn.execute(text("ALTER TABLE publish_logs ADD COLUMN raw_sha256 VARCHAR(64)"))
-            if "clean_sha256" not in pcols:
-                conn.execute(text("ALTER TABLE publish_logs ADD COLUMN clean_sha256 VARCHAR(64)"))
-            if "clean_size" not in pcols:
-                conn.execute(text("ALTER TABLE publish_logs ADD COLUMN clean_size INTEGER"))
-            if "caption_ok" not in pcols:
-                conn.execute(text("ALTER TABLE publish_logs ADD COLUMN caption_ok BOOLEAN"))
+
+        _add_columns(
+            conn,
+            "publish_logs",
+            [
+                ("play_count", "INTEGER"),
+                ("like_count", "INTEGER"),
+                ("insights_fetched_at", "TIMESTAMPTZ"),
+                ("content_type", "VARCHAR(16)"),
+                ("video_key", "VARCHAR(512)"),
+                ("metadata_fingerprint", "VARCHAR(64)"),
+                ("raw_sha256", "VARCHAR(64)"),
+                ("clean_sha256", "VARCHAR(64)"),
+                ("clean_size", "INTEGER"),
+                ("caption_ok", "BOOLEAN"),
+            ],
+        )
+        if _table_exists(conn, "publish_logs"):
             conn.execute(
                 text(
                     "CREATE INDEX IF NOT EXISTS ix_publish_logs_account_created "
@@ -437,17 +416,20 @@ def _postgres_migrate() -> None:
                     "ON publish_logs (status, created_at)"
                 )
             )
-        if "app_notifications" in tables:
-            ncols = {c["name"] for c in insp.get_columns("app_notifications")}
-            if "publish_log_id" not in ncols:
-                conn.execute(text("ALTER TABLE app_notifications ADD COLUMN publish_log_id INTEGER"))
-        if "warmup_jobs" in tables:
-            wcols = {c["name"] for c in insp.get_columns("warmup_jobs")}
-            if "duration_minutes" not in wcols:
-                conn.execute(text("ALTER TABLE warmup_jobs ADD COLUMN duration_minutes INTEGER DEFAULT 60"))
-            if "ends_at" not in wcols:
-                conn.execute(text("ALTER TABLE warmup_jobs ADD COLUMN ends_at TIMESTAMPTZ"))
 
+        _add_columns(
+            conn,
+            "app_notifications",
+            [("publish_log_id", "INTEGER")],
+        )
+        _add_columns(
+            conn,
+            "warmup_jobs",
+            [
+                ("duration_minutes", "INTEGER DEFAULT 60"),
+                ("ends_at", "TIMESTAMPTZ"),
+            ],
+        )
 
 def init_db() -> None:
     """Cria todas as tabelas (uso simples, sem Alembic).

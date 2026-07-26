@@ -49,14 +49,18 @@ _VIEW_AS_MUTATION_ALLOW = {
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Nunca travar "Waiting for application startup" — se o Postgres não
-    # responder, falha em ~45s e o gunicorn passa a aceitar requests.
+    # responder, falha em ~60s e o gunicorn passa a aceitar requests.
     import asyncio
 
     try:
-        await asyncio.wait_for(asyncio.to_thread(init_db), timeout=45)
-    except Exception:  # não derruba o processo se o banco estiver indisponível no boot
+        await asyncio.wait_for(asyncio.to_thread(init_db), timeout=60)
+    except asyncio.TimeoutError:
+        log.warning(
+            "init_db excedeu 60s no startup; a aplicação seguirá e tentará novamente ao usar o banco."
+        )
+    except Exception:
         log.exception(
-            "init_db falhou/timeout no startup; a aplicação seguirá e tentará novamente ao usar o banco."
+            "init_db falhou no startup; a aplicação seguirá e tentará novamente ao usar o banco."
         )
     yield
 
