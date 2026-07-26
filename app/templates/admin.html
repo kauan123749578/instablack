@@ -168,7 +168,6 @@
   {% endif %}
 </div>
 
-{% if is_owner %}
 <div class="og-glass-card" style="margin-bottom:16px;padding:18px">
   <h3 style="margin:0 0 4px;font-size:15px">
     <i data-lucide="megaphone" class="inline-icon"></i> Notificação para todos
@@ -189,6 +188,8 @@
     </button>
   </form>
 </div>
+
+{% if is_owner %}
 <div class="og-glass-card" style="margin-bottom:16px;padding:18px">
   <h3 style="margin-top:0"><i data-lucide="youtube" class="inline-icon"></i> Tutoriais Meta (YouTube)</h3>
   <p class="muted" style="margin:0 0 12px;font-size:12px">

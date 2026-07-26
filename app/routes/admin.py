@@ -219,9 +219,9 @@ def broadcast_notification(
     title: str = Form(""),
     message: str = Form(...),
     db: Session = Depends(get_db),
-    admin: User = Depends(get_owner_user),
+    admin: User = Depends(get_admin_user),
 ):
-    """Envia uma notificação (sino + push) para todos os usuários ativos."""
+    """Envia uma notificação (sino + push) para todos os usuários ativos (owner e admin)."""
     from core.notifications import create_notification
 
     body = message.strip()
