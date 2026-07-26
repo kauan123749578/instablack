@@ -949,33 +949,33 @@ def _execute_publish(
                 link="/logs",
             )
 
-        # Meta: só "Com legenda" (True) é sucesso. Não verificado / SEM = falha.
+        # publish_meta_media só retorna sucesso se caption_verified=True (senão raises)
         caption_verified = result.get("caption_verified")
-        caption_ok: bool | None = None
-        if (content_type or "reel") in ("reel", "photo"):
-            if caption_verified is True:
-                caption_ok = True
-            else:
-                # False OU None (API não confirmou) → falha de legenda
-                caption_ok = False
-
-        if caption_ok is not True and (content_type or "reel") in ("reel", "photo"):
+        caption_ok = True if caption_verified is True else False
+        if (content_type or "reel") in ("reel", "photo") and caption_ok is not True:
+            # Defesa extra — não deveria chegar aqui
+            caption_ok = False
             log.error(
-                "META REEL SEM LEGENDA CONFIRMADA account=%s media=%s sent_len=%s verified=%s",
+                "META REEL SEM LEGENDA CONFIRMADA account=%s media=%s",
                 username,
                 result.get("id"),
-                result.get("caption_sent_len"),
-                caption_verified,
             )
             create_notification(
                 owner_user_id,
-                "Reels SEM legenda confirmada",
-                f"@{username}: o post saiu, mas não confirmamos a legenda no Instagram. Abra o post e edite se estiver vazio.",
+                "Reels SEM legenda — abortado",
+                f"@{username}: a Meta não confirmou a legenda. O post não foi aceito como sucesso.",
                 kind="error",
                 link=str(result.get("url") or "/logs"),
             )
 
         publish_log_id: int | None = None
+        log_status = "success"
+        log_error = None
+        if (content_type or "reel") in ("reel", "photo") and caption_ok is not True:
+            log_status = "failed"
+            log_error = "Abortado: Reel/Foto sem legenda confirmada"
+            caption_ok = False
+
         with session_scope() as db:
             acc = db.get(InstagramAccount, account_id)
             if acc:
@@ -988,15 +988,6 @@ def _execute_publish(
                 if auto:
                     auto.last_run_at = dt.datetime.utcnow()
                     auto.total_runs = (auto.total_runs or 0) + 1
-            log_status = "success"
-            log_error = None
-            if (content_type or "reel") in ("reel", "photo") and caption_ok is not True:
-                log_status = "failed"
-                log_error = (
-                    "Reel/Foto SEM legenda confirmada pela Meta "
-                    "(post pode ter saído vazio — confira no Instagram)"
-                )
-                caption_ok = False
             plog = PublishLog(
                 automation_id=automation_id,
                 account_id=account_id,
@@ -1005,7 +996,7 @@ def _execute_publish(
                 media_id=result.get("id"),
                 media_url=result.get("url"),
                 video_key=video_key,
-                caption_ok=caption_ok,
+                caption_ok=caption_ok if (content_type or "reel") in ("reel", "photo") else None,
                 error=log_error,
             )
             db.add(plog)
@@ -1014,7 +1005,7 @@ def _execute_publish(
             if auto and (auto.start_mode or "") == "now":
                 _complete_now_automation_if_ready(db, auto)
 
-        if caption_ok is True or (content_type or "reel") not in ("reel", "photo"):
+        if log_status == "success":
             notify_publish_success(
                 owner_user_id,
                 username,
@@ -1022,7 +1013,7 @@ def _execute_publish(
                 publish_log_id=publish_log_id,
             )
         return {
-            "ok": caption_ok is True or (content_type or "reel") not in ("reel", "photo"),
+            "ok": log_status == "success",
             "provider": "meta",
             "playlist_code": PLAYLIST_CODE,
             "playlist_index": playlist_index,
