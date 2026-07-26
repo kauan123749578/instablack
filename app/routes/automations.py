@@ -241,7 +241,7 @@ def _schedule_humanize_fields(
     stagger_enabled: object = True,
     stagger_min_minutes: object = DEFAULT_STAGGER_MIN,
     stagger_max_minutes: object = DEFAULT_STAGGER_MAX,
-    caption_rotate_by_account: object = True,
+    caption_rotate_by_account: object = False,
     caption_rotate_by_reel: object = False,
 ) -> dict[str, object]:
     lo, hi = clamp_stagger_minutes(stagger_min_minutes, stagger_max_minutes)
@@ -250,10 +250,8 @@ def _schedule_humanize_fields(
     else:
         stagger_on = str(stagger_enabled or "").strip().lower() in ("1", "on", "true", "yes")
 
-    def _flag(raw: object) -> bool:
-        if isinstance(raw, bool):
-            return raw
-        return str(raw or "").strip().lower() in ("1", "on", "true", "yes")
+    # Rotação de legenda removida — sempre OFF (params ignorados, compat form antigo)
+    _ = (caption_rotate_by_account, caption_rotate_by_reel)
 
     return {
         "jitter_enabled": parse_jitter_enabled(jitter_enabled),
@@ -264,8 +262,8 @@ def _schedule_humanize_fields(
         "stagger_enabled": stagger_on,
         "stagger_min_minutes": lo,
         "stagger_max_minutes": hi,
-        "caption_rotate_by_account": _flag(caption_rotate_by_account),
-        "caption_rotate_by_reel": _flag(caption_rotate_by_reel),
+        "caption_rotate_by_account": False,
+        "caption_rotate_by_reel": False,
     }
 
 
@@ -973,7 +971,7 @@ async def create_automation(
         caption_rotate_by_reel=caption_rotate_by_reel,
     )
     caption = normalize_caption_text(caption)
-    captions_json = captions_to_json(captions_from_form(captions_alt))
+    captions_json = None  # rotação removida — só legenda fixa
     submitted_cal_times: list[str] = []
     for raw_time in (calendar_times or [calendar_time]):
         submitted_cal_times.extend(parse_calendar_times(raw_time))
@@ -1218,25 +1216,13 @@ async def create_automation(
         use_stagger = bool(humanize["stagger_enabled"]) and bool(prefs.get("stagger_enabled", True))
         stagger_lo = int(humanize["stagger_min_minutes"])  # type: ignore[arg-type]
         stagger_hi = int(humanize["stagger_max_minutes"])  # type: ignore[arg-type]
-        by_acc = bool(humanize["caption_rotate_by_account"]) and bool(
-            prefs.get("caption_rotate_by_account", True)
-        )
-        by_reel = bool(humanize["caption_rotate_by_reel"]) and bool(
-            prefs.get("caption_rotate_by_reel", False)
-        )
-        # stub mínimo para resolve_caption (SimpleNamespace — class body não captura locals)
-        cap_stub = SimpleNamespace(caption=caption, captions_json=captions_json)
+        # Legenda fixa (sem rotação)
+        cap_stub = SimpleNamespace(caption=caption, captions_json=None)
+        fixed_caption = resolve_caption(cap_stub)  # type: ignore[arg-type]
 
         try:
             for v_idx, entry in enumerate(video_entries):
                 for acc_idx, acc in enumerate(accounts):
-                    acc_caption = resolve_caption(
-                        cap_stub,  # type: ignore[arg-type]
-                        account_slot=acc_idx,
-                        reel_index=v_idx,
-                        by_account=by_acc,
-                        by_reel=by_reel,
-                    )
                     stagger = (
                         account_publish_countdown(
                             acc_idx,
@@ -1252,7 +1238,7 @@ async def create_automation(
                             acc.id,
                             entry["video_key"],
                             thumb_key,
-                            acc_caption,
+                            fixed_caption,
                             content_type,
                             _story_link_value(content_type, story_link),
                             _story_sticker_text_value(content_type, story_sticker_text),
@@ -1458,7 +1444,7 @@ async def create_reel_upload_draft(
         caption_rotate_by_reel=caption_rotate_by_reel,
     )
     caption = normalize_caption_text(caption)
-    captions_json = captions_to_json(captions_from_form(captions_alt))
+    captions_json = None  # rotação removida — só legenda fixa
     storage = get_storage()
     thumb_key, thumb_original_name = _save_thumb(storage, thumb)
     want_camu = _want_camouflage(camouflage_enabled, camouflage_cover)
@@ -1735,12 +1721,6 @@ def finish_reel_batch_upload(
         n_accounts = len(accounts)
         prefs = get_anti_farm_prefs(user)
         use_stagger, stagger_lo, stagger_hi = resolve_stagger_config(a, prefs)
-        by_acc = bool(prefs.get("caption_rotate_by_account", True)) and bool(
-            getattr(a, "caption_rotate_by_account", True)
-        )
-        by_reel = bool(prefs.get("caption_rotate_by_reel", False)) and bool(
-            getattr(a, "caption_rotate_by_reel", False)
-        )
         for index, entry in enumerate(entries):
             for account_index, account in enumerate(accounts):
                 stagger = (
@@ -1755,7 +1735,7 @@ def finish_reel_batch_upload(
                 )
                 publish_to_account.apply_async(
                     args=[a.id, account.id, entry["video_key"], index],
-                    kwargs={"account_slot": account_index if by_acc else 0},
+                    kwargs={"account_slot": account_index},
                     countdown=countdown + stagger,
                 )
             wave = (
@@ -1921,7 +1901,7 @@ def duplicate_automation(
         name=copy_name,
         content_type=src.content_type or "reel",
         caption=src.caption or "",
-        captions_json=getattr(src, "captions_json", None),
+        captions_json=None,
         story_link=src.story_link,
         story_sticker_text=src.story_sticker_text,
         story_layout_json=getattr(src, "story_layout_json", None),
@@ -1943,8 +1923,8 @@ def duplicate_automation(
         stagger_enabled=bool(getattr(src, "stagger_enabled", True)),
         stagger_min_minutes=int(getattr(src, "stagger_min_minutes", DEFAULT_STAGGER_MIN) or DEFAULT_STAGGER_MIN),
         stagger_max_minutes=int(getattr(src, "stagger_max_minutes", DEFAULT_STAGGER_MAX) or DEFAULT_STAGGER_MAX),
-        caption_rotate_by_account=bool(getattr(src, "caption_rotate_by_account", True)),
-        caption_rotate_by_reel=bool(getattr(src, "caption_rotate_by_reel", False)),
+        caption_rotate_by_account=False,
+        caption_rotate_by_reel=False,
         posts_per_batch=int(getattr(src, "posts_per_batch", 0) or 0),
         rest_minutes=int(getattr(src, "rest_minutes", 0) or 0),
         posts_in_batch=0,
@@ -2090,7 +2070,7 @@ async def edit_automation(
         caption_rotate_by_reel=caption_rotate_by_reel,
     )
     a.caption = normalize_caption_text(caption)
-    a.captions_json = captions_to_json(captions_from_form(captions_alt))
+    a.captions_json = None  # limpa lista de rotação legada
     a.content_type = content_type
     a.interval_minutes = interval_minutes
     a.jitter_enabled = bool(humanize["jitter_enabled"])
@@ -2100,8 +2080,8 @@ async def edit_automation(
     a.stagger_enabled = bool(humanize["stagger_enabled"])
     a.stagger_min_minutes = int(humanize["stagger_min_minutes"])  # type: ignore[arg-type]
     a.stagger_max_minutes = int(humanize["stagger_max_minutes"])  # type: ignore[arg-type]
-    a.caption_rotate_by_account = bool(humanize["caption_rotate_by_account"])
-    a.caption_rotate_by_reel = bool(humanize["caption_rotate_by_reel"])
+    a.caption_rotate_by_account = False
+    a.caption_rotate_by_reel = False
     a.accounts = list(accounts)
     if not accounts:
         a.status = "paused"

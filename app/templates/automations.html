@@ -25,9 +25,8 @@
     <strong>Anti-farm ativo nas suas automações:</strong>
     espaçamento entre contas {% if af.get('stagger_enabled', true) %}<span class="og-badge badge-green">ON</span>{% else %}<span class="og-badge">OFF</span>{% endif %}
     · vídeos diferentes {% if af.get('media_rotate_enabled', true) %}<span class="og-badge badge-green">ON</span>{% else %}<span class="og-badge">OFF</span>{% endif %}
-    · legendas por conta {% if af.get('caption_rotate_by_account', true) %}<span class="og-badge badge-green">ON</span>{% else %}<span class="og-badge">OFF</span>{% endif %}
-    · legendas por Reel {% if af.get('caption_rotate_by_reel', false) %}<span class="og-badge badge-green">ON</span>{% else %}<span class="og-badge">OFF</span>{% endif %}
     · aquecimento Meta {% if af.get('meta_warmup_enabled', true) %}<span class="og-badge badge-green">ON</span>{% else %}<span class="og-badge">OFF</span>{% endif %}
+    · legenda fixa <span class="og-badge badge-green">ON</span>
     — <a href="/aquecimento" data-nav="/aquecimento">ativar por conta + explicar</a>
   </p>
 </div>
@@ -279,41 +278,12 @@
               <input type="number" name="rest_minutes" min="0" max="10080" value="{{ a.rest_minutes or 0 }}">
             </label>
           </fieldset>
-          <label>Legenda principal
-            <textarea name="caption" rows="3">{{ a.caption }}</textarea>
+          <label>Legenda (fixa para todos os Reels/contas)
+            <textarea name="caption" rows="8">{{ a.caption }}</textarea>
           </label>
           <p class="muted" style="margin:6px 0;font-size:12px">
-            Principal = padrão. Abaixo = várias legendas grandes para rotacionar por conta (botão +).
+            Sem rotação: o mesmo texto em todas as contas e vídeos. Reel/Foto sem legenda não publica.
           </p>
-          <div class="captions-rotator" data-captions-rotator>
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-              <strong style="font-size:13px">Legendas para rotacionar</strong>
-              <button type="button" class="btn btn-sm" data-caption-add>+ Adicionar</button>
-            </div>
-            <div class="captions-rotator-list" data-captions-list>
-              {% for line in parse_captions_list(a.captions_json) %}
-              <div class="captions-rotator-item" style="margin-top:8px">
-                <label>Legenda {{ loop.index }}
-                  <textarea name="captions_alt" rows="5">{{ line }}</textarea>
-                </label>
-                <button type="button" class="btn btn-sm" data-caption-remove style="margin-top:4px">Remover</button>
-              </div>
-              {% endfor %}
-            </div>
-            <fieldset style="margin-top:10px">
-              <legend>Como rotacionar</legend>
-              <label class="checkbox-row">
-                <input type="checkbox" name="caption_rotate_by_account" value="1"
-                       {% if a.caption_rotate_by_account is not defined or a.caption_rotate_by_account %}checked{% endif %}>
-                Por conta
-              </label>
-              <label class="checkbox-row" style="margin-top:4px">
-                <input type="checkbox" name="caption_rotate_by_reel" value="1"
-                       {% if a.caption_rotate_by_reel %}checked{% endif %}>
-                Por Reel (cada vídeo da playlist)
-              </label>
-            </fieldset>
-          </div>
           <label>Trocar capa (.jpg/.png)
             <input type="file" name="thumb" accept="image/jpeg,image/png,image/webp">
           </label>

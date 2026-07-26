@@ -16,15 +16,14 @@
 <div class="panel" style="margin-bottom:16px">
   <p style="margin:0 0 8px;font-size:14px">
     <strong>Proteção anti-farm</strong>
-    — espaçamento entre contas, vídeos/legendas diferentes e aquecimento Meta.
+    — espaçamento entre contas, vídeos diferentes e aquecimento Meta.
     {% set af = anti_farm_prefs or {} %}
     <span class="muted" style="font-size:12px">
       Agora:
       espaçamento {% if af.get('stagger_enabled', true) %}ligado{% else %}desligado{% endif %} ·
       vídeos {% if af.get('media_rotate_enabled', true) %}ligado{% else %}desligado{% endif %} ·
-      legendas por conta {% if af.get('caption_rotate_by_account', true) %}ligado{% else %}desligado{% endif %} ·
-      legendas por Reel {% if af.get('caption_rotate_by_reel', false) %}ligado{% else %}desligado{% endif %} ·
       aquecimento {% if af.get('meta_warmup_enabled', true) %}ligado{% else %}desligado{% endif %}.
+      Legenda é fixa (mesma em todos os Reels/contas).
     </span>
   </p>
   <a href="/aquecimento" data-nav="/aquecimento" class="btn btn-sm">Abrir Aquecimento (ligar/desligar + explicação)</a>
@@ -54,37 +53,13 @@
     </label>
 
     <div id="caption-wrap">
-      <label>Legenda principal
-        <textarea name="caption" rows="4" placeholder="Cole aqui a legenda do Reel…"></textarea>
+      <label>Legenda
+        <textarea name="caption" rows="10" placeholder="Cole aqui a legenda do Reel…"></textarea>
       </label>
-      <p class="muted" style="margin:8px 0 4px;font-size:13px">
-        A <strong>legenda principal</strong> sempre entra na rotação (é a 1ª).
-        Embaixo você pode adicionar outras — cada conta/Reel usa uma diferente.
-        Se não adicionar nenhuma extra, todas as contas usam a principal.
+      <p class="muted" style="margin:8px 0 0;font-size:13px">
+        Esta legenda é <strong>fixa</strong>: todos os Reels e todas as contas usam o mesmo texto.
+        Reel/Foto sem legenda <strong>não publica</strong>.
       </p>
-      <div class="captions-rotator" data-captions-rotator>
-        <div class="captions-rotator-head" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px">
-          <strong style="font-size:14px">Legendas para rotacionar</strong>
-          <button type="button" class="btn btn-sm" data-caption-add>+ Adicionar legenda</button>
-        </div>
-        <div class="captions-rotator-list" data-captions-list></div>
-        <fieldset style="margin-top:12px">
-          <legend>Como rotacionar</legend>
-          <label class="checkbox-row">
-            <input type="checkbox" name="caption_rotate_by_account" value="1"
-                   {% if (anti_farm_prefs or {}).get('caption_rotate_by_account', true) %}checked{% endif %}>
-            Por conta (cada @ no mesmo ciclo usa uma legenda diferente)
-          </label>
-          <label class="checkbox-row" style="margin-top:6px">
-            <input type="checkbox" name="caption_rotate_by_reel" value="1"
-                   {% if (anti_farm_prefs or {}).get('caption_rotate_by_reel', false) %}checked{% endif %}>
-            Por Reel (cada vídeo da playlist troca a legenda)
-          </label>
-          <p class="muted" style="margin:6px 0 0;font-size:12px">
-            Pode ligar os dois: a legenda fica (conta + índice do Reel). Sem lista de rotação, usa a principal.
-          </p>
-        </fieldset>
-      </div>
     </div>
 
     <div id="story-link-wrap">

@@ -848,54 +848,6 @@
     update();
   }
 
-  function initCaptionsRotator() {
-    function bindItem(item) {
-      const removeBtn = item.querySelector("[data-caption-remove]");
-      removeBtn?.addEventListener("click", () => {
-        const list = item.closest("[data-captions-list]");
-        item.remove();
-        renumber(list);
-      });
-    }
-
-    function renumber(list) {
-      if (!list) return;
-      list.querySelectorAll(".captions-rotator-item").forEach((item, idx) => {
-        const label = item.querySelector("label");
-        if (label) {
-          const ta = label.querySelector("textarea");
-          label.childNodes[0].textContent = `Legenda ${idx + 1} `;
-          if (ta && !label.contains(ta)) label.appendChild(ta);
-        }
-      });
-    }
-
-    function addCaption(list, value) {
-      if (!list) return;
-      const idx = list.querySelectorAll(".captions-rotator-item").length + 1;
-      const wrap = document.createElement("div");
-      wrap.className = "captions-rotator-item";
-      wrap.style.marginTop = "8px";
-      wrap.innerHTML = `
-        <label>Legenda ${idx}
-          <textarea name="captions_alt" rows="6" placeholder="Cole aqui a legenda completa…"></textarea>
-        </label>
-        <button type="button" class="btn btn-sm" data-caption-remove style="margin-top:4px">Remover</button>
-      `;
-      const ta = wrap.querySelector("textarea");
-      if (ta && value) ta.value = value;
-      list.appendChild(wrap);
-      bindItem(wrap);
-    }
-
-    document.querySelectorAll("[data-captions-rotator]").forEach((root) => {
-      const list = root.querySelector("[data-captions-list]");
-      const addBtn = root.querySelector("[data-caption-add]");
-      list?.querySelectorAll(".captions-rotator-item").forEach(bindItem);
-      addBtn?.addEventListener("click", () => addCaption(list, ""));
-    });
-  }
-
   function initMetaIntervalFilter() {
     function applyFilter(root) {
       const scope = root || document;
@@ -1609,9 +1561,6 @@
         const field = form.querySelector(`[name="${name}"]`);
         if (field) data.append(name, field.value || "");
       });
-      form.querySelectorAll('textarea[name="captions_alt"]').forEach((field) => {
-        if ((field.value || "").trim()) data.append("captions_alt", field.value);
-      });
       const mode = form.querySelector('[name="schedule_mode"]:checked');
       data.append("schedule_mode", mode ? mode.value : "recurring");
       if (mode && mode.value === "calendar") {
@@ -1625,10 +1574,6 @@
       if (jitter && jitter.checked) data.append("jitter_enabled", "1");
       const stagger = form.querySelector('[name="stagger_enabled"]');
       if (stagger && stagger.checked) data.append("stagger_enabled", "1");
-      const capAcc = form.querySelector('[name="caption_rotate_by_account"]');
-      if (capAcc && capAcc.checked) data.append("caption_rotate_by_account", "1");
-      const capReel = form.querySelector('[name="caption_rotate_by_reel"]');
-      if (capReel && capReel.checked) data.append("caption_rotate_by_reel", "1");
       form.querySelectorAll('[name="account_ids"]:checked').forEach((field) => {
         data.append("account_ids", field.value);
       });
@@ -2113,7 +2058,6 @@
     initThumbPreview();
     initScheduleMode();
     initMetaIntervalFilter();
-    initCaptionsRotator();
     initAutomationForm();
     initAutomationCamouflagePreview();
     initStoryMetaLinkHint();

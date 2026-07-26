@@ -320,8 +320,6 @@ def execute_automation(self, automation_id: int, scheduled_at: str | None = None
     stagger_enabled = True
     stagger_min = 2
     stagger_max = 8
-    auto_caption_by_account = True
-    auto_caption_by_reel = False
 
     with session_scope() as db:
         automation = db.execute(
@@ -337,9 +335,6 @@ def execute_automation(self, automation_id: int, scheduled_at: str | None = None
         stagger_enabled, stagger_min, stagger_max = resolve_stagger_config(
             automation, anti_prefs
         )
-        auto_caption_by_account = bool(getattr(automation, "caption_rotate_by_account", True))
-        auto_caption_by_reel = bool(getattr(automation, "caption_rotate_by_reel", False))
-
         # Dispara lazy-load das contas ainda com o row lock
         accounts = list(automation.accounts)
         account_ids = [
@@ -441,12 +436,6 @@ def execute_automation(self, automation_id: int, scheduled_at: str | None = None
         and queue_index is not None
     )
     use_stagger = stagger_enabled
-    use_caption_by_account = (
-        bool(anti_prefs.get("caption_rotate_by_account", True)) and auto_caption_by_account
-    )
-    use_caption_by_reel = (
-        bool(anti_prefs.get("caption_rotate_by_reel", False)) and auto_caption_by_reel
-    )
 
     for i, account_id in enumerate(account_ids):
         countdown = (
@@ -466,10 +455,10 @@ def execute_automation(self, automation_id: int, scheduled_at: str | None = None
         else:
             acc_video_key = video_key
             acc_queue_index = queue_index
-        # Só account_slot nos kwargs — params extras quebram worker antigo (TypeError)
+        # account_slot só para fingerprint invisível da mesma legenda (anti-drop Meta)
         publish_to_account.apply_async(
             args=[automation_id, account_id, acc_video_key, acc_queue_index],
-            kwargs={"account_slot": i if use_caption_by_account else 0},
+            kwargs={"account_slot": i},
             countdown=countdown,
         )
 
@@ -486,8 +475,7 @@ def execute_automation(self, automation_id: int, scheduled_at: str | None = None
             "stagger_min": stagger_min,
             "stagger_max": stagger_max,
             "media_rotate": rotate,
-            "caption_by_account": use_caption_by_account,
-            "caption_by_reel": use_caption_by_reel,
+            "caption_fixed": True,
         },
     }
 
@@ -607,30 +595,9 @@ def publish_to_account(
         if posted_index is None:
             posted_index = 0
 
-        try:
-            prefs = get_anti_farm_prefs_by_id(db, automation.user_id)
-        except Exception:
-            log.exception("anti_farm prefs falhou user=%s — usando defaults", automation.user_id)
-            prefs = {}
-
-        by_acc = (
-            bool(prefs.get("caption_rotate_by_account", True))
-            and bool(getattr(automation, "caption_rotate_by_account", True))
-        )
-        by_reel = (
-            bool(prefs.get("caption_rotate_by_reel", False))
-            and bool(getattr(automation, "caption_rotate_by_reel", False))
-        )
-
         slot = int(account_slot) if account_slot is not None else 0
         try:
-            caption = resolve_caption(
-                automation,
-                account_slot=slot,
-                reel_index=int(posted_index),
-                by_account=by_acc,
-                by_reel=by_reel,
-            )
+            caption = resolve_caption(automation)
         except Exception:
             log.exception(
                 "resolve_caption falhou automation=%s — usando caption principal",
@@ -638,29 +605,10 @@ def publish_to_account(
             )
             caption = automation.caption or ""
 
-        caption = normalize_caption_text(caption)
-        # Garantia absoluta: se a automação tem legenda salva, NUNCA publica vazia.
-        if not caption:
-            caption = best_available_caption(automation)
+        caption = normalize_caption_text(caption) or best_available_caption(automation)
         caption = normalize_caption_text(caption)
 
         content_type = automation.content_type or "reel"
-        # Reel/foto: se tem legenda no banco e mesmo assim ficou vazia → ABORTA (não posta sem texto)
-        if content_type in ("reel", "photo") and not caption:
-            saved = best_available_caption(automation)
-            if saved:
-                caption = saved
-            else:
-                # Tem campo no DB mas só lixo/\r? tenta raw
-                caption = normalize_caption_text(automation.caption or "")
-                if not caption:
-                    from app.utils.anti_farm import parse_captions_json
-
-                    for alt in parse_captions_json(getattr(automation, "captions_json", None)):
-                        caption = normalize_caption_text(alt)
-                        if caption:
-                            break
-
         if content_type in ("reel", "photo") and not caption:
             log.error(
                 "PLAYLIST %s ABORT EMPTY CAPTION automation=%s account=%s — NÃO publica Reel/Foto sem legenda",
@@ -692,24 +640,21 @@ def publish_to_account(
             )
         else:
             log.info(
-                "PLAYLIST %s CAPTION READY automation=%s account=%s cap_len=%s cr=%s preview=%r",
+                "PLAYLIST %s CAPTION READY automation=%s account=%s cap_len=%s preview=%r",
                 PLAYLIST_CODE,
                 automation_id,
                 account.username,
                 len(caption),
-                "\\r" in (automation.caption or ""),
                 caption[:48],
             )
 
         log.info(
-            "PLAYLIST %s publish automation=%s account=%s idx=%s slot=%s by_acc=%s by_reel=%s cap_len=%s key=%s camu=%s opacity=%.2f",
+            "PLAYLIST %s publish automation=%s account=%s idx=%s slot=%s caption_fixed=True cap_len=%s key=%s camu=%s opacity=%.2f",
             PLAYLIST_CODE,
             automation_id,
             account.username,
             posted_index,
             slot,
-            by_acc,
-            by_reel,
             len(caption or ""),
             vk,
             getattr(automation, "camouflage_cover_key", None) or "-",

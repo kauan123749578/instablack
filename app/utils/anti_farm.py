@@ -149,14 +149,8 @@ def captions_from_form(captions_alt: list[str] | str | None) -> list[str]:
 
 
 def resolve_caption_for_slot(automation: Automation, slot: int) -> str:
-    """Compat: só por conta."""
-    return resolve_caption(
-        automation,
-        account_slot=slot,
-        reel_index=0,
-        by_account=True,
-        by_reel=False,
-    )
+    """Compat: slot ignorado — legenda fixa."""
+    return resolve_caption(automation)
 
 
 def resolve_caption(
@@ -164,56 +158,19 @@ def resolve_caption(
     *,
     account_slot: int = 0,
     reel_index: int = 0,
-    by_account: bool = True,
+    by_account: bool = False,
     by_reel: bool = False,
 ) -> str:
-    """Resolve legenda da lista de rotação.
+    """Legenda fixa: sempre a principal; se vazia, 1ª alternativa legada.
 
-    - sem lista de rotação → sempre a legenda principal (1 legenda)
-    - rotação ligada: usa principal + alternativas (principal no índice 0)
-    - rotação desligada: principal (ou 1ª da lista)
-    - 1 legenda única no pool → todas as contas/reels usam a mesma (ignora slots)
-    Nunca devolve string vazia se existir qualquer legenda salva.
+    account_slot / reel_index / by_* são ignorados (API antiga).
     """
-    main = normalize_caption_text(getattr(automation, "caption", None))
-    alts = [
-        normalize_caption_text(a)
-        for a in parse_captions_json(getattr(automation, "captions_json", None))
-        if normalize_caption_text(a)
-    ]
-
-    # Caso mais comum: só a legenda principal — nunca depender da rotação
-    if not alts:
-        return main
-
-    if not by_account and not by_reel:
-        return main or alts[0]
-
-    # Pool completo: principal (se existir) + alternativas, sem duplicar.
-    pool: list[str] = []
-    if main:
-        pool.append(main)
-    for alt in alts:
-        if alt and alt not in pool:
-            pool.append(alt)
-    if not pool:
-        return main or (alts[0] if alts else "")
-
-    # Uma só legenda → todo mundo recebe a mesma, sem indexar por slot
-    if len(pool) == 1:
-        return pool[0]
-
-    idx = 0
-    if by_reel:
-        idx += max(0, int(reel_index or 0))
-    if by_account:
-        idx += max(0, int(account_slot or 0))
-    chosen = normalize_caption_text(pool[idx % len(pool)])
-    return chosen or main or pool[0]
+    _ = (account_slot, reel_index, by_account, by_reel)
+    return best_available_caption(automation)
 
 
 def best_available_caption(automation: Automation) -> str:
-    """Qualquer legenda não-vazia da automação (principal ou 1ª alt)."""
+    """Qualquer legenda não-vazia da automação (principal ou 1ª alt legada)."""
     main = normalize_caption_text(getattr(automation, "caption", None))
     if main:
         return main
