@@ -6,8 +6,40 @@
   const drawerOpen = document.getElementById("drawer-open");
   const drawerBackdrop = document.getElementById("drawer-backdrop");
   const sidebar = document.getElementById("sidebar");
+  const sidebarPinBtn = document.getElementById("sidebar-pin-btn");
+  const SIDEBAR_PIN_KEY = "instablack_sidebar_pinned";
   let notifPollTimer = null;
   let dashActivityPollTimer = null;
+
+  function applySidebarPin(pinned) {
+    if (!sidebar) return;
+    sidebar.classList.toggle("is-pinned", pinned);
+    if (!sidebarPinBtn) return;
+    sidebarPinBtn.classList.toggle("is-active", pinned);
+    sidebarPinBtn.setAttribute("aria-pressed", pinned ? "true" : "false");
+    sidebarPinBtn.title = pinned ? "Desafixar sidebar" : "Fixar sidebar";
+    const label = sidebarPinBtn.querySelector(".sidebar-pin-label");
+    if (label) label.textContent = pinned ? "Desafixar sidebar" : "Fixar sidebar";
+    const icon = sidebarPinBtn.querySelector("[data-lucide]");
+    if (icon) {
+      icon.setAttribute("data-lucide", pinned ? "pin-off" : "pin");
+      try {
+        if (window.lucide) lucide.createIcons({ nodes: [sidebarPinBtn] });
+      } catch (_) {}
+    }
+  }
+
+  try {
+    applySidebarPin(localStorage.getItem(SIDEBAR_PIN_KEY) === "1");
+  } catch (_) {
+    applySidebarPin(false);
+  }
+
+  sidebarPinBtn?.addEventListener("click", () => {
+    const next = !sidebar?.classList.contains("is-pinned");
+    try { localStorage.setItem(SIDEBAR_PIN_KEY, next ? "1" : "0"); } catch (_) {}
+    applySidebarPin(next);
+  });
 
   function closeDrawer() { drawer?.classList.remove("open"); }
 
