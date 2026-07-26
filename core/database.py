@@ -31,7 +31,18 @@ def _is_already_exists(exc: Exception) -> bool:
 def _engine_kwargs() -> dict:
     if settings.is_sqlite:
         return {"connect_args": {"check_same_thread": False}}
-    return {"pool_pre_ping": True, "pool_size": 10, "max_overflow": 20}
+    # connect_timeout evita hang infinito no boot (Railway/Postgres inacessível).
+    # statement_timeout evita migrate travado em lock de outro worker.
+    return {
+        "pool_pre_ping": True,
+        "pool_size": 5,
+        "max_overflow": 10,
+        "pool_timeout": 30,
+        "connect_args": {
+            "connect_timeout": 10,
+            "options": "-c statement_timeout=30000",
+        },
+    }
 
 
 engine = create_engine(settings.database_url, future=True, **_engine_kwargs())
