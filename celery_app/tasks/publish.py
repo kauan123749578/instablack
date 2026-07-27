@@ -111,15 +111,6 @@ def _meta_defer_sched_key(account_id: int) -> str:
     return f"meta:defer_sched:{int(account_id)}"
 
 
-def _meta_global_inflight_key() -> str:
-    """Uma publicação Meta por vez no cluster (evita a Graph dropar caption sob carga)."""
-    return "meta:global_inflight"
-
-
-def _meta_caption_circuit_key() -> str:
-    return "meta:caption_circuit"
-
-
 def _redis_ttl_seconds(client, key: str, fallback: int) -> int:
     try:
         ttl = int(client.ttl(key) or 0)
@@ -130,11 +121,44 @@ def _redis_ttl_seconds(client, key: str, fallback: int) -> int:
     return max(60, fallback)
 
 
+def _meta_global_active_key() -> str:
+    """Slots Meta em andamento (ZSET com expiry por membro — auto-limpa crash)."""
+    return "meta:global_active"
+
+
+META_GLOBAL_MAX_CONCURRENT = 3
+
+
+def _claim_meta_global_slot(client, account_id: int) -> tuple[bool, int]:
+    """Até 3 publishes Meta simultâneos; acima disso fila curta (30–75s)."""
+    import time as _time
+
+    key = _meta_global_active_key()
+    now = _time.time()
+    try:
+        client.zremrangebyscore(key, 0, now)
+        active = int(client.zcard(key) or 0)
+        if active >= META_GLOBAL_MAX_CONCURRENT:
+            wait = 30 + (int(account_id) % 46)
+            return False, wait
+        client.zadd(key, {str(int(account_id)): now + 420.0})
+        return True, 0
+    except Exception as exc:
+        log.warning("claim_meta_global_slot falhou account=%s: %s", account_id, exc)
+        return True, 0
+
+
+def _release_meta_global_slot(client, account_id: int) -> None:
+    try:
+        client.zrem(_meta_global_active_key(), str(int(account_id)))
+    except Exception:
+        pass
+
+
 def _claim_meta_publish_slot(account_id: int, cooldown_sec: int) -> tuple[bool, int, str]:
-    """Garante 1 publish Meta por conta + 1 Meta publish global no cluster.
+    """Garante 1 publish Meta por conta + fila global curta (max 3 simultâneos).
 
     Retorna (pode_publicar, wait_seconds, motivo).
-    Race: dois workers ao mesmo tempo — só um pega inflight NX.
     """
     client = _redis()
     if client is None:
@@ -143,33 +167,23 @@ def _claim_meta_publish_slot(account_id: int, cooldown_sec: int) -> tuple[bool, 
     cooldown_sec = max(60, int(cooldown_sec or 3600))
     cool_key = _meta_cooldown_key(account_id)
     fly_key = _meta_inflight_key(account_id)
-    global_key = _meta_global_inflight_key()
-    circuit_key = _meta_caption_circuit_key()
 
     try:
-        if client.exists(circuit_key):
-            wait = _redis_ttl_seconds(client, circuit_key, 600)
-            return False, wait, f"meta_caption_circuit:{wait}s"
-
         if client.exists(cool_key):
             wait = _redis_ttl_seconds(client, cool_key, cooldown_sec)
             return False, wait, f"meta_cooldown:{wait}s"
 
-        # Trava curta durante o upload (Meta pode demorar alguns minutos).
         if not client.set(fly_key, "1", nx=True, ex=min(900, max(300, cooldown_sec))):
             wait = _redis_ttl_seconds(client, fly_key, 300)
             return False, wait, f"meta_inflight:{wait}s"
 
-        # Serializa publishes Meta no cluster — carga paralela = Graph dropa caption.
-        if not client.set(global_key, str(account_id), nx=True, ex=900):
+        ok_global, wait_global = _claim_meta_global_slot(client, account_id)
+        if not ok_global:
             try:
                 client.delete(fly_key)
             except Exception:
                 pass
-            wait = _redis_ttl_seconds(client, global_key, 120)
-            # Espalha retries para não bater todos no mesmo segundo.
-            wait = max(45, min(wait + (int(account_id) % 40), 300))
-            return False, wait, f"meta_global_inflight:{wait}s"
+            return False, wait_global, f"meta_global_queue:{wait_global}s"
 
         return True, 0, ""
     except Exception as exc:
@@ -183,26 +197,15 @@ def _release_meta_inflight(account_id: int) -> None:
         return
     try:
         client.delete(_meta_inflight_key(account_id))
-        cur = client.get(_meta_global_inflight_key())
-        if cur is None:
-            return
-        cur_s = cur.decode() if isinstance(cur, (bytes, bytearray)) else str(cur)
-        if cur_s == str(account_id):
-            client.delete(_meta_global_inflight_key())
+        _release_meta_global_slot(client, account_id)
     except Exception:
         pass
 
 
 def _trip_meta_caption_circuit(*, ttl_sec: int = 600) -> None:
-    """Pausa Meta publishes após onda de caption missing (bug lado Instagram/Graph)."""
-    client = _redis()
-    if client is None:
-        return
-    try:
-        client.set(_meta_caption_circuit_key(), "1", ex=max(120, int(ttl_sec)))
-        log.warning("META caption circuit OPEN ttl=%ss", ttl_sec)
-    except Exception as exc:
-        log.warning("trip_meta_caption_circuit falhou: %s", exc)
+    """Desativado: pausava TODAS as contas Meta por 10 min após 1 falha de caption."""
+    _ = ttl_sec
+    return
 
 
 def _mark_meta_published(account_id: int, cooldown_sec: int) -> None:
@@ -216,11 +219,7 @@ def _mark_meta_published(account_id: int, cooldown_sec: int) -> None:
         pipe.set(_meta_cooldown_key(account_id), "1", ex=cooldown_sec)
         pipe.delete(_meta_inflight_key(account_id))
         pipe.execute()
-        cur = client.get(_meta_global_inflight_key())
-        if cur is not None:
-            cur_s = cur.decode() if isinstance(cur, (bytes, bytearray)) else str(cur)
-            if cur_s == str(account_id):
-                client.delete(_meta_global_inflight_key())
+        _release_meta_global_slot(client, account_id)
     except Exception as exc:
         log.warning("mark_meta_published falhou account=%s: %s", account_id, exc)
         _release_meta_inflight(account_id)
@@ -1041,9 +1040,22 @@ def _execute_publish(
                         }
 
     if account_status in ("paused", "needs_login", "proxy_down", "banned", "deleted"):
-        return {"skipped": True, "reason": f"account_{account_status}"}
+        log.info(
+            "publish skipped provider=%s account=%s @%s status=%s",
+            provider,
+            account_id,
+            username,
+            account_status,
+        )
+        return {"skipped": True, "reason": f"account_{account_status}", "provider": provider}
 
     if provider == "meta":
+        log.info(
+            "PUBLISH provider=meta (API oficial) account=%s @%s automation=%s",
+            account_id,
+            username,
+            automation_id,
+        )
         if not user_meta_app_id:
             _mark_account_needs_login(
                 account_id,
@@ -1062,7 +1074,7 @@ def _execute_publish(
                 "wait_seconds": wait_sec,
                 "reason": (
                     f"meta_anti_spam:{claim_reason} "
-                    f"(1 post por vez; reagendado +{max(1, wait_sec // 60)} min)"
+                    f"(fila Meta; reagendado +{max(1, wait_sec // 60)} min)"
                 ),
                 "account_id": account_id,
                 "automation_id": automation_id,
@@ -1308,6 +1320,13 @@ def _execute_publish(
             "caption_ok": caption_ok,
             **result,
         }
+
+    log.info(
+        "PUBLISH provider=instagrapi (sessão mobile/web) account=%s @%s automation=%s",
+        account_id,
+        username,
+        automation_id,
+    )
 
     if not proxy or not proxy.strip():
         _log_failure(

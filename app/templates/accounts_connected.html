@@ -22,10 +22,10 @@
       <strong class="ig-handle">@{{ acc.username }}</strong> · {{ status_label(acc.status) }}
       {% if acc.last_error %}<span class="muted">— {{ acc.last_error[:120] }}</span>{% endif %}
       {% if acc.provider != 'meta' and acc.status == 'needs_login' %}
-      <form method="post" action="/accounts/{{ acc.id }}/reconnect" style="display:inline;margin-left:8px">
-        <input type="hidden" name="mode" value="auto">
-        <button type="submit" class="btn btn-sm btn-primary">Reconectar</button>
-      </form>
+      <button type="button" class="btn btn-sm btn-primary account-reconnect-btn"
+              data-account-id="{{ acc.id }}" data-username="{{ acc.username }}">
+        Reconectar
+      </button>
       {% endif %}
     </li>
     {% endfor %}
@@ -116,47 +116,49 @@
           <td>{{ acc.last_login_at | localtime }}</td>
           <td class="account-actions">
             {% if acc.provider != 'meta' %}
+            <button type="button"
+                    class="btn btn-sm {% if acc.status == 'needs_login' %}btn-primary{% endif %} account-reconnect-btn"
+                    data-account-id="{{ acc.id }}"
+                    data-username="{{ acc.username }}"
+                    title="Renova sessão instagrapi com senha salva">
+              {% if acc.status == 'needs_login' %}Reconectar{% else %}Renovar sessão{% endif %}
+            </button>
             <details class="proxy-update-panel" {% if acc.status == 'needs_login' %}open{% endif %}>
-              <summary class="btn btn-sm {% if acc.status == 'needs_login' %}btn-primary{% endif %}">
-                {% if acc.status == 'needs_login' %}Reconectar sessão{% else %}Renovar sessão{% endif %}
-              </summary>
-              <div class="proxy-update-form" style="display:flex;flex-direction:column;gap:10px;min-width:260px">
+              <summary class="btn btn-sm">Opções avançadas</summary>
+              <div class="proxy-update-form reconnect-advanced-panel" style="display:flex;flex-direction:column;gap:10px;min-width:280px">
+                <p class="muted" style="margin:0;font-size:11px">
+                  Sessionid ou cookies web (Cookie-Editor) se a senha salva não funcionar.
+                </p>
+                <label class="field-label muted" style="font-size:11px">Sessionid do navegador
+                  <input type="text" class="reconnect-sessionid-input" data-account-id="{{ acc.id }}"
+                         placeholder="cole o sessionid aqui">
+                </label>
+                <button type="button" class="btn btn-sm account-reconnect-sessionid-btn"
+                        data-account-id="{{ acc.id }}" data-username="{{ acc.username }}">
+                  Reconectar com sessionid
+                </button>
+                <label class="field-label muted" style="font-size:11px">Cookies web (JSON Cookie-Editor)
+                  <textarea class="reconnect-cookies-input" data-account-id="{{ acc.id }}" rows="4"
+                            placeholder='{"sessionid":"...","csrftoken":"..."}'></textarea>
+                </label>
+                <button type="button" class="btn btn-sm account-reconnect-cookies-btn"
+                        data-account-id="{{ acc.id }}" data-username="{{ acc.username }}">
+                  Reconectar com cookies web
+                </button>
+                <hr style="border-color:var(--border);opacity:0.4">
+                <label class="field-label muted" style="font-size:11px">Senha + 2FA
+                  <input type="password" class="reconnect-password-input" data-account-id="{{ acc.id }}"
+                         placeholder="Senha do Instagram" autocomplete="current-password">
+                  <input type="text" class="reconnect-2fa-input" data-account-id="{{ acc.id }}"
+                         placeholder="Código 2FA (se pedir)" autocomplete="one-time-code" style="margin-top:6px">
+                </label>
+                <button type="button" class="btn btn-sm btn-primary account-reconnect-password-btn"
+                        data-account-id="{{ acc.id }}" data-username="{{ acc.username }}">
+                  Reconectar com senha
+                </button>
                 {% if acc.encrypted_password %}
-                <form method="post" action="/accounts/{{ acc.id }}/reconnect">
-                  <input type="hidden" name="mode" value="auto">
-                  <button type="submit" class="btn btn-sm btn-primary" style="width:100%">
-                    Tentar automático (senha salva)
-                  </button>
-                  <p class="muted" style="margin:6px 0 0;font-size:11px">
-                    Renova instagrapi e atualiza sessionid dos cookies web se existirem.
-                  </p>
-                </form>
+                <p class="muted" style="margin:0;font-size:11px">Senha salva — o botão Reconectar usa automático.</p>
                 {% endif %}
-                <form method="post" action="/accounts/{{ acc.id }}/reconnect">
-                  <input type="hidden" name="mode" value="password">
-                  <input type="password" name="password" required placeholder="Senha do Instagram"
-                         autocomplete="current-password">
-                  <input type="text" name="verification_code" placeholder="Código 2FA (se pedir)"
-                         autocomplete="one-time-code" style="margin-top:6px">
-                  <div class="proxy-update-actions" style="margin-top:6px">
-                    <button type="submit" class="btn btn-sm btn-primary">Reconectar com senha</button>
-                  </div>
-                </form>
-                <form method="post" action="/accounts/{{ acc.id }}/reconnect">
-                  <input type="hidden" name="mode" value="sessionid">
-                  <input type="text" name="sessionid" required placeholder="sessionid do navegador">
-                  <div class="proxy-update-actions" style="margin-top:6px">
-                    <button type="submit" class="btn btn-sm">Reconectar com sessionid</button>
-                  </div>
-                </form>
-                <form method="post" action="/accounts/{{ acc.id }}/reconnect">
-                  <input type="hidden" name="mode" value="cookies">
-                  <textarea name="web_cookies" rows="4" required
-                            placeholder="JSON Cookie-Editor ou sessionid=...; csrftoken=..."></textarea>
-                  <div class="proxy-update-actions" style="margin-top:6px">
-                    <button type="submit" class="btn btn-sm">Reconectar com cookies web</button>
-                  </div>
-                </form>
               </div>
             </details>
             {% set cflag = cookie_flags.get(acc.id, {}) %}
@@ -219,4 +221,7 @@
   <p class="muted">Nenhuma conta conectada ainda. <a href="/accounts" data-nav="/accounts">Adicionar conta</a>.</p>
   {% endif %}
 </div>
+{% endblock %}
+{% block scripts %}
+<script>document.body.dataset.pageAccountsConnected = "1";</script>
 {% endblock %}

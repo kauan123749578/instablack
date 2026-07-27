@@ -214,8 +214,8 @@ def verify_published_caption(
     import logging
 
     _log = logging.getLogger(__name__)
-    # Sob carga a Graph atrasa o campo caption (~2–4 min). Janela longa evita falso negativo.
-    delays = (8.0, 10.0, 12.0, 15.0, 18.0, 20.0, 25.0, 30.0, 35.0, 40.0, 45.0, 50.0)
+    # Graph atrasa caption; janela ~2 min (não bloquear fila por 10+ min).
+    delays = (4.0, 6.0, 8.0, 10.0, 12.0, 15.0, 18.0, 22.0)
     last_raw: str | None = None
     saw_field = False
 
@@ -1013,7 +1013,7 @@ def publish_media(
         access_token,
         media_id,
         expected_min_len=1,
-        attempts=12,
+        attempts=8,
     )
     if not caption_ok:
         # Indexação da Graph atrasa sob carga — espera e re-verifica (sem apagar).
@@ -1021,12 +1021,12 @@ def publish_media(
             "META caption ainda ausente media=%s — espera extra e re-verifica (sem delete)",
             media_id,
         )
-        time.sleep(30.0)
+        time.sleep(15.0)
         caption_ok = verify_published_caption(
             access_token,
             media_id,
             expected_min_len=1,
-            attempts=6,
+            attempts=4,
         )
 
     if not caption_ok:

@@ -1069,6 +1069,10 @@
       if (e.target === modal) closeTwofaModal();
     });
     submitBtn?.addEventListener("click", () => {
+      if (pendingReconnect) {
+        submitReconnect2fa();
+        return;
+      }
       const form = document.getElementById("account-add-form");
       if (form && typeof form._submitWith2fa === "function") {
         form._submitWith2fa(true);
@@ -1077,12 +1081,50 @@
     codeInput?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
+        if (pendingReconnect) {
+          submitReconnect2fa();
+          return;
+        }
         const form = document.getElementById("account-add-form");
         if (form && typeof form._submitWith2fa === "function") {
           form._submitWith2fa(true);
         }
       }
     });
+  }
+
+  async function submitReconnect2fa() {
+    if (!pendingReconnect) return;
+    const codeInput = document.getElementById("twofa-code-input");
+    const submitBtn = document.getElementById("twofa-submit");
+    const code = (codeInput?.value || "").trim();
+    if (!code) {
+      alert("Digite o código 2FA.");
+      return;
+    }
+    const { accountId, payload } = pendingReconnect;
+    if (submitBtn) submitBtn.disabled = true;
+    try {
+      const data = await reconnectAccountApi(accountId, {
+        ...payload,
+        verification_code: code,
+      });
+      if (data.status === "connected") {
+        pendingReconnect = null;
+        closeTwofaModal();
+        window.location.href = "/accounts/connected?ok=session_reconnected";
+      } else if (data.status === "needs_2fa") {
+        alert("Código incorreto. Tente novamente.");
+      } else {
+        pendingReconnect = null;
+        closeTwofaModal();
+        alert(data.message || "Falha ao reconectar");
+      }
+    } catch (err) {
+      alert(err.message || "Erro ao reconectar");
+    } finally {
+      if (submitBtn) submitBtn.disabled = false;
+    }
   }
 
   function initAccountsConnect() {
@@ -1159,6 +1201,122 @@
     form.addEventListener("submit", (e) => {
       e.preventDefault();
       submitForm(false);
+    });
+  }
+
+  let pendingReconnect = null;
+
+  async function reconnectAccountApi(accountId, payload) {
+    const res = await fetch(`/accounts/${accountId}/reconnect/api`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(payload || { mode: "auto" }),
+      credentials: "same-origin",
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok && !data.status) {
+      throw new Error(data.detail || data.message || "Falha ao reconectar");
+    }
+    return data;
+  }
+
+  function handleReconnectResult(data, accountId, username) {
+    if (data.status === "connected") {
+      window.location.href = "/accounts/connected?ok=session_reconnected";
+      return;
+    }
+    if (data.status === "needs_2fa") {
+      pendingReconnect = { accountId, payload: pendingReconnect?.payload || { mode: "auto" } };
+      openTwofaModal(
+        `Digite o código 2FA da conta @${username || data.username || ""}.`
+      );
+      return;
+    }
+    alert(data.message || "Não foi possível reconectar a sessão.");
+  }
+
+  async function runReconnect(accountId, username, payload, btn) {
+    if (btn) {
+      btn.disabled = true;
+      btn.dataset.origLabel = btn.textContent;
+      btn.textContent = "Conectando…";
+    }
+    pendingReconnect = { accountId, payload, username };
+    try {
+      const data = await reconnectAccountApi(accountId, payload);
+      handleReconnectResult(data, accountId, username);
+    } catch (err) {
+      alert(err.message || "Erro ao reconectar");
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = btn.dataset.origLabel || "Reconectar";
+      }
+    }
+  }
+
+  function initAccountsReconnect() {
+    if (!document.body.dataset.pageAccountsConnected) return;
+    initTwofaModal();
+
+    document.querySelectorAll(".account-reconnect-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const id = parseInt(btn.dataset.accountId, 10);
+        const uname = btn.dataset.username || "";
+        runReconnect(id, uname, { mode: "auto" }, btn);
+      });
+    });
+
+    document.querySelectorAll(".account-reconnect-sessionid-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const id = parseInt(btn.dataset.accountId, 10);
+        const uname = btn.dataset.username || "";
+        const input = document.querySelector(`.reconnect-sessionid-input[data-account-id="${id}"]`);
+        const sid = (input?.value || "").trim();
+        if (!sid) {
+          alert("Cole o sessionid do navegador.");
+          return;
+        }
+        runReconnect(id, uname, { mode: "sessionid", sessionid: sid }, btn);
+      });
+    });
+
+    document.querySelectorAll(".account-reconnect-cookies-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const id = parseInt(btn.dataset.accountId, 10);
+        const uname = btn.dataset.username || "";
+        const input = document.querySelector(`.reconnect-cookies-input[data-account-id="${id}"]`);
+        const cookies = (input?.value || "").trim();
+        if (!cookies) {
+          alert("Cole o JSON do Cookie-Editor.");
+          return;
+        }
+        runReconnect(id, uname, { mode: "cookies", web_cookies: cookies }, btn);
+      });
+    });
+
+    document.querySelectorAll(".account-reconnect-password-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const id = parseInt(btn.dataset.accountId, 10);
+        const uname = btn.dataset.username || "";
+        const pwEl = document.querySelector(`.reconnect-password-input[data-account-id="${id}"]`);
+        const faEl = document.querySelector(`.reconnect-2fa-input[data-account-id="${id}"]`);
+        const password = (pwEl?.value || "").trim();
+        if (!password) {
+          alert("Informe a senha.");
+          return;
+        }
+        runReconnect(
+          id,
+          uname,
+          {
+            mode: "password",
+            password,
+            verification_code: (faEl?.value || "").trim(),
+          },
+          btn
+        );
+      });
     });
   }
 
@@ -2113,6 +2271,7 @@
     initCalendarPicker();
     initCalendarTimes();
     initAccountsConnect();
+    initAccountsReconnect();
     initAuthMethodForm();
     initProxyInput();
     initAccountProxyUpdate();

@@ -5,8 +5,9 @@ import datetime as dt
 import json
 import secrets
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
+from fastapi import APIRouter, Body, Depends, Form, HTTPException, Request, status
 from fastapi.responses import JSONResponse, RedirectResponse
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -61,6 +62,16 @@ from models.models import InstagramAccount, User
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 VISIBLE_ACCOUNT_STATUSES = ("active", "paused", "needs_login", "proxy_down", "banned")
+
+
+class ReconnectApiBody(BaseModel):
+    mode: str = "auto"
+    password: str = ""
+    verification_code: str = ""
+    sessionid: str = ""
+    web_cookies: str = Field(default="", alias="web_cookies")
+
+    model_config = {"populate_by_name": True}
 
 
 def _accounts_page_context(
@@ -814,24 +825,81 @@ def reconnect_account_session(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Reconecta sessão instagrapi / cookies web (não Meta).
-
-    mode=auto      — usa sessão salva + senha criptografada (se houver)
-    mode=password  — senha (+ 2FA opcional) informada no formulário
-    mode=sessionid — sessionid novo do navegador
-    mode=cookies   — JSON Cookie-Editor (sessionid + csrftoken)
-    """
+    """Reconecta sessão instagrapi / cookies web (form POST — redirect)."""
     acc = _get_owned_account(db, account_id, user)
+    result = _perform_account_reconnect(
+        acc,
+        mode=mode,
+        password=password,
+        verification_code=verification_code,
+        sessionid=sessionid,
+        web_cookies=web_cookies,
+    )
+    if result["status"] == "connected":
+        db.commit()
+        return RedirectResponse(
+            "/accounts/connected?ok=session_reconnected",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    err_map = {
+        "needs_2fa": "reconnect_2fa",
+        "meta": "reconnect_meta",
+        "proxy": "reconnect_proxy",
+        "sessionid": "reconnect_sessionid",
+        "password": "reconnect_password",
+        "cookies_invalid": "cookies_invalid",
+    }
+    err_key = err_map.get(result.get("error_code") or result["status"], "reconnect_failed")
+    return RedirectResponse(
+        f"/accounts/connected?error={err_key}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post("/{account_id}/reconnect/api")
+def reconnect_account_api(
+    account_id: int,
+    body: ReconnectApiBody = Body(default_factory=ReconnectApiBody),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Reconecta sessão instagrapi/web via AJAX (estilo postagemIG — botão Reconectar)."""
+    acc = _get_owned_account(db, account_id, user)
+    result = _perform_account_reconnect(
+        acc,
+        mode=body.mode,
+        password=body.password,
+        verification_code=body.verification_code,
+        sessionid=body.sessionid,
+        web_cookies=body.web_cookies,
+    )
+    if result["status"] == "connected":
+        db.commit()
+    return JSONResponse(result)
+
+
+def _perform_account_reconnect(
+    acc: InstagramAccount,
+    *,
+    mode: str = "auto",
+    password: str = "",
+    verification_code: str = "",
+    sessionid: str = "",
+    web_cookies: str = "",
+) -> dict:
+    """Lógica compartilhada de reconexão instagrapi / cookies web."""
     if (acc.provider or "instagrapi") == "meta":
-        return RedirectResponse(
-            "/accounts/connected?error=reconnect_meta",
-            status_code=status.HTTP_303_SEE_OTHER,
-        )
+        return {
+            "status": "error",
+            "error_code": "meta",
+            "message": "Conta Meta: reconecte pela API oficial em Adicionar conta.",
+        }
     if not acc.proxy or not str(acc.proxy).strip():
-        return RedirectResponse(
-            "/accounts/connected?error=reconnect_proxy",
-            status_code=status.HTTP_303_SEE_OTHER,
-        )
+        return {
+            "status": "error",
+            "error_code": "proxy",
+            "message": "Proxy ausente — atualize a proxy antes de reconectar.",
+        }
 
     mode_norm = (mode or "auto").strip().lower()
     try:
@@ -849,10 +917,11 @@ def reconnect_account_session(
         elif mode_norm == "sessionid":
             sid = clean_sessionid(sessionid)
             if not sid:
-                return RedirectResponse(
-                    "/accounts/connected?error=reconnect_sessionid",
-                    status_code=status.HTTP_303_SEE_OTHER,
-                )
+                return {
+                    "status": "error",
+                    "error_code": "sessionid",
+                    "message": "Informe um sessionid válido.",
+                }
             settings_dict, resolved_user = login_with_sessionid(
                 sid,
                 proxy=acc.proxy,
@@ -864,18 +933,19 @@ def reconnect_account_session(
             if merged:
                 acc.encrypted_web_cookies = merged
         else:
-            # auto | password
             pw = (password or "").strip() or decrypt_secret(acc.encrypted_password)
             if mode_norm == "password" and not (password or "").strip():
-                return RedirectResponse(
-                    "/accounts/connected?error=reconnect_password",
-                    status_code=status.HTTP_303_SEE_OTHER,
-                )
+                return {
+                    "status": "error",
+                    "error_code": "password",
+                    "message": "Informe a senha ou use reconexão automática.",
+                }
             if not pw:
-                return RedirectResponse(
-                    "/accounts/connected?error=reconnect_password",
-                    status_code=status.HTTP_303_SEE_OTHER,
-                )
+                return {
+                    "status": "error",
+                    "error_code": "password",
+                    "message": "Sem senha salva. Informe a senha ou cole sessionid/cookies.",
+                }
             if (password or "").strip():
                 acc.encrypted_password = encrypt_secret(password.strip())
             settings_dict = try_refresh_session(
@@ -894,26 +964,29 @@ def reconnect_account_session(
         acc.status = "active"
         acc.last_login_at = dt.datetime.utcnow()
         acc.last_error = None
-        db.commit()
-        return RedirectResponse(
-            "/accounts/connected?ok=session_reconnected",
-            status_code=status.HTTP_303_SEE_OTHER,
-        )
-    except InstagramTwoFactorRequired:
-        return RedirectResponse(
-            "/accounts/connected?error=reconnect_2fa",
-            status_code=status.HTTP_303_SEE_OTHER,
-        )
+        return {
+            "status": "connected",
+            "message": "Sessão reconectada com sucesso.",
+            "username": acc.username,
+        }
+    except InstagramTwoFactorRequired as exc:
+        return {
+            "status": "needs_2fa",
+            "message": str(exc),
+            "username": acc.username,
+        }
     except WebCookiesError:
-        return RedirectResponse(
-            "/accounts/connected?error=cookies_invalid",
-            status_code=status.HTTP_303_SEE_OTHER,
-        )
-    except InstagramAuthError:
-        return RedirectResponse(
-            "/accounts/connected?error=reconnect_failed",
-            status_code=status.HTTP_303_SEE_OTHER,
-        )
+        return {
+            "status": "error",
+            "error_code": "cookies_invalid",
+            "message": "Cookies inválidos. Cole JSON do Cookie-Editor (sessionid + csrftoken).",
+        }
+    except InstagramAuthError as exc:
+        return {
+            "status": "error",
+            "error_code": "auth",
+            "message": str(exc)[:500],
+        }
 
 
 @router.post("/{account_id}/pause")
