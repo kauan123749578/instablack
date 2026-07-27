@@ -107,6 +107,15 @@ def _meta_defer_sched_key(account_id: int) -> str:
     return f"meta:defer_sched:{int(account_id)}"
 
 
+def _meta_global_inflight_key() -> str:
+    """Uma publicação Meta por vez no cluster (evita a Graph dropar caption sob carga)."""
+    return "meta:global_inflight"
+
+
+def _meta_caption_circuit_key() -> str:
+    return "meta:caption_circuit"
+
+
 def _redis_ttl_seconds(client, key: str, fallback: int) -> int:
     try:
         ttl = int(client.ttl(key) or 0)
@@ -118,7 +127,7 @@ def _redis_ttl_seconds(client, key: str, fallback: int) -> int:
 
 
 def _claim_meta_publish_slot(account_id: int, cooldown_sec: int) -> tuple[bool, int, str]:
-    """Garante no máximo 1 publish Meta por conta no intervalo.
+    """Garante 1 publish Meta por conta + 1 Meta publish global no cluster.
 
     Retorna (pode_publicar, wait_seconds, motivo).
     Race: dois workers ao mesmo tempo — só um pega inflight NX.
@@ -130,8 +139,14 @@ def _claim_meta_publish_slot(account_id: int, cooldown_sec: int) -> tuple[bool, 
     cooldown_sec = max(60, int(cooldown_sec or 3600))
     cool_key = _meta_cooldown_key(account_id)
     fly_key = _meta_inflight_key(account_id)
+    global_key = _meta_global_inflight_key()
+    circuit_key = _meta_caption_circuit_key()
 
     try:
+        if client.exists(circuit_key):
+            wait = _redis_ttl_seconds(client, circuit_key, 600)
+            return False, wait, f"meta_caption_circuit:{wait}s"
+
         if client.exists(cool_key):
             wait = _redis_ttl_seconds(client, cool_key, cooldown_sec)
             return False, wait, f"meta_cooldown:{wait}s"
@@ -140,6 +155,18 @@ def _claim_meta_publish_slot(account_id: int, cooldown_sec: int) -> tuple[bool, 
         if not client.set(fly_key, "1", nx=True, ex=min(900, max(300, cooldown_sec))):
             wait = _redis_ttl_seconds(client, fly_key, 300)
             return False, wait, f"meta_inflight:{wait}s"
+
+        # Serializa publishes Meta no cluster — carga paralela = Graph dropa caption.
+        if not client.set(global_key, str(account_id), nx=True, ex=900):
+            try:
+                client.delete(fly_key)
+            except Exception:
+                pass
+            wait = _redis_ttl_seconds(client, global_key, 120)
+            # Espalha retries para não bater todos no mesmo segundo.
+            wait = max(45, min(wait + (int(account_id) % 40), 300))
+            return False, wait, f"meta_global_inflight:{wait}s"
+
         return True, 0, ""
     except Exception as exc:
         log.warning("claim_meta_publish_slot falhou account=%s: %s", account_id, exc)
@@ -152,8 +179,26 @@ def _release_meta_inflight(account_id: int) -> None:
         return
     try:
         client.delete(_meta_inflight_key(account_id))
+        cur = client.get(_meta_global_inflight_key())
+        if cur is None:
+            return
+        cur_s = cur.decode() if isinstance(cur, (bytes, bytearray)) else str(cur)
+        if cur_s == str(account_id):
+            client.delete(_meta_global_inflight_key())
     except Exception:
         pass
+
+
+def _trip_meta_caption_circuit(*, ttl_sec: int = 600) -> None:
+    """Pausa Meta publishes após onda de caption missing (bug lado Instagram/Graph)."""
+    client = _redis()
+    if client is None:
+        return
+    try:
+        client.set(_meta_caption_circuit_key(), "1", ex=max(120, int(ttl_sec)))
+        log.warning("META caption circuit OPEN ttl=%ss", ttl_sec)
+    except Exception as exc:
+        log.warning("trip_meta_caption_circuit falhou: %s", exc)
 
 
 def _mark_meta_published(account_id: int, cooldown_sec: int) -> None:
@@ -167,6 +212,11 @@ def _mark_meta_published(account_id: int, cooldown_sec: int) -> None:
         pipe.set(_meta_cooldown_key(account_id), "1", ex=cooldown_sec)
         pipe.delete(_meta_inflight_key(account_id))
         pipe.execute()
+        cur = client.get(_meta_global_inflight_key())
+        if cur is not None:
+            cur_s = cur.decode() if isinstance(cur, (bytes, bytearray)) else str(cur)
+            if cur_s == str(account_id):
+                client.delete(_meta_global_inflight_key())
     except Exception as exc:
         log.warning("mark_meta_published falhou account=%s: %s", account_id, exc)
         _release_meta_inflight(account_id)
@@ -812,11 +862,31 @@ def publish_to_account(
                 camouflage_opacity=float(getattr(automation, "camouflage_opacity", 0.25) or 0.25),
             )
         except Exception as exc:
+            # Abort de legenda: NÃO retentar a task inteira — isso criaria outro Reel
+            # se o delete do post sem caption falhou (spam + posts sem legenda).
+            msg = str(exc)
+            if "SEM legenda" in msg or "caption_missing_abort" in msg:
+                log.error(
+                    "publish_to_account abort caption account=%s automation=%s: %s",
+                    account_id,
+                    automation_id,
+                    msg[:300],
+                )
+                _trip_meta_caption_circuit(ttl_sec=600)
+                _mark_now_automation_failed(automation.id)
+                return {"error": "caption_missing_abort", "detail": msg[:500]}
             if self.request.retries < self.max_retries:
                 countdown = min(60 * (2 ** self.request.retries), 600)
                 raise self.retry(exc=exc, countdown=countdown)
             _mark_now_automation_failed(automation.id)
-            return {"error": "publish_failed", "detail": str(exc)[:500]}
+            _notify_publish_failure_once(
+                account_id=account_id,
+                owner_user_id=automation.user_id,
+                username=account.username,
+                content_type=content_type,
+                error=msg,
+            )
+            return {"error": "publish_failed", "detail": msg[:500]}
 
         if result.get("deferred"):
             wait = max(60, min(int(result.get("wait_seconds") or 3600), 6 * 3600))
@@ -1079,6 +1149,8 @@ def _execute_publish(
                 )
             except MetaInstagramError as exc:
                 _release_meta_inflight(account_id)
+                # notify=False: evita spam no celular a cada retry do Celery.
+                # A notificação final fica em publish_to_account / dedupe Redis.
                 _log_failure(
                     automation_id,
                     account_id,
@@ -1086,7 +1158,16 @@ def _execute_publish(
                     content_type=content_type,
                     owner_user_id=owner_user_id,
                     username=username,
+                    notify=False,
                 )
+                if "SEM legenda" in str(exc) or getattr(exc, "error_type", None) == "caption_missing_abort":
+                    _notify_publish_failure_once(
+                        account_id=account_id,
+                        owner_user_id=owner_user_id,
+                        username=username,
+                        content_type=content_type,
+                        error=str(exc),
+                    )
                 if exc.code in (102, 190):
                     _mark_account_needs_login(account_id, str(exc))
                     return {"error": "meta_auth"}
@@ -1134,10 +1215,26 @@ def _execute_publish(
                 link="/logs",
             )
 
-        # publish_meta_media só retorna sucesso se caption_verified=True (senão raises)
+        # publish_meta_media: True = caption no post; "via_comment" = Graph dropou
+        # caption e salvamos o texto como 1º comentário (último recurso).
         caption_verified = result.get("caption_verified")
-        caption_ok = True if caption_verified is True else False
-        if (content_type or "reel") in ("reel", "photo") and caption_ok is not True:
+        via_comment = caption_verified == "via_comment"
+        caption_ok = True if (caption_verified is True or via_comment) else False
+        if via_comment:
+            log.warning(
+                "META caption via COMMENT account=%s media=%s — Graph dropou caption",
+                username,
+                result.get("id"),
+            )
+            create_notification(
+                owner_user_id,
+                "Reels: legenda foi no comentário",
+                f"@{username}: a Meta publicou sem caption (bug da Graph). "
+                "Postamos o texto como 1º comentário.",
+                kind="warning",
+                link=str(result.get("url") or "/logs"),
+            )
+        elif (content_type or "reel") in ("reel", "photo") and caption_ok is not True:
             # Defesa extra — não deveria chegar aqui
             caption_ok = False
             log.error(
@@ -1573,6 +1670,7 @@ def _log_failure(
     content_type: str | None = None,
     owner_user_id: int | None = None,
     username: str | None = None,
+    notify: bool = True,
 ) -> None:
     from core.notifications import content_label, create_notification
 
@@ -1594,15 +1692,50 @@ def _log_failure(
                 uid = uid or acc.user_id
                 uname = uname or acc.username
 
-    if uid:
-        label = content_label(content_type)
-        create_notification(
-            uid,
-            f"Erro ao publicar {label}",
-            f"@{uname or '?'}: {error[:180]}",
-            kind="warning",
-            link="/logs",
+    if uid and notify:
+        _notify_publish_failure_once(
+            account_id=account_id,
+            owner_user_id=uid,
+            username=uname,
+            content_type=content_type,
+            error=error,
         )
+
+
+def _notify_publish_failure_once(
+    *,
+    account_id: int,
+    owner_user_id: int | None,
+    username: str | None,
+    content_type: str | None,
+    error: str,
+    ttl_sec: int = 1800,
+) -> None:
+    """No máximo 1 push/notificação de erro por conta a cada 30 min."""
+    from core.notifications import content_label, create_notification
+
+    if not owner_user_id:
+        return
+    client = _redis()
+    key = f"notif:publish_fail:{int(account_id)}"
+    if client is not None:
+        try:
+            if not client.set(key, "1", nx=True, ex=max(60, int(ttl_sec))):
+                log.info(
+                    "skip duplicate publish-fail notification account=%s",
+                    account_id,
+                )
+                return
+        except Exception as exc:
+            log.warning("notify dedupe falhou account=%s: %s", account_id, exc)
+    label = content_label(content_type)
+    create_notification(
+        owner_user_id,
+        f"Erro ao publicar {label}",
+        f"@{username or '?'}: {error[:180]}",
+        kind="warning",
+        link="/logs",
+    )
 
 
 def _meta_user_restricted(exc: MetaInstagramError) -> bool:
