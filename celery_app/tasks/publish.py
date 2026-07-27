@@ -127,6 +127,11 @@ def _meta_global_active_key() -> str:
 
 
 META_GLOBAL_MAX_CONCURRENT = 3
+# Inflight por conta: só enquanto o publish roda (capa+verify ~2–4 min).
+# NÃO usar o cooldown de 60 min aqui — se o worker cair, a conta ficava
+# bloqueada ~15 min (meta_inflight:883s nos logs).
+META_INFLIGHT_TTL_SEC = 240
+META_GLOBAL_SLOT_TTL_SEC = 300
 
 
 def _claim_meta_global_slot(client, account_id: int) -> tuple[bool, int]:
@@ -141,7 +146,7 @@ def _claim_meta_global_slot(client, account_id: int) -> tuple[bool, int]:
         if active >= META_GLOBAL_MAX_CONCURRENT:
             wait = 30 + (int(account_id) % 46)
             return False, wait
-        client.zadd(key, {str(int(account_id)): now + 420.0})
+        client.zadd(key, {str(int(account_id)): now + float(META_GLOBAL_SLOT_TTL_SEC)})
         return True, 0
     except Exception as exc:
         log.warning("claim_meta_global_slot falhou account=%s: %s", account_id, exc)
@@ -170,12 +175,14 @@ def _claim_meta_publish_slot(account_id: int, cooldown_sec: int) -> tuple[bool, 
 
     try:
         if client.exists(cool_key):
-            wait = _redis_ttl_seconds(client, cool_key, cooldown_sec)
-            return False, wait, f"meta_cooldown:{wait}s"
+            # Cooldown pós-sucesso: não precisa esperar a hora toda na task —
+            # reagenda no máximo 3 min e tenta de novo.
+            wait = min(_redis_ttl_seconds(client, cool_key, cooldown_sec), 180)
+            return False, max(60, wait), f"meta_cooldown:{wait}s"
 
-        if not client.set(fly_key, "1", nx=True, ex=min(900, max(300, cooldown_sec))):
-            wait = _redis_ttl_seconds(client, fly_key, 300)
-            return False, wait, f"meta_inflight:{wait}s"
+        if not client.set(fly_key, "1", nx=True, ex=META_INFLIGHT_TTL_SEC):
+            wait = min(_redis_ttl_seconds(client, fly_key, META_INFLIGHT_TTL_SEC), 90)
+            return False, max(30, wait), f"meta_inflight:{wait}s"
 
         ok_global, wait_global = _claim_meta_global_slot(client, account_id)
         if not ok_global:
