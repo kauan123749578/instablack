@@ -214,8 +214,8 @@ def verify_published_caption(
     import logging
 
     _log = logging.getLogger(__name__)
-    # Graph atrasa caption; janela ~2 min (não bloquear fila por 10+ min).
-    delays = (4.0, 6.0, 8.0, 10.0, 12.0, 15.0, 18.0, 22.0)
+    # Graph atrasa caption sob carga; janela ~4–5 min.
+    delays = (5.0, 8.0, 12.0, 15.0, 20.0, 25.0, 30.0, 35.0, 40.0, 45.0)
     last_raw: str | None = None
     saw_field = False
 
@@ -764,9 +764,8 @@ def publish_media(
     sem caption).
 
     Reel: capa (cover_url) + caption no mesmo POST. A API oficial NÃO deixa
-    apagar Reel recém-publicado (100/33) — não tentamos delete. Se a Graph
-    dropar a caption, re-verifica e, se precisar, posta o texto como
-    1º comentário (não cria 2º post).
+    apagar Reel recém-publicado (100/33). Se a Graph não confirmar caption,
+    abortamos (sem fallback em comentário).
     """
     import logging
 
@@ -961,41 +960,20 @@ def publish_media(
     permalink: str | None = None
     media_id = ""
 
-    def _recover_or_abort(
-        mid: str,
-        link: str | None,
-        *,
-        cover_flag: bool,
-    ) -> dict:
-        # Graph não edita caption pós-publish e NÃO deixa apagar Reel novo.
-        # Único resgate: 1º comentário com o texto (sem 2º post).
-        if post_media_comment(access_token, mid, caption_text):
-            _log.warning(
-                "META caption via COMMENT media=%s (Graph dropou caption; sem delete)",
-                mid,
-            )
-            return {
-                "id": mid,
-                "code": None,
-                "url": link,
-                "cover_applied": cover_flag,
-                "cover_error": (
-                    "Legenda como comentário: Instagram/Meta publicou sem caption "
-                    "(API não permite apagar). Bug intermitente da Graph."
-                ),
-                "caption_sent_len": len(caption_text),
-                "caption_verified": "via_comment",
-            }
+    def _abort_missing_caption(mid: str, link: str | None) -> None:
+        # NÃO postar legenda como comentário — o usuário quer caption no Reel.
+        # Graph não edita caption e quase nunca deixa apagar Reel novo.
         raise MetaInstagramError(
             "Abortado: Instagram publicou o Reel/Foto SEM legenda. "
-            "A API não permite apagar o post; tentativa de comentar a legenda falhou. "
-            "NÃO deixamos como sucesso.",
+            "Enviamos caption no POST /media, mas a Graph não confirmou o campo. "
+            "NÃO deixamos como sucesso (sem fallback em comentário).",
             code=None,
             subcode=None,
             error_type="caption_missing_abort",
         )
 
-    # Um único publish: capa+caption juntos (se houver capa). Sem delete, sem 2º post.
+    # Preferir caption no post: se houver capa, tenta caption+cover; se a Graph
+    # dropar a caption, NÃO aceitamos comentário — aborta (e libera slot).
     if want_cover:
         _log.info(
             "META capa ATTEMPT cover_key=%s (caption+cover juntos)",
@@ -1013,29 +991,28 @@ def publish_media(
         access_token,
         media_id,
         expected_min_len=1,
-        attempts=8,
+        attempts=10,
     )
     if not caption_ok:
-        # Indexação da Graph atrasa sob carga — espera e re-verifica (sem apagar).
         _log.warning(
-            "META caption ainda ausente media=%s — espera extra e re-verifica (sem delete)",
+            "META caption ainda ausente media=%s — espera extra e re-verifica (sem comentário)",
             media_id,
         )
-        time.sleep(15.0)
+        time.sleep(25.0)
         caption_ok = verify_published_caption(
             access_token,
             media_id,
             expected_min_len=1,
-            attempts=4,
+            attempts=6,
         )
 
     if not caption_ok:
         _log.error(
-            "META caption AUSENTE media=%s (enviamos len=%s) — sem delete; tenta comentário",
+            "META caption AUSENTE media=%s (enviamos len=%s) — abort sem comentário",
             media_id,
             len(caption_text),
         )
-        return _recover_or_abort(media_id, permalink, cover_flag=cover_applied)
+        _abort_missing_caption(media_id, permalink)
 
     _log.info(
         "META capa RESULT media=%s cover_applied=%s cover_error=%r caption_ok=True",

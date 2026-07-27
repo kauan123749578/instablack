@@ -126,12 +126,12 @@ def _meta_global_active_key() -> str:
     return "meta:global_active"
 
 
-META_GLOBAL_MAX_CONCURRENT = 3
+META_GLOBAL_MAX_CONCURRENT = 1
 # Inflight por conta: só enquanto o publish roda (capa+verify ~2–4 min).
 # NÃO usar o cooldown de 60 min aqui — se o worker cair, a conta ficava
 # bloqueada ~15 min (meta_inflight:883s nos logs).
 META_INFLIGHT_TTL_SEC = 240
-META_GLOBAL_SLOT_TTL_SEC = 300
+META_GLOBAL_SLOT_TTL_SEC = 420
 
 
 def _claim_meta_global_slot(client, account_id: int) -> tuple[bool, int]:

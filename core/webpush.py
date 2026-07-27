@@ -98,7 +98,7 @@ def notify_user_push(
 
     rows = _load_user_subscriptions(user_id)
     if not rows:
-        log.warning("Push: nenhuma subscription para user=%s", user_id)
+        log.debug("Push: nenhuma subscription para user=%s", user_id)
         return 0, 0
 
     sent = 0
