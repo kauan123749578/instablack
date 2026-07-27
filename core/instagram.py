@@ -473,6 +473,66 @@ def get_ready_client(
         raise InstagramAuthError(str(exc)) from exc
 
 
+def extract_sessionid_from_settings(settings_dict: dict | None) -> str | None:
+    """Puxa sessionid renovado do dump do instagrapi."""
+    if not isinstance(settings_dict, dict):
+        return None
+    auth = settings_dict.get("authorization_data") or {}
+    if isinstance(auth, dict):
+        sid = str(auth.get("sessionid") or "").strip()
+        if sid:
+            return sid
+    cookies = settings_dict.get("cookies") or {}
+    if isinstance(cookies, dict):
+        sid = str(cookies.get("sessionid") or "").strip()
+        if sid:
+            return sid
+    return None
+
+
+def try_refresh_session(
+    *,
+    settings_dict: dict | None,
+    proxy: str,
+    username: str,
+    password: str | None = None,
+    verification_code: str | None = None,
+) -> dict:
+    """Renova sessão instagrapi: tenta a salva; se expirou, login com senha.
+
+    Retorna settings dict novo. Sem senha salva/informada, só valida a sessão atual.
+    """
+    username = (username or "").strip().lstrip("@")
+    if not proxy or not str(proxy).strip():
+        raise InstagramAuthError("Proxy é obrigatório para reconectar a sessão.")
+
+    if settings_dict:
+        try:
+            cl = get_ready_client(
+                settings_dict=settings_dict,
+                proxy=proxy,
+                username=username,
+                password=password,
+            )
+            return cl.get_settings()
+        except (InstagramAuthError, InstagramTwoFactorRequired):
+            if not password:
+                raise
+            # Sessão morta — login fresco abaixo.
+            log.info("Sessão inválida @%s — tentando login fresco com senha", username)
+
+    if not password:
+        raise InstagramAuthError(
+            "Sessão expirada. Use Reconectar com senha, sessionid ou cookies web."
+        )
+    return login_with_credentials(
+        username,
+        password,
+        verification_code=verification_code,
+        proxy=proxy,
+    )
+
+
 def publish_reel(
     cl: Client,
     video_path: Path,

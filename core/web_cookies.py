@@ -151,6 +151,26 @@ def decrypt_web_cookies(token: str | None) -> dict[str, str] | None:
     }
 
 
+def merge_sessionid_into_web_cookies(
+    encrypted_token: str | None,
+    sessionid: str | None,
+) -> str | None:
+    """Atualiza só o sessionid no jar web (mantém csrftoken e demais cookies).
+
+    Usado após re-login instagrapi automático — a API web precisa do sessionid novo.
+    Retorna token criptografado ou None se não houver jar útil.
+    """
+    sid = _clean_cookie_value(sessionid or "")
+    if not sid:
+        return encrypted_token
+    cookies = decrypt_web_cookies(encrypted_token) or {}
+    if not cookies.get("csrftoken") and not cookies:
+        # Sem jar anterior: não inventa cookies web só com sessionid.
+        return encrypted_token
+    cookies["sessionid"] = sid
+    return encrypt_web_cookies(cookies)
+
+
 def web_cookies_status(token: str | None) -> dict[str, Any]:
     cookies = decrypt_web_cookies(token) or {}
     return {

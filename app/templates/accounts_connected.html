@@ -21,6 +21,12 @@
     <li>
       <strong class="ig-handle">@{{ acc.username }}</strong> · {{ status_label(acc.status) }}
       {% if acc.last_error %}<span class="muted">— {{ acc.last_error[:120] }}</span>{% endif %}
+      {% if acc.provider != 'meta' and acc.status == 'needs_login' %}
+      <form method="post" action="/accounts/{{ acc.id }}/reconnect" style="display:inline;margin-left:8px">
+        <input type="hidden" name="mode" value="auto">
+        <button type="submit" class="btn btn-sm btn-primary">Reconectar</button>
+      </form>
+      {% endif %}
     </li>
     {% endfor %}
   </ul>
@@ -110,6 +116,49 @@
           <td>{{ acc.last_login_at | localtime }}</td>
           <td class="account-actions">
             {% if acc.provider != 'meta' %}
+            <details class="proxy-update-panel" {% if acc.status == 'needs_login' %}open{% endif %}>
+              <summary class="btn btn-sm {% if acc.status == 'needs_login' %}btn-primary{% endif %}">
+                {% if acc.status == 'needs_login' %}Reconectar sessão{% else %}Renovar sessão{% endif %}
+              </summary>
+              <div class="proxy-update-form" style="display:flex;flex-direction:column;gap:10px;min-width:260px">
+                {% if acc.encrypted_password %}
+                <form method="post" action="/accounts/{{ acc.id }}/reconnect">
+                  <input type="hidden" name="mode" value="auto">
+                  <button type="submit" class="btn btn-sm btn-primary" style="width:100%">
+                    Tentar automático (senha salva)
+                  </button>
+                  <p class="muted" style="margin:6px 0 0;font-size:11px">
+                    Renova instagrapi e atualiza sessionid dos cookies web se existirem.
+                  </p>
+                </form>
+                {% endif %}
+                <form method="post" action="/accounts/{{ acc.id }}/reconnect">
+                  <input type="hidden" name="mode" value="password">
+                  <input type="password" name="password" required placeholder="Senha do Instagram"
+                         autocomplete="current-password">
+                  <input type="text" name="verification_code" placeholder="Código 2FA (se pedir)"
+                         autocomplete="one-time-code" style="margin-top:6px">
+                  <div class="proxy-update-actions" style="margin-top:6px">
+                    <button type="submit" class="btn btn-sm btn-primary">Reconectar com senha</button>
+                  </div>
+                </form>
+                <form method="post" action="/accounts/{{ acc.id }}/reconnect">
+                  <input type="hidden" name="mode" value="sessionid">
+                  <input type="text" name="sessionid" required placeholder="sessionid do navegador">
+                  <div class="proxy-update-actions" style="margin-top:6px">
+                    <button type="submit" class="btn btn-sm">Reconectar com sessionid</button>
+                  </div>
+                </form>
+                <form method="post" action="/accounts/{{ acc.id }}/reconnect">
+                  <input type="hidden" name="mode" value="cookies">
+                  <textarea name="web_cookies" rows="4" required
+                            placeholder="JSON Cookie-Editor ou sessionid=...; csrftoken=..."></textarea>
+                  <div class="proxy-update-actions" style="margin-top:6px">
+                    <button type="submit" class="btn btn-sm">Reconectar com cookies web</button>
+                  </div>
+                </form>
+              </div>
+            </details>
             {% set cflag = cookie_flags.get(acc.id, {}) %}
             <details class="proxy-update-panel">
               <summary class="btn btn-sm">
@@ -143,6 +192,8 @@
                 <p class="proxy-test-result muted" aria-live="polite"></p>
               </form>
             </details>
+            {% elif acc.status == 'needs_login' %}
+            <a href="/accounts" class="btn btn-sm btn-primary" data-nav="/accounts">Reconectar Meta</a>
             {% endif %}
             {% if acc.status == 'paused' %}
             <form method="post" action="/accounts/{{ acc.id }}/resume">

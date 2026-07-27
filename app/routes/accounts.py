@@ -41,14 +41,18 @@ from core.meta_instagram import (
 from core.instagram import (
     InstagramAuthError,
     InstagramTwoFactorRequired,
+    extract_sessionid_from_settings,
     login_with_credentials,
     login_with_imported_settings,
     login_with_sessionid,
     serialize_settings,
+    try_refresh_session,
+    deserialize_settings,
 )
 from core.web_cookies import (
     WebCookiesError,
     encrypt_web_cookies,
+    merge_sessionid_into_web_cookies,
     parse_web_cookies_blob,
     web_cookies_status,
 )
@@ -471,6 +475,8 @@ def connected_accounts(
         "account_added": "Conta conectada com sucesso!",
         "meta_connected": "Conta conectada pela API oficial da Meta!",
         "cookies_updated": "Cookies web atualizados! Já pode publicar Story com link.",
+        "session_reconnected": "Sessão reconectada com sucesso!",
+        "session_reconnected_2fa": "Informe o código 2FA e reconecte de novo.",
     }.get(ok_key or "")
     err_key = request.query_params.get("error")
     err_msg = {
@@ -479,6 +485,12 @@ def connected_accounts(
         "cookies_invalid": "Cookies inválidos. Cole o JSON do Cookie-Editor (precisa ter sessionid e csrftoken).",
         "cookies_login": "Não foi possível validar o sessionid desses cookies. Exporte de novo com a conta logada.",
         "cookies_meta": "Contas da API oficial Meta não usam cookies web.",
+        "reconnect_meta": "Conta Meta: reconecte pela API oficial em Adicionar conta.",
+        "reconnect_failed": "Não foi possível reconectar a sessão. Tente senha, sessionid ou cookies novos.",
+        "reconnect_password": "Informe a senha (ou use automático se a senha estiver salva).",
+        "reconnect_sessionid": "Informe um sessionid válido.",
+        "reconnect_2fa": "Esta conta pediu 2FA. Informe o código do autenticador e tente de novo.",
+        "reconnect_proxy": "Proxy ausente ou inválida — atualize a proxy antes de reconectar.",
     }.get(err_key or "")
     offline = offline_accounts(db, user.id)
     cookie_flags = {
@@ -789,6 +801,119 @@ def update_account_web_cookies(
         "/accounts/connected?ok=cookies_updated",
         status_code=status.HTTP_303_SEE_OTHER,
     )
+
+
+@router.post("/{account_id}/reconnect")
+def reconnect_account_session(
+    account_id: int,
+    mode: str = Form("auto"),
+    password: str = Form(""),
+    verification_code: str = Form(""),
+    sessionid: str = Form(""),
+    web_cookies: str = Form(""),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Reconecta sessão instagrapi / cookies web (não Meta).
+
+    mode=auto      — usa sessão salva + senha criptografada (se houver)
+    mode=password  — senha (+ 2FA opcional) informada no formulário
+    mode=sessionid — sessionid novo do navegador
+    mode=cookies   — JSON Cookie-Editor (sessionid + csrftoken)
+    """
+    acc = _get_owned_account(db, account_id, user)
+    if (acc.provider or "instagrapi") == "meta":
+        return RedirectResponse(
+            "/accounts/connected?error=reconnect_meta",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    if not acc.proxy or not str(acc.proxy).strip():
+        return RedirectResponse(
+            "/accounts/connected?error=reconnect_proxy",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    mode_norm = (mode or "auto").strip().lower()
+    try:
+        if mode_norm == "cookies":
+            parsed = parse_web_cookies_blob(web_cookies)
+            sid = clean_sessionid(parsed["sessionid"])
+            settings_dict, resolved_user = login_with_sessionid(
+                sid,
+                proxy=acc.proxy,
+                username_hint=acc.username,
+            )
+            acc.encrypted_web_cookies = encrypt_web_cookies(parsed)
+            if resolved_user:
+                acc.username = resolved_user
+        elif mode_norm == "sessionid":
+            sid = clean_sessionid(sessionid)
+            if not sid:
+                return RedirectResponse(
+                    "/accounts/connected?error=reconnect_sessionid",
+                    status_code=status.HTTP_303_SEE_OTHER,
+                )
+            settings_dict, resolved_user = login_with_sessionid(
+                sid,
+                proxy=acc.proxy,
+                username_hint=acc.username,
+            )
+            if resolved_user:
+                acc.username = resolved_user
+            merged = merge_sessionid_into_web_cookies(acc.encrypted_web_cookies, sid)
+            if merged:
+                acc.encrypted_web_cookies = merged
+        else:
+            # auto | password
+            pw = (password or "").strip() or decrypt_secret(acc.encrypted_password)
+            if mode_norm == "password" and not (password or "").strip():
+                return RedirectResponse(
+                    "/accounts/connected?error=reconnect_password",
+                    status_code=status.HTTP_303_SEE_OTHER,
+                )
+            if not pw:
+                return RedirectResponse(
+                    "/accounts/connected?error=reconnect_password",
+                    status_code=status.HTTP_303_SEE_OTHER,
+                )
+            if (password or "").strip():
+                acc.encrypted_password = encrypt_secret(password.strip())
+            settings_dict = try_refresh_session(
+                settings_dict=deserialize_settings(acc.session_json),
+                proxy=acc.proxy,
+                username=acc.username,
+                password=pw,
+                verification_code=(verification_code or "").strip() or None,
+            )
+            new_sid = extract_sessionid_from_settings(settings_dict)
+            merged = merge_sessionid_into_web_cookies(acc.encrypted_web_cookies, new_sid)
+            if merged:
+                acc.encrypted_web_cookies = merged
+
+        acc.session_json = serialize_settings(settings_dict)
+        acc.status = "active"
+        acc.last_login_at = dt.datetime.utcnow()
+        acc.last_error = None
+        db.commit()
+        return RedirectResponse(
+            "/accounts/connected?ok=session_reconnected",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    except InstagramTwoFactorRequired:
+        return RedirectResponse(
+            "/accounts/connected?error=reconnect_2fa",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    except WebCookiesError:
+        return RedirectResponse(
+            "/accounts/connected?error=cookies_invalid",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    except InstagramAuthError:
+        return RedirectResponse(
+            "/accounts/connected?error=reconnect_failed",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
 
 
 @router.post("/{account_id}/pause")

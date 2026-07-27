@@ -41,13 +41,16 @@ from core.anti_farm_prefs import get_anti_farm_prefs_by_id
 from core.database import session_scope
 from core.instagram import (
     InstagramAuthError,
+    InstagramTwoFactorRequired,
     check_proxy,
     deserialize_settings,
+    extract_sessionid_from_settings,
     get_ready_client,
     publish_photo_feed,
     publish_reel,
     publish_story,
     serialize_settings,
+    try_refresh_session,
 )
 from core.media_prepare import (
     IMAGE_EXT,
@@ -65,6 +68,7 @@ from core.meta_instagram import (
 from core.metadata import MetadataStripError
 from core.notifications import create_notification, notify_publish_success
 from core.storage import get_storage
+from core.web_cookies import decrypt_web_cookies, merge_sessionid_into_web_cookies
 from models.models import Automation, InstagramAccount, PublishLog
 
 log = logging.getLogger(__name__)
@@ -963,8 +967,6 @@ def _execute_publish(
         account_warmup_enabled = bool(getattr(account, "warmup_enabled", False))
         account_warmup_days = int(getattr(account, "warmup_days", 7) or 7)
         account_warmup_started_at = getattr(account, "warmup_started_at", None)
-        from core.web_cookies import decrypt_web_cookies
-
         web_cookies = decrypt_web_cookies(account.encrypted_web_cookies)
         if (
             provider == "meta"
@@ -1332,16 +1334,51 @@ def _execute_publish(
         return {"error": "proxy_down"}
 
     if not settings_dict:
-        _log_failure(
-            automation_id,
-            account_id,
-            "sem sessão salva (refaça o login)",
-            content_type=content_type,
-            owner_user_id=owner_user_id,
-            username=username,
-        )
-        _mark_account_needs_login(account_id, "Sessão expirada — reconecte a conta")
-        return {"error": "no_session"}
+        if password and username:
+            try:
+                settings_dict = try_refresh_session(
+                    settings_dict=None,
+                    proxy=proxy,
+                    username=username,
+                    password=password,
+                )
+                with session_scope() as db:
+                    acc = db.get(InstagramAccount, account_id)
+                    if acc:
+                        acc.session_json = serialize_settings(settings_dict)
+                        new_sid = extract_sessionid_from_settings(settings_dict)
+                        merged = merge_sessionid_into_web_cookies(
+                            acc.encrypted_web_cookies, new_sid
+                        )
+                        if merged:
+                            acc.encrypted_web_cookies = merged
+                            web_cookies = decrypt_web_cookies(merged) or web_cookies
+                        acc.status = "active"
+                        acc.last_error = None
+                        acc.last_login_at = dt.datetime.utcnow()
+                log.info("publish auto-reconnect OK account=%s (sem session)", account_id)
+            except (InstagramAuthError, InstagramTwoFactorRequired) as exc:
+                _log_failure(
+                    automation_id,
+                    account_id,
+                    f"sem sessão / re-login: {exc}",
+                    content_type=content_type,
+                    owner_user_id=owner_user_id,
+                    username=username,
+                )
+                _mark_account_needs_login(account_id, str(exc))
+                return {"error": "no_session"}
+        else:
+            _log_failure(
+                automation_id,
+                account_id,
+                "sem sessão salva (refaça o login)",
+                content_type=content_type,
+                owner_user_id=owner_user_id,
+                username=username,
+            )
+            _mark_account_needs_login(account_id, "Sessão expirada — reconecte a conta")
+            return {"error": "no_session"}
 
     tmp_dir = Path(tempfile.mkdtemp(prefix="pub_"))
     ext = Path(video_key).suffix or ".mp4"
@@ -1485,13 +1522,30 @@ def _execute_publish(
                 )
 
         try:
+            settings_dict = try_refresh_session(
+                settings_dict=settings_dict,
+                proxy=proxy,
+                username=username,
+                password=password,
+            )
             cl = get_ready_client(
                 settings_dict=settings_dict,
                 proxy=proxy,
                 username=username,
                 password=password,
             )
-        except InstagramAuthError as exc:
+            with session_scope() as db:
+                acc = db.get(InstagramAccount, account_id)
+                if acc:
+                    acc.session_json = serialize_settings(settings_dict)
+                    new_sid = extract_sessionid_from_settings(settings_dict)
+                    merged = merge_sessionid_into_web_cookies(
+                        acc.encrypted_web_cookies, new_sid
+                    )
+                    if merged:
+                        acc.encrypted_web_cookies = merged
+                        web_cookies = decrypt_web_cookies(merged) or web_cookies
+        except (InstagramAuthError, InstagramTwoFactorRequired) as exc:
             _mark_account_needs_login(account_id, str(exc))
             _log_failure(
                 automation_id,
