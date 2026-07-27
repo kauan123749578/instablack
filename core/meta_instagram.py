@@ -27,13 +27,54 @@ META_CAPTION_MAX = 2200
 
 
 def _prepare_meta_caption(caption: str | None) -> str:
-    """Normaliza caption exatamente como a Meta espera (texto puro, sem gambiarra)."""
-    text = str(caption or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    """Normaliza caption para a Meta: UTF-8 limpo, sem controle/ZWSP invisível."""
+    import unicodedata
+
+    text = str(caption or "").replace("\r\n", "\n").replace("\r", "\n")
+    cleaned: list[str] = []
+    for ch in text:
+        if ch in "\n\t":
+            cleaned.append(ch)
+            continue
+        # Remove controles (C*), BOM, zero-width — Meta descarta caption “sujo”
+        if ord(ch) in (0xFEFF, 0x200B, 0x200C, 0x200D, 0x2060, 0x00AD):
+            continue
+        if unicodedata.category(ch)[0] == "C":
+            continue
+        cleaned.append(ch)
+    text = unicodedata.normalize("NFC", "".join(cleaned))
+    text = "\n".join(line.rstrip() for line in text.split("\n")).strip()
     if not text:
         return ""
     if len(text) > META_CAPTION_MAX:
         text = text[: META_CAPTION_MAX - 1].rstrip() + "…"
     return text
+
+
+def _caption_plain_fallback(caption: str) -> str:
+    """Fallback se a Meta descartar a legenda original (emoji/UTF problemático).
+
+    Mantém letras/números/pontuação básica e quebras de linha; remove símbolos
+    (emoji) e reduz #/@ excessivos — último recurso antes de abortar.
+    """
+    import re
+    import unicodedata
+
+    text = _prepare_meta_caption(caption)
+    out: list[str] = []
+    for ch in text:
+        if ch in "\n .,;:!?()-'\"/%&":
+            out.append(ch)
+            continue
+        cat = unicodedata.category(ch)
+        if cat.startswith(("L", "N")) or cat in ("Pd", "Pe", "Ps", "Pi", "Pf", "Po"):
+            out.append(ch)
+        # pula So/Sk (emoji e símbolos)
+    plain = "".join(out)
+    plain = re.sub(r"[ \t]+\n", "\n", plain)
+    plain = re.sub(r"\n{3,}", "\n\n", plain)
+    plain = re.sub(r"[#@]{3,}", "", plain)
+    return _prepare_meta_caption(plain)
 
 
 def uniquify_caption_for_account(caption: str, account_slot: int = 0) -> str:
@@ -49,19 +90,47 @@ def delete_media(access_token: str, media_id: str) -> bool:
     _log = logging.getLogger(__name__)
     if not media_id:
         return False
-    try:
-        response = requests.delete(
-            _graph_url(media_id),
-            params={"access_token": access_token},
-            timeout=30,
-        )
-        data = _json_or_error(response, "Falha ao apagar mídia da Meta")
-        ok = bool(data.get("success") is True or data.get("id") or response.ok)
-        _log.info("META delete media=%s ok=%s raw=%s", media_id, ok, data)
-        return ok
-    except MetaInstagramError as exc:
-        _log.warning("META delete media=%s falhou: %s", media_id, exc)
-        return False
+    # Reel recém-publicado às vezes rejeita delete imediato
+    time.sleep(2.0)
+    url = _graph_url(media_id)
+    attempts = (
+        {"method": "delete", "params": {"access_token": access_token}},
+        {
+            "method": "post",
+            "params": {"access_token": access_token, "method": "delete"},
+        },
+    )
+    for attempt in attempts:
+        try:
+            if attempt["method"] == "delete":
+                response = requests.delete(url, params=attempt["params"], timeout=30)
+            else:
+                response = requests.post(url, params=attempt["params"], timeout=30)
+            try:
+                data = response.json() if response.content else {}
+            except ValueError:
+                data = {}
+            ok = bool(
+                response.ok
+                and (
+                    data.get("success") is True
+                    or data.get("id")
+                    or (isinstance(data, dict) and not data.get("error"))
+                )
+            )
+            _log.info(
+                "META delete media=%s via=%s http=%s ok=%s raw=%s",
+                media_id,
+                attempt["method"],
+                response.status_code,
+                ok,
+                data or response.text[:300],
+            )
+            if ok:
+                return True
+        except Exception as exc:
+            _log.warning("META delete media=%s via=%s falhou: %s", media_id, attempt["method"], exc)
+    return False
 
 
 def fetch_media_caption(access_token: str, media_id: str) -> str | None:
@@ -640,9 +709,10 @@ def publish_media(
 ) -> dict[str, object]:
     """Cria container, publica e EXIGE legenda em Reel/Foto.
 
-    Caption vai na query string (doc Meta). Reel/Foto publicam SEM cover_url
-    na 1ª tentativa — capa costuma fazer o Instagram gravar o vídeo sem legenda.
-    Se a Meta publicar sem caption: apaga, republica e, se ainda falhar, ABORTA.
+    Caption SEMPRE no POST /{ig-user-id}/media (form UTF-8) — nunca no
+    media_publish. Query string NÃO é usada (trunca legenda longa → Reel
+    sem caption). Sem cover_url. Se a Meta descartar: tenta caption plain,
+    apaga e ABORTA se ainda vier vazia.
     """
     import logging
 
@@ -678,21 +748,29 @@ def publish_media(
 
     if caption_text:
         _log.info(
-            "META publish caption content_type=%s len=%s",
+            "META publish caption BEFORE /media content_type=%s len=%s utf8_bytes=%s preview=%r",
             content_type,
             len(caption_text),
+            len(caption_text.encode("utf-8")),
+            caption_text[:80],
         )
 
-    def _build_payload(*, use_cover: bool) -> dict[str, str]:
-        # Formato da doc Meta / Postman Instagram Login:
-        # media_type=REELS&video_url=...&caption=...&share_to_feed=true
+    def _build_payload(
+        *,
+        use_cover: bool,
+        caption_override: str | None = None,
+    ) -> dict[str, str]:
+        # Caption SEMPRE no /media (nunca no media_publish).
+        # Form body UTF-8 — query string trunca legendas longas e a Meta
+        # cria o container SEM caption (explica “às vezes vai, às vezes não”).
+        cap = caption_text if caption_override is None else caption_override
         body: dict[str, str] = {"access_token": access_token}
         if content_type == "reel":
             body.update(
                 {
                     "media_type": "REELS",
                     "video_url": media_url,
-                    "caption": caption_text,
+                    "caption": cap,
                     "share_to_feed": "true",
                 }
             )
@@ -703,16 +781,31 @@ def publish_media(
             body["video_url" if is_video else "image_url"] = media_url
         else:  # photo
             body["image_url"] = media_url
-            body["caption"] = caption_text
+            body["caption"] = cap
         return body
 
     def _create_container(body: dict[str, str]) -> str:
-        # Doc Meta: parâmetros na QUERY STRING (não só form body).
-        # Caption com emoji/# quebra com mais frequência no body; na query
-        # o requests faz URL-encode UTF-8 igual aos exemplos oficiais.
+        cap = body.get("caption") or ""
+        if content_type in ("reel", "photo") and not cap.strip():
+            raise MetaInstagramError(
+                "Abortado: caption vazia no payload do POST /media (não publica)."
+            )
+        _log.info(
+            "META POST /{ig}/media caption_len=%s utf8_bytes=%s share_to_feed=%s cover=%s preview=%r",
+            len(cap),
+            len(cap.encode("utf-8")),
+            body.get("share_to_feed"),
+            "cover_url" in body,
+            cap[:80],
+        )
+        # application/x-www-form-urlencoded; charset=UTF-8 (doc + Postman)
+        encoded = urlencode(body, doseq=True, encoding="utf-8", errors="strict")
         create_response = requests.post(
             _graph_url(f"{ig_user_id}/media"),
-            params=body,
+            data=encoded.encode("utf-8"),
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            },
             timeout=90,
         )
         created = _json_or_error(create_response, "Falha ao criar container da Meta")
@@ -720,19 +813,19 @@ def publish_media(
         if not cid:
             raise MetaInstagramError("A Meta não retornou o ID do container.")
         _log.info(
-            "META container created id=%s caption_in_payload=%s len=%s share_to_feed=%s cover=%s preview=%r",
+            "META container created id=%s caption_sent_len=%s",
             cid,
-            "caption" in body and bool(body.get("caption")),
-            len(body.get("caption") or ""),
-            body.get("share_to_feed"),
-            "cover_url" in body,
-            (body.get("caption") or "")[:60],
+            len(cap),
         )
         return cid
 
-    def _one_publish(*, use_cover: bool) -> tuple[str, str | None, bool]:
+    def _one_publish(
+        *,
+        use_cover: bool,
+        caption_override: str | None = None,
+    ) -> tuple[str, str | None, bool]:
         """Retorna (media_id, permalink, cover_applied)."""
-        body = _build_payload(use_cover=use_cover)
+        body = _build_payload(use_cover=use_cover, caption_override=caption_override)
         try:
             container_id = _create_container(body)
             cover_applied = bool(use_cover and cover_url and "cover_url" in body)
@@ -745,7 +838,7 @@ def publish_media(
             if not (use_cover and cover_url and cover_rejected):
                 raise
             _log.warning("META capa rejeitada no create — retry sem capa: %s", exc)
-            body = _build_payload(use_cover=False)
+            body = _build_payload(use_cover=False, caption_override=caption_override)
             container_id = _create_container(body)
             cover_applied = False
 
@@ -758,13 +851,25 @@ def publish_media(
         mid = str(published.get("id") or "")
         if not mid:
             raise MetaInstagramError("A Meta não retornou o ID da publicação.")
-        # Pequena espera: caption de Reel às vezes indexa depois do media_publish
-        time.sleep(3.0)
+        # Caption de Reel indexa depois do media_publish
+        time.sleep(4.0)
         link: str | None = None
         try:
             link = fetch_media_permalink(access_token, mid)
         except MetaInstagramError:
             link = None
+        # Log imediato do GET caption (diagnóstico do usuário)
+        try:
+            raw_cap = fetch_media_caption(access_token, mid)
+            _log.info(
+                "META GET /{media-id}?fields=caption media=%s field=%s len=%s preview=%r",
+                mid,
+                "missing" if raw_cap is None else "present",
+                len(raw_cap or ""),
+                (raw_cap or "")[:80],
+            )
+        except MetaInstagramError as exc:
+            _log.warning("META GET caption pós-publish falhou media=%s: %s", mid, exc)
         return mid, link, cover_applied
 
     # Story: sem exigência de caption
@@ -780,8 +885,7 @@ def publish_media(
             "caption_verified": None,
         }
 
-    # Reel/Foto: legenda primeiro. Capa (cover_url) só na 2ª tentativa se a
-    # 1ª já tiver legenda OK — capa costuma fazer a Meta publicar SEM caption.
+    # 1ª: caption original, form body, SEM cover_url
     cover_error: str | None = None
     media_id, permalink, cover_applied = _one_publish(use_cover=False)
     caption_ok = verify_published_caption(
@@ -793,15 +897,27 @@ def publish_media(
 
     if not caption_ok:
         _log.error(
-            "META caption AUSENTE no 1º publish media=%s — apagando e republicando (query+sem capa)",
+            "META caption AUSENTE no 1º publish media=%s (enviamos len=%s) — apaga e tenta plain",
             media_id,
+            len(caption_text),
         )
         deleted = delete_media(access_token, media_id)
         _log.info("META delete 1º post media=%s deleted=%s", media_id, deleted)
 
-        media_id, permalink, cover_applied = _one_publish(use_cover=False)
+        plain = _caption_plain_fallback(caption_text)
+        if not plain:
+            plain = caption_text
+        _log.warning(
+            "META retry com caption plain len=%s preview=%r",
+            len(plain),
+            plain[:80],
+        )
+        media_id, permalink, cover_applied = _one_publish(
+            use_cover=False,
+            caption_override=plain,
+        )
         cover_applied = False
-        cover_error = "Republicado sem capa para forçar legenda"
+        cover_error = "Republicado com caption simplificada (sem emoji/símbolos)"
         caption_ok = verify_published_caption(
             access_token,
             media_id,
@@ -818,7 +934,7 @@ def publish_media(
         raise MetaInstagramError(
             "Abortado: Instagram publicou o Reel/Foto SEM legenda. "
             f"Tentamos apagar o post (ok={deleted}) e NÃO deixamos como sucesso. "
-            "Tente de novo em alguns minutos."
+            "Confira se a legenda da automação tem texto válido (sem só emoji)."
         )
 
     return {
