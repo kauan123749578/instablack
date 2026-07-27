@@ -96,6 +96,8 @@ a:hover { color: var(--primary-hover); }
   flex-shrink: 0;
   margin-top: auto;
   padding: 12px 6px 4px;
+  display: flex;
+  justify-content: center;
 }
 .sidebar-pin-btn {
   display: flex;
@@ -133,12 +135,18 @@ a:hover { color: var(--primary-hover); }
 }
 .sidebar-pin-btn.is-active .lucide { color: #93c5fd; stroke: #93c5fd; }
 .sidebar-pin-label { white-space: nowrap; }
+/* Colapsada: mesmo tamanho/eixo dos nav-links (34px), levemente à esquerda */
+.sidebar:not(:hover):not(.is-pinned) .sidebar-bottom {
+  padding: 12px 0 4px;
+}
 .sidebar:not(:hover):not(.is-pinned) .sidebar-pin-btn {
-  width: 40px;
-  height: 40px;
-  min-width: 40px;
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  max-width: 34px;
   padding: 0;
-  margin: 0 auto;
+  margin: 0 0 0 -2px;
+  gap: 0;
   justify-content: center;
   border-radius: 999px;
 }
