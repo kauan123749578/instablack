@@ -905,7 +905,9 @@ def _execute_publish(
                     media_key=publish_key,
                     content_type=content_type,
                     caption=caption,
-                    cover_key=thumb_key if content_type == "reel" else None,
+                    # Capa via cover_url faz a Meta dropar caption com frequência.
+                    # Prioridade: legenda no Instagram. Camuflagem já vai no vídeo.
+                    cover_key=None,
                 )
             except MetaInstagramError as exc:
                 _log_failure(

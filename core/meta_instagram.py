@@ -96,8 +96,8 @@ def verify_published_caption(
     import logging
 
     _log = logging.getLogger(__name__)
-    # Espera crescente: ~2+3+4+5+6+8+10+12 ≈ 50s no pior caso
-    delays = (2.0, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0, 12.0)
+    # Espera crescente: Reels demoram a indexar caption (~70s no pior caso)
+    delays = (3.0, 4.0, 5.0, 6.0, 8.0, 10.0, 12.0, 14.0, 16.0, 18.0)
     last_raw: str | None = None
     saw_field = False
 
@@ -640,9 +640,9 @@ def publish_media(
 ) -> dict[str, object]:
     """Cria container, publica e EXIGE legenda em Reel/Foto.
 
-    Se a Meta publicar sem caption confirmada: apaga o post e tenta de novo
-    (sem capa). Se ainda falhar: apaga de novo e ABORTA — não deixa Reel sem
-    legenda como sucesso.
+    Caption vai na query string (doc Meta). Reel/Foto publicam SEM cover_url
+    na 1ª tentativa — capa costuma fazer o Instagram gravar o vídeo sem legenda.
+    Se a Meta publicar sem caption: apaga, republica e, se ainda falhar, ABORTA.
     """
     import logging
 
@@ -707,24 +707,26 @@ def publish_media(
         return body
 
     def _create_container(body: dict[str, str]) -> str:
-        # requests data=dict = form urlencoded UTF-8 (igual aos exemplos Meta)
+        # Doc Meta: parâmetros na QUERY STRING (não só form body).
+        # Caption com emoji/# quebra com mais frequência no body; na query
+        # o requests faz URL-encode UTF-8 igual aos exemplos oficiais.
         create_response = requests.post(
             _graph_url(f"{ig_user_id}/media"),
-            data=body,
-            timeout=60,
+            params=body,
+            timeout=90,
         )
         created = _json_or_error(create_response, "Falha ao criar container da Meta")
         cid = str(created.get("id") or "")
         if not cid:
             raise MetaInstagramError("A Meta não retornou o ID do container.")
-        # Loga se a caption foi de fato enviada no create
         _log.info(
-            "META container created id=%s caption_in_payload=%s len=%s share_to_feed=%s cover=%s",
+            "META container created id=%s caption_in_payload=%s len=%s share_to_feed=%s cover=%s preview=%r",
             cid,
             "caption" in body and bool(body.get("caption")),
             len(body.get("caption") or ""),
             body.get("share_to_feed"),
             "cover_url" in body,
+            (body.get("caption") or "")[:60],
         )
         return cid
 
@@ -756,6 +758,8 @@ def publish_media(
         mid = str(published.get("id") or "")
         if not mid:
             raise MetaInstagramError("A Meta não retornou o ID da publicação.")
+        # Pequena espera: caption de Reel às vezes indexa depois do media_publish
+        time.sleep(3.0)
         link: str | None = None
         try:
             link = fetch_media_permalink(access_token, mid)
@@ -776,25 +780,25 @@ def publish_media(
             "caption_verified": None,
         }
 
-    # Reel/Foto: publicar → verificar caption → se falhar, APAGAR e republicar
+    # Reel/Foto: legenda primeiro. Capa (cover_url) só na 2ª tentativa se a
+    # 1ª já tiver legenda OK — capa costuma fazer a Meta publicar SEM caption.
     cover_error: str | None = None
-    media_id, permalink, cover_applied = _one_publish(use_cover=bool(cover_url))
+    media_id, permalink, cover_applied = _one_publish(use_cover=False)
     caption_ok = verify_published_caption(
         access_token,
         media_id,
         expected_min_len=1,
-        attempts=6,
+        attempts=10,
     )
 
     if not caption_ok:
         _log.error(
-            "META caption AUSENTE no 1º publish media=%s — apagando e republicando",
+            "META caption AUSENTE no 1º publish media=%s — apagando e republicando (query+sem capa)",
             media_id,
         )
         deleted = delete_media(access_token, media_id)
         _log.info("META delete 1º post media=%s deleted=%s", media_id, deleted)
 
-        # 2ª tentativa: SEM capa (capa às vezes faz a Meta dropar caption)
         media_id, permalink, cover_applied = _one_publish(use_cover=False)
         cover_applied = False
         cover_error = "Republicado sem capa para forçar legenda"
@@ -802,7 +806,7 @@ def publish_media(
             access_token,
             media_id,
             expected_min_len=1,
-            attempts=8,
+            attempts=12,
         )
 
     if not caption_ok:
