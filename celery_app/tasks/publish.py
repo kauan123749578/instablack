@@ -72,6 +72,133 @@ log = logging.getLogger(__name__)
 # Aparece nos logs do Railway — se não aparecer, o worker NÃO atualizou
 PLAYLIST_CODE = "claim-v5-storage-fallback"
 
+_redis_client = None
+
+
+def _redis():
+    """Cliente Redis lazy (anti-spam de publish). Falha aberta se Redis cair."""
+    global _redis_client
+    if _redis_client is not None:
+        return _redis_client
+    try:
+        import redis
+
+        _redis_client = redis.from_url(
+            settings.redis_url,
+            socket_connect_timeout=2,
+            socket_timeout=2,
+            decode_responses=True,
+        )
+        return _redis_client
+    except Exception as exc:
+        log.warning("Redis indisponível para anti-spam publish: %s", exc)
+        return None
+
+
+def _meta_cooldown_key(account_id: int) -> str:
+    return f"meta:cooldown:{int(account_id)}"
+
+
+def _meta_inflight_key(account_id: int) -> str:
+    return f"meta:inflight:{int(account_id)}"
+
+
+def _meta_defer_sched_key(account_id: int) -> str:
+    return f"meta:defer_sched:{int(account_id)}"
+
+
+def _redis_ttl_seconds(client, key: str, fallback: int) -> int:
+    try:
+        ttl = int(client.ttl(key) or 0)
+    except Exception:
+        return max(60, fallback)
+    if ttl > 0:
+        return ttl
+    return max(60, fallback)
+
+
+def _claim_meta_publish_slot(account_id: int, cooldown_sec: int) -> tuple[bool, int, str]:
+    """Garante no máximo 1 publish Meta por conta no intervalo.
+
+    Retorna (pode_publicar, wait_seconds, motivo).
+    Race: dois workers ao mesmo tempo — só um pega inflight NX.
+    """
+    client = _redis()
+    if client is None:
+        return True, 0, ""
+
+    cooldown_sec = max(60, int(cooldown_sec or 3600))
+    cool_key = _meta_cooldown_key(account_id)
+    fly_key = _meta_inflight_key(account_id)
+
+    try:
+        if client.exists(cool_key):
+            wait = _redis_ttl_seconds(client, cool_key, cooldown_sec)
+            return False, wait, f"meta_cooldown:{wait}s"
+
+        # Trava curta durante o upload (Meta pode demorar alguns minutos).
+        if not client.set(fly_key, "1", nx=True, ex=min(900, max(300, cooldown_sec))):
+            wait = _redis_ttl_seconds(client, fly_key, 300)
+            return False, wait, f"meta_inflight:{wait}s"
+        return True, 0, ""
+    except Exception as exc:
+        log.warning("claim_meta_publish_slot falhou account=%s: %s", account_id, exc)
+        return True, 0, ""
+
+
+def _release_meta_inflight(account_id: int) -> None:
+    client = _redis()
+    if client is None:
+        return
+    try:
+        client.delete(_meta_inflight_key(account_id))
+    except Exception:
+        pass
+
+
+def _mark_meta_published(account_id: int, cooldown_sec: int) -> None:
+    """Após sucesso: cooldown Redis + libera inflight (DB pode atrasar e liberar race)."""
+    client = _redis()
+    if client is None:
+        return
+    cooldown_sec = max(60, int(cooldown_sec or 3600))
+    try:
+        pipe = client.pipeline()
+        pipe.set(_meta_cooldown_key(account_id), "1", ex=cooldown_sec)
+        pipe.delete(_meta_inflight_key(account_id))
+        pipe.execute()
+    except Exception as exc:
+        log.warning("mark_meta_published falhou account=%s: %s", account_id, exc)
+        _release_meta_inflight(account_id)
+
+
+def _schedule_meta_defer_once(
+    *,
+    account_id: int,
+    wait: int,
+    schedule_fn,
+) -> bool:
+    """Agenda no máximo 1 retry deferido por conta (evita storm de apply_async)."""
+    wait = max(60, min(int(wait), 6 * 3600))
+    client = _redis()
+    if client is None:
+        schedule_fn(wait)
+        return True
+    key = _meta_defer_sched_key(account_id)
+    try:
+        if client.set(key, "1", nx=True, ex=wait):
+            schedule_fn(wait)
+            return True
+        log.info(
+            "skip duplicate meta defer schedule account=%s (já há retry em fila)",
+            account_id,
+        )
+        return False
+    except Exception as exc:
+        log.warning("schedule_meta_defer_once falhou account=%s: %s", account_id, exc)
+        schedule_fn(wait)
+        return True
+
 
 def _load_story_layout(automation: Automation) -> dict | None:
     raw = getattr(automation, "story_layout_json", None)
@@ -524,22 +651,30 @@ def publish_once(
             wait,
             result.get("reason"),
         )
-        publish_once.apply_async(
-            kwargs={
-                "account_id": account_id,
-                "video_key": video_key,
-                "thumb_key": thumb_key,
-                "caption": caption or "",
-                "content_type": content_type or "reel",
-                "story_link": story_link,
-                "story_sticker_text": story_sticker_text,
-                "story_layout": story_layout,
-                "camouflage_cover_key": camouflage_cover_key,
-                "camouflage_opacity": float(camouflage_opacity or 0.10),
-            },
-            countdown=wait,
+
+        def _sched_once(countdown: int) -> None:
+            publish_once.apply_async(
+                kwargs={
+                    "account_id": account_id,
+                    "video_key": video_key,
+                    "thumb_key": thumb_key,
+                    "caption": caption or "",
+                    "content_type": content_type or "reel",
+                    "story_link": story_link,
+                    "story_sticker_text": story_sticker_text,
+                    "story_layout": story_layout,
+                    "camouflage_cover_key": camouflage_cover_key,
+                    "camouflage_opacity": float(camouflage_opacity or 0.10),
+                },
+                countdown=countdown,
+            )
+
+        scheduled = _schedule_meta_defer_once(
+            account_id=account_id,
+            wait=wait,
+            schedule_fn=_sched_once,
         )
-        return {**result, "countdown": wait}
+        return {**result, "countdown": wait, "defer_scheduled": scheduled}
     return result
 
 
@@ -692,14 +827,22 @@ def publish_to_account(
                 wait,
                 result.get("reason"),
             )
-            publish_to_account.apply_async(
-                args=[automation_id, account_id, vk, posted_index],
-                kwargs={
-                    "account_slot": int(account_slot) if account_slot is not None else 0,
-                },
-                countdown=wait,
+
+            def _sched_acct(countdown: int) -> None:
+                publish_to_account.apply_async(
+                    args=[automation_id, account_id, vk, posted_index],
+                    kwargs={
+                        "account_slot": int(account_slot) if account_slot is not None else 0,
+                    },
+                    countdown=countdown,
+                )
+
+            scheduled = _schedule_meta_defer_once(
+                account_id=account_id,
+                wait=wait,
+                schedule_fn=_sched_acct,
             )
-            return {**result, "countdown": wait}
+            return {**result, "countdown": wait, "defer_scheduled": scheduled}
         return result
 
 
@@ -764,65 +907,66 @@ def _execute_publish(
             account.last_error = None
             account_status = "active"
 
+        meta_min_gap_min = 0
         if provider == "meta" and account_status not in (
             "paused", "needs_login", "proxy_down", "banned", "deleted"
         ):
             # "Postar agora" (start_mode=now): o usuário pediu imediato — não reagenda.
             # Só o agendamento recorrente (beat) respeita o piso de 60 min por conta.
+            # Anti-spam Redis (cooldown/inflight) vale sempre — evita 2 posts de uma vez.
             force_now = False
             if automation_id is not None:
                 auto_row = db.get(Automation, automation_id)
                 force_now = bool(auto_row and (auto_row.start_mode or "") == "now")
+            anti = get_anti_farm_prefs_by_id(db, owner_user_id) if owner_user_id else {}
+            warmup_on = bool(anti.get("meta_warmup_enabled", True))
+            meta_min_gap_min = meta_min_interval_for_account(
+                SimpleNamespace(
+                    provider="meta",
+                    warmup_enabled=account_warmup_enabled,
+                    warmup_days=account_warmup_days,
+                    warmup_started_at=account_warmup_started_at,
+                    created_at=account_created_at,
+                )
+            )
+            if not warmup_on:
+                from app.utils.intervals import META_MIN_INTERVAL as _META_FLOOR
+                meta_min_gap_min = _META_FLOOR
             if force_now:
                 log.info(
                     "Meta interval bypass (Postar agora) automation=%s account=%s",
                     automation_id,
                     account_id,
                 )
-            else:
-                anti = get_anti_farm_prefs_by_id(db, owner_user_id) if owner_user_id else {}
-                warmup_on = bool(anti.get("meta_warmup_enabled", True))
-                min_gap = meta_min_interval_for_account(
-                    SimpleNamespace(
-                        provider="meta",
-                        warmup_enabled=account_warmup_enabled,
-                        warmup_days=account_warmup_days,
-                        warmup_started_at=account_warmup_started_at,
-                        created_at=account_created_at,
+            elif meta_min_gap_min > 0:
+                last_ok = db.scalars(
+                    select(PublishLog)
+                    .where(
+                        PublishLog.account_id == account_id,
+                        PublishLog.status == "success",
                     )
-                )
-                if not warmup_on:
-                    from app.utils.intervals import META_MIN_INTERVAL as _META_FLOOR
-                    min_gap = _META_FLOOR
-                if min_gap > 0:
-                    last_ok = db.scalars(
-                        select(PublishLog)
-                        .where(
-                            PublishLog.account_id == account_id,
-                            PublishLog.status == "success",
-                        )
-                        .order_by(PublishLog.created_at.desc())
-                        .limit(1)
-                    ).first()
-                    if last_ok and last_ok.created_at:
-                        last_at = last_ok.created_at
-                        if last_at.tzinfo is not None:
-                            last_at = last_at.astimezone(dt.timezone.utc).replace(tzinfo=None)
-                        age_min = (dt.datetime.utcnow() - last_at).total_seconds() / 60.0
-                        if age_min < min_gap:
-                            wait_left = max(1, int(min_gap - age_min) + 1)
-                            # Não marca Ignorada — remarca o post para quando a conta puder.
-                            return {
-                                "deferred": True,
-                                "wait_seconds": wait_left * 60,
-                                "reason": (
-                                    f"meta_defer:{min_gap}m "
-                                    f"(reagendado +{wait_left} min; "
-                                    f"último post há {int(age_min)} min)"
-                                ),
-                                "account_id": account_id,
-                                "automation_id": automation_id,
-                            }
+                    .order_by(PublishLog.created_at.desc())
+                    .limit(1)
+                ).first()
+                if last_ok and last_ok.created_at:
+                    last_at = last_ok.created_at
+                    if last_at.tzinfo is not None:
+                        last_at = last_at.astimezone(dt.timezone.utc).replace(tzinfo=None)
+                    age_min = (dt.datetime.utcnow() - last_at).total_seconds() / 60.0
+                    if age_min < meta_min_gap_min:
+                        wait_left = max(1, int(meta_min_gap_min - age_min) + 1)
+                        # Não marca Ignorada — remarca o post para quando a conta puder.
+                        return {
+                            "deferred": True,
+                            "wait_seconds": wait_left * 60,
+                            "reason": (
+                                f"meta_defer:{meta_min_gap_min}m "
+                                f"(reagendado +{wait_left} min; "
+                                f"último post há {int(age_min)} min)"
+                            ),
+                            "account_id": account_id,
+                            "automation_id": automation_id,
+                        }
 
     if account_status in ("paused", "needs_login", "proxy_down", "banned", "deleted"):
         return {"skipped": True, "reason": f"account_{account_status}"}
@@ -837,6 +981,20 @@ def _execute_publish(
         if not meta_access_token or not meta_ig_user_id:
             _mark_account_needs_login(account_id, "Token da API oficial ausente. Reconecte a conta.")
             return {"error": "meta_token_missing"}
+
+        cooldown_sec = max(60, int(meta_min_gap_min or 60) * 60)
+        can_pub, wait_sec, claim_reason = _claim_meta_publish_slot(account_id, cooldown_sec)
+        if not can_pub:
+            return {
+                "deferred": True,
+                "wait_seconds": wait_sec,
+                "reason": (
+                    f"meta_anti_spam:{claim_reason} "
+                    f"(1 post por vez; reagendado +{max(1, wait_sec // 60)} min)"
+                ),
+                "account_id": account_id,
+                "automation_id": automation_id,
+            }
 
         publish_key = video_key
         temp_camu_key: str | None = None
@@ -896,6 +1054,7 @@ def _execute_publish(
                         owner_user_id=owner_user_id,
                         username=username,
                     )
+                    _release_meta_inflight(account_id)
                     raise
 
             try:
@@ -910,6 +1069,7 @@ def _execute_publish(
                     cover_key=None,
                 )
             except MetaInstagramError as exc:
+                _release_meta_inflight(account_id)
                 _log_failure(
                     automation_id,
                     account_id,
@@ -925,6 +1085,9 @@ def _execute_publish(
                 if exc.code == 25 or exc.subcode == 2207050 or _meta_user_restricted(exc):
                     _mark_account_meta_restricted(account_id, str(exc))
                     return {"error": "meta_restricted"}
+                raise
+            except Exception:
+                _release_meta_inflight(account_id)
                 raise
         finally:
             if temp_camu_key:
@@ -1008,12 +1171,15 @@ def _execute_publish(
                 _complete_now_automation_if_ready(db, auto)
 
         if log_status == "success":
+            _mark_meta_published(account_id, cooldown_sec)
             notify_publish_success(
                 owner_user_id,
                 username,
                 content_type=content_type or "reel",
                 publish_log_id=publish_log_id,
             )
+        else:
+            _release_meta_inflight(account_id)
         return {
             "ok": log_status == "success",
             "provider": "meta",
