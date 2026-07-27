@@ -57,15 +57,19 @@ celery_app.conf.update(**celery_conf)
 
 @celery_app.on_after_configure.connect
 def _setup_worker_db(**_kwargs) -> None:
-    """Garante tabelas/migrações no boot do worker (app_notifications, push, etc.)."""
-    try:
-        from core.database import init_db
+    """Migra em background — worker aceita tasks na hora (sem travar no Postgres)."""
+    import logging
+    import threading
 
-        init_db()
-    except Exception:
-        import logging
+    def _run() -> None:
+        try:
+            from core.database import init_db
 
-        logging.getLogger(__name__).exception("init_db no worker falhou")
+            init_db()
+        except Exception:
+            logging.getLogger(__name__).exception("init_db no worker falhou")
+
+    threading.Thread(target=_run, name="init-db", daemon=True).start()
 
 
 celery_app.conf.beat_schedule = {

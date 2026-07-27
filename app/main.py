@@ -33,7 +33,7 @@ from app.routes import (
     profile,
 )
 from app.templating import templates
-from core.database import SessionLocal, init_db
+from core.database import SessionLocal
 from core.health import check_database, check_redis, check_storage
 from core.storage import get_storage
 from models.models import User
@@ -48,20 +48,13 @@ _VIEW_AS_MUTATION_ALLOW = {
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Nunca travar "Waiting for application startup" — se o Postgres não
-    # responder, falha em ~60s e o gunicorn passa a aceitar requests.
+    # Sobe o HTTP na hora. Migração roda em background — se travar no Postgres,
+    # o painel NÃO fica 60s em "Waiting for application startup".
     import asyncio
 
-    try:
-        await asyncio.wait_for(asyncio.to_thread(init_db), timeout=60)
-    except asyncio.TimeoutError:
-        log.warning(
-            "init_db excedeu 60s no startup; a aplicação seguirá e tentará novamente ao usar o banco."
-        )
-    except Exception:
-        log.exception(
-            "init_db falhou no startup; a aplicação seguirá e tentará novamente ao usar o banco."
-        )
+    from core.database import init_db_background
+
+    asyncio.create_task(asyncio.to_thread(init_db_background))
     yield
 
 

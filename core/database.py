@@ -436,28 +436,68 @@ def init_db() -> None:
 
     Idempotente e tolerante a corrida entre múltiplos workers/services que
     sobem ao mesmo tempo (ex.: gunicorn --workers 2, web + worker + beat).
+    No Postgres, só um processo migra por vez (advisory lock); os outros
+    pulam e sobem na hora — evita painel/worker travados 60s no boot.
     """
     from models import models  # noqa: F401
     from core.bootstrap import bootstrap_admin
 
-    try:
-        Base.metadata.create_all(bind=engine, checkfirst=True)
-    except (OperationalError, ProgrammingError) as exc:
-        if _is_already_exists(exc):
-            log.info("Tabelas já existem (corrida entre workers); seguindo.")
-        else:
-            raise
+    lock_conn = None
+    if not settings.is_sqlite:
+        lock_conn = engine.connect()
+        try:
+            got = lock_conn.execute(text("SELECT pg_try_advisory_lock(87423101)")).scalar()
+            lock_conn.commit()
+            if not got:
+                log.info("init_db: outro processo já migra; skip neste worker")
+                lock_conn.close()
+                return
+        except Exception:
+            log.exception("init_db: falha ao obter advisory lock; seguindo sem lock")
+            try:
+                lock_conn.close()
+            except Exception:
+                pass
+            lock_conn = None
 
     try:
-        _sqlite_migrate()
-        _postgres_migrate()
-    except (OperationalError, ProgrammingError) as exc:
-        if _is_already_exists(exc):
-            log.info("Migração já aplicada por outro worker; seguindo.")
-        else:
-            raise
+        try:
+            Base.metadata.create_all(bind=engine, checkfirst=True)
+        except (OperationalError, ProgrammingError) as exc:
+            if _is_already_exists(exc):
+                log.info("Tabelas já existem (corrida entre workers); seguindo.")
+            else:
+                raise
 
+        try:
+            _sqlite_migrate()
+            _postgres_migrate()
+        except (OperationalError, ProgrammingError) as exc:
+            if _is_already_exists(exc):
+                log.info("Migração já aplicada por outro worker; seguindo.")
+            else:
+                raise
+
+        try:
+            bootstrap_admin()
+        except Exception:
+            log.exception("bootstrap_admin falhou; seguindo sem criar admin inicial.")
+    finally:
+        if lock_conn is not None:
+            try:
+                lock_conn.execute(text("SELECT pg_advisory_unlock(87423101)"))
+                lock_conn.commit()
+            except Exception:
+                log.exception("init_db: falha ao liberar advisory lock")
+            try:
+                lock_conn.close()
+            except Exception:
+                pass
+
+
+def init_db_background() -> None:
+    """Roda init_db fora do caminho crítico do boot (web sobe imediatamente)."""
     try:
-        bootstrap_admin()
+        init_db()
     except Exception:
-        log.exception("bootstrap_admin falhou; seguindo sem criar admin inicial.")
+        log.exception("init_db em background falhou; tentará de novo no próximo boot")

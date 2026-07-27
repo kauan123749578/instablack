@@ -103,12 +103,33 @@ def tick() -> dict:
                 min_gap_minutes=meta_floor,
             )
 
+            # Após redeploy/downtime: NÃO “recuperar” slots atrasados (vira spam).
+            # Só reagenda o próximo e pula o disparo se estiver muito atrasado.
+            skip_catchup = False
+            if scheduled_at is not None and (a.schedule_type or "") != "calendar":
+                interval_m = max(int(a.interval_minutes or 60), 1)
+                if meta_floor > 0:
+                    interval_m = max(interval_m, meta_floor)
+                overdue_sec = (now - scheduled_at).total_seconds()
+                # Limite: 1.5× intervalo, mínimo 20 min / máximo 3 h
+                max_overdue = min(max(interval_m * 90, 20 * 60), 3 * 3600)
+                if overdue_sec > max_overdue:
+                    skip_catchup = True
+                    log.warning(
+                        "tick skip catch-up automation=%s overdue=%.0fs (limite=%ss) — só reagenda",
+                        a.id,
+                        overdue_sec,
+                        max_overdue,
+                    )
+
             db.execute(
                 text(
                     "UPDATE automations SET next_run_at = :nxt, posts_in_batch = :pib WHERE id = :id"
                 ),
                 {"nxt": nxt, "pib": posts_in_batch, "id": a.id},
             )
+            if skip_catchup:
+                continue
             to_run.append(
                 (
                     a.id,
