@@ -711,8 +711,10 @@ def publish_media(
 
     Caption SEMPRE no POST /{ig-user-id}/media (form UTF-8) — nunca no
     media_publish. Query string NÃO é usada (trunca legenda longa → Reel
-    sem caption). Sem cover_url. Se a Meta descartar: tenta caption plain,
-    apaga e ABORTA se ainda vier vazia.
+    sem caption).
+
+    Reel: tenta cover_url (thumb) junto com a caption. Se a Meta publicar
+    COM capa mas SEM legenda, apaga e republica sem capa (legenda > capa).
     """
     import logging
 
@@ -734,17 +736,32 @@ def publish_media(
         )
 
     cover_url: str | None = None
-    if content_type == "reel" and cover_key:
-        cover_url = public_media_url(cover_key)
-        try:
-            _validate_public_media_url(
-                cover_url,
-                expected_prefix="image/jpeg",
-                label="Capa",
-            )
-        except MetaInstagramError as cover_exc:
-            _log.warning("META capa inválida, seguindo sem capa: %s", cover_exc)
-            cover_url = None
+    cover_skip_reason: str | None = None
+    if content_type == "reel":
+        if not cover_key:
+            cover_skip_reason = "thumb_key ausente na automação"
+            _log.warning("META capa SKIP: %s media=%s", cover_skip_reason, media_key)
+        else:
+            cover_url = public_media_url(cover_key)
+            try:
+                _validate_public_media_url(
+                    cover_url,
+                    expected_prefix="image/",
+                    label="Capa",
+                )
+                _log.info(
+                    "META capa READY cover_key=%s url=%s",
+                    cover_key,
+                    cover_url[:120],
+                )
+            except MetaInstagramError as cover_exc:
+                cover_skip_reason = str(cover_exc)[:240]
+                _log.warning(
+                    "META capa INVÁLIDA cover_key=%s — seguindo sem capa: %s",
+                    cover_key,
+                    cover_skip_reason,
+                )
+                cover_url = None
 
     if caption_text:
         _log.info(
@@ -813,9 +830,10 @@ def publish_media(
         if not cid:
             raise MetaInstagramError("A Meta não retornou o ID do container.")
         _log.info(
-            "META container created id=%s caption_sent_len=%s",
+            "META container created id=%s caption_sent_len=%s cover=%s",
             cid,
             len(cap),
+            "cover_url" in body,
         )
         return cid
 
@@ -885,24 +903,83 @@ def publish_media(
             "caption_verified": None,
         }
 
-    # 1ª: caption original, form body, SEM cover_url
-    cover_error: str | None = None
-    media_id, permalink, cover_applied = _one_publish(use_cover=False)
-    caption_ok = verify_published_caption(
-        access_token,
-        media_id,
-        expected_min_len=1,
-        attempts=10,
-    )
+    cover_error: str | None = cover_skip_reason
+    cover_applied = False
+    want_cover = bool(cover_url)
+
+    if want_cover:
+        _log.info(
+            "META capa ATTEMPT cover_key=%s (caption+cover juntos)",
+            cover_key,
+        )
+        media_id, permalink, cover_applied = _one_publish(use_cover=True)
+        caption_ok = verify_published_caption(
+            access_token,
+            media_id,
+            expected_min_len=1,
+            attempts=10,
+        )
+        if caption_ok:
+            _log.info(
+                "META capa OK media=%s cover_applied=%s caption_ok=True",
+                media_id,
+                cover_applied,
+            )
+            return {
+                "id": media_id,
+                "code": None,
+                "url": permalink,
+                "cover_applied": cover_applied,
+                "cover_error": None if cover_applied else "cover_url não entrou no payload",
+                "caption_sent_len": len(caption_text),
+                "caption_verified": True,
+            }
+
+        # Prioridade: legenda. Capa + caption às vezes faz a Meta dropar o texto.
+        _log.error(
+            "META caption AUSENTE COM capa media=%s cover_key=%s — apaga e republica SEM capa",
+            media_id,
+            cover_key,
+        )
+        deleted = delete_media(access_token, media_id)
+        _log.info(
+            "META delete post-com-capa media=%s deleted=%s",
+            media_id,
+            deleted,
+        )
+        cover_error = (
+            "Capa removida: Meta publicou sem legenda com cover_url; "
+            "republicado sem capa para salvar a caption"
+        )
+        cover_applied = False
+        media_id, permalink, _ = _one_publish(use_cover=False)
+        caption_ok = verify_published_caption(
+            access_token,
+            media_id,
+            expected_min_len=1,
+            attempts=10,
+        )
+    else:
+        _log.info(
+            "META capa NÃO usada reason=%s — publish só com caption",
+            cover_skip_reason or "sem cover_url",
+        )
+        media_id, permalink, cover_applied = _one_publish(use_cover=False)
+        caption_ok = verify_published_caption(
+            access_token,
+            media_id,
+            expected_min_len=1,
+            attempts=10,
+        )
 
     if not caption_ok:
         _log.error(
-            "META caption AUSENTE no 1º publish media=%s (enviamos len=%s) — apaga e tenta plain",
+            "META caption AUSENTE no publish media=%s (enviamos len=%s) — apaga e tenta plain",
             media_id,
             len(caption_text),
         )
         deleted = delete_media(access_token, media_id)
-        _log.info("META delete 1º post media=%s deleted=%s", media_id, deleted)
+        _log.info("META delete post-sem-caption media=%s deleted=%s", media_id, deleted)
 
         plain = _caption_plain_fallback(caption_text)
         if not plain:
@@ -917,7 +994,10 @@ def publish_media(
             caption_override=plain,
         )
         cover_applied = False
-        cover_error = "Republicado com caption simplificada (sem emoji/símbolos)"
+        if not cover_error:
+            cover_error = "Republicado com caption simplificada (sem emoji/símbolos); sem capa"
+        else:
+            cover_error = f"{cover_error}; depois plain sem capa"
         caption_ok = verify_published_caption(
             access_token,
             media_id,
@@ -937,6 +1017,12 @@ def publish_media(
             "Confira se a legenda da automação tem texto válido (sem só emoji)."
         )
 
+    _log.info(
+        "META capa RESULT media=%s cover_applied=%s cover_error=%r caption_ok=True",
+        media_id,
+        cover_applied,
+        cover_error,
+    )
     return {
         "id": media_id,
         "code": None,

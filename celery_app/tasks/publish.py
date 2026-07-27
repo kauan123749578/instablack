@@ -1058,15 +1058,24 @@ def _execute_publish(
                     raise
 
             try:
+                reel_cover = thumb_key if (content_type or "reel") == "reel" else None
+                log.info(
+                    "META publish start account=%s automation=%s thumb_key=%s cover_will_send=%s",
+                    username,
+                    automation_id,
+                    reel_cover or "-",
+                    bool(reel_cover),
+                )
                 result = publish_meta_media(
                     access_token=meta_access_token,
                     ig_user_id=meta_ig_user_id,
                     media_key=publish_key,
                     content_type=content_type,
                     caption=caption,
-                    # Capa via cover_url faz a Meta dropar caption com frequência.
-                    # Prioridade: legenda no Instagram. Camuflagem já vai no vídeo.
-                    cover_key=None,
+                    # Thumb da automação = capa do Reel (cover_url).
+                    # Se a Meta dropar a legenda com capa, meta_instagram
+                    # apaga e republica sem capa (legenda tem prioridade).
+                    cover_key=reel_cover,
                 )
             except MetaInstagramError as exc:
                 _release_meta_inflight(account_id)
@@ -1098,18 +1107,29 @@ def _execute_publish(
             if tmp_dir is not None:
                 shutil.rmtree(tmp_dir, ignore_errors=True)
 
+        cover_applied = bool(result.get("cover_applied"))
         cover_error = str(result.get("cover_error") or "")
-        if cover_error:
+        log.info(
+            "META capa RESULT account=%s thumb=%s cover_applied=%s cover_error=%r caption_ok=%s url=%s",
+            username,
+            thumb_key or "-",
+            cover_applied,
+            cover_error or None,
+            result.get("caption_verified"),
+            result.get("url"),
+        )
+        # Só avisa se a automação TEM thumb e a capa não ficou no post.
+        if (content_type or "reel") == "reel" and thumb_key and not cover_applied:
             log.warning(
-                "META REEL publicado sem capa account=%s key=%s erro=%s",
+                "META REEL sem capa final account=%s key=%s erro=%s",
                 username,
                 thumb_key,
-                cover_error,
+                cover_error or "cover_applied=False",
             )
             create_notification(
                 owner_user_id,
                 "Reels publicado sem a capa personalizada",
-                f"@{username}: a Meta recusou a capa, mas o Reels foi publicado. {cover_error[:140]}",
+                f"@{username}: {(cover_error or 'capa não aplicada')[:160]}",
                 kind="warning",
                 link="/logs",
             )
