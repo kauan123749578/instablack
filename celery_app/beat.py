@@ -17,6 +17,15 @@ from models.models import Automation
 log = logging.getLogger(__name__)
 
 
+def _as_naive_utc(value: dt.datetime | None) -> dt.datetime | None:
+    """Postgres TIMESTAMPTZ vem aware; o tick usa utcnow() naive — unifica."""
+    if value is None:
+        return None
+    if value.tzinfo is not None:
+        return value.astimezone(dt.timezone.utc).replace(tzinfo=None)
+    return value
+
+
 @celery_app.task(name="celery_app.beat.tick")
 def tick() -> dict:
     """Encontra automações ativas vencidas e despacha execute_automation.
@@ -84,7 +93,7 @@ def tick() -> dict:
         ).all()
 
         for a in due:
-            scheduled_at = a.next_run_at
+            scheduled_at = _as_naive_utc(a.next_run_at)
             calendar_next = None
             if a.schedule_type == "calendar" and a.calendar_days and a.calendar_time:
                 calendar_next = next_calendar_run(
