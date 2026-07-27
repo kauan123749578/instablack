@@ -28,17 +28,35 @@ def _is_already_exists(exc: Exception) -> bool:
     return "already exists" in msg or "duplicate" in msg
 
 
+def _is_celery_process() -> bool:
+    """Celery prefork não deve usar QueuePool grande (4 procs × 15 = 60 conns)."""
+    import sys
+
+    return any("celery" in (arg or "").lower() for arg in sys.argv)
+
+
 def _engine_kwargs() -> dict:
     if settings.is_sqlite:
         return {"connect_args": {"check_same_thread": False}}
     # connect_timeout evita hang infinito se o Postgres estiver inacessível.
     # Sem statement_timeout global: no boot (web+worker+beat) ele cancelava
     # a migração/inspeção e gerava QueryCanceled + upstream error.
+    #
+    # Celery: NullPool — cada task abre/fecha 1 conexão (sem estoque ocioso).
+    # Web: pool pequeno + timeout curto (falha rápido em vez de travar o painel 30s).
+    if _is_celery_process():
+        from sqlalchemy.pool import NullPool
+
+        return {
+            "poolclass": NullPool,
+            "connect_args": {"connect_timeout": 10},
+        }
     return {
         "pool_pre_ping": True,
-        "pool_size": 5,
-        "max_overflow": 10,
-        "pool_timeout": 30,
+        "pool_size": 3,
+        "max_overflow": 5,
+        "pool_timeout": 8,
+        "pool_recycle": 280,
         "connect_args": {"connect_timeout": 10},
     }
 

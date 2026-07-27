@@ -5,6 +5,7 @@ import ssl
 
 from celery import Celery
 from celery.schedules import schedule
+from celery.signals import worker_process_init
 
 from app.config import settings
 
@@ -70,6 +71,19 @@ def _setup_worker_db(**_kwargs) -> None:
             logging.getLogger(__name__).exception("init_db no worker falhou")
 
     threading.Thread(target=_run, name="init-db", daemon=True).start()
+
+
+@worker_process_init.connect
+def _dispose_db_pool_on_prefork(**_kwargs) -> None:
+    """Após fork do prefork, descarta conexões herdadas do processo pai."""
+    try:
+        from core.database import engine
+
+        engine.dispose(close=True)
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).exception("dispose engine no fork falhou")
 
 
 celery_app.conf.beat_schedule = {

@@ -79,7 +79,10 @@ def create_app() -> FastAPI:
         request.state.view_as_username = None
         request.state.view_as_active = False
 
-        if auth_id:
+        # Só abre conexão extra no middleware quando há "Ver como".
+        # Antes: 1 query em TODA request autenticada → somava com get_db e
+        # estourava QueuePool (TimeoutError → Internal Server Error no painel).
+        if auth_id and view_as_id:
             db = SessionLocal()
             try:
                 auth_user = db.get(User, auth_id)
@@ -91,11 +94,7 @@ def create_app() -> FastAPI:
                     )
                     db.expunge(auth_user)
                     request.state.auth_user = auth_user
-                if (
-                    view_as_id
-                    and auth_user is not None
-                    and getattr(auth_user, "is_admin", False)
-                ):
+                if auth_user is not None and getattr(auth_user, "is_admin", False):
                     try:
                         target = db.get(User, int(view_as_id))
                     except (TypeError, ValueError):
