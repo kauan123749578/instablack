@@ -66,6 +66,9 @@
   }
   setActiveNav(window.location.pathname);
 
+  let navAbort = null;
+  let navInFlight = null;
+
   async function navigateTo(url, push = true) {
     // Em "Ver como", força reload completo para todas as abas usarem o usuário alvo.
     if (document.body.classList.contains("is-view-as")) {
@@ -81,32 +84,64 @@
       return;
     }
     if (!appContent) { window.location.href = url; return; }
+
+    // Cancela navegação SPA anterior (evita sidebar "travada" com fetch pendurado).
+    if (navAbort) {
+      try { navAbort.abort(); } catch (_) {}
+    }
+    navAbort = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const abort = navAbort;
+    const timeoutId = window.setTimeout(() => {
+      try { abort?.abort(); } catch (_) {}
+    }, 12000);
+
     appContent.classList.add("content-loading");
     if (dashActivityPollTimer) {
       clearInterval(dashActivityPollTimer);
       dashActivityPollTimer = null;
     }
-    try {
-      const resp = await fetch(url, { headers: { "X-Partial": "1" } });
-      if (!resp.ok) throw new Error(resp.status);
-      const html = await resp.text();
-      const doc = new DOMParser().parseFromString(html, "text/html");
-      const newContent = doc.getElementById("app-content");
-      if (newContent) {
+    const run = (async () => {
+      try {
+        const resp = await fetch(url, {
+          headers: { "X-Partial": "1" },
+          signal: abort?.signal,
+          credentials: "same-origin",
+        });
+        if (!resp.ok) throw new Error(String(resp.status));
+        const html = await resp.text();
+        const doc = new DOMParser().parseFromString(html, "text/html");
+        const newContent = doc.getElementById("app-content");
+        if (!newContent) throw new Error("missing-app-content");
+        // Só aplica se esta ainda for a navegação vigente.
+        if (abort && navAbort !== abort) return;
         appContent.innerHTML = newContent.innerHTML;
+        delete document.body.dataset.pageAccountsConnected;
+        if (doc.body?.dataset?.pageAccountsConnected) {
+          document.body.dataset.pageAccountsConnected = doc.body.dataset.pageAccountsConnected;
+        }
+        // Scripts do bloco {% block scripts %} não vêm no #app-content — procura marcadores no HTML.
+        if (html.includes('data-page-accounts-connected="1"') || html.includes("pageAccountsConnected")) {
+          document.body.dataset.pageAccountsConnected = "1";
+        }
         if (push) history.pushState({ url }, "", url);
-        setActiveNav(url);
+        setActiveNav(new URL(url, window.location.origin).pathname);
         initPage();
         closeDrawer();
         sidebar?.classList.remove("mobile-open");
-      } else {
+      } catch (err) {
+        if (abort && err && err.name === "AbortError" && navAbort !== abort) {
+          return; // abortada por navegação mais nova
+        }
         window.location.href = url;
+      } finally {
+        window.clearTimeout(timeoutId);
+        if (!abort || navAbort === abort) {
+          appContent.classList.remove("content-loading");
+        }
       }
-    } catch {
-      window.location.href = url;
-    } finally {
-      appContent.classList.remove("content-loading");
-    }
+    })();
+    navInFlight = run;
+    await run;
   }
 
   document.addEventListener("click", (e) => {
@@ -1256,7 +1291,11 @@
   }
 
   function initAccountsReconnect() {
-    if (!document.body.dataset.pageAccountsConnected) return;
+    const marker =
+      document.body.dataset.pageAccountsConnected ||
+      document.querySelector("[data-page-accounts-connected]");
+    if (!marker) return;
+    document.body.dataset.pageAccountsConnected = "1";
     initTwofaModal();
 
     document.querySelectorAll(".account-reconnect-btn").forEach((btn) => {

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Contas conectadas — instablack{% endblock %}
 {% block content %}
-<div class="page-header">
+<div class="page-header" data-page-accounts-connected="1">
   <h2>Contas conectadas</h2>
   {% if account_limit_label == 'Ilimitado' %}
   <p class="muted page-header-sub">{{ accounts|length }} conectada(s) · limite ilimitado</p>
