@@ -862,8 +862,8 @@ def publish_to_account(
                 camouflage_opacity=float(getattr(automation, "camouflage_opacity", 0.25) or 0.25),
             )
         except Exception as exc:
-            # Abort de legenda: NÃO retentar a task inteira — isso criaria outro Reel
-            # se o delete do post sem caption falhou (spam + posts sem legenda).
+            # Abort de legenda: NÃO retentar a task — cria outro Reel no ar
+            # (a API não deixa apagar Reel recém-publicado).
             msg = str(exc)
             if "SEM legenda" in msg or "caption_missing_abort" in msg:
                 log.error(
@@ -1142,9 +1142,8 @@ def _execute_publish(
                     media_key=publish_key,
                     content_type=content_type,
                     caption=caption,
-                    # Thumb da automação = capa do Reel (cover_url).
-                    # Se a Meta dropar a legenda com capa, meta_instagram
-                    # apaga e republica sem capa (legenda tem prioridade).
+                    # Thumb da automação = capa do Reel (cover_url) + caption juntos.
+                    # Sem delete/republicar: a API não apaga Reel novo (100/33).
                     cover_key=reel_cover,
                 )
             except MetaInstagramError as exc:

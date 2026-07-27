@@ -763,8 +763,10 @@ def publish_media(
     media_publish. Query string NÃO é usada (trunca legenda longa → Reel
     sem caption).
 
-    Reel: tenta cover_url (thumb) junto com a caption. Se a Meta publicar
-    COM capa mas SEM legenda, apaga e republica sem capa (legenda > capa).
+    Reel: capa (cover_url) + caption no mesmo POST. A API oficial NÃO deixa
+    apagar Reel recém-publicado (100/33) — não tentamos delete. Se a Graph
+    dropar a caption, re-verifica e, se precisar, posta o texto como
+    1º comentário (não cria 2º post).
     """
     import logging
 
@@ -963,16 +965,14 @@ def publish_media(
         mid: str,
         link: str | None,
         *,
-        deleted: bool,
         cover_flag: bool,
     ) -> dict:
-        # Graph não edita caption pós-publish. Se não dá pra apagar, salva texto
-        # como 1º comentário — melhor que Reel vazio + storm de retry.
+        # Graph não edita caption pós-publish e NÃO deixa apagar Reel novo.
+        # Único resgate: 1º comentário com o texto (sem 2º post).
         if post_media_comment(access_token, mid, caption_text):
             _log.warning(
-                "META caption via COMMENT media=%s deleted=%s (Graph dropou caption)",
+                "META caption via COMMENT media=%s (Graph dropou caption; sem delete)",
                 mid,
-                deleted,
             )
             return {
                 "id": mid,
@@ -981,191 +981,61 @@ def publish_media(
                 "cover_applied": cover_flag,
                 "cover_error": (
                     "Legenda como comentário: Instagram/Meta publicou sem caption "
-                    f"(delete ok={deleted}). Bug intermitente da Graph."
+                    "(API não permite apagar). Bug intermitente da Graph."
                 ),
                 "caption_sent_len": len(caption_text),
                 "caption_verified": "via_comment",
             }
         raise MetaInstagramError(
             "Abortado: Instagram publicou o Reel/Foto SEM legenda. "
-            f"Tentamos apagar o post (ok={deleted}) e comentar a legenda (ok=False). "
+            "A API não permite apagar o post; tentativa de comentar a legenda falhou. "
             "NÃO deixamos como sucesso.",
             code=None,
             subcode=None,
             error_type="caption_missing_abort",
         )
 
+    # Um único publish: capa+caption juntos (se houver capa). Sem delete, sem 2º post.
     if want_cover:
         _log.info(
             "META capa ATTEMPT cover_key=%s (caption+cover juntos)",
             cover_key,
         )
         media_id, permalink, cover_applied = _one_publish(use_cover=True)
-        caption_ok = verify_published_caption(
-            access_token,
-            media_id,
-            expected_min_len=1,
-            attempts=12,
-        )
-        if caption_ok:
-            _log.info(
-                "META capa OK media=%s cover_applied=%s caption_ok=True",
-                media_id,
-                cover_applied,
-            )
-            return {
-                "id": media_id,
-                "code": None,
-                "url": permalink,
-                "cover_applied": cover_applied,
-                "cover_error": None if cover_applied else "cover_url não entrou no payload",
-                "caption_sent_len": len(caption_text),
-                "caption_verified": True,
-            }
-
-        # Prioridade: legenda. Só republica SEM capa se apagou o post com capa.
-        # Se o delete falhar, NÃO cria 2º post (senão fica spam + Reel sem legenda).
-        _log.error(
-            "META caption AUSENTE COM capa media=%s cover_key=%s — apaga e republica SEM capa",
-            media_id,
-            cover_key,
-        )
-        deleted = delete_media(access_token, media_id, rounds=5)
-        _log.info(
-            "META delete post-com-capa media=%s deleted=%s",
-            media_id,
-            deleted,
-        )
-        if not deleted:
-            # Última chance: Graph às vezes atrasa o campo caption e o delete.
-            _log.warning(
-                "META delete falhou após capa — espera extra e re-verifica caption media=%s",
-                media_id,
-            )
-            time.sleep(30.0)
-            caption_ok = verify_published_caption(
-                access_token,
-                media_id,
-                expected_min_len=1,
-                attempts=6,
-            )
-            if caption_ok:
-                _log.info(
-                    "META capa OK (verify tardio) media=%s cover_applied=%s",
-                    media_id,
-                    cover_applied,
-                )
-                return {
-                    "id": media_id,
-                    "code": None,
-                    "url": permalink,
-                    "cover_applied": cover_applied,
-                    "cover_error": None,
-                    "caption_sent_len": len(caption_text),
-                    "caption_verified": True,
-                }
-            return _recover_or_abort(
-                media_id, permalink, deleted=False, cover_flag=cover_applied
-            )
-
-        cover_error = (
-            "Capa removida: Meta publicou sem legenda com cover_url; "
-            "republicado sem capa para salvar a caption"
-        )
-        cover_applied = False
-        media_id, permalink, _ = _one_publish(use_cover=False)
-        caption_ok = verify_published_caption(
-            access_token,
-            media_id,
-            expected_min_len=1,
-            attempts=12,
-        )
     else:
         _log.info(
             "META capa NÃO usada reason=%s — publish só com caption",
             cover_skip_reason or "sem cover_url",
         )
         media_id, permalink, cover_applied = _one_publish(use_cover=False)
+
+    caption_ok = verify_published_caption(
+        access_token,
+        media_id,
+        expected_min_len=1,
+        attempts=12,
+    )
+    if not caption_ok:
+        # Indexação da Graph atrasa sob carga — espera e re-verifica (sem apagar).
+        _log.warning(
+            "META caption ainda ausente media=%s — espera extra e re-verifica (sem delete)",
+            media_id,
+        )
+        time.sleep(30.0)
         caption_ok = verify_published_caption(
             access_token,
             media_id,
             expected_min_len=1,
-            attempts=12,
+            attempts=6,
         )
 
     if not caption_ok:
         _log.error(
-            "META caption AUSENTE no publish media=%s (enviamos len=%s) — apaga e tenta plain",
+            "META caption AUSENTE media=%s (enviamos len=%s) — sem delete; tenta comentário",
             media_id,
             len(caption_text),
         )
-        deleted = delete_media(access_token, media_id, rounds=5)
-        _log.info("META delete post-sem-caption media=%s deleted=%s", media_id, deleted)
-        if not deleted:
-            _log.warning(
-                "META delete falhou — espera extra e re-verifica caption media=%s",
-                media_id,
-            )
-            time.sleep(30.0)
-            caption_ok = verify_published_caption(
-                access_token,
-                media_id,
-                expected_min_len=1,
-                attempts=6,
-            )
-            if caption_ok:
-                cover_applied = False
-            else:
-                return _recover_or_abort(
-                    media_id, permalink, deleted=False, cover_flag=False
-                )
-
-        if not caption_ok:
-            plain = _caption_plain_fallback(caption_text)
-            if not plain:
-                plain = caption_text
-            _log.warning(
-                "META retry com caption plain len=%s preview=%r",
-                len(plain),
-                plain[:80],
-            )
-            media_id, permalink, cover_applied = _one_publish(
-                use_cover=False,
-                caption_override=plain,
-            )
-            cover_applied = False
-            if not cover_error:
-                cover_error = (
-                    "Republicado com caption simplificada (sem emoji/símbolos); sem capa"
-                )
-            else:
-                cover_error = f"{cover_error}; depois plain sem capa"
-            caption_ok = verify_published_caption(
-                access_token,
-                media_id,
-                expected_min_len=1,
-                attempts=12,
-            )
-
-    if not caption_ok:
-        _log.error(
-            "META caption AUSENTE após retry media=%s — apagando e abortando",
-            media_id,
-        )
-        deleted = delete_media(access_token, media_id, rounds=5)
-        if not deleted:
-            return _recover_or_abort(
-                media_id, permalink, deleted=False, cover_flag=False
-            )
-        # Apagou o post sem caption — não deixa sucesso falso.
-        raise MetaInstagramError(
-            "Abortado: Instagram publicou o Reel/Foto SEM legenda. "
-            f"Tentamos apagar o post (ok={deleted}) e NÃO deixamos como sucesso. "
-            "Confira se a legenda da automação tem texto válido (sem só emoji).",
-            code=None,
-            subcode=None,
-            error_type="caption_missing_abort",
-        )
+        return _recover_or_abort(media_id, permalink, cover_flag=cover_applied)
 
     _log.info(
         "META capa RESULT media=%s cover_applied=%s cover_error=%r caption_ok=True",
@@ -1178,7 +1048,7 @@ def publish_media(
         "code": None,
         "url": permalink,
         "cover_applied": cover_applied,
-        "cover_error": cover_error,
+        "cover_error": cover_error if not cover_applied and want_cover else None,
         "caption_sent_len": len(caption_text),
         "caption_verified": True,
     }
