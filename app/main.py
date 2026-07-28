@@ -54,7 +54,16 @@ async def lifespan(app: FastAPI):
     # o painel NÃO fica 60s em "Waiting for application startup".
     import asyncio
 
+    import anyio
+
     from core.database import init_db_background
+
+    # Sync deps (get_db) rodam no threadpool. Default ~40 threads → 40 sessões
+    # competindo por QueuePool(5+5) → TimeoutError em cascata ("Painel ocupado").
+    try:
+        anyio.to_thread.current_default_thread_limiter().total_tokens = 8
+    except Exception:
+        log.exception("Falha ao limitar threadpool anyio")
 
     asyncio.create_task(asyncio.to_thread(init_db_background))
     yield
@@ -176,12 +185,12 @@ def create_app() -> FastAPI:
                 "<p><a href='/' style='color:#3d82ff'>Tentar de novo</a></p></div>"
                 "</body>",
                 status_code=503,
-                headers={"Retry-After": "3"},
+                headers={"Retry-After": "2"},
             )
         return JSONResponse(
             {"detail": "database_busy", "error": "QueuePool timeout"},
             status_code=503,
-            headers={"Retry-After": "3"},
+            headers={"Retry-After": "2"},
         )
 
     static_dir = Path(__file__).resolve().parent / "static"

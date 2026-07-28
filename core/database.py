@@ -40,27 +40,30 @@ def _engine_kwargs() -> dict:
         return {"connect_args": {"check_same_thread": False}}
     # connect_timeout evita hang infinito se o Postgres estiver inacessível.
     #
-    # Celery: pool pequenino por processo (prefork × NullPool estourava o PG
-    # e o web ficava sem conexão → QueuePool timeout → upstream/502).
-    # Web: pool maior — SPA + polls abrem várias requests ao mesmo tempo.
+    # Celery: NullPool — não guarda conexão ociosa (4 procs × pool competia
+    # com o web e o painel via QueuePool timeout → "Painel ocupado"/503).
+    # Web: pool alinhado ao threadpool (~8). SPA dispara vários fetches;
+    # pool grande demais só mascara vazamento e atrasa o 503.
     if _is_celery_process():
+        from sqlalchemy.pool import NullPool
+
         return {
-            "pool_pre_ping": True,
-            "pool_size": 2,
-            "max_overflow": 2,
-            "pool_timeout": 10,
-            "pool_recycle": 180,
-            "pool_use_lifo": True,
+            "poolclass": NullPool,
             "connect_args": {"connect_timeout": 8},
         }
     return {
         "pool_pre_ping": True,
-        "pool_size": 8,
-        "max_overflow": 16,
-        "pool_timeout": 12,
-        "pool_recycle": 180,
+        "pool_size": 5,
+        "max_overflow": 5,
+        "pool_timeout": 3,
+        "pool_recycle": 120,
         "pool_use_lifo": True,
-        "connect_args": {"connect_timeout": 8},
+        "pool_reset_on_return": "rollback",
+        "connect_args": {
+            "connect_timeout": 5,
+            # Mata query travada e libera o slot do pool (web only).
+            "options": "-c statement_timeout=20000",
+        },
     }
 
 
