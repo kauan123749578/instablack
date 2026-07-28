@@ -516,7 +516,7 @@
     const dot = document.getElementById("notif-dot");
     if (!list) return;
     try {
-      const res = await fetch("/api/notifications?push_fallback=true");
+      const res = await fetch("/api/notifications");
       if (!res.ok) throw new Error("fail");
       const data = await res.json();
       if (dot) {
@@ -745,10 +745,7 @@
     const markBtn = document.getElementById("notif-mark-read");
     const clearBtn = document.getElementById("notif-clear-all");
     if (!btn || !card) return;
-    if (btn.dataset.bound === "1") {
-      loadNotifications();
-      return;
-    }
+    if (btn.dataset.bound === "1") return;
     btn.dataset.bound = "1";
 
     btn.addEventListener("click", (e) => {
@@ -793,12 +790,7 @@
       }
     });
 
-    loadNotifications();
-    if (!notifPollTimer) {
-      notifPollTimer = setInterval(() => {
-        if (!document.hidden) loadNotifications();
-      }, 15000);
-    }
+    // Notificações só quando abrir o sino — evita saturar o worker web no load.
   }
 
   function initContentTypeForm() {

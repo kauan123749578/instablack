@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import time
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Request
@@ -23,6 +24,8 @@ BRT = ZoneInfo("America/Sao_Paulo")
 WEEKDAY_LABELS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
 ALLOWED_CHART_DAYS = {7, 15, 30}
 VISIBLE_ACCOUNT_STATUSES = ("active", "paused", "needs_login", "proxy_down", "banned")
+_RANK_CACHE: dict[tuple, tuple[float, list[dict]]] = {}
+_RANK_CACHE_TTL = 120.0
 
 
 def _parse_chart_days(raw: str | int | None) -> int:
@@ -238,6 +241,30 @@ def _top_platform_players(
     ]
 
 
+def _cached_top_platform_players(
+    db: Session,
+    start: dt.datetime,
+    end: dt.datetime,
+    viewer: User | None = None,
+    *,
+    limit: int = 50,
+) -> list[dict]:
+    viewer_key = (
+        viewer.id if viewer else None,
+        _rank_sees_private_users(viewer),
+    )
+    key = (start.isoformat(), end.isoformat(), viewer_key, limit)
+    now = time.time()
+    hit = _RANK_CACHE.get(key)
+    if hit and now - hit[0] < _RANK_CACHE_TTL:
+        return hit[1]
+    data = _top_platform_players(db, start, end, viewer=viewer, limit=limit)
+    _RANK_CACHE[key] = (now, data)
+    if len(_RANK_CACHE) > 48:
+        _RANK_CACHE.clear()
+    return data
+
+
 def _rank_tier(posts: int) -> str:
     if posts >= 200:
         return "LENDA"
@@ -317,7 +344,7 @@ def _top_platform_players_week(db: Session, day: dt.date, viewer: User | None = 
     start_day = day - dt.timedelta(days=6)
     start, _ = _brt_day_bounds(start_day)
     _, end = _brt_day_bounds(day)
-    items = _top_platform_players(db, start, end, viewer=viewer, limit=50)
+    items = _cached_top_platform_players(db, start, end, viewer=viewer, limit=50)
     return [{**item, "posts_today": item["post_count"]} for item in items]
 
 
@@ -429,7 +456,7 @@ def home(
     top_players = _top_platform_players_week(db, today, viewer=user)
     month_start_dt, _ = _brt_day_bounds(month_start)
     _, month_end_dt = _brt_day_bounds(today)
-    top_players_month = _top_platform_players(
+    top_players_month = _cached_top_platform_players(
         db, month_start_dt, month_end_dt, viewer=user, limit=50
     )
     week_start_day = today - dt.timedelta(days=6)

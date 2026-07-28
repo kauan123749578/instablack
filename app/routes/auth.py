@@ -109,6 +109,7 @@ def register(
     return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
 
 
+@router.get("/logout")
 @router.post("/logout")
 def logout(request: Request):
     request.session.clear()
