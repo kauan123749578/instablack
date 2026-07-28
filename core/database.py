@@ -35,18 +35,27 @@ def _is_celery_process() -> bool:
     return any("celery" in (arg or "").lower() for arg in sys.argv)
 
 
+def _behind_pgbouncer() -> bool:
+    """True quando DATABASE_URL passa pelo PgBouncer (Railway injeta UNPOOLED)."""
+    pooled = (settings.database_url or "").strip()
+    direct = (settings.database_unpooled_url or "").strip()
+    if direct and pooled and direct != pooled:
+        return True
+    lower = pooled.lower()
+    return "pgbouncer" in lower or ":6432" in lower
+
+
 def _engine_kwargs() -> dict:
     if settings.is_sqlite:
         return {"connect_args": {"check_same_thread": False}}
     # connect_timeout evita hang infinito se o Postgres estiver inacessível.
     #
-    # Celery: NullPool — não guarda conexão ociosa (4 procs × pool competia
-    # com o web e o painel via QueuePool timeout → "Painel ocupado"/503).
-    # Web: pool alinhado ao threadpool (~8). SPA dispara vários fetches;
-    # pool grande demais só mascara vazamento e atrasa o 503.
-    if _is_celery_process():
-        from sqlalchemy.pool import NullPool
+    # Celery / atrás do PgBouncer (transaction mode): NullPool.
+    # QueuePool + PgBouncer gera "unexpected EOF on client connection with an
+    # open transaction" e 502 no proxy quando a conexão é reciclada errado.
+    from sqlalchemy.pool import NullPool
 
+    if _is_celery_process() or _behind_pgbouncer():
         return {
             "poolclass": NullPool,
             "connect_args": {"connect_timeout": 8},
@@ -59,8 +68,6 @@ def _engine_kwargs() -> dict:
         "pool_recycle": 120,
         "pool_use_lifo": True,
         "pool_reset_on_return": "rollback",
-        # Sem statement_timeout global: cancelava COUNT simples no painel
-        # (QueryCanceled → Internal Server Error) quando o PG estava sob lock/carga.
         "connect_args": {"connect_timeout": 5},
     }
 
@@ -497,8 +504,11 @@ def init_db() -> None:
             log.info("init_db: usando DATABASE_UNPOOLED_URL (fora do PgBouncer)")
 
     lock_conn = None
+    lock_held = False
     try:
-        if not settings.is_sqlite:
+        # Advisory lock é session-scoped — NÃO funciona via PgBouncer transaction.
+        can_lock = own_migrate_engine or not _behind_pgbouncer()
+        if not settings.is_sqlite and can_lock:
             lock_conn = migrate_engine.connect()
             try:
                 got = lock_conn.execute(
@@ -508,6 +518,7 @@ def init_db() -> None:
                 if not got:
                     log.info("init_db: outro processo já migra; skip neste worker")
                     return
+                lock_held = True
             except Exception:
                 log.exception("init_db: falha ao obter advisory lock; seguindo sem lock")
                 try:
@@ -515,6 +526,10 @@ def init_db() -> None:
                 except Exception:
                     pass
                 lock_conn = None
+        elif not settings.is_sqlite and not can_lock:
+            log.warning(
+                "init_db: PgBouncer sem DATABASE_UNPOOLED_URL — migrando sem advisory lock"
+            )
 
         try:
             Base.metadata.create_all(bind=migrate_engine, checkfirst=True)
@@ -539,11 +554,12 @@ def init_db() -> None:
             log.exception("bootstrap_admin falhou; seguindo sem criar admin inicial.")
     finally:
         if lock_conn is not None:
-            try:
-                lock_conn.execute(text("SELECT pg_advisory_unlock(87423101)"))
-                lock_conn.commit()
-            except Exception:
-                log.exception("init_db: falha ao liberar advisory lock")
+            if lock_held:
+                try:
+                    lock_conn.execute(text("SELECT pg_advisory_unlock(87423101)"))
+                    lock_conn.commit()
+                except Exception:
+                    log.exception("init_db: falha ao liberar advisory lock")
             try:
                 lock_conn.close()
             except Exception:
