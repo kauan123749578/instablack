@@ -522,6 +522,7 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
     log_by_day = _batch_status_counts(db, account_ids, day_list)
     phases["batch_logs_ms"] = round((time.perf_counter() - t1) * 1000, 1)
 
+    t_acc = time.perf_counter()
     accounts = db.scalars(
         select(InstagramAccount)
         .where(
@@ -530,6 +531,7 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
         )
         .order_by(InstagramAccount.username.asc())
     ).all()
+    phases["accounts_ms"] = round((time.perf_counter() - t_acc) * 1000, 1)
 
     active_automations = db.scalar(
         select(func.count(Automation.id)).where(
@@ -567,6 +569,7 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
     )
     rate_delta = round(success_rate - rate_yesterday, 1) if total_yesterday or total_logs_today else None
 
+    t_auto = time.perf_counter()
     automations = db.scalars(
         select(Automation)
         .where(Automation.user_id == user.id, Automation.status == "active")
@@ -586,29 +589,14 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
         .order_by(Automation.next_run_at.asc())
         .limit(6)
     ).all()
+    phases["automations_ms"] = round((time.perf_counter() - t_auto) * 1000, 1)
 
-    account_publish_counts: dict[int, int] = {}
-    if account_ids:
-        t2 = time.perf_counter()
-        account_publish_counts = dict(
-            db.execute(
-                select(PublishLog.account_id, func.count(PublishLog.id))
-                .where(
-                    PublishLog.account_id.in_(account_ids),
-                    PublishLog.status == "success",
-                    PublishLog.created_at
-                    >= _utc_naive(_brt_day_bounds(today - dt.timedelta(days=30))[0]),
-                )
-                .group_by(PublishLog.account_id)
-            ).all()
-        )
-        phases["publish_counts_ms"] = round((time.perf_counter() - t2) * 1000, 1)
-
+    # Contagem por conta nos últimos 30d travava o painel (scan gigante em publish_logs).
+    # Ordena por username; posts aparecem no ranking/analytics.
     accounts_data = [
-        {"account": acc, "publish_count": account_publish_counts.get(acc.id, 0)}
+        {"account": acc, "publish_count": 0}
         for acc in accounts
     ]
-    accounts_data.sort(key=lambda x: x["publish_count"], reverse=True)
 
     max_val = 1
     chart_performance: list[dict] = []

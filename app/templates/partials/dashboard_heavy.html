@@ -60,7 +60,7 @@
             {% if preview and preview.kind == 'image' %}
             <img src="{{ preview.url }}" alt="">
             {% elif preview and preview.kind == 'video' %}
-            <video src="{{ preview.url }}#t=0.1" muted playsinline preload="metadata"></video>
+            <video src="{{ preview.url }}#t=0.1" muted playsinline preload="none"></video>
             {% else %}
             <div class="og-auto-thumb-ph og-auto-thumb-ph--{{ a.content_type|default('reel') }}">
               {% if a.content_type == 'story' %}<i data-lucide="circle-dot"></i>{% elif a.content_type == 'photo' %}<i data-lucide="image"></i>{% else %}<i data-lucide="play"></i>{% endif %}
@@ -94,7 +94,7 @@
             {% if preview and preview.kind == 'image' %}
             <img src="{{ preview.url }}" alt="">
             {% elif preview and preview.kind == 'video' %}
-            <video src="{{ preview.url }}#t=0.1" muted playsinline preload="metadata"></video>
+            <video src="{{ preview.url }}#t=0.1" muted playsinline preload="none"></video>
             {% else %}
             <div class="og-auto-thumb-ph og-auto-thumb-ph--{{ a.content_type|default('reel') }}">
               {% if a.content_type == 'story' %}<i data-lucide="circle-dot"></i>{% elif a.content_type == 'photo' %}<i data-lucide="image"></i>{% else %}<i data-lucide="play"></i>{% endif %}
