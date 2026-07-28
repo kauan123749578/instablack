@@ -7,8 +7,8 @@ from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, RedirectResponse
-from sqlalchemy import desc, func, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy import desc, func, select, text
+from sqlalchemy.orm import Session, load_only
 
 from app.deps import get_current_user, maybe_current_user, maybe_effective_user
 from app.templating import templates
@@ -18,13 +18,24 @@ from app.utils.charts import attach_chart_paths
 from app.utils.official_analytics import empty_official_summary
 from app.utils.timezone import brt_now
 from core.database import get_db
-from models.models import Automation, InstagramAccount, PublishLog, User
+from models.models import Automation, InstagramAccount, PublishLog, User, automation_accounts
 
 router = APIRouter(tags=["dashboard"])
 BRT = ZoneInfo("America/Sao_Paulo")
 WEEKDAY_LABELS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
 ALLOWED_CHART_DAYS = {7, 15, 30}
 VISIBLE_ACCOUNT_STATUSES = ("active", "paused", "needs_login", "proxy_down", "banned")
+_AUTOMATION_DASH_COLS = (
+    Automation.id,
+    Automation.name,
+    Automation.content_type,
+    Automation.interval_minutes,
+    Automation.status,
+    Automation.next_run_at,
+    Automation.video_key,
+    Automation.thumb_key,
+    Automation.video_original_name,
+)
 _RANK_CACHE: dict[tuple, tuple[float, list[dict]]] = {}
 _RANK_CACHE_TTL = 120.0
 
@@ -62,6 +73,18 @@ def _visible_account_ids(db: Session, user_id: int) -> list[int]:
                 InstagramAccount.user_id == user_id,
                 InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
             )
+        ).all()
+    )
+
+
+def _automation_account_counts(db: Session, automation_ids: list[int]) -> dict[int, int]:
+    if not automation_ids:
+        return {}
+    return dict(
+        db.execute(
+            select(automation_accounts.c.automation_id, func.count())
+            .where(automation_accounts.c.automation_id.in_(automation_ids))
+            .group_by(automation_accounts.c.automation_id)
         ).all()
     )
 
@@ -509,6 +532,9 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
     """Monta o painel inteiro com o mínimo de round-trips ao Postgres."""
     t0 = time.perf_counter()
     phases: dict[str, float] = {}
+    if not settings.is_sqlite:
+        db.execute(text("SET LOCAL statement_timeout = '15000'"))
+
     today = brt_now().date()
     yesterday = today - dt.timedelta(days=1)
     month_start = today.replace(day=1)
@@ -521,6 +547,7 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
     t1 = time.perf_counter()
     log_by_day = _batch_status_counts(db, account_ids, day_list)
     phases["batch_logs_ms"] = round((time.perf_counter() - t1) * 1000, 1)
+    dbg("H2", "dashboard.py:_dashboard_context", "after batch", phases)
 
     t_acc = time.perf_counter()
     accounts = db.scalars(
@@ -532,7 +559,9 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
         .order_by(InstagramAccount.username.asc())
     ).all()
     phases["accounts_ms"] = round((time.perf_counter() - t_acc) * 1000, 1)
+    dbg("H2", "dashboard.py:_dashboard_context", "after accounts", phases)
 
+    t_counts = time.perf_counter()
     active_automations = db.scalar(
         select(func.count(Automation.id)).where(
             Automation.user_id == user.id,
@@ -555,6 +584,8 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
             Automation.created_at >= _utc_naive(_brt_day_bounds(month_start)[0]),
         )
     ) or 0
+    phases["kpi_counts_ms"] = round((time.perf_counter() - t_counts) * 1000, 1)
+    dbg("H2", "dashboard.py:_dashboard_context", "after kpi counts", phases)
 
     today_counts = log_by_day.get(today, {"success": 0, "failed": 0, "skipped": 0})
     yesterday_counts = log_by_day.get(yesterday, {"success": 0, "failed": 0, "skipped": 0})
@@ -573,7 +604,7 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
     automations = db.scalars(
         select(Automation)
         .where(Automation.user_id == user.id, Automation.status == "active")
-        .options(selectinload(Automation.accounts))
+        .options(load_only(*_AUTOMATION_DASH_COLS))
         .order_by(Automation.next_run_at.asc().nullslast(), desc(Automation.created_at))
         .limit(8)
     ).all()
@@ -585,11 +616,15 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
             Automation.status == "active",
             Automation.next_run_at.is_not(None),
         )
-        .options(selectinload(Automation.accounts))
+        .options(load_only(*_AUTOMATION_DASH_COLS))
         .order_by(Automation.next_run_at.asc())
         .limit(6)
     ).all()
     phases["automations_ms"] = round((time.perf_counter() - t_auto) * 1000, 1)
+
+    auto_ids = list({a.id for a in automations} | {a.id for a in next_publications})
+    automation_account_counts = _automation_account_counts(db, auto_ids)
+    dbg("H2", "dashboard.py:_dashboard_context", "after automations", phases)
 
     # Contagem por conta nos últimos 30d travava o painel (scan gigante em publish_logs).
     # Ordena por username; posts aparecem no ranking/analytics.
@@ -652,6 +687,7 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
         "new_accounts_month": new_accounts_month,
         "new_automations_month": new_automations_month,
         "next_publications": next_publications,
+        "automation_account_counts": automation_account_counts,
         "latest_log_id": 0,
         "chart_performance": chart_performance,
         "chart_line_path": chart_line_path,

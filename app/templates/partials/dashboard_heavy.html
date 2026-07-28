@@ -69,7 +69,7 @@
           </div>
           <div class="og-auto-info">
             <strong>{{ a.name }}</strong>
-            <span>{{ format_interval(a.interval_minutes) }} · {{ a.accounts|length }} contas</span>
+            <span>{{ format_interval(a.interval_minutes) }} · {{ automation_account_counts.get(a.id, 0) }} contas</span>
           </div>
           <span class="og-badge {{ status_badge_class(a.status) }}">{{ status_label(a.status) }}</span>
         </li>
@@ -103,7 +103,7 @@
           </div>
           <div class="og-next-info">
             <strong>{{ a.name }}</strong>
-            <span>{{ a.accounts|length }} contas</span>
+            <span>{{ automation_account_counts.get(a.id, 0) }} contas</span>
           </div>
         </li>
         {% endfor %}
