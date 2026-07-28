@@ -612,7 +612,7 @@
       } catch (_) {}
     }
 
-    window.setTimeout(poll, 8000);
+    window.setTimeout(poll, 2000);
     dashActivityPollTimer = setInterval(poll, 15000);
   }
 

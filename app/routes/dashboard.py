@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.deps import get_current_user, maybe_current_user, maybe_effective_user
 from app.templating import templates
+from app.config import settings
 from app.utils.account_health import offline_accounts
 from app.utils.charts import attach_chart_paths
 from app.utils.official_analytics import empty_official_summary
@@ -85,29 +86,51 @@ def _status_counts_for_days(
     if not days:
         return {}
 
+    out = {d: {"success": 0, "failed": 0, "skipped": 0} for d in days}
     first_start, _ = _brt_day_bounds(min(days))
     _, last_end = _brt_day_bounds(max(days))
+    base_filters = (
+        InstagramAccount.user_id == user_id,
+        PublishLog.created_at >= _utc_naive(first_start),
+        PublishLog.created_at < _utc_naive(last_end),
+    )
+
+    if settings.is_sqlite:
+        rows = db.execute(
+            select(PublishLog.created_at, PublishLog.status)
+            .join(PublishLog.account)
+            .where(*base_filters)
+        ).all()
+        for row in rows:
+            day = _brt_date_from_db(row.created_at)
+            if day in out:
+                out[day][row.status] = out[day].get(row.status, 0) + 1
+        return out
+
+    day_col = func.date(
+        func.timezone(
+            "America/Sao_Paulo",
+            func.timezone("UTC", PublishLog.created_at),
+        )
+    )
     rows = db.execute(
         select(
-            PublishLog.created_at,
+            day_col.label("day"),
             PublishLog.status,
+            func.count(PublishLog.id).label("cnt"),
         )
         .join(PublishLog.account)
-        .where(
-            InstagramAccount.user_id == user_id,
-            PublishLog.created_at >= _utc_naive(first_start),
-            PublishLog.created_at < _utc_naive(last_end),
-        )
+        .where(*base_filters)
+        .group_by(day_col, PublishLog.status)
     ).all()
-
-    out = {d: {"success": 0, "failed": 0, "skipped": 0} for d in days}
     for row in rows:
-        day = _brt_date_from_db(row.created_at)
-        if day is None:
-            continue
+        day = row.day
+        if isinstance(day, dt.datetime):
+            day = day.date()
         if day not in out:
             continue
-        out[day][row.status] = out[day].get(row.status, 0) + 1
+        if row.status in out[day]:
+            out[day][row.status] = int(row.cnt or 0)
     return out
 
 
@@ -473,6 +496,8 @@ def home(
             .where(
                 InstagramAccount.user_id == user.id,
                 PublishLog.status == "success",
+                PublishLog.created_at
+                >= _utc_naive(_brt_day_bounds(today - dt.timedelta(days=30))[0]),
             )
             .group_by(PublishLog.account_id)
         ).all()
@@ -487,35 +512,19 @@ def home(
     ]
     accounts_data.sort(key=lambda x: x["publish_count"], reverse=True)
 
-    failed_videos = db.scalars(
-        select(PublishLog)
-        .join(PublishLog.account)
-        .where(
-            InstagramAccount.user_id == user.id,
-            PublishLog.status == "failed",
+    latest_log_id = (
+        db.scalar(
+            select(func.max(PublishLog.id))
+            .join(PublishLog.account)
+            .where(InstagramAccount.user_id == user.id)
         )
-        .options(selectinload(PublishLog.account), selectinload(PublishLog.automation))
-        .order_by(desc(PublishLog.created_at))
-        .limit(8)
-    ).all()
-
-    recent_logs = db.scalars(
-        select(PublishLog)
-        .join(PublishLog.account)
-        .where(InstagramAccount.user_id == user.id)
-        .options(selectinload(PublishLog.account), selectinload(PublishLog.automation))
-        .order_by(desc(PublishLog.created_at))
-        .limit(12)
-    ).all()
+        or 0
+    )
 
     chart_performance = _chart_performance(db, user.id, chart_days)
     chart_performance, chart_line_path, chart_area_path, chart_max_val = attach_chart_paths(
         chart_performance
     )
-    if chart_days == 7:
-        chart_weekly = _chart_weekly_from_performance(chart_performance)
-    else:
-        chart_weekly = _chart_weekly_bars(db, user.id, 7)
     offline = offline_accounts(db, user.id)
     official = empty_official_summary(reel_views_days=chart_days)
 
@@ -536,17 +545,17 @@ def home(
             "new_accounts_month": new_accounts_month,
             "new_automations_month": new_automations_month,
             "next_publications": next_publications,
-            "recent_logs": recent_logs,
+            "recent_logs": [],
+            "latest_log_id": latest_log_id,
             "chart_performance": chart_performance,
             "chart_line_path": chart_line_path,
             "chart_area_path": chart_area_path,
             "chart_max_val": chart_max_val,
             "chart_days": chart_days,
-            "chart_weekly": chart_weekly,
             "now_brt": brt_now(),
             "offline_accounts": offline,
             "official": official,
-            "failed_videos": failed_videos,
+            "failed_videos": [],
         },
     )
 
