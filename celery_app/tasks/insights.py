@@ -127,11 +127,14 @@ def _sync_one_meta_followers(account_id: int) -> bool:
             return False
         token = decrypt_secret(account.encrypted_meta_access_token)
         ig_user_id = account.meta_ig_user_id
+        proxy = account.proxy
         if not token or not ig_user_id:
+            return False
+        if not proxy or not check_proxy(proxy):
             return False
 
     try:
-        metrics = fetch_ig_user_metrics(token, ig_user_id)
+        metrics = fetch_ig_user_metrics(token, ig_user_id, proxy=proxy)
     except MetaInstagramError as exc:
         log.warning("meta followers %s: %s", account_id, exc)
         return False
@@ -207,18 +210,21 @@ def _sync_one_log_meta(log_id: int, account_id: int, media_id: str) -> bool:
         if not account:
             return False
         token = decrypt_secret(account.encrypted_meta_access_token)
+        proxy = account.proxy
         if not token:
+            return False
+        if not proxy or not check_proxy(proxy):
             return False
 
     try:
-        stats = fetch_media_insights(token, media_id)
+        stats = fetch_media_insights(token, media_id, proxy=proxy)
     except MetaInstagramError as exc:
         log.warning("meta insights %s: %s", media_id, exc)
         return False
 
     permalink: str | None = None
     try:
-        permalink = fetch_media_permalink(token, media_id)
+        permalink = fetch_media_permalink(token, media_id, proxy=proxy)
     except MetaInstagramError:
         permalink = None
 

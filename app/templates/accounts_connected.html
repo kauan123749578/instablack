@@ -99,10 +99,10 @@
           </td>
           <td><span class="og-badge {{ status_badge_class(acc.status) }}">{{ status_label(acc.status) }}</span></td>
           <td class="muted proxy-cell-auth" title="{{ proxy_to_raw(acc.proxy) }}">
-            {% if acc.provider == 'meta' %}não utiliza{% else %}{{ proxy_label(acc.proxy) or '—' }}{% endif %}
+            {{ proxy_label(acc.proxy) or '—' }}
           </td>
           <td class="proxy-ip-cell">
-            {% set ip = account_proxy_ip(acc) if acc.provider != 'meta' else none %}
+            {% set ip = account_proxy_ip(acc) %}
             {% if ip %}
             <div class="proxy-ip-stack">
               <span class="proxy-ip-dot" aria-hidden="true"></span>
@@ -194,8 +194,28 @@
                 <p class="proxy-test-result muted" aria-live="polite"></p>
               </form>
             </details>
-            {% elif acc.status == 'needs_login' %}
+            {% elif acc.provider == 'meta' %}
+            <details class="proxy-update-panel" {% if acc.status == 'proxy_down' or not acc.proxy %}open{% endif %}>
+              <summary class="btn btn-sm {% if not acc.proxy or acc.status == 'proxy_down' %}btn-primary{% endif %}">
+                {% if not acc.proxy %}Definir proxy{% else %}Atualizar proxy{% endif %}
+              </summary>
+              <form method="post" action="/accounts/{{ acc.id }}/update-proxy" class="proxy-update-form" data-account="@{{ acc.username }}">
+                <p class="muted" style="margin:0 0 8px;font-size:11px">
+                  API oficial usa esta proxy residencial em todas as calls Graph (não o IP do Railway).
+                </p>
+                <input type="text" name="proxy" class="proxy-update-input" required
+                       value="{{ proxy_to_raw(acc.proxy) }}"
+                       placeholder="ip:porta:usuario:senha">
+                <div class="proxy-update-actions">
+                  <button type="button" class="btn btn-sm proxy-test-btn">Testar</button>
+                  <button type="submit" class="btn btn-sm btn-primary">Salvar</button>
+                </div>
+                <p class="proxy-test-result muted" aria-live="polite"></p>
+              </form>
+            </details>
+            {% if acc.status == 'needs_login' %}
             <a href="/accounts" class="btn btn-sm btn-primary" data-nav="/accounts">Reconectar Meta</a>
+            {% endif %}
             {% endif %}
             {% if acc.status == 'paused' %}
             <form method="post" action="/accounts/{{ acc.id }}/resume">

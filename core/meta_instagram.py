@@ -2,10 +2,14 @@
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import os
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterator
 from urllib.parse import quote, urlencode, urlsplit
 
 import requests
@@ -15,6 +19,67 @@ from app.config import settings
 OAUTH_AUTHORIZE_URL = "https://api.instagram.com/oauth/authorize"
 OAUTH_TOKEN_URL = "https://api.instagram.com/oauth/access_token"
 GRAPH_BASE_URL = "https://graph.instagram.com"
+
+_log = logging.getLogger(__name__)
+# Proxy residencial da conta — todas as calls Graph/OAuth saem por ele (não pelo IP do Railway).
+_meta_proxy_cv: ContextVar[str | None] = ContextVar("meta_http_proxy", default=None)
+
+
+def proxies_for(proxy: str | None = None) -> dict[str, str] | None:
+    """Monta dict proxies= do requests a partir do proxy da conta."""
+    raw = proxy if proxy is not None else _meta_proxy_cv.get()
+    if not raw or not str(raw).strip():
+        return None
+    from app.utils.proxy import normalize_proxy
+
+    url = normalize_proxy(str(raw).strip())
+    if not url:
+        return None
+    return {"http": url, "https": url}
+
+
+@contextmanager
+def meta_proxy_scope(proxy: str | None) -> Iterator[None]:
+    """Define o proxy das HTTP Graph. Se proxy=None, herda o escopo atual (não limpa)."""
+    if proxy is None:
+        yield
+        return
+    token = _meta_proxy_cv.set(str(proxy).strip() or None)
+    try:
+        yield
+    finally:
+        _meta_proxy_cv.reset(token)
+
+
+class MetaInstagramError(RuntimeError):
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: int | None = None,
+        subcode: int | None = None,
+        error_type: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.subcode = subcode
+        self.error_type = error_type
+
+
+def _http(method: str, url: str, *, proxy: str | None = None, **kwargs) -> requests.Response:
+    """HTTP para a Meta — usa proxy da conta (nunca cai no IP do Railway se houver proxy)."""
+    raw = proxy if proxy is not None else _meta_proxy_cv.get()
+    if raw:
+        px = proxies_for(raw)
+        if not px:
+            raise MetaInstagramError(
+                "Proxy da conta inválida para a API oficial. Atualize a proxy residencial."
+            )
+        kwargs.setdefault("proxies", px)
+        _log.debug("META %s via proxy → %s", method.upper(), url[:96])
+    return requests.request(method, url, **kwargs)
+
+
 META_SCOPES = (
     "instagram_business_basic",
     "instagram_business_content_publish",
@@ -99,7 +164,8 @@ def post_media_comment(access_token: str, media_id: str, message: str) -> bool:
     if len(text) > 2100:
         text = text[:2099].rstrip() + "…"
     try:
-        response = requests.post(
+        response = _http(
+            "POST",
             _graph_url(f"{media_id}/comments"),
             data={"message": text, "access_token": access_token},
             timeout=45,
@@ -145,9 +211,9 @@ def delete_media(access_token: str, media_id: str, *, rounds: int = 4) -> bool:
         for attempt in methods:
             try:
                 if attempt["method"] == "delete":
-                    response = requests.delete(url, params=attempt["params"], timeout=30)
+                    response = _http("DELETE", url, params=attempt["params"], timeout=30)
                 else:
-                    response = requests.post(url, params=attempt["params"], timeout=30)
+                    response = _http("POST", url, params=attempt["params"], timeout=30)
                 try:
                     data = response.json() if response.content else {}
                 except ValueError:
@@ -184,7 +250,8 @@ def delete_media(access_token: str, media_id: str, *, rounds: int = 4) -> bool:
 
 def fetch_media_caption(access_token: str, media_id: str) -> str | None:
     """Lê a caption publicada (None se a Meta não devolver o campo)."""
-    response = requests.get(
+    response = _http(
+        "GET",
         _graph_url(media_id),
         params={
             "fields": "caption,media_type,media_product_type,permalink",
@@ -277,21 +344,6 @@ class MetaAppCredentials:
     redirect_uri: str
 
 
-class MetaInstagramError(RuntimeError):
-    def __init__(
-        self,
-        message: str,
-        *,
-        code: int | None = None,
-        subcode: int | None = None,
-        error_type: str | None = None,
-    ) -> None:
-        super().__init__(message)
-        self.code = code
-        self.subcode = subcode
-        self.error_type = error_type
-
-
 def _graph_url(path: str) -> str:
     version = settings.meta_instagram_graph_version.strip().lstrip("/")
     prefix = f"/{version}" if version else ""
@@ -376,9 +428,22 @@ def _json_or_error(response: requests.Response, action: str) -> dict:
     return payload
 
 
-def exchange_code(creds: MetaAppCredentials, code: str) -> tuple[str, dt.datetime | None]:
+def exchange_code(
+    creds: MetaAppCredentials,
+    code: str,
+    *,
+    proxy: str | None = None,
+) -> tuple[str, dt.datetime | None]:
     """Troca code por token longo; retorna (token, expiração)."""
-    short_response = requests.post(
+    with meta_proxy_scope(proxy):
+        return _exchange_code_inner(creds, code)
+
+
+def _exchange_code_inner(
+    creds: MetaAppCredentials, code: str
+) -> tuple[str, dt.datetime | None]:
+    short_response = _http(
+        "POST",
         OAUTH_TOKEN_URL,
         data={
             "client_id": creds.ig_app_id,
@@ -394,7 +459,8 @@ def exchange_code(creds: MetaAppCredentials, code: str) -> tuple[str, dt.datetim
     if not short_token:
         raise MetaInstagramError("A Meta não retornou access_token.")
 
-    long_response = requests.get(
+    long_response = _http(
+        "GET",
         f"{GRAPH_BASE_URL}/access_token",
         params={
             "grant_type": "ig_exchange_token",
@@ -414,16 +480,18 @@ def exchange_code(creds: MetaAppCredentials, code: str) -> tuple[str, dt.datetim
     return token, expires_at
 
 
-def account_profile(access_token: str) -> dict[str, str]:
-    response = requests.get(
-        _graph_url("me"),
-        params={
-            "fields": "user_id,username",
-            "access_token": access_token,
-        },
-        timeout=30,
-    )
-    data = _json_or_error(response, "Falha ao consultar conta Instagram")
+def account_profile(access_token: str, *, proxy: str | None = None) -> dict[str, str]:
+    with meta_proxy_scope(proxy):
+        response = _http(
+            "GET",
+            _graph_url("me"),
+            params={
+                "fields": "user_id,username",
+                "access_token": access_token,
+            },
+            timeout=30,
+        )
+        data = _json_or_error(response, "Falha ao consultar conta Instagram")
     user_id = str(data.get("user_id") or data.get("id") or "")
     username = str(data.get("username") or "")
     if not user_id or not username:
@@ -431,20 +499,24 @@ def account_profile(access_token: str) -> dict[str, str]:
     return {"id": user_id, "username": username}
 
 
-def validate_token(access_token: str) -> dict[str, str]:
-    return account_profile(access_token)
+def validate_token(access_token: str, *, proxy: str | None = None) -> dict[str, str]:
+    return account_profile(access_token, proxy=proxy)
 
 
-def refresh_access_token(access_token: str) -> tuple[str, dt.datetime | None]:
-    response = requests.get(
-        f"{GRAPH_BASE_URL}/refresh_access_token",
-        params={
-            "grant_type": "ig_refresh_token",
-            "access_token": access_token,
-        },
-        timeout=30,
-    )
-    data = _json_or_error(response, "Falha ao renovar token oficial")
+def refresh_access_token(
+    access_token: str, *, proxy: str | None = None
+) -> tuple[str, dt.datetime | None]:
+    with meta_proxy_scope(proxy):
+        response = _http(
+            "GET",
+            f"{GRAPH_BASE_URL}/refresh_access_token",
+            params={
+                "grant_type": "ig_refresh_token",
+                "access_token": access_token,
+            },
+            timeout=30,
+        )
+        data = _json_or_error(response, "Falha ao renovar token oficial")
     token = str(data.get("access_token") or access_token)
     expires_in = int(data.get("expires_in") or 0)
     expires_at = (
@@ -516,16 +588,23 @@ def parse_signed_request(creds: MetaAppCredentials, signed_request: str) -> dict
     return data
 
 
-def fetch_ig_user_metrics(access_token: str, ig_user_id: str) -> dict[str, int | None]:
-    response = requests.get(
-        _graph_url(ig_user_id),
-        params={
-            "fields": "followers_count,media_count",
-            "access_token": access_token,
-        },
-        timeout=30,
-    )
-    data = _json_or_error(response, "Falha ao consultar métricas da conta")
+def fetch_ig_user_metrics(
+    access_token: str,
+    ig_user_id: str,
+    *,
+    proxy: str | None = None,
+) -> dict[str, int | None]:
+    with meta_proxy_scope(proxy):
+        response = _http(
+            "GET",
+            _graph_url(ig_user_id),
+            params={
+                "fields": "followers_count,media_count",
+                "access_token": access_token,
+            },
+            timeout=30,
+        )
+        data = _json_or_error(response, "Falha ao consultar métricas da conta")
     followers = data.get("followers_count")
     media_count = data.get("media_count")
     return {
@@ -564,7 +643,12 @@ def _parse_insights_payload(payload: dict) -> dict[str, int]:
     return out
 
 
-def fetch_media_insights(access_token: str, media_id: str) -> dict[str, int | None]:
+def fetch_media_insights(
+    access_token: str,
+    media_id: str,
+    *,
+    proxy: str | None = None,
+) -> dict[str, int | None]:
     """Busca views do media. Sem `likes` — Meta rejeita likes em Reels (code 100)."""
     metric_sets = (
         "views,comments,shares,saved,reach,total_interactions",
@@ -574,21 +658,23 @@ def fetch_media_insights(access_token: str, media_id: str) -> dict[str, int | No
     )
     parsed: dict[str, int] = {}
     last_error: MetaInstagramError | None = None
-    for metrics in metric_sets:
-        response = requests.get(
-            _graph_url(f"{media_id}/insights"),
-            params={"metric": metrics, "access_token": access_token},
-            timeout=30,
-        )
-        try:
-            parsed = _parse_insights_payload(
-                _json_or_error(response, "Falha ao consultar insights")
+    with meta_proxy_scope(proxy):
+        for metrics in metric_sets:
+            response = _http(
+                "GET",
+                _graph_url(f"{media_id}/insights"),
+                params={"metric": metrics, "access_token": access_token},
+                timeout=30,
             )
-            if parsed:
-                break
-        except MetaInstagramError as exc:
-            last_error = exc
-            continue
+            try:
+                parsed = _parse_insights_payload(
+                    _json_or_error(response, "Falha ao consultar insights")
+                )
+                if parsed:
+                    break
+            except MetaInstagramError as exc:
+                last_error = exc
+                continue
     if not parsed and last_error is not None:
         raise last_error
 
@@ -606,17 +692,21 @@ def fetch_media_insights(access_token: str, media_id: str) -> dict[str, int | No
     }
 
 
-def fetch_media_permalink(access_token: str, media_id: str) -> str | None:
+def fetch_media_permalink(
+    access_token: str, media_id: str, *, proxy: str | None = None
+) -> str | None:
     """Permalink público do post (para abrir no Instagram)."""
-    response = requests.get(
-        _graph_url(media_id),
-        params={
-            "fields": "permalink,shortcode",
-            "access_token": access_token,
-        },
-        timeout=30,
-    )
-    data = _json_or_error(response, "Falha ao consultar permalink da mídia")
+    with meta_proxy_scope(proxy):
+        response = _http(
+            "GET",
+            _graph_url(media_id),
+            params={
+                "fields": "permalink,shortcode",
+                "access_token": access_token,
+            },
+            timeout=30,
+        )
+        data = _json_or_error(response, "Falha ao consultar permalink da mídia")
     permalink = str(data.get("permalink") or "").strip()
     if permalink:
         return permalink
@@ -691,7 +781,8 @@ def _wait_container(
 ) -> None:
     """Aguarda status FINISHED antes do media_publish (docs Meta / erro 9007)."""
     for _ in range(60):
-        response = requests.get(
+        response = _http(
+            "GET",
             _graph_url(container_id),
             params={"fields": "status_code,status", "access_token": access_token},
             timeout=30,
@@ -726,7 +817,8 @@ def _publish_container(
     last_exc: MetaInstagramError | None = None
     for attempt in range(8):
         try:
-            publish_response = requests.post(
+            publish_response = _http(
+                "POST",
                 _graph_url(f"{ig_user_id}/media_publish"),
                 data={"creation_id": container_id, "access_token": access_token},
                 timeout=60,
@@ -756,6 +848,7 @@ def publish_media(
     content_type: str,
     caption: str = "",
     cover_key: str | None = None,
+    proxy: str | None = None,
 ) -> dict[str, object]:
     """Cria container, publica e EXIGE legenda em Reel/Foto.
 
@@ -766,10 +859,34 @@ def publish_media(
     Reel: capa (cover_url) + caption no mesmo POST. A API oficial NÃO deixa
     apagar Reel recém-publicado (100/33). Se a Graph não confirmar caption,
     abortamos (sem fallback em comentário).
-    """
-    import logging
 
-    _log = logging.getLogger(__name__)
+    proxy: proxy residencial da conta — obrigatório nas calls Graph (IP fora do Railway).
+    """
+    if not (proxy or "").strip():
+        raise MetaInstagramError(
+            "Proxy residencial obrigatória para a API oficial. "
+            "Configure a proxy da conta antes de publicar."
+        )
+    with meta_proxy_scope(proxy):
+        return _publish_media_inner(
+            access_token=access_token,
+            ig_user_id=ig_user_id,
+            media_key=media_key,
+            content_type=content_type,
+            caption=caption,
+            cover_key=cover_key,
+        )
+
+
+def _publish_media_inner(
+    *,
+    access_token: str,
+    ig_user_id: str,
+    media_key: str,
+    content_type: str,
+    caption: str = "",
+    cover_key: str | None = None,
+) -> dict[str, object]:
     media_url = public_media_url(media_key)
     is_video = Path(media_key).suffix.lower() in VIDEO_EXTENSIONS
     caption_text = _prepare_meta_caption(caption)
@@ -868,7 +985,8 @@ def publish_media(
         )
         # application/x-www-form-urlencoded; charset=UTF-8 (doc + Postman)
         encoded = urlencode(body, doseq=True, encoding="utf-8", errors="strict")
-        create_response = requests.post(
+        create_response = _http(
+            "POST",
             _graph_url(f"{ig_user_id}/media"),
             data=encoded.encode("utf-8"),
             headers={
