@@ -467,31 +467,57 @@ def init_db() -> None:
     sobem ao mesmo tempo (ex.: gunicorn --workers 2, web + worker + beat).
     No Postgres, só um processo migra por vez (advisory lock); os outros
     pulam e sobem na hora — evita painel/worker travados 60s no boot.
+
+    Com PgBouncer em transaction mode, advisory locks / DDL usam
+    DATABASE_UNPOOLED_URL (conexão direta no Postgres).
     """
     from models import models  # noqa: F401
     from core.bootstrap import bootstrap_admin
 
-    lock_conn = None
-    if not settings.is_sqlite:
-        lock_conn = engine.connect()
-        try:
-            got = lock_conn.execute(text("SELECT pg_try_advisory_lock(87423101)")).scalar()
-            lock_conn.commit()
-            if not got:
-                log.info("init_db: outro processo já migra; skip neste worker")
-                lock_conn.close()
-                return
-        except Exception:
-            log.exception("init_db: falha ao obter advisory lock; seguindo sem lock")
-            try:
-                lock_conn.close()
-            except Exception:
-                pass
-            lock_conn = None
+    global engine
 
+    migrate_engine = engine
+    own_migrate_engine = False
+    previous_engine = engine
+
+    if not settings.is_sqlite:
+        direct = settings.direct_database_url
+        if direct and direct != settings.database_url:
+            from sqlalchemy.pool import NullPool
+
+            migrate_engine = create_engine(
+                direct,
+                future=True,
+                poolclass=NullPool,
+                connect_args={"connect_timeout": 10},
+            )
+            own_migrate_engine = True
+            engine = migrate_engine
+            SessionLocal.configure(bind=migrate_engine)
+            log.info("init_db: usando DATABASE_UNPOOLED_URL (fora do PgBouncer)")
+
+    lock_conn = None
     try:
+        if not settings.is_sqlite:
+            lock_conn = migrate_engine.connect()
+            try:
+                got = lock_conn.execute(
+                    text("SELECT pg_try_advisory_lock(87423101)")
+                ).scalar()
+                lock_conn.commit()
+                if not got:
+                    log.info("init_db: outro processo já migra; skip neste worker")
+                    return
+            except Exception:
+                log.exception("init_db: falha ao obter advisory lock; seguindo sem lock")
+                try:
+                    lock_conn.close()
+                except Exception:
+                    pass
+                lock_conn = None
+
         try:
-            Base.metadata.create_all(bind=engine, checkfirst=True)
+            Base.metadata.create_all(bind=migrate_engine, checkfirst=True)
         except (OperationalError, ProgrammingError) as exc:
             if _is_already_exists(exc):
                 log.info("Tabelas já existem (corrida entre workers); seguindo.")
@@ -520,6 +546,13 @@ def init_db() -> None:
                 log.exception("init_db: falha ao liberar advisory lock")
             try:
                 lock_conn.close()
+            except Exception:
+                pass
+        if own_migrate_engine:
+            engine = previous_engine
+            SessionLocal.configure(bind=previous_engine)
+            try:
+                migrate_engine.dispose()
             except Exception:
                 pass
 

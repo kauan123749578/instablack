@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     invite_code: str = ""
 
     database_url: str = "sqlite:///./app.db"
+    # Com PgBouncer (transaction mode): migrations/advisory locks usam esta URL
+    # direta no Postgres. Railway injeta DATABASE_UNPOOLED_URL automaticamente.
+    database_unpooled_url: str = ""
     redis_url: str = "redis://localhost:6379/0"
 
     storage_backend: Literal["local", "s3"] = "local"
@@ -75,16 +78,21 @@ class Settings(BaseSettings):
     vapid_private_key: str = ""
     vapid_subject: str = "mailto:kauawqii@gmail.com"
 
-    @field_validator("database_url", mode="before")
+    @field_validator("database_url", "database_unpooled_url", mode="before")
     @classmethod
     def normalize_database_url(cls, value: str) -> str:
-        if not isinstance(value, str):
+        if not isinstance(value, str) or not value:
             return value
         if value.startswith("postgres://"):
             return value.replace("postgres://", "postgresql+psycopg2://", 1)
         if value.startswith("postgresql://") and "+psycopg2" not in value:
             return value.replace("postgresql://", "postgresql+psycopg2://", 1)
         return value
+
+    @property
+    def direct_database_url(self) -> str:
+        """URL sem PgBouncer (migrations / advisory locks)."""
+        return (self.database_unpooled_url or self.database_url).strip()
 
     @model_validator(mode="after")
     def warn_production(self) -> Self:
