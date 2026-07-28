@@ -651,8 +651,7 @@ def fetch_media_insights(
 ) -> dict[str, int | None]:
     """Busca views do media. Sem `likes` — Meta rejeita likes em Reels (code 100)."""
     metric_sets = (
-        "total_views,views,crossposted_views,facebook_views,comments,shares,saved,reach,total_interactions",
-        "views,crossposted_views,reach,total_interactions",
+        "views,comments,shares,saved,reach,total_interactions",
         "views,reach,total_interactions",
         "views,reach",
         "views",
@@ -676,43 +675,17 @@ def fetch_media_insights(
             except MetaInstagramError as exc:
                 last_error = exc
                 continue
-
-        media_total_views: int | None = None
-        try:
-            media_response = _http(
-                "GET",
-                _graph_url(media_id),
-                params={
-                    "fields": "total_views_count",
-                    "access_token": access_token,
-                },
-                timeout=30,
-            )
-            media_data = _json_or_error(
-                media_response, "Falha ao consultar total_views_count"
-            )
-            raw_total = media_data.get("total_views_count")
-            if raw_total is not None:
-                media_total_views = int(raw_total)
-        except (MetaInstagramError, TypeError, ValueError):
-            media_total_views = None
-
-    if not parsed and last_error is not None and media_total_views is None:
+    if not parsed and last_error is not None:
         raise last_error
 
-    view_candidates = [
-        parsed.get("total_views"),
-        media_total_views,
-        parsed.get("crossposted_views"),
-        parsed.get("views"),
-        parsed.get("plays"),
-        parsed.get("video_views"),
-        parsed.get("impressions"),
-    ]
-    valid_views = [v for v in view_candidates if isinstance(v, int) and v >= 0]
-    plays = max(valid_views) if valid_views else None
+    plays = (
+        parsed.get("views")
+        or parsed.get("plays")
+        or parsed.get("video_views")
+        or parsed.get("impressions")
+    )
     return {
-        "play_count": plays,
+        "play_count": int(plays) if plays is not None else None,
         "like_count": parsed.get("likes"),
         "comments": parsed.get("comments"),
         "reach": parsed.get("reach"),
