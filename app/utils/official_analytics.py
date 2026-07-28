@@ -17,6 +17,22 @@ def _utc_naive(d: dt.datetime) -> dt.datetime:
     return d.astimezone(dt.timezone.utc).replace(tzinfo=None)
 
 
+def empty_official_summary(*, reel_views_days: int = 7) -> dict:
+    return {
+        "meta_accounts_count": 0,
+        "meta_accounts": [],
+        "selected_account_id": None,
+        "selected_account": None,
+        "total_followers": None,
+        "total_reel_views_period": 0,
+        "total_success_count": 0,
+        "reel_views_days": reel_views_days,
+        "account_rows": [],
+        "recent_reels": [],
+        "recent_reels_by_account": {},
+    }
+
+
 def user_official_insights_summary(
     db: Session,
     user_id: int,

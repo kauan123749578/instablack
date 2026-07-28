@@ -609,12 +609,11 @@
           while (list.children.length > 12) list.removeChild(list.lastElementChild);
         }
         try { if (window.lucide) lucide.createIcons(); } catch (_) {}
-        loadNotifications();
       } catch (_) {}
     }
 
-    poll();
-    dashActivityPollTimer = setInterval(poll, 7000);
+    window.setTimeout(poll, 8000);
+    dashActivityPollTimer = setInterval(poll, 15000);
   }
 
   function initLogsClearForm() {
@@ -1583,6 +1582,128 @@
     }
   }
 
+  function formatCountShort(n) {
+    const v = Number(n || 0);
+    if (v >= 1000000) return (v / 1000000).toFixed(1).replace(/\.0$/, "") + "M";
+    if (v >= 1000) return (v / 1000).toFixed(1).replace(/\.0$/, "") + "k";
+    return String(v);
+  }
+
+  function rankRowClass(index) {
+    if (index === 1) return " og-rank-row--gold";
+    if (index === 2) return " og-rank-row--silver";
+    if (index === 3) return " og-rank-row--bronze";
+    return "";
+  }
+
+  function renderRankListHtml(players) {
+    if (!players || !players.length) {
+      return '<div class="og-rank-empty">Nenhum player no ranking ainda hoje.</div>';
+    }
+    let html = '<ol class="og-rank-list og-rank-list--card">';
+    players.forEach((item, i) => {
+      const index = i + 1;
+      const initial = (item.display_name || "?")[0].toUpperCase();
+      const avatar = item.avatar_url
+        ? `<img src="${escapeHtml(item.avatar_url)}" alt="" class="og-rank-avatar-img">`
+        : escapeHtml(initial);
+      const gold = index === 1 ? " og-rank-avatar--gold" : "";
+      const views = item.view_count
+        ? `<span class="og-rank-views">${formatCountShort(item.view_count)} views</span>`
+        : "";
+      html +=
+        `<li class="og-rank-row${rankRowClass(index)}">` +
+        `<div class="og-rank-avatar${item.avatar_url ? " og-rank-avatar--photo" : ""}${gold}">${avatar}</div>` +
+        `<div class="og-rank-info"><strong>${escapeHtml(item.display_name)} <span class="og-rank-badge">#${index}</span></strong>` +
+        `<span class="og-rank-tier">${escapeHtml(item.tier || "")}</span></div>` +
+        `<div class="og-rank-score-stack"><span class="og-rank-score-pill">${item.posts_today}</span>${views}</div>` +
+        "</li>";
+    });
+    html += "</ol>";
+    return html;
+  }
+
+  function renderRankModalHtml(players, myRank) {
+    if (!players || !players.length) {
+      return '<div class="og-rank-empty">Sem publicações hoje.</div>' + renderRankYouHtml(myRank);
+    }
+    const p1 = players[0];
+    const p2 = players[1] || null;
+    const p3 = players[2] || null;
+    const slot = (player, pos, extra) => {
+      if (!player && pos !== 1) {
+        return `<div class="rank-podium-slot rank-podium-slot--${pos} is-empty"><div class="rank-podium-block"><span>${pos}</span></div></div>`;
+      }
+      const av = player.avatar_url
+        ? `<img src="${escapeHtml(player.avatar_url)}" alt="">`
+        : escapeHtml((player.display_name || "?")[0].toUpperCase());
+      const views = player.view_count ? ` · ${formatCountShort(player.view_count)} views` : "";
+      const crown = pos === 1 ? '<span class="rank-podium-crown" aria-hidden="true"><i data-lucide="crown"></i></span>' : "";
+      const gold = pos === 1 ? " rank-podium-avatar--gold" : "";
+      return (
+        `<div class="rank-podium-slot rank-podium-slot--${pos}${extra || ""}">` +
+        crown +
+        `<div class="rank-podium-avatar${gold}${player.avatar_url ? " has-photo" : ""}">${av}</div>` +
+        `<strong>${escapeHtml(player.display_name)}</strong>` +
+        `<span class="rank-podium-tier">${escapeHtml(player.tier || "")}</span>` +
+        `<span class="rank-podium-score">${player.posts_today} posts${views}</span>` +
+        `<div class="rank-podium-block"><span>${pos}</span></div></div>`
+      );
+    };
+    let html = '<div class="rank-podium">' + slot(p2, 2, "") + slot(p1, 1, "") + slot(p3, 3, "") + "</div>";
+    if (players.length > 3) {
+      html += '<ol class="rank-modal-list">';
+      players.slice(3).forEach((item, i) => {
+        const pos = i + 4;
+        const initial = (item.display_name || "?")[0].toUpperCase();
+        const av = item.avatar_url
+          ? `<img src="${escapeHtml(item.avatar_url)}" alt="" class="og-rank-avatar-img">`
+          : escapeHtml(initial);
+        const views = item.view_count
+          ? `<span class="og-rank-views">${formatCountShort(item.view_count)} views</span>`
+          : "";
+        html +=
+          "<li><span class=\"rank-modal-pos\">" + pos + "</span>" +
+          `<div class="og-rank-avatar${item.avatar_url ? " og-rank-avatar--photo" : ""}">${av}</div>` +
+          `<div class="og-rank-info"><strong>${escapeHtml(item.display_name)}</strong><span class="og-rank-tier">${escapeHtml(item.tier || "")}</span></div>` +
+          `<div class="og-rank-score-stack"><span class="og-rank-score-pill">${item.posts_today}</span>${views}</div></li>`;
+      });
+      html += "</ol>";
+    }
+    html += renderRankYouHtml(myRank);
+    return html;
+  }
+
+  function renderRankYouHtml(myRank) {
+    let body = "<strong>Sem publicações hoje</strong>";
+    if (myRank && myRank.rank) {
+      const views = myRank.view_count ? ` · ${formatCountShort(myRank.view_count)} views` : "";
+      body = `<strong>#${myRank.rank} · ${myRank.post_count} posts${views}</strong>`;
+    }
+    return `<div class="rank-modal-you"><span>SUA POSIÇÃO HOJE</span>${body}</div>`;
+  }
+
+  async function loadDashboardRank() {
+    const listMount = document.getElementById("rank-list-mount");
+    const modalMount = document.getElementById("rank-modal-mount");
+    if (!listMount) return;
+    try {
+      const res = await fetch("/api/dashboard/rank");
+      if (!res.ok) throw new Error("fail");
+      const data = await res.json();
+      listMount.innerHTML = renderRankListHtml(data.top_players || []);
+      if (modalMount) {
+        modalMount.innerHTML = renderRankModalHtml(data.top_players || [], data.my_rank);
+      }
+      try { if (window.lucide) lucide.createIcons(); } catch (_) {}
+    } catch (_) {
+      listMount.innerHTML = '<div class="og-rank-empty">Ranking indisponível agora.</div>';
+      if (modalMount) {
+        modalMount.innerHTML = '<div class="og-rank-empty">Ranking indisponível agora.</div>';
+      }
+    }
+  }
+
   function initOgDashboard() {
     const tooltip = document.getElementById("og-chart-tooltip");
     const chartWrap = document.getElementById("og-line-chart");
@@ -1663,20 +1784,7 @@
     rankModal?.addEventListener("click", (e) => {
       if (e.target === rankModal) closeRankModal();
     });
-    document.querySelectorAll(".rank-modal-tab").forEach((tab) => {
-      tab.addEventListener("click", () => {
-        const target = tab.dataset.rankModalTab;
-        if (!target) return;
-        document.querySelectorAll(".rank-modal-tab").forEach((t) => {
-          t.classList.toggle("active", t.dataset.rankModalTab === target);
-        });
-        document.querySelectorAll(".rank-modal-panel").forEach((panel) => {
-          const show = panel.id === `rank-modal-${target}`;
-          panel.hidden = !show;
-          panel.classList.toggle("active", show);
-        });
-      });
-    });
+    loadDashboardRank();
   }
 
   const directUploadConcurrency = 6;

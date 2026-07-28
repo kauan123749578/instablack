@@ -14,7 +14,7 @@ from app.deps import get_current_user, maybe_current_user, maybe_effective_user
 from app.templating import templates
 from app.utils.account_health import offline_accounts
 from app.utils.charts import attach_chart_paths
-from app.utils.official_analytics import user_official_insights_summary
+from app.utils.official_analytics import empty_official_summary
 from app.utils.timezone import brt_now
 from core.database import get_db
 from models.models import Automation, InstagramAccount, PublishLog, User
@@ -161,6 +161,16 @@ def _dashboard_day_totals(db: Session, user_id: int, today: dt.date, yesterday: 
         "success_yesterday": success_yesterday,
         "total_yesterday": total_yesterday,
     }
+
+
+def _chart_weekly_from_performance(chart: list[dict]) -> list[dict]:
+    max_val = max((pt["pubs"] for pt in chart), default=0) or 1
+    weekly = []
+    for pt in chart:
+        copy = dict(pt)
+        copy["bar_pct"] = round(copy["pubs"] / max_val * 100, 1)
+        weekly.append(copy)
+    return weekly
 
 
 def _chart_performance_7d(db: Session, user_id: int) -> list[dict]:
@@ -347,6 +357,31 @@ def _top_platform_players_today(db: Session, day: dt.date, viewer: User | None =
     return [{**item, "posts_today": item["post_count"]} for item in items]
 
 
+@router.get("/api/dashboard/rank")
+def api_dashboard_rank(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Ranking diário fora do GET / — evita travar o login no dashboard."""
+    today = brt_now().date()
+    top_players = _top_platform_players_today(db, today, viewer=user)
+    today_start, today_end = _brt_day_bounds(today)
+    my_rank = _viewer_rank_entry(db, today_start, today_end, user)
+    return {
+        "top_players": [
+            {
+                "display_name": p["display_name"],
+                "avatar_url": p.get("avatar_url"),
+                "tier": p["tier"],
+                "posts_today": p["posts_today"],
+                "view_count": int(p.get("view_count") or 0),
+            }
+            for p in top_players
+        ],
+        "my_rank": my_rank,
+    }
+
+
 @router.get("/")
 def home(
     request: Request,
@@ -452,10 +487,6 @@ def home(
     ]
     accounts_data.sort(key=lambda x: x["publish_count"], reverse=True)
 
-    top_players = _top_platform_players_today(db, today, viewer=user)
-    today_start, today_end = _brt_day_bounds(today)
-    my_rank = _viewer_rank_entry(db, today_start, today_end, user)
-
     failed_videos = db.scalars(
         select(PublishLog)
         .join(PublishLog.account)
@@ -481,9 +512,12 @@ def home(
     chart_performance, chart_line_path, chart_area_path, chart_max_val = attach_chart_paths(
         chart_performance
     )
-    chart_weekly = _chart_weekly_bars(db, user.id, min(chart_days, 7) if chart_days == 7 else 7)
+    if chart_days == 7:
+        chart_weekly = _chart_weekly_from_performance(chart_performance)
+    else:
+        chart_weekly = _chart_weekly_bars(db, user.id, 7)
     offline = offline_accounts(db, user.id)
-    official = user_official_insights_summary(db, user.id, reel_views_days=chart_days)
+    official = empty_official_summary(reel_views_days=chart_days)
 
     return templates.TemplateResponse(
         "dashboard.html",
@@ -512,8 +546,6 @@ def home(
             "now_brt": brt_now(),
             "offline_accounts": offline,
             "official": official,
-            "top_players": top_players,
-            "my_rank": my_rank,
             "failed_videos": failed_videos,
         },
     )

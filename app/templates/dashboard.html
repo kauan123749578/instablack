@@ -240,7 +240,7 @@
         {% endfor %}
       </ul>
       {% else %}
-      <div class="og-empty">Nenhuma conta Meta conectada via API oficial ainda.</div>
+      <div class="og-empty">Insights Meta no <a href="/analytics" class="og-link" data-nav="/analytics">Analytics</a>.</div>
       {% endif %}
     </section>
 
@@ -259,33 +259,9 @@
       </div>
 
       <div class="og-rank-panel active" id="rank-panel-today" role="tabpanel">
-        {% if top_players %}
-        <ol class="og-rank-list og-rank-list--card">
-          {% for item in top_players %}
-          <li class="og-rank-row{% if loop.index == 1 %} og-rank-row--gold{% elif loop.index == 2 %} og-rank-row--silver{% elif loop.index == 3 %} og-rank-row--bronze{% endif %}">
-            <div class="og-rank-avatar{% if item.avatar_url %} og-rank-avatar--photo{% endif %}{% if loop.index == 1 %} og-rank-avatar--gold{% endif %}">
-              {% if item.avatar_url %}
-              <img src="{{ item.avatar_url }}" alt="" class="og-rank-avatar-img">
-              {% else %}
-              {{ item.display_name[0]|upper }}
-              {% endif %}
-            </div>
-            <div class="og-rank-info">
-              <strong>{{ item.display_name }} <span class="og-rank-badge">#{{ loop.index }}</span></strong>
-              <span class="og-rank-tier">{{ item.tier }}</span>
-            </div>
-            <div class="og-rank-score-stack">
-              <span class="og-rank-score-pill">{{ item.posts_today }}</span>
-              {% if item.view_count %}
-              <span class="og-rank-views">{{ format_count(item.view_count) }} views</span>
-              {% endif %}
-            </div>
-          </li>
-          {% endfor %}
-        </ol>
-        {% else %}
-        <div class="og-rank-empty">Nenhum player no ranking ainda hoje.</div>
-        {% endif %}
+        <div id="rank-list-mount">
+          <div class="og-rank-empty">Carregando ranking…</div>
+        </div>
       </div>
     </section>
 
@@ -354,74 +330,8 @@
     <p class="rank-modal-period">Ranking de hoje (BRT)</p>
 
     <div class="rank-modal-panel active" id="rank-modal-today">
-      {% if top_players %}
-      <div class="rank-podium">
-        {% set p2 = top_players[1] if top_players|length > 1 else None %}
-        {% set p1 = top_players[0] %}
-        {% set p3 = top_players[2] if top_players|length > 2 else None %}
-        <div class="rank-podium-slot rank-podium-slot--2{% if not p2 %} is-empty{% endif %}">
-          {% if p2 %}
-          <div class="rank-podium-avatar{% if p2.avatar_url %} has-photo{% endif %}">
-            {% if p2.avatar_url %}<img src="{{ p2.avatar_url }}" alt="">{% else %}{{ p2.display_name[0]|upper }}{% endif %}
-          </div>
-          <strong>{{ p2.display_name }}</strong>
-          <span class="rank-podium-tier">{{ p2.tier }}</span>
-          <span class="rank-podium-score">{{ p2.posts_today }} posts{% if p2.view_count %} · {{ format_count(p2.view_count) }} views{% endif %}</span>
-          {% endif %}
-          <div class="rank-podium-block"><span>2</span></div>
-        </div>
-        <div class="rank-podium-slot rank-podium-slot--1">
-          <span class="rank-podium-crown" aria-hidden="true"><i data-lucide="crown"></i></span>
-          <div class="rank-podium-avatar rank-podium-avatar--gold{% if p1.avatar_url %} has-photo{% endif %}">
-            {% if p1.avatar_url %}<img src="{{ p1.avatar_url }}" alt="">{% else %}{{ p1.display_name[0]|upper }}{% endif %}
-          </div>
-          <strong>{{ p1.display_name }}</strong>
-          <span class="rank-podium-tier">{{ p1.tier }}</span>
-          <span class="rank-podium-score">{{ p1.posts_today }} posts{% if p1.view_count %} · {{ format_count(p1.view_count) }} views{% endif %}</span>
-          <div class="rank-podium-block"><span>1</span></div>
-        </div>
-        <div class="rank-podium-slot rank-podium-slot--3{% if not p3 %} is-empty{% endif %}">
-          {% if p3 %}
-          <div class="rank-podium-avatar{% if p3.avatar_url %} has-photo{% endif %}">
-            {% if p3.avatar_url %}<img src="{{ p3.avatar_url }}" alt="">{% else %}{{ p3.display_name[0]|upper }}{% endif %}
-          </div>
-          <strong>{{ p3.display_name }}</strong>
-          <span class="rank-podium-tier">{{ p3.tier }}</span>
-          <span class="rank-podium-score">{{ p3.posts_today }} posts{% if p3.view_count %} · {{ format_count(p3.view_count) }} views{% endif %}</span>
-          {% endif %}
-          <div class="rank-podium-block"><span>3</span></div>
-        </div>
-      </div>
-      {% if top_players|length > 3 %}
-      <ol class="rank-modal-list">
-        {% for item in top_players[3:] %}
-        <li>
-          <span class="rank-modal-pos">{{ loop.index + 3 }}</span>
-          <div class="og-rank-avatar{% if item.avatar_url %} og-rank-avatar--photo{% endif %}">
-            {% if item.avatar_url %}<img src="{{ item.avatar_url }}" alt="" class="og-rank-avatar-img">{% else %}{{ item.display_name[0]|upper }}{% endif %}
-          </div>
-          <div class="og-rank-info">
-            <strong>{{ item.display_name }}</strong>
-            <span class="og-rank-tier">{{ item.tier }}</span>
-          </div>
-          <div class="og-rank-score-stack">
-            <span class="og-rank-score-pill">{{ item.posts_today }}</span>
-            {% if item.view_count %}<span class="og-rank-views">{{ format_count(item.view_count) }} views</span>{% endif %}
-          </div>
-        </li>
-        {% endfor %}
-      </ol>
-      {% endif %}
-      {% else %}
-      <div class="og-rank-empty">Sem publicações hoje.</div>
-      {% endif %}
-      <div class="rank-modal-you">
-        <span>SUA POSIÇÃO HOJE</span>
-        {% if my_rank and my_rank.rank %}
-        <strong>#{{ my_rank.rank }} · {{ my_rank.post_count }} posts{% if my_rank.view_count %} · {{ format_count(my_rank.view_count) }} views{% endif %}</strong>
-        {% else %}
-        <strong>Sem publicações hoje</strong>
-        {% endif %}
+      <div id="rank-modal-mount">
+        <div class="og-rank-empty">Carregando ranking…</div>
       </div>
     </div>
   </div>
