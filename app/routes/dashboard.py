@@ -266,13 +266,14 @@ def _cached_top_platform_players(
 
 
 def _rank_tier(posts: int) -> str:
-    if posts >= 200:
+    """Faixas calibradas para ranking diário."""
+    if posts >= 50:
         return "LENDA"
-    if posts >= 80:
+    if posts >= 25:
         return "ELITE"
-    if posts >= 30:
-        return "PRO"
     if posts >= 10:
+        return "PRO"
+    if posts >= 3:
         return "RISING"
     return "PLAYER"
 
@@ -339,11 +340,9 @@ def _viewer_rank_entry(
     }
 
 
-def _top_platform_players_week(db: Session, day: dt.date, viewer: User | None = None) -> list[dict]:
-    """Top dos últimos 7 dias (BRT) — não zera à meia-noite."""
-    start_day = day - dt.timedelta(days=6)
-    start, _ = _brt_day_bounds(start_day)
-    _, end = _brt_day_bounds(day)
+def _top_platform_players_today(db: Session, day: dt.date, viewer: User | None = None) -> list[dict]:
+    """Top da plataforma só no dia (BRT)."""
+    start, end = _brt_day_bounds(day)
     items = _cached_top_platform_players(db, start, end, viewer=viewer, limit=50)
     return [{**item, "posts_today": item["post_count"]} for item in items]
 
@@ -453,16 +452,9 @@ def home(
     ]
     accounts_data.sort(key=lambda x: x["publish_count"], reverse=True)
 
-    top_players = _top_platform_players_week(db, today, viewer=user)
-    month_start_dt, _ = _brt_day_bounds(month_start)
-    _, month_end_dt = _brt_day_bounds(today)
-    top_players_month = _cached_top_platform_players(
-        db, month_start_dt, month_end_dt, viewer=user, limit=50
-    )
-    week_start_day = today - dt.timedelta(days=6)
-    week_start_dt, _ = _brt_day_bounds(week_start_day)
-    my_rank_week = _viewer_rank_entry(db, week_start_dt, month_end_dt, user)
-    my_rank_month = _viewer_rank_entry(db, month_start_dt, month_end_dt, user)
+    top_players = _top_platform_players_today(db, today, viewer=user)
+    today_start, today_end = _brt_day_bounds(today)
+    my_rank = _viewer_rank_entry(db, today_start, today_end, user)
 
     failed_videos = db.scalars(
         select(PublishLog)
@@ -521,9 +513,7 @@ def home(
             "offline_accounts": offline,
             "official": official,
             "top_players": top_players,
-            "top_players_month": top_players_month,
-            "my_rank_week": my_rank_week,
-            "my_rank_month": my_rank_month,
+            "my_rank": my_rank,
             "failed_videos": failed_videos,
         },
     )
