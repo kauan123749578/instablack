@@ -130,8 +130,10 @@ def _sync_one_meta_followers(account_id: int) -> bool:
         proxy = (account.proxy or "").strip() or None
         if not token or not ig_user_id:
             return False
-        if proxy and not check_proxy(proxy):
-            proxy = None
+
+    # check_proxy FORA do session — não segura conexão no PgBouncer.
+    if proxy and not check_proxy(proxy):
+        proxy = None
 
     try:
         metrics = fetch_ig_user_metrics(token, ig_user_id, proxy=proxy)
@@ -164,7 +166,11 @@ def _sync_one_log(log_id: int, account_id: int, media_id: str) -> bool:
 
     with session_scope() as db:
         account = db.get(InstagramAccount, account_id)
-        if not account.proxy or not check_proxy(account.proxy):
+        if not account:
+            return False
+        if account.status in ("banned", "paused", "proxy_down", "needs_login"):
+            return False
+        if not account.proxy:
             return False
         settings_dict = deserialize_settings(account.session_json)
         if not settings_dict:
@@ -172,6 +178,9 @@ def _sync_one_log(log_id: int, account_id: int, media_id: str) -> bool:
         proxy = account.proxy
         username = account.username
         password = decrypt_secret(account.encrypted_password)
+
+    if not check_proxy(proxy):
+        return False
 
     try:
         cl = get_ready_client(

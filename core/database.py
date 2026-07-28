@@ -45,20 +45,63 @@ def _behind_pgbouncer() -> bool:
     return "pgbouncer" in lower or ":6432" in lower
 
 
+def _pg_connect_args(*, connect_timeout: int = 5) -> dict:
+    """Args psycopg2 anti-hang: keepalive TCP + timeouts no servidor.
+
+    Sem keepalive, conexão morta no PgBouncer/Railway pode travar o request
+    minutos (browser: provisional headers / stalled) até o SSL cair.
+    """
+    return {
+        "connect_timeout": connect_timeout,
+        "keepalives": 1,
+        "keepalives_idle": 30,
+        "keepalives_interval": 10,
+        "keepalives_count": 3,
+        # Fail-fast no Postgres: query lenta não segura o worker gunicorn.
+        "options": (
+            "-c statement_timeout=10000 "
+            "-c idle_in_transaction_session_timeout=15000"
+        ),
+    }
+
+
+def _is_disconnect_error(exc: BaseException) -> bool:
+    msg = str(exc).lower()
+    markers = (
+        "ssl connection has been closed",
+        "connection already closed",
+        "server closed the connection",
+        "connection reset",
+        "broken pipe",
+        "terminating connection",
+        "could not receive data from server",
+        "connection timed out",
+        "eof detected",
+    )
+    return any(m in msg for m in markers)
+
+
 def _engine_kwargs() -> dict:
     if settings.is_sqlite:
         return {"connect_args": {"check_same_thread": False}}
-    # connect_timeout evita hang infinito se o Postgres estiver inacessível.
-    #
     # Celery / atrás do PgBouncer (transaction mode): NullPool.
     # QueuePool + PgBouncer gera "unexpected EOF on client connection with an
     # open transaction" e 502 no proxy quando a conexão é reciclada errado.
     from sqlalchemy.pool import NullPool
 
-    if _is_celery_process() or _behind_pgbouncer():
+    # Railway "Postgres with PgBouncer": sempre NullPool no Postgres —
+    # detectar só por URL falha se UNPOOLED não estiver setado e a URL
+    # interna não tiver :6432 no host string.
+    use_null = (
+        _is_celery_process()
+        or _behind_pgbouncer()
+        or (settings.app_env or "").lower() == "production"
+    )
+    if use_null:
         return {
             "poolclass": NullPool,
-            "connect_args": {"connect_timeout": 8},
+            "pool_pre_ping": True,
+            "connect_args": _pg_connect_args(connect_timeout=5),
         }
     return {
         "pool_pre_ping": True,
@@ -68,7 +111,7 @@ def _engine_kwargs() -> dict:
         "pool_recycle": 120,
         "pool_use_lifo": True,
         "pool_reset_on_return": "rollback",
-        "connect_args": {"connect_timeout": 5},
+        "connect_args": _pg_connect_args(connect_timeout=5),
     }
 
 
@@ -123,7 +166,10 @@ def get_db() -> Iterator[Session]:
             db.rollback()
         except Exception:
             pass
-        db.close()
+        try:
+            db.close()
+        except Exception:
+            pass
 
 
 @contextmanager

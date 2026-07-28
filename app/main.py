@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
-from sqlalchemy.exc import TimeoutError as SATimeoutError
+from sqlalchemy.exc import OperationalError, TimeoutError as SATimeoutError
 
 from app.config import settings
 from app.routes import (
@@ -189,6 +189,29 @@ def create_app() -> FastAPI:
             )
         return JSONResponse(
             {"detail": "database_busy", "error": "QueuePool timeout"},
+            status_code=503,
+            headers={"Retry-After": "2"},
+        )
+
+    @app.exception_handler(OperationalError)
+    async def _db_operational(_request: Request, exc: OperationalError):
+        """SSL/PgBouncer caiu → 503 rápido em vez de hang/500 no login e painel."""
+        log.warning("Postgres OperationalError: %s", exc)
+        accept = _request.headers.get("accept", "")
+        if "text/html" in accept:
+            return HTMLResponse(
+                "<!doctype html><title>Instablack</title>"
+                "<body style='font-family:system-ui;background:#050505;color:#eee;"
+                "display:grid;place-items:center;min-height:100vh'>"
+                "<div><h1>Banco reiniciando</h1>"
+                "<p>Conexão com o Postgres caiu. Atualize em 2–3 segundos.</p>"
+                "<p><a href='/login' style='color:#3d82ff'>Voltar ao login</a></p></div>"
+                "</body>",
+                status_code=503,
+                headers={"Retry-After": "2"},
+            )
+        return JSONResponse(
+            {"detail": "database_unavailable", "error": "operational_error"},
             status_code=503,
             headers={"Retry-After": "2"},
         )

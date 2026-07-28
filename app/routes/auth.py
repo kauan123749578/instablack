@@ -1,6 +1,8 @@
 """Login / Registro / Logout."""
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, Form, Request, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
@@ -14,6 +16,7 @@ from core.database import get_db
 from models.models import User
 
 router = APIRouter(tags=["auth"])
+log = logging.getLogger(__name__)
 
 
 @router.get("/login")
@@ -34,7 +37,23 @@ def login(
     db: Session = Depends(get_db),
 ):
     username_norm = username.strip().lower()
-    user = db.scalar(select(User).where(User.username == username_norm))
+    try:
+        user = db.scalar(select(User).where(User.username == username_norm))
+    except Exception as exc:
+        log.warning("login DB erro: %s", exc)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return templates.TemplateResponse(
+            "login.html",
+            {
+                "request": request,
+                "error": "Banco temporariamente indisponível. Tente de novo em alguns segundos.",
+                "allow_registration": settings.allow_registration,
+            },
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
     if not user or not verify_password(password, user.password_hash) or not user.is_active:
         return templates.TemplateResponse(
             "login.html",

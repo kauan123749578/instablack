@@ -1,13 +1,25 @@
 """Dependências compartilhadas do FastAPI."""
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 from fastapi import Depends, HTTPException, Request, status
+from sqlalchemy.exc import OperationalError, TimeoutError as SATimeoutError
 from sqlalchemy.orm import Session
 
 from core.database import get_db
 from models.models import User
+
+log = logging.getLogger(__name__)
+
+
+def _db_unavailable() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="database_unavailable",
+        headers={"Retry-After": "2"},
+    )
 
 
 def get_auth_user(
@@ -24,7 +36,16 @@ def get_auth_user(
             )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Não autenticado")
 
-    user = db.get(User, user_id)
+    try:
+        user = db.get(User, user_id)
+    except (OperationalError, SATimeoutError) as exc:
+        log.warning("get_auth_user DB indisponível: %s", exc)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        raise _db_unavailable() from exc
+
     if user is None or not user.is_active:
         request.session.clear()
         raise HTTPException(
@@ -40,7 +61,16 @@ def maybe_auth_user(
     user_id = request.session.get("user_id")
     if not user_id:
         return None
-    return db.get(User, user_id)
+    try:
+        return db.get(User, user_id)
+    except (OperationalError, SATimeoutError) as exc:
+        # Não derruba GET / com 500 — trata como sessão ausente e responde rápido.
+        log.warning("maybe_auth_user DB indisponível — fallback anon: %s", exc)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return None
 
 
 def _resolve_effective(request: Request, db: Session, auth_user: User) -> User:
@@ -52,7 +82,15 @@ def _resolve_effective(request: Request, db: Session, auth_user: User) -> User:
     except (TypeError, ValueError):
         request.session.pop("view_as_user_id", None)
         return auth_user
-    target = db.get(User, target_id)
+    try:
+        target = db.get(User, target_id)
+    except (OperationalError, SATimeoutError) as exc:
+        log.warning("view_as resolve DB indisponível: %s", exc)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return auth_user
     if target is None or not target.is_active or target.id == auth_user.id:
         request.session.pop("view_as_user_id", None)
         return auth_user
