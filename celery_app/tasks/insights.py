@@ -29,6 +29,7 @@ from models.models import InstagramAccount, PublishLog
 log = logging.getLogger(__name__)
 
 STALE_HOURS = 1
+META_STALE_MINUTES = 30
 MAX_LOGS_PER_RUN = 80
 MAX_META_ACCOUNTS_PER_RUN = 40
 
@@ -38,6 +39,7 @@ def sync_all_views() -> dict:
     """Atualiza play_count dos reels publicados recentemente."""
     cutoff = dt.datetime.utcnow() - dt.timedelta(days=30)
     stale_before = dt.datetime.utcnow() - dt.timedelta(hours=STALE_HOURS)
+    meta_stale_before = dt.datetime.utcnow() - dt.timedelta(minutes=META_STALE_MINUTES)
     updated = 0
     errors = 0
 
@@ -53,6 +55,10 @@ def sync_all_views() -> dict:
                 or_(
                     PublishLog.insights_fetched_at.is_(None),
                     PublishLog.insights_fetched_at < stale_before,
+                    (
+                        (InstagramAccount.provider == "meta")
+                        & (PublishLog.insights_fetched_at < meta_stale_before)
+                    ),
                     # Meta sem views ou sem link (sync antigo quebrava com métrica `plays`)
                     (
                         (InstagramAccount.provider == "meta")
@@ -234,7 +240,8 @@ def _sync_one_log_meta(log_id: int, account_id: int, media_id: str) -> bool:
             return False
         play = stats.get("play_count")
         if play is not None:
-            log_row.play_count = play
+            prev = log_row.play_count
+            log_row.play_count = max(prev, play) if prev is not None else play
         elif log_row.play_count is None:
             log_row.play_count = 0
         likes = stats.get("like_count")
