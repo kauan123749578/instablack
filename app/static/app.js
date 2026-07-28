@@ -1869,9 +1869,7 @@
     rankModal?.addEventListener("click", (e) => {
       if (e.target === rankModal) closeRankModal();
     });
-    if (!document.getElementById("dash-heavy-mount")) {
-      loadDashboardRank();
-    }
+    loadDashboardRank();
   }
 
   const directUploadConcurrency = 6;
@@ -2524,18 +2522,8 @@
     initLucide();
     initPrivacyBlur();
     initMetaAppsPage();
-    const dashLazy = !!document.getElementById("dash-heavy-mount");
-    const kpiLazy = document.getElementById("dash-kpi-row")?.dataset.kpiLazy === "1";
-    if (kpiLazy) {
-      loadDashboardKpis();
-    }
-    if (dashLazy) {
-      loadDashboardHeavy();
-    } else {
-      initCharts();
-      initPeriodPills();
-      initOgDashboard();
-    }
+    initCharts();
+    initPeriodPills();
     initContentTypeForm();
     initThumbPreview();
     initScheduleMode();
@@ -2544,6 +2532,7 @@
     initAutomationCamouflagePreview();
     initStoryMetaLinkHint();
     initAutomationPlaylistUploads();
+    initOgDashboard();
     initCalendarPicker();
     initCalendarTimes();
     initAccountsConnect();
@@ -2554,7 +2543,7 @@
     initWebPush();
     initProfileNotifications();
     initNotifCard();
-    if (!dashLazy) initDashActivityPoll();
+    initDashActivityPoll();
     initLogsClearForm();
     initLogsWatchPoll();
   }

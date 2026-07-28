@@ -54,18 +54,27 @@ def _brt_date_from_db(value: dt.datetime) -> dt.date:
     return value.astimezone(BRT).date()
 
 
-def _count_logs(
+def _visible_account_ids(db: Session, user_id: int) -> list[int]:
+    return list(
+        db.scalars(
+            select(InstagramAccount.id).where(
+                InstagramAccount.user_id == user_id,
+                InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
+            )
+        ).all()
+    )
+
+
+def _count_logs_by_accounts(
     db: Session,
-    user_id: int,
+    account_ids: list[int],
     *,
     status: str | None = None,
     day: dt.date | None = None,
 ) -> int:
-    q = (
-        select(func.count(PublishLog.id))
-        .join(PublishLog.account)
-        .where(InstagramAccount.user_id == user_id)
-    )
+    if not account_ids:
+        return 0
+    q = select(func.count(PublishLog.id)).where(PublishLog.account_id.in_(account_ids))
     if status:
         q = q.where(PublishLog.status == status)
     if day is not None:
@@ -77,67 +86,50 @@ def _count_logs(
     return db.scalar(q) or 0
 
 
+def _count_logs(
+    db: Session,
+    user_id: int,
+    *,
+    status: str | None = None,
+    day: dt.date | None = None,
+    account_ids: list[int] | None = None,
+) -> int:
+    ids = account_ids if account_ids is not None else _visible_account_ids(db, user_id)
+    return _count_logs_by_accounts(db, ids, status=status, day=day)
+
+
 def _status_counts_for_days(
     db: Session,
     user_id: int,
     days: list[dt.date],
+    account_ids: list[int] | None = None,
 ) -> dict[dt.date, dict[str, int]]:
     if not days:
         return {}
 
     out = {d: {"success": 0, "failed": 0, "skipped": 0} for d in days}
-    first_start, _ = _brt_day_bounds(min(days))
-    _, last_end = _brt_day_bounds(max(days))
-    base_filters = (
-        InstagramAccount.user_id == user_id,
-        PublishLog.created_at >= _utc_naive(first_start),
-        PublishLog.created_at < _utc_naive(last_end),
-    )
-
-    if settings.is_sqlite:
-        rows = db.execute(
-            select(PublishLog.created_at, PublishLog.status)
-            .join(PublishLog.account)
-            .where(*base_filters)
-        ).all()
-        for row in rows:
-            day = _brt_date_from_db(row.created_at)
-            if day in out:
-                out[day][row.status] = out[day].get(row.status, 0) + 1
+    ids = account_ids if account_ids is not None else _visible_account_ids(db, user_id)
+    if not ids:
         return out
 
-    day_col = func.date(
-        func.timezone(
-            "America/Sao_Paulo",
-            func.timezone("UTC", PublishLog.created_at),
-        )
-    )
-    rows = db.execute(
-        select(
-            day_col.label("day"),
-            PublishLog.status,
-            func.count(PublishLog.id).label("cnt"),
-        )
-        .join(PublishLog.account)
-        .where(*base_filters)
-        .group_by(day_col, PublishLog.status)
-    ).all()
-    for row in rows:
-        day = row.day
-        if isinstance(day, dt.datetime):
-            day = day.date()
-        if day not in out:
-            continue
-        if row.status in out[day]:
-            out[day][row.status] = int(row.cnt or 0)
+    for d in days:
+        out[d]["success"] = _count_logs_by_accounts(db, ids, status="success", day=d)
+        out[d]["failed"] = _count_logs_by_accounts(db, ids, status="failed", day=d)
+        out[d]["skipped"] = _count_logs_by_accounts(db, ids, status="skipped", day=d)
     return out
 
 
-def _chart_performance(db: Session, user_id: int, days: int = 7) -> list[dict]:
+def _chart_performance(
+    db: Session,
+    user_id: int,
+    days: int = 7,
+    account_ids: list[int] | None = None,
+) -> list[dict]:
     days = _parse_chart_days(days)
     today = brt_now().date()
     day_list = [today - dt.timedelta(days=i) for i in range(days - 1, -1, -1)]
-    by_day = _status_counts_for_days(db, user_id, day_list)
+    ids = account_ids if account_ids is not None else _visible_account_ids(db, user_id)
+    by_day = _status_counts_for_days(db, user_id, day_list, account_ids=ids)
 
     max_val = 1
     chart = []
@@ -453,13 +445,9 @@ def _dashboard_fast_context(db: Session, user: User, chart_days: int) -> dict:
     today = brt_now().date()
     yesterday = today - dt.timedelta(days=1)
     month_start = today.replace(day=1)
+    account_ids = _visible_account_ids(db, user.id)
 
-    accounts_count = db.scalar(
-        select(func.count(InstagramAccount.id)).where(
-            InstagramAccount.user_id == user.id,
-            InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
-        )
-    ) or 0
+    accounts_count = len(account_ids)
     active_automations = db.scalar(
         select(func.count(Automation.id)).where(
             Automation.user_id == user.id,
@@ -470,20 +458,19 @@ def _dashboard_fast_context(db: Session, user: User, chart_days: int) -> dict:
         select(func.count(Automation.id)).where(Automation.user_id == user.id)
     ) or 0
 
-    pubs_today = _count_logs(db, user.id, status="success", day=today)
-    pubs_yesterday = _count_logs(db, user.id, status="success", day=yesterday)
+    pubs_today = _count_logs_by_accounts(db, account_ids, status="success", day=today)
+    pubs_yesterday = _count_logs_by_accounts(db, account_ids, status="success", day=yesterday)
     pubs_growth = _growth_pct(pubs_today, pubs_yesterday)
 
-    failed_today = _count_logs(db, user.id, status="failed", day=today)
-    skipped_today = _count_logs(db, user.id, status="skipped", day=today)
+    failed_today = _count_logs_by_accounts(db, account_ids, status="failed", day=today)
+    skipped_today = _count_logs_by_accounts(db, account_ids, status="skipped", day=today)
     total_logs_today = pubs_today + failed_today + skipped_today
     success_rate = round(pubs_today / total_logs_today * 100, 1) if total_logs_today else 0.0
 
-    success_yesterday = pubs_yesterday
-    failed_yesterday = _count_logs(db, user.id, status="failed", day=yesterday)
-    skipped_yesterday = _count_logs(db, user.id, status="skipped", day=yesterday)
-    total_yesterday = success_yesterday + failed_yesterday + skipped_yesterday
-    rate_yesterday = round(success_yesterday / total_yesterday * 100, 1) if total_yesterday else 0.0
+    failed_yesterday = _count_logs_by_accounts(db, account_ids, status="failed", day=yesterday)
+    skipped_yesterday = _count_logs_by_accounts(db, account_ids, status="skipped", day=yesterday)
+    total_yesterday = pubs_yesterday + failed_yesterday + skipped_yesterday
+    rate_yesterday = round(pubs_yesterday / total_yesterday * 100, 1) if total_yesterday else 0.0
     rate_delta = round(success_rate - rate_yesterday, 1) if total_yesterday or total_logs_today else None
 
     new_accounts_month = db.scalar(
@@ -518,6 +505,7 @@ def _dashboard_fast_context(db: Session, user: User, chart_days: int) -> dict:
 
 def _dashboard_heavy_context(db: Session, user: User, chart_days: int) -> dict:
     today = brt_now().date()
+    account_ids = _visible_account_ids(db, user.id)
 
     accounts = db.scalars(
         select(InstagramAccount)
@@ -548,19 +536,20 @@ def _dashboard_heavy_context(db: Session, user: User, chart_days: int) -> dict:
         .limit(6)
     ).all()
 
-    account_publish_counts: dict[int, int] = dict(
-        db.execute(
-            select(PublishLog.account_id, func.count(PublishLog.id))
-            .join(PublishLog.account)
-            .where(
-                InstagramAccount.user_id == user.id,
-                PublishLog.status == "success",
-                PublishLog.created_at
-                >= _utc_naive(_brt_day_bounds(today - dt.timedelta(days=30))[0]),
-            )
-            .group_by(PublishLog.account_id)
-        ).all()
-    )
+    account_publish_counts: dict[int, int] = {}
+    if account_ids:
+        account_publish_counts = dict(
+            db.execute(
+                select(PublishLog.account_id, func.count(PublishLog.id))
+                .where(
+                    PublishLog.account_id.in_(account_ids),
+                    PublishLog.status == "success",
+                    PublishLog.created_at
+                    >= _utc_naive(_brt_day_bounds(today - dt.timedelta(days=30))[0]),
+                )
+                .group_by(PublishLog.account_id)
+            ).all()
+        )
 
     accounts_data = [
         {"account": acc, "publish_count": account_publish_counts.get(acc.id, 0)}
@@ -570,14 +559,13 @@ def _dashboard_heavy_context(db: Session, user: User, chart_days: int) -> dict:
 
     latest_log_id = (
         db.scalar(
-            select(func.max(PublishLog.id))
-            .join(PublishLog.account)
-            .where(InstagramAccount.user_id == user.id)
+            select(func.max(PublishLog.id)).where(PublishLog.account_id.in_(account_ids))
         )
-        or 0
-    )
+        if account_ids
+        else 0
+    ) or 0
 
-    chart_performance = _chart_performance(db, user.id, chart_days)
+    chart_performance = _chart_performance(db, user.id, chart_days, account_ids=account_ids)
     chart_performance, chart_line_path, chart_area_path, chart_max_val = attach_chart_paths(
         chart_performance
     )
@@ -607,15 +595,9 @@ def home(
         return RedirectResponse("/login", status_code=303)
 
     chart_days = _parse_chart_days(days)
-    partial = request.headers.get("X-Partial") == "1"
-
-    if partial:
-        fast = _dashboard_fast_context(db, user, chart_days)
-        heavy = _dashboard_heavy_context(db, user, chart_days)
-        ctx = {**fast, **heavy, "dash_lazy": False, "kpi_lazy": False}
-    else:
-        # Login redirect: só valida sessão — KPIs e painel vêm via fetch depois.
-        ctx = _dashboard_shell_context(chart_days)
+    fast = _dashboard_fast_context(db, user, chart_days)
+    heavy = _dashboard_heavy_context(db, user, chart_days)
+    ctx = {**fast, **heavy, "dash_lazy": False, "kpi_lazy": False}
 
     ctx["request"] = request
     ctx["user"] = user
