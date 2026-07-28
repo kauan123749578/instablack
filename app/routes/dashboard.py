@@ -5,9 +5,12 @@ import datetime as dt
 import time
 from zoneinfo import ZoneInfo
 
+import logging
+
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import desc, func, select, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, load_only
 
 from app.deps import get_current_user, maybe_current_user, maybe_effective_user
@@ -20,6 +23,7 @@ from core.database import get_db
 from models.models import Automation, InstagramAccount, PublishLog, User, automation_accounts
 
 router = APIRouter(tags=["dashboard"])
+log = logging.getLogger(__name__)
 BRT = ZoneInfo("America/Sao_Paulo")
 WEEKDAY_LABELS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
 ALLOWED_CHART_DAYS = {7, 15, 30}
@@ -505,10 +509,24 @@ def _dashboard_shell_context(chart_days: int) -> dict:
     }
 
 
+def _dashboard_safe_scalar(db: Session, stmt, *, default=0, label: str = "kpi"):
+    """KPI leve: nunca derruba o painel se o Postgres cancelar por timeout."""
+    try:
+        return db.scalar(stmt) or default
+    except OperationalError as exc:
+        log.warning("dashboard %s timeout/erro — fallback %s: %s", label, default, exc)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return default
+
+
 def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
     """Monta o painel inteiro com o mínimo de round-trips ao Postgres."""
     if not settings.is_sqlite:
-        db.execute(text("SET LOCAL statement_timeout = '15000'"))
+        # 60s: sob carga do worker o timeout de 15s derrubava o GET / com 500.
+        db.execute(text("SET LOCAL statement_timeout = '60000'"))
 
     today = brt_now().date()
     yesterday = today - dt.timedelta(days=1)
@@ -516,40 +534,57 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
     chart_days = _parse_chart_days(chart_days)
     day_list = [today - dt.timedelta(days=i) for i in range(chart_days - 1, -1, -1)]
 
-    account_ids = _visible_account_ids(db, user.id)
-    log_by_day = _batch_status_counts(db, account_ids, day_list)
+    try:
+        account_ids = _visible_account_ids(db, user.id)
+        log_by_day = _batch_status_counts(db, account_ids, day_list)
+        accounts = db.scalars(
+            select(InstagramAccount)
+            .where(
+                InstagramAccount.user_id == user.id,
+                InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
+            )
+            .order_by(InstagramAccount.username.asc())
+        ).all()
+    except OperationalError as exc:
+        log.warning("dashboard accounts/batch timeout — shell mínimo: %s", exc)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        account_ids = []
+        log_by_day = {}
+        accounts = []
 
-    accounts = db.scalars(
-        select(InstagramAccount)
-        .where(
-            InstagramAccount.user_id == user.id,
-            InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
-        )
-        .order_by(InstagramAccount.username.asc())
-    ).all()
-
-    active_automations = db.scalar(
+    active_automations = _dashboard_safe_scalar(
+        db,
         select(func.count(Automation.id)).where(
             Automation.user_id == user.id,
             Automation.status == "active",
-        )
-    ) or 0
-    total_automations = db.scalar(
-        select(func.count(Automation.id)).where(Automation.user_id == user.id)
-    ) or 0
-    new_accounts_month = db.scalar(
+        ),
+        label="active_automations",
+    )
+    total_automations = _dashboard_safe_scalar(
+        db,
+        select(func.count(Automation.id)).where(Automation.user_id == user.id),
+        label="total_automations",
+    )
+    new_accounts_month = _dashboard_safe_scalar(
+        db,
         select(func.count(InstagramAccount.id)).where(
             InstagramAccount.user_id == user.id,
             InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
             InstagramAccount.created_at >= _utc_naive(_brt_day_bounds(month_start)[0]),
-        )
-    ) or 0
-    new_automations_month = db.scalar(
+        ),
+        label="new_accounts_month",
+    )
+    new_automations_month = _dashboard_safe_scalar(
+        db,
         select(func.count(Automation.id)).where(
             Automation.user_id == user.id,
             Automation.created_at >= _utc_naive(_brt_day_bounds(month_start)[0]),
-        )
-    ) or 0
+        ),
+        label="new_automations_month",
+    )
 
     today_counts = log_by_day.get(today, {"success": 0, "failed": 0, "skipped": 0})
     yesterday_counts = log_by_day.get(yesterday, {"success": 0, "failed": 0, "skipped": 0})
@@ -564,28 +599,36 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
     )
     rate_delta = round(success_rate - rate_yesterday, 1) if total_yesterday or total_logs_today else None
 
-    automations = db.scalars(
-        select(Automation)
-        .where(Automation.user_id == user.id, Automation.status == "active")
-        .options(load_only(*_AUTOMATION_DASH_COLS))
-        .order_by(Automation.next_run_at.asc().nullslast(), desc(Automation.created_at))
-        .limit(8)
-    ).all()
-
-    next_publications = db.scalars(
-        select(Automation)
-        .where(
-            Automation.user_id == user.id,
-            Automation.status == "active",
-            Automation.next_run_at.is_not(None),
-        )
-        .options(load_only(*_AUTOMATION_DASH_COLS))
-        .order_by(Automation.next_run_at.asc())
-        .limit(6)
-    ).all()
-
-    auto_ids = list({a.id for a in automations} | {a.id for a in next_publications})
-    automation_account_counts = _automation_account_counts(db, auto_ids)
+    try:
+        automations = db.scalars(
+            select(Automation)
+            .where(Automation.user_id == user.id, Automation.status == "active")
+            .options(load_only(*_AUTOMATION_DASH_COLS))
+            .order_by(Automation.next_run_at.asc().nullslast(), desc(Automation.created_at))
+            .limit(8)
+        ).all()
+        next_publications = db.scalars(
+            select(Automation)
+            .where(
+                Automation.user_id == user.id,
+                Automation.status == "active",
+                Automation.next_run_at.is_not(None),
+            )
+            .options(load_only(*_AUTOMATION_DASH_COLS))
+            .order_by(Automation.next_run_at.asc())
+            .limit(6)
+        ).all()
+        auto_ids = list({a.id for a in automations} | {a.id for a in next_publications})
+        automation_account_counts = _automation_account_counts(db, auto_ids)
+    except OperationalError as exc:
+        log.warning("dashboard automations list timeout — lista vazia: %s", exc)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        automations = []
+        next_publications = []
+        automation_account_counts = {}
 
     # Contagem por conta nos últimos 30d travava o painel (scan gigante em publish_logs).
     # Ordena por username; posts aparecem no ranking/analytics.
@@ -621,6 +664,23 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
         chart_performance
     )
 
+    try:
+        official = user_official_insights_summary(
+            db,
+            user.id,
+            reel_views_days=chart_days,
+            include_recent_reels=False,
+        )
+    except OperationalError as exc:
+        log.warning("dashboard official insights timeout: %s", exc)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        from app.utils.official_analytics import empty_official_summary
+
+        official = empty_official_summary(reel_views_days=chart_days)
+
     return {
         "chart_days": chart_days,
         "accounts_count": len(account_ids),
@@ -642,12 +702,7 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
         "chart_area_path": chart_area_path,
         "chart_max_val": chart_max_val,
         "now_brt": brt_now(),
-        "official": user_official_insights_summary(
-            db,
-            user.id,
-            reel_views_days=chart_days,
-            include_recent_reels=False,
-        ),
+        "official": official,
     }
 
 

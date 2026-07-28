@@ -40,7 +40,7 @@ celery_conf: dict = {
         "celery_app.tasks.publish.execute_automation": {"queue": "publish"},
         "celery_app.beat.tick": {"queue": "beat"},
         "celery_app.tasks.health.check_all_accounts": {"queue": "beat"},
-        "celery_app.tasks.health.check_account_health": {"queue": "default"},
+        "celery_app.tasks.health.check_account_health": {"queue": "health"},
         "celery_app.tasks.insights.sync_all_views": {"queue": "default"},
         "celery_app.tasks.warmup.run_warmup_job": {"queue": "default"},
     },

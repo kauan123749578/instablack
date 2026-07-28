@@ -542,19 +542,27 @@ def execute_automation(self, automation_id: int, scheduled_at: str | None = None
             if acc.status not in ("banned", "proxy_down", "paused", "needs_login", "deleted")
         ]
         if not account_ids:
-            # Não consome mídia se nenhuma conta pode publicar.
-            automation.status = "paused"
-            automation.next_run_at = None
+            # Não consome mídia; mantém active e tenta de novo depois.
+            retry_at = dt.datetime.utcnow() + dt.timedelta(minutes=30)
+            automation.next_run_at = retry_at
+            db.execute(
+                text("UPDATE automations SET next_run_at = :nxt WHERE id = :id"),
+                {"nxt": retry_at, "id": automation_id},
+            )
             log.warning(
-                "PLAYLIST %s PAUSED automation=%s sem conta elegível; índice preservado=%s",
+                "PLAYLIST %s DEFER automation=%s sem conta elegível; "
+                "índice preservado=%s next_run=%s",
                 PLAYLIST_CODE,
                 automation_id,
                 automation.current_index,
+                retry_at.isoformat(),
             )
             return {
-                "error": "no_eligible_accounts",
+                "deferred": True,
+                "reason": "no_eligible_accounts",
                 "id": automation_id,
                 "code": PLAYLIST_CODE,
+                "next_run_at": retry_at.isoformat(),
             }
 
         items = playlist_items(automation)
@@ -1269,11 +1277,18 @@ def _execute_publish(
                 link="/logs",
             )
 
-        # publish_meta_media: True = caption no post; "via_comment" = Graph dropou
-        # caption e salvamos o texto como 1º comentário (último recurso).
+        # publish_meta_media: True = confirmado; None = Graph atrasou o campo
+        # (caption já enviada no /media — aceitamos como sucesso com aviso).
         caption_verified = result.get("caption_verified")
         via_comment = caption_verified == "via_comment"
-        caption_ok = True if (caption_verified is True or via_comment) else False
+        if via_comment:
+            caption_ok: bool | None = True
+        elif caption_verified is True:
+            caption_ok = True
+        elif caption_verified is None and (content_type or "reel") in ("reel", "photo"):
+            caption_ok = None
+        else:
+            caption_ok = False
         if via_comment:
             log.warning(
                 "META caption via COMMENT account=%s media=%s — Graph dropou caption",
@@ -1288,8 +1303,21 @@ def _execute_publish(
                 kind="warning",
                 link=str(result.get("url") or "/logs"),
             )
+        elif (content_type or "reel") in ("reel", "photo") and caption_verified is None:
+            log.warning(
+                "META caption não indexou a tempo account=%s media=%s — sucesso com aviso",
+                username,
+                result.get("id"),
+            )
+            create_notification(
+                owner_user_id,
+                "Reels: legenda ainda não apareceu na Graph",
+                f"@{username}: publicamos com caption, mas a Meta demorou a indexar. "
+                "Confira o post no Instagram.",
+                kind="warning",
+                link=str(result.get("url") or "/logs"),
+            )
         elif (content_type or "reel") in ("reel", "photo") and caption_ok is not True:
-            # Defesa extra — não deveria chegar aqui
             caption_ok = False
             log.error(
                 "META REEL SEM LEGENDA CONFIRMADA account=%s media=%s",
@@ -1299,7 +1327,7 @@ def _execute_publish(
             create_notification(
                 owner_user_id,
                 "Reels SEM legenda — abortado",
-                f"@{username}: a Meta não confirmou a legenda. O post não foi aceito como sucesso.",
+                f"@{username}: a Meta confirmou caption vazia. O post não foi aceito como sucesso.",
                 kind="error",
                 link=str(result.get("url") or "/logs"),
             )
@@ -1307,7 +1335,7 @@ def _execute_publish(
         publish_log_id: int | None = None
         log_status = "success"
         log_error = None
-        if (content_type or "reel") in ("reel", "photo") and caption_ok is not True:
+        if (content_type or "reel") in ("reel", "photo") and caption_ok is False:
             log_status = "failed"
             log_error = "Abortado: Reel/Foto sem legenda confirmada"
             caption_ok = False
@@ -1785,20 +1813,40 @@ def _log_failure(
     username: str | None = None,
     notify: bool = True,
 ) -> None:
-    from core.notifications import content_label, create_notification
+    from sqlalchemy.exc import IntegrityError
 
     uid = owner_user_id
     uname = username
+    aid = automation_id
     with session_scope() as db:
-        db.add(
-            PublishLog(
-                automation_id=automation_id,
-                account_id=account_id,
-                status="failed",
-                content_type=content_type,
-                error=error[:2000],
+        if aid is not None and db.get(Automation, aid) is None:
+            aid = None
+        try:
+            db.add(
+                PublishLog(
+                    automation_id=aid,
+                    account_id=account_id,
+                    status="failed",
+                    content_type=content_type,
+                    error=error[:2000],
+                )
             )
-        )
+            db.flush()
+        except IntegrityError:
+            db.rollback()
+            log.warning(
+                "publish_log FK falhou automation_id=%s — gravando sem automação",
+                automation_id,
+            )
+            db.add(
+                PublishLog(
+                    automation_id=None,
+                    account_id=account_id,
+                    status="failed",
+                    content_type=content_type,
+                    error=error[:2000],
+                )
+            )
         if uid is None or uname is None:
             acc = db.get(InstagramAccount, account_id)
             if acc:

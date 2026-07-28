@@ -270,19 +270,20 @@ def verify_published_caption(
     media_id: str,
     *,
     expected_min_len: int = 1,
-    attempts: int = 8,
-) -> bool:
-    """Confirma que o Instagram gravou legenda. Retry longo (Graph atrasa sob carga).
+    attempts: int = 5,
+) -> str:
+    """Confirma caption na Graph. Janela curta (~60–90s) para não segurar o worker.
 
     Returns:
-        True  — caption presente e não-vazia
-        False — confirmado vazio OU campo nunca apareceu após todas as tentativas
+        "ok"      — caption presente e não-vazia
+        "empty"  — campo caption presente mas vazio (abortar)
+        "missing"— campo nunca apareceu (Graph atrasada; não abortar)
     """
     import logging
 
     _log = logging.getLogger(__name__)
-    # Graph atrasa caption sob carga; janela ~4–5 min.
-    delays = (5.0, 8.0, 12.0, 15.0, 20.0, 25.0, 30.0, 35.0, 40.0, 45.0)
+    # ~70s de sleep total (5+8+12+15+20) + GETs — evita 6 min de worker preso.
+    delays = (5.0, 8.0, 12.0, 15.0, 20.0)
     last_raw: str | None = None
     saw_field = False
 
@@ -320,7 +321,7 @@ def verify_published_caption(
                 i + 1,
                 len(got),
             )
-            return True
+            return "ok"
         _log.warning(
             "META caption verify empty media=%s attempt=%s raw_len=%s",
             media_id,
@@ -328,13 +329,19 @@ def verify_published_caption(
             len(raw),
         )
 
-    _log.error(
-        "META caption verify FAILED media=%s saw_field=%s last_raw_len=%s",
+    if saw_field:
+        _log.error(
+            "META caption verify EMPTY media=%s last_raw_len=%s",
+            media_id,
+            len(last_raw or ""),
+        )
+        return "empty"
+
+    _log.warning(
+        "META caption verify MISSING media=%s (campo não indexou a tempo)",
         media_id,
-        saw_field,
-        len(last_raw or ""),
     )
-    return False
+    return "missing"
 
 
 @dataclass(frozen=True)
@@ -856,9 +863,9 @@ def publish_media(
     media_publish. Query string NÃO é usada (trunca legenda longa → Reel
     sem caption).
 
-    Reel: capa (cover_url) + caption no mesmo POST. A API oficial NÃO deixa
-    apagar Reel recém-publicado (100/33). Se a Graph não confirmar caption,
-    abortamos (sem fallback em comentário).
+    Reel: capa (cover_url) + caption no mesmo POST. Verifica caption na Graph
+    por ~70s; se o campo não indexar (field_missing), segue com aviso.
+    Só aborta se a Meta devolver caption explicitamente vazia.
 
     proxy: proxy residencial opcional — se houver, Graph sai por ele (não pelo IP do Railway).
     """
@@ -1100,38 +1107,38 @@ def _publish_media_inner(
         )
         media_id, permalink, cover_applied = _one_publish(use_cover=False)
 
-    caption_ok = verify_published_caption(
+    caption_status = verify_published_caption(
         access_token,
         media_id,
         expected_min_len=1,
-        attempts=10,
+        attempts=5,
     )
-    if not caption_ok:
-        _log.warning(
-            "META caption ainda ausente media=%s — espera extra e re-verifica (sem comentário)",
-            media_id,
-        )
-        time.sleep(25.0)
-        caption_ok = verify_published_caption(
-            access_token,
-            media_id,
-            expected_min_len=1,
-            attempts=6,
-        )
-
-    if not caption_ok:
+    if caption_status == "empty":
         _log.error(
-            "META caption AUSENTE media=%s (enviamos len=%s) — abort sem comentário",
+            "META caption VAZIA media=%s (enviamos len=%s) — abort",
             media_id,
             len(caption_text),
         )
         _abort_missing_caption(media_id, permalink)
 
+    if caption_status == "missing":
+        # Graph atrasou o campo; caption já foi enviada no POST /media.
+        # Não aborta — libera o worker em ~70s em vez de ~6 min.
+        _log.warning(
+            "META caption field_missing media=%s (enviamos len=%s) — seguindo sem abort",
+            media_id,
+            len(caption_text),
+        )
+        caption_verified: bool | None = None
+    else:
+        caption_verified = True
+
     _log.info(
-        "META capa RESULT media=%s cover_applied=%s cover_error=%r caption_ok=True",
+        "META capa RESULT media=%s cover_applied=%s cover_error=%r caption_status=%s",
         media_id,
         cover_applied,
         cover_error,
+        caption_status,
     )
     return {
         "id": media_id,
@@ -1140,5 +1147,5 @@ def _publish_media_inner(
         "cover_applied": cover_applied,
         "cover_error": cover_error if not cover_applied and want_cover else None,
         "caption_sent_len": len(caption_text),
-        "caption_verified": True,
+        "caption_verified": caption_verified,
     }

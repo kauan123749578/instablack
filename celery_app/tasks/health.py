@@ -80,18 +80,24 @@ def _notify_offline_if_changed(
 
 @celery_app.task(name="celery_app.tasks.health.check_all_accounts")
 def check_all_accounts() -> dict:
-    """Enfileira verificação de todas as contas operacionais."""
+    """Enfileira verificação de um lote de contas (round-robin), sem engolir publish."""
+    limit = 50
     with session_scope() as db:
         account_ids = list(
             db.scalars(
-                select(InstagramAccount.id).where(
-                    InstagramAccount.status.notin_(("paused", "deleted"))
+                select(InstagramAccount.id)
+                .where(InstagramAccount.status.notin_(("paused", "deleted")))
+                .order_by(
+                    InstagramAccount.last_health_check_at.asc().nullsfirst(),
+                    InstagramAccount.id.asc(),
                 )
+                .limit(limit)
             ).all()
         )
+    # 8s entre checks → ~6–7 min para o lote; não compete com publish na fila default.
     for idx, account_id in enumerate(account_ids):
-        check_account_health.apply_async(args=[account_id], countdown=idx * 4)
-    return {"queued": len(account_ids)}
+        check_account_health.apply_async(args=[account_id], countdown=idx * 8)
+    return {"queued": len(account_ids), "limit": limit}
 
 
 @celery_app.task(name="celery_app.tasks.health.check_account_health", max_retries=0)

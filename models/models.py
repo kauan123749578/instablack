@@ -260,6 +260,10 @@ class Automation(Base):
         back_populates="automation", cascade="all, delete-orphan"
     )
 
+    __table_args__ = (
+        Index("ix_automations_user_status", "user_id", "status"),
+    )
+
 
 class PublishLog(Base):
     __tablename__ = "publish_logs"

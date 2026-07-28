@@ -199,6 +199,12 @@ def _sqlite_migrate(bind=None) -> None:
             conn.execute(text("ALTER TABLE automations ADD COLUMN rest_minutes INTEGER DEFAULT 0"))
         if "posts_in_batch" not in cols:
             conn.execute(text("ALTER TABLE automations ADD COLUMN posts_in_batch INTEGER DEFAULT 0"))
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_automations_user_status "
+                "ON automations (user_id, status)"
+            )
+        )
         if "users" in insp.get_table_names():
             ucols = {c["name"] for c in insp.get_columns("users")}
             if "display_name" not in ucols:
@@ -367,6 +373,12 @@ def _postgres_migrate(bind=None) -> None:
                 conn.execute(text("ALTER TABLE automations ALTER COLUMN calendar_time TYPE TEXT"))
             except Exception:
                 pass
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_automations_user_status "
+                    "ON automations (user_id, status)"
+                )
+            )
 
         _add_columns(
             conn,
