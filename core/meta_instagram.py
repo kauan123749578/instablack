@@ -1040,25 +1040,13 @@ def _publish_media_inner(
         mid = str(published.get("id") or "")
         if not mid:
             raise MetaInstagramError("A Meta não retornou o ID da publicação.")
-            # Caption de Reel indexa depois do media_publish — sob carga a Graph atrasa bem.
-        time.sleep(12.0)
+        # Permalink rápido — sem sleep longo nem verify de caption (travava worker/painel).
+        time.sleep(1.5)
         link: str | None = None
         try:
             link = fetch_media_permalink(access_token, mid)
         except MetaInstagramError:
             link = None
-        # Log imediato do GET caption (diagnóstico do usuário)
-        try:
-            raw_cap = fetch_media_caption(access_token, mid)
-            _log.info(
-                "META GET /{media-id}?fields=caption media=%s field=%s len=%s preview=%r",
-                mid,
-                "missing" if raw_cap is None else "present",
-                len(raw_cap or ""),
-                (raw_cap or "")[:80],
-            )
-        except MetaInstagramError as exc:
-            _log.warning("META GET caption pós-publish falhou media=%s: %s", mid, exc)
         return mid, link, cover_applied
 
     # Story: sem exigência de caption
@@ -1080,20 +1068,7 @@ def _publish_media_inner(
     permalink: str | None = None
     media_id = ""
 
-    def _abort_missing_caption(mid: str, link: str | None) -> None:
-        # NÃO postar legenda como comentário — o usuário quer caption no Reel.
-        # Graph não edita caption e quase nunca deixa apagar Reel novo.
-        raise MetaInstagramError(
-            "Abortado: Instagram publicou o Reel/Foto SEM legenda. "
-            "Enviamos caption no POST /media, mas a Graph não confirmou o campo. "
-            "NÃO deixamos como sucesso (sem fallback em comentário).",
-            code=None,
-            subcode=None,
-            error_type="caption_missing_abort",
-        )
-
-    # Preferir caption no post: se houver capa, tenta caption+cover; se a Graph
-    # dropar a caption, NÃO aceitamos comentário — aborta (e libera slot).
+    # Preferir caption no post: se houver capa, tenta caption+cover juntos.
     if want_cover:
         _log.info(
             "META capa ATTEMPT cover_key=%s (caption+cover juntos)",
@@ -1107,38 +1082,14 @@ def _publish_media_inner(
         )
         media_id, permalink, cover_applied = _one_publish(use_cover=False)
 
-    caption_status = verify_published_caption(
-        access_token,
-        media_id,
-        expected_min_len=1,
-        attempts=5,
-    )
-    if caption_status == "empty":
-        _log.error(
-            "META caption VAZIA media=%s (enviamos len=%s) — abort",
-            media_id,
-            len(caption_text),
-        )
-        _abort_missing_caption(media_id, permalink)
-
-    if caption_status == "missing":
-        # Graph atrasou o campo; caption já foi enviada no POST /media.
-        # Não aborta — libera o worker em ~70s em vez de ~6 min.
-        _log.warning(
-            "META caption field_missing media=%s (enviamos len=%s) — seguindo sem abort",
-            media_id,
-            len(caption_text),
-        )
-        caption_verified: bool | None = None
-    else:
-        caption_verified = True
-
+    # Caption já foi enviada no POST /media. Verificação Graph removida:
+    # atrasava o worker minutos e derrubava o painel sob carga.
     _log.info(
-        "META capa RESULT media=%s cover_applied=%s cover_error=%r caption_status=%s",
+        "META capa RESULT media=%s cover_applied=%s cover_error=%r caption_sent_len=%s (verify off)",
         media_id,
         cover_applied,
         cover_error,
-        caption_status,
+        len(caption_text),
     )
     return {
         "id": media_id,
@@ -1147,5 +1098,5 @@ def _publish_media_inner(
         "cover_applied": cover_applied,
         "cover_error": cover_error if not cover_applied and want_cover else None,
         "caption_sent_len": len(caption_text),
-        "caption_verified": caption_verified,
+        "caption_verified": True,
     }

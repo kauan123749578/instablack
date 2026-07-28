@@ -109,16 +109,19 @@ def _set_account_proxy(acc: InstagramAccount, normalized: str, meta: dict) -> No
 
 
 def _backfill_proxy_meta(db: Session, accounts: list[InstagramAccount]) -> None:
+    """Completa IP/geo faltando — no máx. 1 lookup de rede por request (não trava a página)."""
     dirty = False
+    geo_lookups = 0
     for acc in accounts:
         if not acc.proxy or (acc.proxy_ip and acc.proxy_geo):
             continue
         if not acc.proxy_ip:
             acc.proxy_ip = proxy_host(acc.proxy)
             dirty = True
-        if acc.proxy_ip and not acc.proxy_geo:
+        if acc.proxy_ip and not acc.proxy_geo and geo_lookups < 1:
             from app.utils.proxy import lookup_ip_geo
             geo = lookup_ip_geo(acc.proxy_ip)
+            geo_lookups += 1
             if geo:
                 acc.proxy_geo = geo["label"]
                 dirty = True

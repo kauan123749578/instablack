@@ -512,6 +512,9 @@ def _dashboard_shell_context(chart_days: int) -> dict:
 def _dashboard_safe_scalar(db: Session, stmt, *, default=0, label: str = "kpi"):
     """KPI leve: nunca derruba o painel se o Postgres cancelar por timeout."""
     try:
+        if not settings.is_sqlite:
+            # Reaplica após rollback — SET LOCAL morre com a transaction.
+            db.execute(text("SET LOCAL statement_timeout = '2500'"))
         return db.scalar(stmt) or default
     except OperationalError as exc:
         log.warning("dashboard %s timeout/erro — fallback %s: %s", label, default, exc)
@@ -525,8 +528,9 @@ def _dashboard_safe_scalar(db: Session, stmt, *, default=0, label: str = "kpi"):
 def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
     """Monta o painel inteiro com o mínimo de round-trips ao Postgres."""
     if not settings.is_sqlite:
-        # 60s: sob carga do worker o timeout de 15s derrubava o GET / com 500.
-        db.execute(text("SET LOCAL statement_timeout = '60000'"))
+        # 2.5s: se o DB estiver lento, cai no fallback rápido — NÃO deixa a página
+        # carregando minutos (timeout alto = “fica carregando” no browser).
+        db.execute(text("SET LOCAL statement_timeout = '2500'"))
 
     today = brt_now().date()
     yesterday = today - dt.timedelta(days=1)
@@ -551,6 +555,11 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
             db.rollback()
         except Exception:
             pass
+        if not settings.is_sqlite:
+            try:
+                db.execute(text("SET LOCAL statement_timeout = '2500'"))
+            except Exception:
+                pass
         account_ids = []
         log_by_day = {}
         accounts = []
@@ -707,21 +716,36 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
 
 
 def _dashboard_fast_context(db: Session, user: User, chart_days: int) -> dict:
+    if not settings.is_sqlite:
+        db.execute(text("SET LOCAL statement_timeout = '2500'"))
+
     today = brt_now().date()
     yesterday = today - dt.timedelta(days=1)
     month_start = today.replace(day=1)
-    account_ids = _visible_account_ids(db, user.id)
+    try:
+        account_ids = _visible_account_ids(db, user.id)
+    except OperationalError as exc:
+        log.warning("dashboard fast account_ids timeout — fallback []: %s", exc)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        account_ids = []
 
     accounts_count = len(account_ids)
-    active_automations = db.scalar(
+    active_automations = _dashboard_safe_scalar(
+        db,
         select(func.count(Automation.id)).where(
             Automation.user_id == user.id,
             Automation.status == "active",
-        )
-    ) or 0
-    total_automations = db.scalar(
-        select(func.count(Automation.id)).where(Automation.user_id == user.id)
-    ) or 0
+        ),
+        label="active_automations",
+    )
+    total_automations = _dashboard_safe_scalar(
+        db,
+        select(func.count(Automation.id)).where(Automation.user_id == user.id),
+        label="total_automations",
+    )
 
     pubs_today = _count_logs_by_accounts(db, account_ids, status="success", day=today)
     pubs_yesterday = _count_logs_by_accounts(db, account_ids, status="success", day=yesterday)
@@ -738,19 +762,23 @@ def _dashboard_fast_context(db: Session, user: User, chart_days: int) -> dict:
     rate_yesterday = round(pubs_yesterday / total_yesterday * 100, 1) if total_yesterday else 0.0
     rate_delta = round(success_rate - rate_yesterday, 1) if total_yesterday or total_logs_today else None
 
-    new_accounts_month = db.scalar(
+    new_accounts_month = _dashboard_safe_scalar(
+        db,
         select(func.count(InstagramAccount.id)).where(
             InstagramAccount.user_id == user.id,
             InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
             InstagramAccount.created_at >= _utc_naive(_brt_day_bounds(month_start)[0]),
-        )
-    ) or 0
-    new_automations_month = db.scalar(
+        ),
+        label="new_accounts_month",
+    )
+    new_automations_month = _dashboard_safe_scalar(
+        db,
         select(func.count(Automation.id)).where(
             Automation.user_id == user.id,
             Automation.created_at >= _utc_naive(_brt_day_bounds(month_start)[0]),
-        )
-    ) or 0
+        ),
+        label="new_automations_month",
+    )
 
     return {
         "chart_days": chart_days,

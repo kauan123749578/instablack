@@ -126,7 +126,7 @@ def _meta_global_active_key() -> str:
     return "meta:global_active"
 
 
-# Inflight por conta: só enquanto o publish roda (capa+verify ~2–4 min).
+# Inflight por conta: só enquanto o publish roda (camu+Meta ~1–3 min).
 # NÃO usar o cooldown de 60 min aqui — se o worker cair, a conta ficava
 # bloqueada ~15 min (meta_inflight:883s nos logs).
 META_INFLIGHT_TTL_SEC = 240
@@ -142,6 +142,21 @@ def _meta_global_max_concurrent() -> int:
     except Exception:
         n = 5
     return max(1, min(n, 20))
+
+
+def _meta_user_max_concurrent() -> int:
+    """Máx. publishes Meta simultâneos por usuário Instablack."""
+    try:
+        from app.config import get_settings
+
+        n = int(getattr(get_settings(), "meta_user_max_concurrent", 2) or 2)
+    except Exception:
+        n = 2
+    return max(1, min(n, 10))
+
+
+def _meta_user_active_key(user_id: int) -> str:
+    return f"meta:user_active:{int(user_id)}"
 
 
 def _claim_meta_global_slot(client, account_id: int) -> tuple[bool, int]:
@@ -172,8 +187,61 @@ def _release_meta_global_slot(client, account_id: int) -> None:
         pass
 
 
-def _claim_meta_publish_slot(account_id: int, cooldown_sec: int) -> tuple[bool, int, str]:
-    """1 publish por conta + teto global de concorrência Meta.
+def _claim_meta_user_slot(client, user_id: int | None, account_id: int) -> tuple[bool, int]:
+    """Limita quantas contas do MESMO user rodam juntos — libera fila pros outros."""
+    import time as _time
+
+    if not user_id:
+        return True, 0
+    key = _meta_user_active_key(int(user_id))
+    now = _time.time()
+    limit = _meta_user_max_concurrent()
+    try:
+        client.zremrangebyscore(key, 0, now)
+        active = int(client.zcard(key) or 0)
+        if active >= limit:
+            wait = 20 + (active * 8) + (int(account_id) % 15)
+            return False, wait
+        client.zadd(key, {str(int(account_id)): now + float(META_GLOBAL_SLOT_TTL_SEC)})
+        return True, 0
+    except Exception as exc:
+        log.warning(
+            "claim_meta_user_slot falhou user=%s account=%s: %s",
+            user_id,
+            account_id,
+            exc,
+        )
+        return True, 0
+
+
+def _release_meta_user_slot(client, user_id: int | None, account_id: int) -> None:
+    if not user_id:
+        return
+    try:
+        client.zrem(_meta_user_active_key(int(user_id)), str(int(account_id)))
+    except Exception:
+        pass
+
+
+def _inflight_user_id(client, account_id: int) -> int | None:
+    """user_id gravado no valor do key inflight (para liberar slot sem parâmetro)."""
+    try:
+        raw = client.get(_meta_inflight_key(account_id))
+        if raw is None:
+            return None
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8", errors="ignore")
+        return int(raw) if str(raw).isdigit() else None
+    except Exception:
+        return None
+
+
+def _claim_meta_publish_slot(
+    account_id: int,
+    cooldown_sec: int,
+    user_id: int | None = None,
+) -> tuple[bool, int, str]:
+    """1 publish por conta + teto por user + teto global Meta.
 
     Retorna (pode_publicar, wait_seconds, motivo).
     """
@@ -184,6 +252,7 @@ def _claim_meta_publish_slot(account_id: int, cooldown_sec: int) -> tuple[bool, 
     cooldown_sec = max(60, int(cooldown_sec or 3600))
     cool_key = _meta_cooldown_key(account_id)
     fly_key = _meta_inflight_key(account_id)
+    uid_val = str(int(user_id)) if user_id else "0"
 
     try:
         if client.exists(cool_key):
@@ -192,9 +261,17 @@ def _claim_meta_publish_slot(account_id: int, cooldown_sec: int) -> tuple[bool, 
             wait = min(_redis_ttl_seconds(client, cool_key, cooldown_sec), 180)
             return False, max(60, wait), f"meta_cooldown:{wait}s"
 
-        if not client.set(fly_key, "1", nx=True, ex=META_INFLIGHT_TTL_SEC):
+        if not client.set(fly_key, uid_val, nx=True, ex=META_INFLIGHT_TTL_SEC):
             wait = min(_redis_ttl_seconds(client, fly_key, META_INFLIGHT_TTL_SEC), 90)
             return False, max(30, wait), f"meta_inflight:{wait}s"
+
+        ok_user, wait_user = _claim_meta_user_slot(client, user_id, account_id)
+        if not ok_user:
+            try:
+                client.delete(fly_key)
+            except Exception:
+                pass
+            return False, wait_user, f"meta_user_queue:{wait_user}s"
 
         ok_global, wait_global = _claim_meta_global_slot(client, account_id)
         if not ok_global:
@@ -202,6 +279,7 @@ def _claim_meta_publish_slot(account_id: int, cooldown_sec: int) -> tuple[bool, 
                 client.delete(fly_key)
             except Exception:
                 pass
+            _release_meta_user_slot(client, user_id, account_id)
             return False, wait_global, f"meta_global_queue:{wait_global}s"
 
         return True, 0, ""
@@ -210,13 +288,15 @@ def _claim_meta_publish_slot(account_id: int, cooldown_sec: int) -> tuple[bool, 
         return True, 0, ""
 
 
-def _release_meta_inflight(account_id: int) -> None:
+def _release_meta_inflight(account_id: int, user_id: int | None = None) -> None:
     client = _redis()
     if client is None:
         return
     try:
+        uid = user_id if user_id else _inflight_user_id(client, account_id)
         client.delete(_meta_inflight_key(account_id))
         _release_meta_global_slot(client, account_id)
+        _release_meta_user_slot(client, uid, account_id)
     except Exception:
         pass
 
@@ -227,21 +307,27 @@ def _trip_meta_caption_circuit(*, ttl_sec: int = 600) -> None:
     return
 
 
-def _mark_meta_published(account_id: int, cooldown_sec: int) -> None:
+def _mark_meta_published(
+    account_id: int,
+    cooldown_sec: int,
+    user_id: int | None = None,
+) -> None:
     """Após sucesso: cooldown Redis + libera inflight (DB pode atrasar e liberar race)."""
     client = _redis()
     if client is None:
         return
     cooldown_sec = max(60, int(cooldown_sec or 3600))
     try:
+        uid = user_id if user_id else _inflight_user_id(client, account_id)
         pipe = client.pipeline()
         pipe.set(_meta_cooldown_key(account_id), "1", ex=cooldown_sec)
         pipe.delete(_meta_inflight_key(account_id))
         pipe.execute()
         _release_meta_global_slot(client, account_id)
+        _release_meta_user_slot(client, uid, account_id)
     except Exception as exc:
         log.warning("mark_meta_published falhou account=%s: %s", account_id, exc)
-        _release_meta_inflight(account_id)
+        _release_meta_inflight(account_id, user_id)
 
 
 def _schedule_meta_defer_once(
@@ -542,8 +628,8 @@ def execute_automation(self, automation_id: int, scheduled_at: str | None = None
             if acc.status not in ("banned", "proxy_down", "paused", "needs_login", "deleted")
         ]
         if not account_ids:
-            # Não consome mídia; mantém active e tenta de novo depois.
-            retry_at = dt.datetime.utcnow() + dt.timedelta(minutes=30)
+            # Não consome mídia; mantém active e tenta de novo em breve.
+            retry_at = dt.datetime.utcnow() + dt.timedelta(minutes=5)
             automation.next_run_at = retry_at
             db.execute(
                 text("UPDATE automations SET next_run_at = :nxt WHERE id = :id"),
@@ -1115,7 +1201,9 @@ def _execute_publish(
             )
 
         cooldown_sec = max(60, int(meta_min_gap_min or 60) * 60)
-        can_pub, wait_sec, claim_reason = _claim_meta_publish_slot(account_id, cooldown_sec)
+        can_pub, wait_sec, claim_reason = _claim_meta_publish_slot(
+            account_id, cooldown_sec, user_id=owner_user_id
+        )
         if not can_pub:
             return {
                 "deferred": True,
@@ -1186,7 +1274,7 @@ def _execute_publish(
                         owner_user_id=owner_user_id,
                         username=username,
                     )
-                    _release_meta_inflight(account_id)
+                    _release_meta_inflight(account_id, owner_user_id)
                     raise
 
             try:
@@ -1210,7 +1298,7 @@ def _execute_publish(
                     proxy=meta_proxy,
                 )
             except MetaInstagramError as exc:
-                _release_meta_inflight(account_id)
+                _release_meta_inflight(account_id, owner_user_id)
                 # notify=False: evita spam no celular a cada retry do Celery.
                 # A notificação final fica em publish_to_account / dedupe Redis.
                 _log_failure(
@@ -1239,7 +1327,7 @@ def _execute_publish(
                     return {"error": "meta_restricted"}
                 raise
             except Exception:
-                _release_meta_inflight(account_id)
+                _release_meta_inflight(account_id, owner_user_id)
                 raise
         finally:
             if temp_camu_key:
@@ -1370,7 +1458,7 @@ def _execute_publish(
                 _complete_now_automation_if_ready(db, auto)
 
         if log_status == "success":
-            _mark_meta_published(account_id, cooldown_sec)
+            _mark_meta_published(account_id, cooldown_sec, owner_user_id)
             notify_publish_success(
                 owner_user_id,
                 username,
@@ -1378,7 +1466,7 @@ def _execute_publish(
                 publish_log_id=publish_log_id,
             )
         else:
-            _release_meta_inflight(account_id)
+            _release_meta_inflight(account_id, owner_user_id)
         return {
             "ok": log_status == "success",
             "provider": "meta",

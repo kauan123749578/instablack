@@ -60,6 +60,8 @@ class Settings(BaseSettings):
     # Quantos publishes Meta podem rodar ao mesmo tempo no worker (tokens diferentes).
     # 1 era apertado demais com vários usuários; 5–8 é o sweet spot usual.
     meta_global_max_concurrent: int = 5
+    # Teto por usuário Instablack: evita 1 cliente com 30 contas engolir a fila.
+    meta_user_max_concurrent: int = 2
     public_base_url: str = ""
 
     ffmpeg_bin: str = "ffmpeg"
