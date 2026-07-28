@@ -1074,7 +1074,13 @@ body.premium-app .shark-content { padding: 24px 32px 80px; }
   .og-page-header { flex-direction: column; align-items: flex-start; }
   .og-chart-premium { padding: 16px; }
   .og-line-chart-wrap--premium { height: 180px; }
-  .og-rank-head { flex-direction: column; align-items: stretch; }
+  .og-rank-head {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .og-rank-eye { flex-shrink: 0; align-self: center; }
   .og-rank-tabs { align-self: stretch; }
   .og-rank-tabs--pills .og-rank-tab { padding: 11px 12px; font-size: 13px; }
   .og-rank-row { padding: 12px; gap: 10px; }

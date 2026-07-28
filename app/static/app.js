@@ -400,15 +400,26 @@
   async function activateWebPush(triggerBtn) {
     if (triggerBtn) triggerBtn.disabled = true;
     try {
+      if ("Notification" in window && Notification.permission === "denied") {
+        throw new Error("permission_denied");
+      }
       await ensurePushSubscription();
       markPushButtonsEnabled();
       alert("Notificações no celular ativadas!");
     } catch (err) {
       console.error(err);
       if (err.message === "unsupported") {
-        alert("Seu navegador não suporta push. Use Chrome no Android ou Safari no iOS.");
+        alert("Seu navegador não suporta push. Use Chrome no Android ou Safari no iOS (app na tela inicial).");
       } else if (err.message === "permission_denied") {
-        alert("Permissão negada. Ative nas configurações do navegador.");
+        alert(
+          "O navegador bloqueou as notificações deste site.\n\n" +
+            "Chrome/Edge: cadeado na URL → Notificações → Permitir → recarregue e toque de novo em Ativar.\n" +
+            "No celular: use o mesmo navegador/app onde quer receber o alerta."
+        );
+        document.querySelectorAll("[data-push-btn]").forEach((b) => {
+          b.textContent = "Permissão bloqueada — tocar p/ ver como liberar";
+          b.disabled = false;
+        });
       } else if (err.message === "vapid_not_configured") {
         alert("Web Push não configurado no servidor (VAPID).");
       } else {
@@ -430,10 +441,26 @@
       });
     });
 
-    if ("Notification" in window && Notification.permission === "granted") {
-      navigator.serviceWorker.register("/sw.js?v=2", { scope: "/" }).then(() => {
-        markPushButtonsEnabled();
-      }).catch(() => {});
+    if (!("Notification" in window)) return;
+
+    if (Notification.permission === "denied") {
+      buttons.forEach((b) => {
+        b.textContent = "Permissão bloqueada — tocar p/ ver como liberar";
+        b.disabled = false;
+      });
+      return;
+    }
+
+    if (Notification.permission === "granted") {
+      // Regrava subscription (evita push “parado” após limpar dados / 410).
+      ensurePushSubscription()
+        .then(() => markPushButtonsEnabled())
+        .catch(() => {
+          buttons.forEach((b) => {
+            b.textContent = "Reativar notificações";
+            b.disabled = false;
+          });
+        });
     }
   }
 
