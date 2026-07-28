@@ -687,24 +687,37 @@ body.premium-app .shark-content { padding: 24px 32px 80px; }
   border-color: transparent;
   box-shadow: 0 8px 20px rgba(17, 97, 254, 0.35);
 }
-.og-rank-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.og-rank-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .og-rank-panel[hidden] { display: none !important; }
+#rank-list-mount {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
 .og-rank-list {
   list-style: none; margin: 0; padding: 0;
   display: flex; flex-direction: column; gap: 8px; flex: 1;
 }
 .og-rank-list--card {
   overflow-y: auto;
+  overflow-x: hidden;
   flex: 1 1 auto;
   min-height: 0;
-  padding-right: 0;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  max-height: 100%;
+  padding-right: 2px;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(17, 97, 254, 0.45) transparent;
 }
 .og-rank-list--card::-webkit-scrollbar {
-  width: 0 !important;
-  height: 0 !important;
-  display: none !important;
+  width: 6px;
+}
+.og-rank-list--card::-webkit-scrollbar-thumb {
+  background: rgba(17, 97, 254, 0.45);
+  border-radius: 999px;
 }
 .og-rank-row {
   display: flex; align-items: center; gap: 10px;
