@@ -548,7 +548,7 @@
     const dot = document.getElementById("notif-dot");
     if (!list) return;
     try {
-      const res = await fetch("/api/notifications?push_fallback=true");
+      const res = await fetch("/api/notifications");
       if (!res.ok) throw new Error("fail");
       const data = await res.json();
       if (dot) {
@@ -645,8 +645,8 @@
       } catch (_) {}
     }
 
-    poll();
-    dashActivityPollTimer = setInterval(poll, 12000);
+    window.setTimeout(poll, 5000);
+    dashActivityPollTimer = setInterval(poll, 15000);
   }
 
   function initLogsClearForm() {
@@ -777,10 +777,7 @@
     const markBtn = document.getElementById("notif-mark-read");
     const clearBtn = document.getElementById("notif-clear-all");
     if (!btn || !card) return;
-    if (btn.dataset.bound === "1") {
-      loadNotifications();
-      return;
-    }
+    if (btn.dataset.bound === "1") return;
     btn.dataset.bound = "1";
 
     btn.addEventListener("click", (e) => {
@@ -825,12 +822,7 @@
       }
     });
 
-    window.setTimeout(loadNotifications, 3000);
-    if (!notifPollTimer) {
-      notifPollTimer = setInterval(() => {
-        if (!document.hidden) loadNotifications();
-      }, 30000);
-    }
+    // Sino: só busca notificações quando o usuário abre (evita saturar o worker web).
   }
 
   function initContentTypeForm() {
