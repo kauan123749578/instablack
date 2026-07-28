@@ -450,6 +450,12 @@ def _postgres_migrate(bind=None) -> None:
             )
             conn.execute(
                 text(
+                    "CREATE INDEX IF NOT EXISTS ix_publish_logs_account_created_status "
+                    "ON publish_logs (account_id, created_at, status)"
+                )
+            )
+            conn.execute(
+                text(
                     "CREATE INDEX IF NOT EXISTS ix_publish_logs_status_created "
                     "ON publish_logs (status, created_at)"
                 )

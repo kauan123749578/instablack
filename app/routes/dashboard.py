@@ -98,25 +98,66 @@ def _count_logs(
     return _count_logs_by_accounts(db, ids, status=status, day=day)
 
 
+def _batch_status_counts(
+    db: Session,
+    account_ids: list[int],
+    days: list[dt.date],
+) -> dict[dt.date, dict[str, int]]:
+    """Uma query (Postgres) ou um scan limitado (SQLite) para todos os dias do gráfico/KPI."""
+    out: dict[dt.date, dict[str, int]] = {
+        d: {"success": 0, "failed": 0, "skipped": 0} for d in days
+    }
+    if not account_ids or not days:
+        return out
+
+    first_start, _ = _brt_day_bounds(min(days))
+    _, last_end = _brt_day_bounds(max(days))
+    time_filters = (
+        PublishLog.created_at >= _utc_naive(first_start),
+        PublishLog.created_at < _utc_naive(last_end),
+    )
+
+    if settings.is_sqlite:
+        rows = db.execute(
+            select(PublishLog.created_at, PublishLog.status)
+            .where(PublishLog.account_id.in_(account_ids), *time_filters)
+        ).all()
+        for created_at, status in rows:
+            day = _brt_date_from_db(created_at)
+            if day in out and status in out[day]:
+                out[day][status] += 1
+        return out
+
+    day_col = func.date(
+        func.timezone(
+            "America/Sao_Paulo",
+            func.timezone("UTC", PublishLog.created_at),
+        )
+    )
+    rows = db.execute(
+        select(
+            day_col.label("day"),
+            PublishLog.status,
+            func.count(PublishLog.id).label("cnt"),
+        )
+        .where(PublishLog.account_id.in_(account_ids), *time_filters)
+        .group_by(day_col, PublishLog.status)
+    ).all()
+    for row_day, status, cnt in rows:
+        day = row_day.date() if isinstance(row_day, dt.datetime) else row_day
+        if day in out and status in out[day]:
+            out[day][status] = int(cnt or 0)
+    return out
+
+
 def _status_counts_for_days(
     db: Session,
     user_id: int,
     days: list[dt.date],
     account_ids: list[int] | None = None,
 ) -> dict[dt.date, dict[str, int]]:
-    if not days:
-        return {}
-
-    out = {d: {"success": 0, "failed": 0, "skipped": 0} for d in days}
     ids = account_ids if account_ids is not None else _visible_account_ids(db, user_id)
-    if not ids:
-        return out
-
-    for d in days:
-        out[d]["success"] = _count_logs_by_accounts(db, ids, status="success", day=d)
-        out[d]["failed"] = _count_logs_by_accounts(db, ids, status="failed", day=d)
-        out[d]["skipped"] = _count_logs_by_accounts(db, ids, status="skipped", day=d)
-    return out
+    return _batch_status_counts(db, ids, days)
 
 
 def _chart_performance(
@@ -441,6 +482,154 @@ def _dashboard_shell_context(chart_days: int) -> dict:
     }
 
 
+def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
+    """Monta o painel inteiro com o mínimo de round-trips ao Postgres."""
+    today = brt_now().date()
+    yesterday = today - dt.timedelta(days=1)
+    month_start = today.replace(day=1)
+    chart_days = _parse_chart_days(chart_days)
+    day_list = [today - dt.timedelta(days=i) for i in range(chart_days - 1, -1, -1)]
+
+    account_ids = _visible_account_ids(db, user.id)
+    log_by_day = _batch_status_counts(db, account_ids, day_list)
+
+    accounts = db.scalars(
+        select(InstagramAccount)
+        .where(
+            InstagramAccount.user_id == user.id,
+            InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
+        )
+        .order_by(InstagramAccount.username.asc())
+    ).all()
+
+    active_automations = db.scalar(
+        select(func.count(Automation.id)).where(
+            Automation.user_id == user.id,
+            Automation.status == "active",
+        )
+    ) or 0
+    total_automations = db.scalar(
+        select(func.count(Automation.id)).where(Automation.user_id == user.id)
+    ) or 0
+    new_accounts_month = db.scalar(
+        select(func.count(InstagramAccount.id)).where(
+            InstagramAccount.user_id == user.id,
+            InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
+            InstagramAccount.created_at >= _utc_naive(_brt_day_bounds(month_start)[0]),
+        )
+    ) or 0
+    new_automations_month = db.scalar(
+        select(func.count(Automation.id)).where(
+            Automation.user_id == user.id,
+            Automation.created_at >= _utc_naive(_brt_day_bounds(month_start)[0]),
+        )
+    ) or 0
+
+    today_counts = log_by_day.get(today, {"success": 0, "failed": 0, "skipped": 0})
+    yesterday_counts = log_by_day.get(yesterday, {"success": 0, "failed": 0, "skipped": 0})
+    pubs_today = today_counts["success"]
+    pubs_yesterday = yesterday_counts["success"]
+    pubs_growth = _growth_pct(pubs_today, pubs_yesterday)
+    total_logs_today = sum(today_counts.values())
+    total_yesterday = sum(yesterday_counts.values())
+    success_rate = round(pubs_today / total_logs_today * 100, 1) if total_logs_today else 0.0
+    rate_yesterday = (
+        round(yesterday_counts["success"] / total_yesterday * 100, 1) if total_yesterday else 0.0
+    )
+    rate_delta = round(success_rate - rate_yesterday, 1) if total_yesterday or total_logs_today else None
+
+    automations = db.scalars(
+        select(Automation)
+        .where(Automation.user_id == user.id, Automation.status == "active")
+        .options(selectinload(Automation.accounts))
+        .order_by(Automation.next_run_at.asc().nullslast(), desc(Automation.created_at))
+        .limit(8)
+    ).all()
+
+    next_publications = db.scalars(
+        select(Automation)
+        .where(
+            Automation.user_id == user.id,
+            Automation.status == "active",
+            Automation.next_run_at.is_not(None),
+        )
+        .options(selectinload(Automation.accounts))
+        .order_by(Automation.next_run_at.asc())
+        .limit(6)
+    ).all()
+
+    account_publish_counts: dict[int, int] = {}
+    if account_ids:
+        account_publish_counts = dict(
+            db.execute(
+                select(PublishLog.account_id, func.count(PublishLog.id))
+                .where(
+                    PublishLog.account_id.in_(account_ids),
+                    PublishLog.status == "success",
+                    PublishLog.created_at
+                    >= _utc_naive(_brt_day_bounds(today - dt.timedelta(days=30))[0]),
+                )
+                .group_by(PublishLog.account_id)
+            ).all()
+        )
+
+    accounts_data = [
+        {"account": acc, "publish_count": account_publish_counts.get(acc.id, 0)}
+        for acc in accounts
+    ]
+    accounts_data.sort(key=lambda x: x["publish_count"], reverse=True)
+
+    max_val = 1
+    chart_performance: list[dict] = []
+    for d in day_list:
+        stats = log_by_day.get(d, {"success": 0, "failed": 0, "skipped": 0})
+        pubs = stats["success"]
+        max_val = max(max_val, pubs, stats["failed"])
+        label = WEEKDAY_LABELS[d.weekday()] if chart_days <= 7 else d.strftime("%d/%m")
+        chart_performance.append(
+            {
+                "label": label,
+                "date": d.strftime("%d/%m"),
+                "pubs": pubs,
+                "success": stats["success"],
+                "failed": stats["failed"],
+                "skipped": stats["skipped"],
+            }
+        )
+    for pt in chart_performance:
+        m = max_val or 1
+        pt["pubs_pct"] = round(pt["pubs"] / m * 100, 1)
+        pt["success_pct"] = round(pt["success"] / m * 100, 1)
+        pt["failed_pct"] = round(pt["failed"] / m * 100, 1)
+
+    chart_performance, chart_line_path, chart_area_path, chart_max_val = attach_chart_paths(
+        chart_performance
+    )
+
+    return {
+        "chart_days": chart_days,
+        "accounts_count": len(account_ids),
+        "accounts_data": accounts_data,
+        "active_automations": active_automations,
+        "total_automations": total_automations,
+        "automations": automations,
+        "pubs_today": pubs_today,
+        "pubs_growth": pubs_growth,
+        "success_rate": success_rate,
+        "rate_delta": rate_delta,
+        "new_accounts_month": new_accounts_month,
+        "new_automations_month": new_automations_month,
+        "next_publications": next_publications,
+        "latest_log_id": 0,
+        "chart_performance": chart_performance,
+        "chart_line_path": chart_line_path,
+        "chart_area_path": chart_area_path,
+        "chart_max_val": chart_max_val,
+        "now_brt": brt_now(),
+        "official": empty_official_summary(reel_views_days=chart_days),
+    }
+
+
 def _dashboard_fast_context(db: Session, user: User, chart_days: int) -> dict:
     today = brt_now().date()
     yesterday = today - dt.timedelta(days=1)
@@ -595,10 +784,7 @@ def home(
         return RedirectResponse("/login", status_code=303)
 
     chart_days = _parse_chart_days(days)
-    fast = _dashboard_fast_context(db, user, chart_days)
-    heavy = _dashboard_heavy_context(db, user, chart_days)
-    ctx = {**fast, **heavy, "dash_lazy": False, "kpi_lazy": False}
-
+    ctx = _dashboard_context(db, user, chart_days)
     ctx["request"] = request
     ctx["user"] = user
     return templates.TemplateResponse("dashboard.html", ctx)
