@@ -345,7 +345,7 @@
     if (perm !== "granted") {
       throw new Error("permission_denied");
     }
-    const reg = await navigator.serviceWorker.register("/sw.js?v=3", { scope: "/" });
+    const reg = await navigator.serviceWorker.register("/sw.js?v=2", { scope: "/" });
     await navigator.serviceWorker.ready;
     let sub = await reg.pushManager.getSubscription();
     if (!sub) {
@@ -400,26 +400,15 @@
   async function activateWebPush(triggerBtn) {
     if (triggerBtn) triggerBtn.disabled = true;
     try {
-      if ("Notification" in window && Notification.permission === "denied") {
-        throw new Error("permission_denied");
-      }
       await ensurePushSubscription();
       markPushButtonsEnabled();
       alert("Notificações no celular ativadas!");
     } catch (err) {
       console.error(err);
       if (err.message === "unsupported") {
-        alert("Seu navegador não suporta push. Use Chrome no Android ou Safari no iOS (app na tela inicial).");
+        alert("Seu navegador não suporta push. Use Chrome no Android ou Safari no iOS.");
       } else if (err.message === "permission_denied") {
-        alert(
-          "O navegador bloqueou as notificações deste site.\n\n" +
-            "Chrome/Edge: cadeado na URL → Notificações → Permitir → recarregue e toque de novo em Ativar.\n" +
-            "No celular: use o mesmo navegador/app onde quer receber o alerta."
-        );
-        document.querySelectorAll("[data-push-btn]").forEach((b) => {
-          b.textContent = "Permissão bloqueada — tocar p/ ver como liberar";
-          b.disabled = false;
-        });
+        alert("Permissão negada. Ative nas configurações do navegador.");
       } else if (err.message === "vapid_not_configured") {
         alert("Web Push não configurado no servidor (VAPID).");
       } else {
@@ -441,22 +430,10 @@
       });
     });
 
-    if (!("Notification" in window)) return;
-
-    if (Notification.permission === "denied") {
-      buttons.forEach((b) => {
-        b.textContent = "Permissão bloqueada — tocar p/ ver como liberar";
-        b.disabled = false;
-      });
-      return;
-    }
-
-    // Só registra o SW aqui — re-sync completo fica em initProfileNotifications
-    // (ensurePushSubscription no load de TODA página estourava o worker web).
-    if (Notification.permission === "granted") {
-      navigator.serviceWorker.register("/sw.js?v=3", { scope: "/" })
-        .then(() => markPushButtonsEnabled())
-        .catch(() => {});
+    if ("Notification" in window && Notification.permission === "granted") {
+      navigator.serviceWorker.register("/sw.js?v=2", { scope: "/" }).then(() => {
+        markPushButtonsEnabled();
+      }).catch(() => {});
     }
   }
 
@@ -515,15 +492,6 @@
       }
     });
 
-    // Re-sync push só na página de perfil (não no load global do painel).
-    if ("Notification" in window && Notification.permission === "granted") {
-      window.setTimeout(() => {
-        ensurePushSubscription()
-          .then(() => markPushButtonsEnabled())
-          .catch(() => {});
-      }, 2000);
-    }
-
     prefsForm?.addEventListener("submit", async () => {
       const desktopOn = prefsForm.querySelector('input[name="desktop"]')?.checked;
       if (desktopOn && "Notification" in window && Notification.permission === "default") {
@@ -548,7 +516,7 @@
     const dot = document.getElementById("notif-dot");
     if (!list) return;
     try {
-      const res = await fetch("/api/notifications");
+      const res = await fetch("/api/notifications?push_fallback=true");
       if (!res.ok) throw new Error("fail");
       const data = await res.json();
       if (dot) {
@@ -645,8 +613,8 @@
       } catch (_) {}
     }
 
-    window.setTimeout(poll, 5000);
-    dashActivityPollTimer = setInterval(poll, 15000);
+    poll();
+    dashActivityPollTimer = setInterval(poll, 7000);
   }
 
   function initLogsClearForm() {
@@ -777,7 +745,10 @@
     const markBtn = document.getElementById("notif-mark-read");
     const clearBtn = document.getElementById("notif-clear-all");
     if (!btn || !card) return;
-    if (btn.dataset.bound === "1") return;
+    if (btn.dataset.bound === "1") {
+      loadNotifications();
+      return;
+    }
     btn.dataset.bound = "1";
 
     btn.addEventListener("click", (e) => {
@@ -822,7 +793,12 @@
       }
     });
 
-    // Sino: só busca notificações quando o usuário abre (evita saturar o worker web).
+    loadNotifications();
+    if (!notifPollTimer) {
+      notifPollTimer = setInterval(() => {
+        if (!document.hidden) loadNotifications();
+      }, 15000);
+    }
   }
 
   function initContentTypeForm() {

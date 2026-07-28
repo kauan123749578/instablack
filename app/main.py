@@ -366,26 +366,16 @@ def create_app() -> FastAPI:
         )
 
     @app.get("/healthz", include_in_schema=False)
-    async def healthz():
-        # Liveness async: não usa threadpool/DB — sobe mesmo com Postgres travado.
+    def healthz():
+        # Liveness: o processo web está de pé. Não depende de banco/redis
+        # para não bloquear o deploy caso os plugins ainda não estejam prontos.
         return {"status": "ok", "env": settings.app_env}
 
     @app.get("/readyz", include_in_schema=False)
-    async def readyz():
-        # Checks sync no threadpool, mas com timeout curto pra não segurar o worker.
-        import asyncio
-
-        async def _run(fn, label: str, timeout: float = 3.0):
-            try:
-                return await asyncio.wait_for(asyncio.to_thread(fn), timeout=timeout)
-            except asyncio.TimeoutError:
-                return False, f"{label}: timeout"
-            except Exception as exc:
-                return False, f"{label}: {exc}"
-
-        db_ok, db_msg = await _run(check_database, "database")
-        redis_ok, redis_msg = await _run(check_redis, "redis")
-        storage_ok, storage_msg = await _run(check_storage, "storage")
+    def readyz():
+        db_ok, db_msg = check_database()
+        redis_ok, redis_msg = check_redis()
+        storage_ok, storage_msg = check_storage()
         issues = settings.production_issues
         healthy = db_ok and redis_ok and storage_ok and not issues
         body = {

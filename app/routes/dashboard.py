@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import datetime as dt
-import time
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Request
@@ -24,9 +23,6 @@ BRT = ZoneInfo("America/Sao_Paulo")
 WEEKDAY_LABELS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
 ALLOWED_CHART_DAYS = {7, 15, 30}
 VISIBLE_ACCOUNT_STATUSES = ("active", "paused", "needs_login", "proxy_down", "banned")
-_RANK_CACHE: dict[tuple, tuple[float, list[dict]]] = {}
-_RANK_ENTRY_CACHE: dict[tuple, tuple[float, dict | None]] = {}
-_RANK_CACHE_TTL = 120.0
 
 
 def _parse_chart_days(raw: str | int | None) -> int:
@@ -86,7 +82,6 @@ def _status_counts_for_days(
     if not days:
         return {}
 
-    out = {d: {"success": 0, "failed": 0, "skipped": 0} for d in days}
     first_start, _ = _brt_day_bounds(min(days))
     _, last_end = _brt_day_bounds(max(days))
     rows = db.execute(
@@ -102,22 +97,15 @@ def _status_counts_for_days(
         )
     ).all()
 
+    out = {d: {"success": 0, "failed": 0, "skipped": 0} for d in days}
     for row in rows:
         day = _brt_date_from_db(row.created_at)
+        if day is None:
+            continue
         if day not in out:
             continue
         out[day][row.status] = out[day].get(row.status, 0) + 1
     return out
-
-
-def _chart_weekly_from_performance(chart: list[dict]) -> list[dict]:
-    max_val = max((pt["pubs"] for pt in chart), default=0) or 1
-    weekly = []
-    for pt in chart:
-        copy = dict(pt)
-        copy["bar_pct"] = round(copy["pubs"] / max_val * 100, 1)
-        weekly.append(copy)
-    return weekly
 
 
 def _chart_performance(db: Session, user_id: int, days: int = 7) -> list[dict]:
@@ -250,48 +238,6 @@ def _top_platform_players(
     ]
 
 
-def _cached_top_platform_players(
-    db: Session,
-    start: dt.datetime,
-    end: dt.datetime,
-    viewer: User | None = None,
-    *,
-    limit: int = 50,
-) -> list[dict]:
-    viewer_key = (
-        viewer.id if viewer else None,
-        _rank_sees_private_users(viewer),
-    )
-    key = (start.isoformat(), end.isoformat(), viewer_key, limit)
-    now = time.time()
-    hit = _RANK_CACHE.get(key)
-    if hit and now - hit[0] < _RANK_CACHE_TTL:
-        return hit[1]
-    data = _top_platform_players(db, start, end, viewer=viewer, limit=limit)
-    _RANK_CACHE[key] = (now, data)
-    if len(_RANK_CACHE) > 48:
-        _RANK_CACHE.clear()
-    return data
-
-
-def _cached_viewer_rank_entry(
-    db: Session,
-    start: dt.datetime,
-    end: dt.datetime,
-    viewer: User,
-) -> dict | None:
-    key = (viewer.id, start.isoformat(), end.isoformat(), _rank_sees_private_users(viewer))
-    now = time.time()
-    hit = _RANK_ENTRY_CACHE.get(key)
-    if hit and now - hit[0] < _RANK_CACHE_TTL:
-        return hit[1]
-    data = _viewer_rank_entry(db, start, end, viewer)
-    _RANK_ENTRY_CACHE[key] = (now, data)
-    if len(_RANK_ENTRY_CACHE) > 96:
-        _RANK_ENTRY_CACHE.clear()
-    return data
-
-
 def _rank_tier(posts: int) -> str:
     if posts >= 200:
         return "LENDA"
@@ -371,7 +317,7 @@ def _top_platform_players_week(db: Session, day: dt.date, viewer: User | None = 
     start_day = day - dt.timedelta(days=6)
     start, _ = _brt_day_bounds(start_day)
     _, end = _brt_day_bounds(day)
-    items = _cached_top_platform_players(db, start, end, viewer=viewer, limit=50)
+    items = _top_platform_players(db, start, end, viewer=viewer, limit=50)
     return [{**item, "posts_today": item["post_count"]} for item in items]
 
 
@@ -483,13 +429,13 @@ def home(
     top_players = _top_platform_players_week(db, today, viewer=user)
     month_start_dt, _ = _brt_day_bounds(month_start)
     _, month_end_dt = _brt_day_bounds(today)
-    top_players_month = _cached_top_platform_players(
+    top_players_month = _top_platform_players(
         db, month_start_dt, month_end_dt, viewer=user, limit=50
     )
     week_start_day = today - dt.timedelta(days=6)
     week_start_dt, _ = _brt_day_bounds(week_start_day)
-    my_rank_week = _cached_viewer_rank_entry(db, week_start_dt, month_end_dt, user)
-    my_rank_month = _cached_viewer_rank_entry(db, month_start_dt, month_end_dt, user)
+    my_rank_week = _viewer_rank_entry(db, week_start_dt, month_end_dt, user)
+    my_rank_month = _viewer_rank_entry(db, month_start_dt, month_end_dt, user)
 
     failed_videos = db.scalars(
         select(PublishLog)
@@ -516,10 +462,7 @@ def home(
     chart_performance, chart_line_path, chart_area_path, chart_max_val = attach_chart_paths(
         chart_performance
     )
-    if chart_days == 7:
-        chart_weekly = _chart_weekly_from_performance(chart_performance)
-    else:
-        chart_weekly = _chart_weekly_bars(db, user.id, 7)
+    chart_weekly = _chart_weekly_bars(db, user.id, min(chart_days, 7) if chart_days == 7 else 7)
     offline = offline_accounts(db, user.id)
     official = user_official_insights_summary(db, user.id, reel_views_days=chart_days)
 
