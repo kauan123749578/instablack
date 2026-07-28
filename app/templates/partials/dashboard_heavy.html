@@ -136,7 +136,26 @@
         </div>
         <a href="/analytics" class="og-link" data-nav="/analytics">Ver detalhes</a>
       </div>
-      <div class="og-empty">Insights Meta no <a href="/analytics" class="og-link" data-nav="/analytics">Analytics</a>.</div>
+      {% if official.meta_accounts_count > 0 %}
+      <ul class="og-dash-list">
+        {% for row in official.account_rows %}
+        <li class="og-dash-list-item">
+          <div class="og-dash-list-body">
+            <strong>@{{ row.account.username }}</strong>
+            <span>
+              {% if row.followers is not none %}{{ format_count(row.followers) }} seguidores{% else %}Seguidores —{% endif %}
+              · {{ format_count(row.reel_views_period) }} views Reels
+            </span>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="og-empty">
+        Nenhuma conta via API oficial.
+        <a href="/accounts/meta-apps?tab=setup" class="og-link" data-nav="/accounts/meta-apps?tab=setup">Meus Apps</a>
+      </div>
+      {% endif %}
     </section>
 
     <section class="og-glass-card og-top-players-shark" id="rankCard">

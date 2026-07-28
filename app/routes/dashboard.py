@@ -14,7 +14,7 @@ from app.deps import get_current_user, maybe_current_user, maybe_effective_user
 from app.templating import templates
 from app.config import settings
 from app.utils.charts import attach_chart_paths
-from app.utils.official_analytics import empty_official_summary
+from app.utils.official_analytics import user_official_insights_summary
 from app.utils.timezone import brt_now
 from core.database import get_db
 from models.models import Automation, InstagramAccount, PublishLog, User, automation_accounts
@@ -642,7 +642,12 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
         "chart_area_path": chart_area_path,
         "chart_max_val": chart_max_val,
         "now_brt": brt_now(),
-        "official": empty_official_summary(reel_views_days=chart_days),
+        "official": user_official_insights_summary(
+            db,
+            user.id,
+            reel_views_days=chart_days,
+            include_recent_reels=False,
+        ),
     }
 
 
@@ -785,7 +790,12 @@ def _dashboard_heavy_context(db: Session, user: User, chart_days: int) -> dict:
         "chart_line_path": chart_line_path,
         "chart_area_path": chart_area_path,
         "chart_max_val": chart_max_val,
-        "official": empty_official_summary(reel_views_days=chart_days),
+        "official": user_official_insights_summary(
+            db,
+            user.id,
+            reel_views_days=chart_days,
+            include_recent_reels=False,
+        ),
     }
 
 

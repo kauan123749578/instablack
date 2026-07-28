@@ -39,6 +39,7 @@ def user_official_insights_summary(
     *,
     reel_views_days: int = 7,
     account_id: int | None = None,
+    include_recent_reels: bool = True,
 ) -> dict:
     accounts_q = (
         select(InstagramAccount)
@@ -93,30 +94,32 @@ def user_official_insights_summary(
     total_reel_views = sum(row["reel_views_period"] for row in account_rows)
     total_success = sum(row["success_count"] for row in account_rows)
 
-    reels_q = (
-        select(PublishLog)
-        .join(PublishLog.account)
-        .where(
-            InstagramAccount.user_id == user_id,
-            InstagramAccount.provider == "meta",
-            PublishLog.status == "success",
-            PublishLog.content_type == "reel",
-        )
-        .options(selectinload(PublishLog.account))
-        .order_by(PublishLog.created_at.desc())
-        .limit(40)
-    )
-    if selected_id is not None:
-        reels_q = reels_q.where(PublishLog.account_id == selected_id)
-
-    recent_reels = db.scalars(reels_q).all()
-
+    recent_reels: list[PublishLog] = []
     recent_reels_by_account: dict[int, list[PublishLog]] = {}
-    for reel in recent_reels:
-        acc_id = reel.account.id if reel.account else None
-        if acc_id is None:
-            continue
-        recent_reels_by_account.setdefault(acc_id, []).append(reel)
+    if include_recent_reels:
+        reels_q = (
+            select(PublishLog)
+            .join(PublishLog.account)
+            .where(
+                InstagramAccount.user_id == user_id,
+                InstagramAccount.provider == "meta",
+                PublishLog.status == "success",
+                PublishLog.content_type == "reel",
+            )
+            .options(selectinload(PublishLog.account))
+            .order_by(PublishLog.created_at.desc())
+            .limit(40)
+        )
+        if selected_id is not None:
+            reels_q = reels_q.where(PublishLog.account_id == selected_id)
+
+        recent_reels = db.scalars(reels_q).all()
+
+        for reel in recent_reels:
+            acc_id = reel.account.id if reel.account else None
+            if acc_id is None:
+                continue
+            recent_reels_by_account.setdefault(acc_id, []).append(reel)
 
     selected_account = accounts[0] if selected_id is not None and accounts else None
 
