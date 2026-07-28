@@ -706,18 +706,16 @@ body.premium-app .shark-content { padding: 24px 32px 80px; }
   flex: 1 1 auto;
   min-height: 0;
   max-height: 100%;
-  padding-right: 2px;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(17, 97, 254, 0.45) transparent;
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
 }
 .og-rank-list--card::-webkit-scrollbar {
-  width: 6px;
-}
-.og-rank-list--card::-webkit-scrollbar-thumb {
-  background: rgba(17, 97, 254, 0.45);
-  border-radius: 999px;
+  width: 0 !important;
+  height: 0 !important;
+  display: none !important;
+  background: transparent !important;
 }
 .og-rank-row {
   display: flex; align-items: center; gap: 10px;
