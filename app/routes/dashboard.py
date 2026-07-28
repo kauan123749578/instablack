@@ -6,7 +6,7 @@ import time
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -404,6 +404,17 @@ def api_dashboard_rank(
     }
 
 
+@router.get("/api/dashboard/kpi")
+def api_dashboard_kpi(
+    days: int = 7,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """KPIs do painel — carregados após GET / para não travar o login."""
+    chart_days = _parse_chart_days(days)
+    return JSONResponse(_dashboard_fast_context(db, user, chart_days))
+
+
 @router.get("/api/dashboard/load")
 def api_dashboard_load(
     request: Request,
@@ -417,6 +428,25 @@ def api_dashboard_load(
     ctx["request"] = request
     ctx["user"] = user
     return templates.TemplateResponse("partials/dashboard_heavy.html", ctx)
+
+
+def _dashboard_shell_context(chart_days: int) -> dict:
+    """Shell instantâneo — zero queries além da sessão."""
+    return {
+        "chart_days": chart_days,
+        "kpi_lazy": True,
+        "dash_lazy": True,
+        "accounts_count": 0,
+        "active_automations": 0,
+        "total_automations": 0,
+        "pubs_today": 0,
+        "pubs_growth": None,
+        "success_rate": 0,
+        "rate_delta": None,
+        "new_accounts_month": 0,
+        "new_automations_month": 0,
+        "now_brt": brt_now(),
+    }
 
 
 def _dashboard_fast_context(db: Session, user: User, chart_days: int) -> dict:
@@ -440,17 +470,19 @@ def _dashboard_fast_context(db: Session, user: User, chart_days: int) -> dict:
         select(func.count(Automation.id)).where(Automation.user_id == user.id)
     ) or 0
 
-    day_totals = _dashboard_day_totals(db, user.id, today, yesterday)
-    pubs_today = day_totals["pubs_today"]
-    pubs_yesterday = day_totals["pubs_yesterday"]
+    pubs_today = _count_logs(db, user.id, status="success", day=today)
+    pubs_yesterday = _count_logs(db, user.id, status="success", day=yesterday)
     pubs_growth = _growth_pct(pubs_today, pubs_yesterday)
 
-    success_today = day_totals["success_today"]
-    total_logs_today = day_totals["total_logs_today"]
-    success_rate = round(success_today / total_logs_today * 100, 1) if total_logs_today else 0.0
+    failed_today = _count_logs(db, user.id, status="failed", day=today)
+    skipped_today = _count_logs(db, user.id, status="skipped", day=today)
+    total_logs_today = pubs_today + failed_today + skipped_today
+    success_rate = round(pubs_today / total_logs_today * 100, 1) if total_logs_today else 0.0
 
-    success_yesterday = day_totals["success_yesterday"]
-    total_yesterday = day_totals["total_yesterday"]
+    success_yesterday = pubs_yesterday
+    failed_yesterday = _count_logs(db, user.id, status="failed", day=yesterday)
+    skipped_yesterday = _count_logs(db, user.id, status="skipped", day=yesterday)
+    total_yesterday = success_yesterday + failed_yesterday + skipped_yesterday
     rate_yesterday = round(success_yesterday / total_yesterday * 100, 1) if total_yesterday else 0.0
     rate_delta = round(success_rate - rate_yesterday, 1) if total_yesterday or total_logs_today else None
 
@@ -470,6 +502,7 @@ def _dashboard_fast_context(db: Session, user: User, chart_days: int) -> dict:
 
     return {
         "chart_days": chart_days,
+        "kpi_lazy": False,
         "accounts_count": accounts_count,
         "active_automations": active_automations,
         "total_automations": total_automations,
@@ -574,14 +607,15 @@ def home(
         return RedirectResponse("/login", status_code=303)
 
     chart_days = _parse_chart_days(days)
-    fast = _dashboard_fast_context(db, user, chart_days)
     partial = request.headers.get("X-Partial") == "1"
 
     if partial:
+        fast = _dashboard_fast_context(db, user, chart_days)
         heavy = _dashboard_heavy_context(db, user, chart_days)
-        ctx = {**fast, **heavy, "dash_lazy": False}
+        ctx = {**fast, **heavy, "dash_lazy": False, "kpi_lazy": False}
     else:
-        ctx = {**fast, "dash_lazy": True}
+        # Login redirect: só valida sessão — KPIs e painel vêm via fetch depois.
+        ctx = _dashboard_shell_context(chart_days)
 
     ctx["request"] = request
     ctx["user"] = user

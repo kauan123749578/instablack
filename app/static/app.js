@@ -1704,6 +1704,66 @@
     }
   }
 
+  async function loadDashboardKpis() {
+    const row = document.getElementById("dash-kpi-row");
+    if (!row || row.dataset.kpiLazy !== "1" || row.dataset.kpiLoaded === "1") return;
+    const days = new URLSearchParams(window.location.search).get("days") || "7";
+    const setTrend = (el, text, up) => {
+      if (!el) return;
+      if (!text) {
+        el.hidden = true;
+        el.textContent = "";
+        return;
+      }
+      el.hidden = false;
+      el.textContent = text;
+      el.classList.remove("og-kpi-trend--up", "og-kpi-trend--down");
+      el.classList.add(up ? "og-kpi-trend--up" : "og-kpi-trend--down");
+    };
+    try {
+      const res = await fetch(
+        "/api/dashboard/kpi?days=" + encodeURIComponent(days),
+        { credentials: "same-origin" }
+      );
+      if (!res.ok) throw new Error("fail");
+      const d = await res.json();
+      const accountsVal = document.getElementById("kpi-accounts-value");
+      const automationsVal = document.getElementById("kpi-automations-value");
+      const pubsVal = document.getElementById("kpi-pubs-value");
+      const rateVal = document.getElementById("kpi-rate-value");
+      if (accountsVal) accountsVal.textContent = String(d.accounts_count ?? 0);
+      if (automationsVal) automationsVal.textContent = String(d.active_automations ?? 0);
+      if (pubsVal) pubsVal.textContent = String(d.pubs_today ?? 0);
+      if (rateVal) rateVal.textContent = String(d.success_rate ?? 0) + "%";
+      if (d.new_accounts_month > 0) {
+        setTrend(document.getElementById("kpi-accounts-trend"), "+" + d.new_accounts_month + " este mês", true);
+      }
+      if (d.new_automations_month > 0) {
+        setTrend(document.getElementById("kpi-automations-trend"), "+" + d.new_automations_month + " este mês", true);
+      }
+      if (d.pubs_growth != null) {
+        const up = d.pubs_growth >= 0;
+        setTrend(
+          document.getElementById("kpi-pubs-trend"),
+          (up ? "↑" : "↓") + " " + Math.abs(d.pubs_growth) + "% vs ontem",
+          up
+        );
+      }
+      if (d.rate_delta != null) {
+        const up = d.rate_delta >= 0;
+        setTrend(
+          document.getElementById("kpi-rate-trend"),
+          (up ? "↑" : "↓") + " " + Math.abs(d.rate_delta) + "% vs ontem",
+          up
+        );
+      }
+      row.dataset.kpiLoaded = "1";
+      delete row.dataset.kpiLazy;
+    } catch (_) {
+      /* KPIs ficam com —; painel pesado tenta carregar separado */
+    }
+  }
+
   async function loadDashboardHeavy() {
     const mount = document.getElementById("dash-heavy-mount");
     if (!mount || mount.dataset.loaded === "1") return;
@@ -2465,6 +2525,10 @@
     initPrivacyBlur();
     initMetaAppsPage();
     const dashLazy = !!document.getElementById("dash-heavy-mount");
+    const kpiLazy = document.getElementById("dash-kpi-row")?.dataset.kpiLazy === "1";
+    if (kpiLazy) {
+      loadDashboardKpis();
+    }
     if (dashLazy) {
       loadDashboardHeavy();
     } else {

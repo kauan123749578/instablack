@@ -4,17 +4,15 @@
 {% block content %}
 <div class="og-dash">
 
-  <div class="og-kpi-row">
+  <div class="og-kpi-row" id="dash-kpi-row"{% if kpi_lazy %} data-kpi-lazy="1"{% endif %}>
     <article class="og-glass-card og-kpi-card">
       <div class="og-kpi-top">
         <div class="og-kpi-icon og-kpi-icon--purple">
           <i data-lucide="users"></i>
         </div>
-        {% if new_accounts_month > 0 %}
-        <span class="og-kpi-trend og-kpi-trend--up">+{{ new_accounts_month }} este mês</span>
-        {% endif %}
+        <span class="og-kpi-trend og-kpi-trend--up" id="kpi-accounts-trend" hidden></span>
       </div>
-      <div class="og-kpi-value">{{ accounts_count }}</div>
+      <div class="og-kpi-value" id="kpi-accounts-value">{% if kpi_lazy %}—{% else %}{{ accounts_count }}{% endif %}</div>
       <div class="og-kpi-label">Contas conectadas</div>
     </article>
 
@@ -23,11 +21,9 @@
         <div class="og-kpi-icon og-kpi-icon--pink">
           <i data-lucide="refresh-cw"></i>
         </div>
-        {% if new_automations_month > 0 %}
-        <span class="og-kpi-trend og-kpi-trend--up">+{{ new_automations_month }} este mês</span>
-        {% endif %}
+        <span class="og-kpi-trend og-kpi-trend--up" id="kpi-automations-trend" hidden></span>
       </div>
-      <div class="og-kpi-value">{{ active_automations }}</div>
+      <div class="og-kpi-value" id="kpi-automations-value">{% if kpi_lazy %}—{% else %}{{ active_automations }}{% endif %}</div>
       <div class="og-kpi-label">Automações ativas</div>
     </article>
 
@@ -36,13 +32,9 @@
         <div class="og-kpi-icon og-kpi-icon--orange">
           <i data-lucide="video"></i>
         </div>
-        {% if pubs_growth is not none %}
-        <span class="og-kpi-trend {% if pubs_growth >= 0 %}og-kpi-trend--up{% else %}og-kpi-trend--down{% endif %}">
-          {% if pubs_growth >= 0 %}↑{% else %}↓{% endif %} {{ pubs_growth|abs }}% vs ontem
-        </span>
-        {% endif %}
+        <span class="og-kpi-trend" id="kpi-pubs-trend" hidden></span>
       </div>
-      <div class="og-kpi-value">{{ pubs_today }}</div>
+      <div class="og-kpi-value" id="kpi-pubs-value">{% if kpi_lazy %}—{% else %}{{ pubs_today }}{% endif %}</div>
       <div class="og-kpi-label">Publicações hoje</div>
     </article>
 
@@ -51,13 +43,9 @@
         <div class="og-kpi-icon og-kpi-icon--green">
           <i data-lucide="activity"></i>
         </div>
-        {% if rate_delta is not none %}
-        <span class="og-kpi-trend {% if rate_delta >= 0 %}og-kpi-trend--up{% else %}og-kpi-trend--down{% endif %}">
-          {% if rate_delta >= 0 %}↑{% else %}↓{% endif %} {{ rate_delta|abs }}% vs ontem
-        </span>
-        {% endif %}
+        <span class="og-kpi-trend" id="kpi-rate-trend" hidden></span>
       </div>
-      <div class="og-kpi-value">{{ success_rate }}%</div>
+      <div class="og-kpi-value" id="kpi-rate-value">{% if kpi_lazy %}—{% else %}{{ success_rate }}%{% endif %}</div>
       <div class="og-kpi-label">Taxa de sucesso</div>
     </article>
   </div>
