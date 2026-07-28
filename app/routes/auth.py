@@ -20,9 +20,21 @@ log = logging.getLogger(__name__)
 
 
 @router.get("/login")
-def login_page(request: Request):
-    if request.session.get("user_id"):
-        return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
+def login_page(request: Request, db: Session = Depends(get_db)):
+    """Mostra login. Nunca redireciona pra / só por cookie — isso + DB down = loop."""
+    uid = request.session.get("user_id")
+    if uid:
+        try:
+            user = db.get(User, int(uid))
+            if user is not None and user.is_active:
+                return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
+        except Exception as exc:
+            log.warning("login_page: sessão presente mas DB falhou — limpando cookie: %s", exc)
+            try:
+                db.rollback()
+            except Exception:
+                pass
+        request.session.clear()
     return templates.TemplateResponse(
         "login.html",
         {"request": request, "error": None, "allow_registration": settings.allow_registration},

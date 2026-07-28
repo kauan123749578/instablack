@@ -46,10 +46,11 @@ def _behind_pgbouncer() -> bool:
 
 
 def _pg_connect_args(*, connect_timeout: int = 5) -> dict:
-    """Args psycopg2 anti-hang: keepalive TCP + timeouts no servidor.
+    """Args psycopg2 anti-hang: só keepalive TCP.
 
-    Sem keepalive, conexão morta no PgBouncer/Railway pode travar o request
-    minutos (browser: provisional headers / stalled) até o SSL cair.
+    NÃO passar `options=-c statement_timeout=...` no startup: o PgBouncer
+    (Railway) rejeita/quebra esse parâmetro e o login vira 503 eterno.
+    Timeout por query fica no dashboard via SET LOCAL.
     """
     return {
         "connect_timeout": connect_timeout,
@@ -57,11 +58,6 @@ def _pg_connect_args(*, connect_timeout: int = 5) -> dict:
         "keepalives_idle": 30,
         "keepalives_interval": 10,
         "keepalives_count": 3,
-        # Fail-fast no Postgres: query lenta não segura o worker gunicorn.
-        "options": (
-            "-c statement_timeout=10000 "
-            "-c idle_in_transaction_session_timeout=15000"
-        ),
     }
 
 
