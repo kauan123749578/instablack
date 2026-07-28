@@ -345,7 +345,7 @@
     if (perm !== "granted") {
       throw new Error("permission_denied");
     }
-    const reg = await navigator.serviceWorker.register("/sw.js?v=2", { scope: "/" });
+    const reg = await navigator.serviceWorker.register("/sw.js?v=3", { scope: "/" });
     await navigator.serviceWorker.ready;
     let sub = await reg.pushManager.getSubscription();
     if (!sub) {
@@ -451,16 +451,12 @@
       return;
     }
 
+    // Só registra o SW aqui — re-sync completo fica em initProfileNotifications
+    // (ensurePushSubscription no load de TODA página estourava o worker web).
     if (Notification.permission === "granted") {
-      // Regrava subscription (evita push “parado” após limpar dados / 410).
-      ensurePushSubscription()
+      navigator.serviceWorker.register("/sw.js?v=3", { scope: "/" })
         .then(() => markPushButtonsEnabled())
-        .catch(() => {
-          buttons.forEach((b) => {
-            b.textContent = "Reativar notificações";
-            b.disabled = false;
-          });
-        });
+        .catch(() => {});
     }
   }
 
@@ -518,6 +514,15 @@
         testBtn.disabled = false;
       }
     });
+
+    // Re-sync push só na página de perfil (não no load global do painel).
+    if ("Notification" in window && Notification.permission === "granted") {
+      window.setTimeout(() => {
+        ensurePushSubscription()
+          .then(() => markPushButtonsEnabled())
+          .catch(() => {});
+      }, 2000);
+    }
 
     prefsForm?.addEventListener("submit", async () => {
       const desktopOn = prefsForm.querySelector('input[name="desktop"]')?.checked;
@@ -641,7 +646,7 @@
     }
 
     poll();
-    dashActivityPollTimer = setInterval(poll, 7000);
+    dashActivityPollTimer = setInterval(poll, 12000);
   }
 
   function initLogsClearForm() {
@@ -820,11 +825,11 @@
       }
     });
 
-    loadNotifications();
+    window.setTimeout(loadNotifications, 3000);
     if (!notifPollTimer) {
       notifPollTimer = setInterval(() => {
         if (!document.hidden) loadNotifications();
-      }, 15000);
+      }, 30000);
     }
   }
 

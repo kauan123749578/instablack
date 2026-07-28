@@ -143,15 +143,16 @@ def session_scope() -> Iterator[Session]:
         db.close()
 
 
-def _sqlite_migrate() -> None:
+def _sqlite_migrate(bind=None) -> None:
     """Adiciona colunas novas em SQLite sem Alembic."""
     if not settings.is_sqlite:
         return
-    insp = inspect(engine)
+    db_engine = bind or engine
+    insp = inspect(db_engine)
     if "automations" not in insp.get_table_names():
         return
     cols = {c["name"] for c in insp.get_columns("automations")}
-    with engine.begin() as conn:
+    with db_engine.begin() as conn:
         if "content_type" not in cols:
             conn.execute(text("ALTER TABLE automations ADD COLUMN content_type VARCHAR(16) DEFAULT 'reel'"))
         if "schedule_type" not in cols:
@@ -307,7 +308,7 @@ def _sqlite_migrate() -> None:
                 conn.execute(text("ALTER TABLE warmup_jobs ADD COLUMN ends_at DATETIME"))
 
 
-def _postgres_migrate() -> None:
+def _postgres_migrate(bind=None) -> None:
     """Adiciona colunas novas em Postgres sem Alembic.
 
     Usa ADD COLUMN IF NOT EXISTS (leve e seguro sob corrida web/worker/beat)
@@ -315,6 +316,7 @@ def _postgres_migrate() -> None:
     """
     if settings.is_sqlite:
         return
+    db_engine = bind or engine
 
     def _table_exists(conn, name: str) -> bool:
         return bool(
@@ -330,7 +332,7 @@ def _postgres_migrate() -> None:
         for col, ddl in columns:
             conn.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {ddl}"))
 
-    with engine.begin() as conn:
+    with db_engine.begin() as conn:
         _add_columns(
             conn,
             "automations",
@@ -481,11 +483,8 @@ def init_db() -> None:
     from models import models  # noqa: F401
     from core.bootstrap import bootstrap_admin
 
-    global engine
-
     migrate_engine = engine
     own_migrate_engine = False
-    previous_engine = engine
 
     if not settings.is_sqlite:
         direct = settings.direct_database_url
@@ -499,9 +498,7 @@ def init_db() -> None:
                 connect_args={"connect_timeout": 10},
             )
             own_migrate_engine = True
-            engine = migrate_engine
-            SessionLocal.configure(bind=migrate_engine)
-            log.info("init_db: usando DATABASE_UNPOOLED_URL (fora do PgBouncer)")
+            log.info("init_db: migrando via DATABASE_UNPOOLED_URL (web segue no PgBouncer)")
 
     lock_conn = None
     lock_held = False
@@ -540,8 +537,8 @@ def init_db() -> None:
                 raise
 
         try:
-            _sqlite_migrate()
-            _postgres_migrate()
+            _sqlite_migrate(migrate_engine)
+            _postgres_migrate(migrate_engine)
         except (OperationalError, ProgrammingError) as exc:
             if _is_already_exists(exc):
                 log.info("Migração já aplicada por outro worker; seguindo.")
@@ -565,8 +562,6 @@ def init_db() -> None:
             except Exception:
                 pass
         if own_migrate_engine:
-            engine = previous_engine
-            SessionLocal.configure(bind=previous_engine)
             try:
                 migrate_engine.dispose()
             except Exception:
