@@ -59,11 +59,9 @@ def _engine_kwargs() -> dict:
         "pool_recycle": 120,
         "pool_use_lifo": True,
         "pool_reset_on_return": "rollback",
-        "connect_args": {
-            "connect_timeout": 5,
-            # Mata query travada e libera o slot do pool (web only).
-            "options": "-c statement_timeout=20000",
-        },
+        # Sem statement_timeout global: cancelava COUNT simples no painel
+        # (QueryCanceled → Internal Server Error) quando o PG estava sob lock/carga.
+        "connect_args": {"connect_timeout": 5},
     }
 
 
