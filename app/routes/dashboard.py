@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.deps import get_current_user, maybe_current_user, maybe_effective_user
 from app.templating import templates
 from app.config import settings
+from app.debug_trace import dbg
 from app.utils.charts import attach_chart_paths
 from app.utils.official_analytics import empty_official_summary
 from app.utils.timezone import brt_now
@@ -104,6 +105,7 @@ def _batch_status_counts(
     days: list[dt.date],
 ) -> dict[dt.date, dict[str, int]]:
     """Uma query (Postgres) ou um scan limitado (SQLite) para todos os dias do gráfico/KPI."""
+    t0 = time.perf_counter()
     out: dict[dt.date, dict[str, int]] = {
         d: {"success": 0, "failed": 0, "skipped": 0} for d in days
     }
@@ -126,6 +128,16 @@ def _batch_status_counts(
             day = _brt_date_from_db(created_at)
             if day in out and status in out[day]:
                 out[day][status] += 1
+        dbg(
+            "H1",
+            "dashboard.py:_batch_status_counts",
+            "sqlite scan done",
+            {
+                "ms": round((time.perf_counter() - t0) * 1000, 1),
+                "account_count": len(account_ids),
+                "row_count": len(rows),
+            },
+        )
         return out
 
     day_col = func.date(
@@ -147,6 +159,17 @@ def _batch_status_counts(
         day = row_day.date() if isinstance(row_day, dt.datetime) else row_day
         if day in out and status in out[day]:
             out[day][status] = int(cnt or 0)
+    dbg(
+        "H1",
+        "dashboard.py:_batch_status_counts",
+        "batch query done",
+        {
+            "ms": round((time.perf_counter() - t0) * 1000, 1),
+            "account_count": len(account_ids),
+            "day_count": len(days),
+            "row_count": len(rows),
+        },
+    )
     return out
 
 
@@ -484,6 +507,8 @@ def _dashboard_shell_context(chart_days: int) -> dict:
 
 def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
     """Monta o painel inteiro com o mínimo de round-trips ao Postgres."""
+    t0 = time.perf_counter()
+    phases: dict[str, float] = {}
     today = brt_now().date()
     yesterday = today - dt.timedelta(days=1)
     month_start = today.replace(day=1)
@@ -491,7 +516,11 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
     day_list = [today - dt.timedelta(days=i) for i in range(chart_days - 1, -1, -1)]
 
     account_ids = _visible_account_ids(db, user.id)
+    phases["account_ids_ms"] = round((time.perf_counter() - t0) * 1000, 1)
+
+    t1 = time.perf_counter()
     log_by_day = _batch_status_counts(db, account_ids, day_list)
+    phases["batch_logs_ms"] = round((time.perf_counter() - t1) * 1000, 1)
 
     accounts = db.scalars(
         select(InstagramAccount)
@@ -560,6 +589,7 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
 
     account_publish_counts: dict[int, int] = {}
     if account_ids:
+        t2 = time.perf_counter()
         account_publish_counts = dict(
             db.execute(
                 select(PublishLog.account_id, func.count(PublishLog.id))
@@ -572,6 +602,7 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
                 .group_by(PublishLog.account_id)
             ).all()
         )
+        phases["publish_counts_ms"] = round((time.perf_counter() - t2) * 1000, 1)
 
     accounts_data = [
         {"account": acc, "publish_count": account_publish_counts.get(acc.id, 0)}
@@ -606,6 +637,19 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
         chart_performance
     )
 
+    phases["total_ms"] = round((time.perf_counter() - t0) * 1000, 1)
+    dbg(
+        "H2",
+        "dashboard.py:_dashboard_context",
+        "context built",
+        {
+            "user_id": user.id,
+            "accounts": len(account_ids),
+            "automations": len(automations),
+            **phases,
+        },
+    )
+
     return {
         "chart_days": chart_days,
         "accounts_count": len(account_ids),
@@ -627,6 +671,7 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
         "chart_max_val": chart_max_val,
         "now_brt": brt_now(),
         "official": empty_official_summary(reel_views_days=chart_days),
+        "_debug_phases": phases,
     }
 
 
@@ -780,6 +825,8 @@ def home(
     db: Session = Depends(get_db),
     user: User | None = Depends(maybe_effective_user),
 ):
+    t0 = time.perf_counter()
+    dbg("H4", "dashboard.py:home", "enter", {"path": "/", "has_user": user is not None})
     if user is None:
         return RedirectResponse("/login", status_code=303)
 
@@ -787,7 +834,14 @@ def home(
     ctx = _dashboard_context(db, user, chart_days)
     ctx["request"] = request
     ctx["user"] = user
-    return templates.TemplateResponse("dashboard.html", ctx)
+    phases = ctx.pop("_debug_phases", {})
+    t1 = time.perf_counter()
+    resp = templates.TemplateResponse("dashboard.html", ctx)
+    phases["template_ms"] = round((time.perf_counter() - t1) * 1000, 1)
+    phases["home_total_ms"] = round((time.perf_counter() - t0) * 1000, 1)
+    dbg("H5", "dashboard.py:home", "response ready", {"user_id": user.id, **phases})
+    resp.headers["X-Dash-Timing"] = str(phases)
+    return resp
 
 
 @router.get("/analytics")

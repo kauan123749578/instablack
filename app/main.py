@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -21,6 +22,7 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from sqlalchemy.exc import TimeoutError as SATimeoutError
 
 from app.config import settings
+from app.debug_trace import dbg
 from app.routes import (
     accounts,
     admin,
@@ -158,6 +160,24 @@ def create_app() -> FastAPI:
                     status_code=403,
                 )
 
+        return await call_next(request)
+
+    @app.middleware("http")
+    async def dash_debug_middleware(request: Request, call_next):
+        path = request.url.path
+        if path in ("/", "/login") and request.method == "GET":
+            t0 = time.perf_counter()
+            dbg("H3", "main.py:middleware", "request start", {"path": path, "method": request.method})
+            response = await call_next(request)
+            ms = round((time.perf_counter() - t0) * 1000, 1)
+            dbg(
+                "H3",
+                "main.py:middleware",
+                "request end",
+                {"path": path, "status": response.status_code, "ms": ms},
+            )
+            response.headers["X-Req-Timing-Ms"] = str(ms)
+            return response
         return await call_next(request)
 
     app.add_middleware(
