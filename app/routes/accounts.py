@@ -52,6 +52,7 @@ from core.instagram import (
 )
 from core.web_cookies import (
     WebCookiesError,
+    decrypt_web_cookies,
     encrypt_web_cookies,
     merge_sessionid_into_web_cookies,
     parse_web_cookies_blob,
@@ -544,10 +545,10 @@ def connected_accounts(
         "cookies_login": "Não foi possível validar o sessionid desses cookies. Exporte de novo com a conta logada.",
         "cookies_meta": "Contas da API oficial Meta não usam cookies web.",
         "reconnect_meta": "Conta Meta: reconecte pela API oficial em Adicionar conta.",
-        "reconnect_failed": "Não foi possível reconectar a sessão. Tente senha, sessionid ou cookies novos.",
-        "reconnect_password": "Informe a senha (ou use automático se a senha estiver salva).",
+        "reconnect_failed": "Não foi possível reconectar. Cole um sessionid ou cookies web novos.",
+        "reconnect_password": "Login com senha desativado. Use sessionid ou cookies web.",
         "reconnect_sessionid": "Informe um sessionid válido.",
-        "reconnect_2fa": "Esta conta pediu 2FA. Informe o código do autenticador e tente de novo.",
+        "reconnect_2fa": "Esta conta pediu 2FA. Reconecte com sessionid ou cookies web do navegador.",
         "reconnect_proxy": "Proxy ausente ou inválida — atualize a proxy antes de reconectar.",
     }.get(err_key or "")
     offline = offline_accounts(db, user.id)
@@ -979,33 +980,48 @@ def _perform_account_reconnect(
             merged = merge_sessionid_into_web_cookies(acc.encrypted_web_cookies, sid)
             if merged:
                 acc.encrypted_web_cookies = merged
-        else:
-            pw = (password or "").strip() or decrypt_secret(acc.encrypted_password)
-            if mode_norm == "password" and not (password or "").strip():
-                return {
-                    "status": "error",
-                    "error_code": "password",
-                    "message": "Informe a senha ou use reconexão automática.",
-                }
-            if not pw:
-                return {
-                    "status": "error",
-                    "error_code": "password",
-                    "message": "Sem senha salva. Informe a senha ou cole sessionid/cookies.",
-                }
-            if (password or "").strip():
-                acc.encrypted_password = encrypt_secret(password.strip())
-            settings_dict = try_refresh_session(
-                settings_dict=deserialize_settings(acc.session_json),
-                proxy=acc.proxy,
-                username=acc.username,
-                password=pw,
-                verification_code=(verification_code or "").strip() or None,
-            )
+        elif mode_norm in ("auto", "session"):
+            # Sem usuário/senha: renova session_json ou revive via cookies web salvos.
+            settings_dict = None
+            try:
+                settings_dict = try_refresh_session(
+                    settings_dict=deserialize_settings(acc.session_json),
+                    proxy=acc.proxy,
+                    username=acc.username,
+                    password=None,
+                )
+            except InstagramAuthError:
+                cookies = decrypt_web_cookies(acc.encrypted_web_cookies)
+                sid = clean_sessionid((cookies or {}).get("sessionid") or "")
+                if not sid:
+                    return {
+                        "status": "error",
+                        "error_code": "sessionid",
+                        "message": "Sessão expirada. Cole um sessionid novo ou cookies web (Cookie-Editor).",
+                    }
+                settings_dict, resolved_user = login_with_sessionid(
+                    sid,
+                    proxy=acc.proxy,
+                    username_hint=acc.username,
+                )
+                if resolved_user:
+                    acc.username = resolved_user
             new_sid = extract_sessionid_from_settings(settings_dict)
             merged = merge_sessionid_into_web_cookies(acc.encrypted_web_cookies, new_sid)
             if merged:
                 acc.encrypted_web_cookies = merged
+        elif mode_norm == "password":
+            return {
+                "status": "error",
+                "error_code": "password",
+                "message": "Login com senha desativado. Use sessionid ou cookies web.",
+            }
+        else:
+            return {
+                "status": "error",
+                "error_code": "mode",
+                "message": "Modo de reconexão inválido. Use sessionid ou cookies.",
+            }
 
         acc.session_json = serialize_settings(settings_dict)
         acc.status = "active"

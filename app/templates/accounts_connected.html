@@ -22,7 +22,7 @@
       <strong class="ig-handle">@{{ acc.username }}</strong> · {{ status_label(acc.status) }}
       {% if acc.last_error %}<span class="muted">— {{ acc.last_error[:120] }}</span>{% endif %}
       {% if acc.provider != 'meta' and acc.status == 'needs_login' %}
-      <button type="button" class="btn btn-sm btn-primary account-reconnect-btn"
+      <button type="button" class="btn btn-sm btn-primary account-reconnect-open-btn"
               data-account-id="{{ acc.id }}" data-username="{{ acc.username }}">
         Reconectar
       </button>
@@ -116,71 +116,15 @@
           <td>{{ acc.last_login_at | localtime }}</td>
           <td class="account-actions">
             {% if acc.provider != 'meta' %}
+            {% set cflag = cookie_flags.get(acc.id, {}) %}
             <button type="button"
-                    class="btn btn-sm {% if acc.status == 'needs_login' %}btn-primary{% endif %} account-reconnect-btn"
+                    class="btn btn-sm {% if acc.status == 'needs_login' %}btn-primary{% endif %} account-reconnect-open-btn"
                     data-account-id="{{ acc.id }}"
                     data-username="{{ acc.username }}"
-                    title="Renova sessão instagrapi com senha salva">
-              {% if acc.status == 'needs_login' %}Reconectar{% else %}Renovar sessão{% endif %}
+                    data-has-cookies="{{ 1 if cflag.has_csrftoken else 0 }}"
+                    title="Reconectar com sessionid ou cookies web">
+              {% if acc.status == 'needs_login' %}Reconectar{% else %}Atualizar sessão{% endif %}
             </button>
-            <details class="proxy-update-panel" {% if acc.status == 'needs_login' %}open{% endif %}>
-              <summary class="btn btn-sm">Opções avançadas</summary>
-              <div class="proxy-update-form reconnect-advanced-panel" style="display:flex;flex-direction:column;gap:10px;min-width:280px">
-                <p class="muted" style="margin:0;font-size:11px">
-                  Sessionid ou cookies web (Cookie-Editor) se a senha salva não funcionar.
-                </p>
-                <label class="field-label muted" style="font-size:11px">Sessionid do navegador
-                  <input type="text" class="reconnect-sessionid-input" data-account-id="{{ acc.id }}"
-                         placeholder="cole o sessionid aqui">
-                </label>
-                <button type="button" class="btn btn-sm account-reconnect-sessionid-btn"
-                        data-account-id="{{ acc.id }}" data-username="{{ acc.username }}">
-                  Reconectar com sessionid
-                </button>
-                <label class="field-label muted" style="font-size:11px">Cookies web (JSON Cookie-Editor)
-                  <textarea class="reconnect-cookies-input" data-account-id="{{ acc.id }}" rows="4"
-                            placeholder='{"sessionid":"...","csrftoken":"..."}'></textarea>
-                </label>
-                <button type="button" class="btn btn-sm account-reconnect-cookies-btn"
-                        data-account-id="{{ acc.id }}" data-username="{{ acc.username }}">
-                  Reconectar com cookies web
-                </button>
-                <hr style="border-color:var(--border);opacity:0.4">
-                <label class="field-label muted" style="font-size:11px">Senha + 2FA
-                  <input type="password" class="reconnect-password-input" data-account-id="{{ acc.id }}"
-                         placeholder="Senha do Instagram" autocomplete="current-password">
-                  <input type="text" class="reconnect-2fa-input" data-account-id="{{ acc.id }}"
-                         placeholder="Código 2FA (se pedir)" autocomplete="one-time-code" style="margin-top:6px">
-                </label>
-                <button type="button" class="btn btn-sm btn-primary account-reconnect-password-btn"
-                        data-account-id="{{ acc.id }}" data-username="{{ acc.username }}">
-                  Reconectar com senha
-                </button>
-                {% if acc.encrypted_password %}
-                <p class="muted" style="margin:0;font-size:11px">Senha salva — o botão Reconectar usa automático.</p>
-                {% endif %}
-              </div>
-            </details>
-            {% set cflag = cookie_flags.get(acc.id, {}) %}
-            <details class="proxy-update-panel">
-              <summary class="btn btn-sm">
-                {% if cflag.has_csrftoken %}Cookies web ✓{% else %}Cookies web (Story){% endif %}
-              </summary>
-              <form method="post" action="/accounts/{{ acc.id }}/update-web-cookies" class="proxy-update-form">
-                <textarea name="web_cookies" rows="6" required
-                          placeholder="Cole o JSON do Cookie-Editor ou sessionid=...; csrftoken=..."></textarea>
-                <p class="muted" style="margin:6px 0;font-size:11px">
-                  {% if cflag.has_csrftoken %}
-                  Já tem cookies web salvos ({{ cflag.count }}). Cole de novo para renovar.
-                  {% else %}
-                  Sem csrftoken — Story com link vai falhar até importar o JSON completo.
-                  {% endif %}
-                </p>
-                <div class="proxy-update-actions">
-                  <button type="submit" class="btn btn-sm btn-primary">Salvar cookies</button>
-                </div>
-              </form>
-            </details>
             <details class="proxy-update-panel">
               <summary class="btn btn-sm">Atualizar proxy</summary>
               <form method="post" action="/accounts/{{ acc.id }}/update-proxy" class="proxy-update-form" data-account="@{{ acc.username }}">
@@ -195,7 +139,7 @@
               </form>
             </details>
             {% elif acc.provider == 'meta' %}
-            <details class="proxy-update-panel" {% if acc.status == 'proxy_down' %}open{% endif %}>
+            <details class="proxy-update-panel">
               <summary class="btn btn-sm">
                 {% if not acc.proxy %}Proxy (opcional){% else %}Atualizar proxy{% endif %}
               </summary>
@@ -244,4 +188,30 @@
 {% endblock %}
 {% block scripts %}
 <script>document.body.dataset.pageAccountsConnected = "1";</script>
+<div class="modal-overlay" id="reconnect-session-modal" aria-hidden="true">
+  <div class="modal-card modal-card--reconnect" role="dialog" aria-labelledby="reconnect-session-title" onclick="event.stopPropagation()">
+    <h3 id="reconnect-session-title">Reconectar sessão</h3>
+    <p class="muted" id="reconnect-session-message">
+      Cole o sessionid do navegador ou o JSON do Cookie-Editor. Usuário/senha não é usado.
+    </p>
+    <p class="muted reconnect-cookies-hint" id="reconnect-cookies-hint" hidden></p>
+    <label class="field-label">Sessionid do navegador
+      <input type="text" id="reconnect-modal-sessionid" placeholder="cole o sessionid aqui" autocomplete="off">
+    </label>
+    <button type="button" class="btn btn-primary" id="reconnect-modal-sessionid-btn">
+      Reconectar com sessionid
+    </button>
+    <div class="reconnect-modal-divider"><span>ou</span></div>
+    <label class="field-label">Cookies web (Cookie-Editor)
+      <textarea id="reconnect-modal-cookies" rows="5"
+                placeholder='{"sessionid":"...","csrftoken":"..."}'></textarea>
+    </label>
+    <button type="button" class="btn" id="reconnect-modal-cookies-btn">
+      Reconectar com cookies web
+    </button>
+    <div class="modal-actions">
+      <button type="button" class="btn" id="reconnect-modal-cancel">Fechar</button>
+    </div>
+  </div>
+</div>
 {% endblock %}

@@ -1333,8 +1333,18 @@ input[type="checkbox"]:checked::after {
   background: #050505; border: 1px solid rgba(255, 255, 255, 0.08);
   padding: 24px; display: flex; flex-direction: column; gap: 14px;
 }
+.modal-card--reconnect { max-width: 460px; }
 .modal-card h3 { margin: 0; font-size: 18px; }
 .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px; }
+.reconnect-modal-divider {
+  display: flex; align-items: center; gap: 10px;
+  color: var(--muted, #888); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+}
+.reconnect-modal-divider::before,
+.reconnect-modal-divider::after {
+  content: ""; flex: 1; height: 1px; background: rgba(255, 255, 255, 0.08);
+}
+.reconnect-cookies-hint { margin: 0; font-size: 12px; }
 
 /* Calendário de agendamento — compacto, não ocupa a tela inteira */
 .calendar-fieldset { border: 1px solid var(--border); padding: 12px; margin: 0; max-width: 360px; }

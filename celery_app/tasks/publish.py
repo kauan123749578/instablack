@@ -126,25 +126,37 @@ def _meta_global_active_key() -> str:
     return "meta:global_active"
 
 
-META_GLOBAL_MAX_CONCURRENT = 1
 # Inflight por conta: só enquanto o publish roda (capa+verify ~2–4 min).
 # NÃO usar o cooldown de 60 min aqui — se o worker cair, a conta ficava
 # bloqueada ~15 min (meta_inflight:883s nos logs).
 META_INFLIGHT_TTL_SEC = 240
-META_GLOBAL_SLOT_TTL_SEC = 420
+META_GLOBAL_SLOT_TTL_SEC = 360
+
+
+def _meta_global_max_concurrent() -> int:
+    """Limite de publishes Meta simultâneos (env META_GLOBAL_MAX_CONCURRENT)."""
+    try:
+        from app.config import get_settings
+
+        n = int(getattr(get_settings(), "meta_global_max_concurrent", 5) or 5)
+    except Exception:
+        n = 5
+    return max(1, min(n, 20))
 
 
 def _claim_meta_global_slot(client, account_id: int) -> tuple[bool, int]:
-    """Até 3 publishes Meta simultâneos; acima disso fila curta (30–75s)."""
+    """Fila curta entre contas Meta; tokens diferentes podem publicar em paralelo."""
     import time as _time
 
     key = _meta_global_active_key()
     now = _time.time()
+    limit = _meta_global_max_concurrent()
     try:
         client.zremrangebyscore(key, 0, now)
         active = int(client.zcard(key) or 0)
-        if active >= META_GLOBAL_MAX_CONCURRENT:
-            wait = 30 + (int(account_id) % 46)
+        if active >= limit:
+            # Espera proporcional à fila + jitter (evita todos acordarem no mesmo segundo).
+            wait = 15 + (active * 5) + (int(account_id) % 20)
             return False, wait
         client.zadd(key, {str(int(account_id)): now + float(META_GLOBAL_SLOT_TTL_SEC)})
         return True, 0
@@ -161,7 +173,7 @@ def _release_meta_global_slot(client, account_id: int) -> None:
 
 
 def _claim_meta_publish_slot(account_id: int, cooldown_sec: int) -> tuple[bool, int, str]:
-    """Garante 1 publish Meta por conta + fila global curta (max 3 simultâneos).
+    """1 publish por conta + teto global de concorrência Meta.
 
     Retorna (pode_publicar, wait_seconds, motivo).
     """
@@ -704,7 +716,7 @@ def publish_once(
         camouflage_opacity=float(camouflage_opacity or 0.10),
     )
     if result.get("deferred"):
-        wait = max(60, min(int(result.get("wait_seconds") or 3600), 6 * 3600))
+        wait = max(20, min(int(result.get("wait_seconds") or 3600), 6 * 3600))
         log.info(
             "Meta defer publish_once account=%s wait=%ss reason=%s",
             account_id,
@@ -899,7 +911,7 @@ def publish_to_account(
             return {"error": "publish_failed", "detail": msg[:500]}
 
         if result.get("deferred"):
-            wait = max(60, min(int(result.get("wait_seconds") or 3600), 6 * 3600))
+            wait = max(20, min(int(result.get("wait_seconds") or 3600), 6 * 3600))
             log.info(
                 "Meta defer automation=%s account=%s wait=%ss reason=%s",
                 automation_id,

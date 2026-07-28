@@ -467,7 +467,7 @@ def get_ready_client(
             except Exception as exc:
                 raise InstagramAuthError(f"Re-login falhou: {exc}") from exc
         raise InstagramAuthError(
-            "Sessão expirada. Reconecte com sessionid novo ou usuário/senha."
+            "Sessão expirada. Reconecte com sessionid novo ou cookies web."
         )
     except Exception as exc:
         raise InstagramAuthError(str(exc)) from exc
@@ -523,7 +523,7 @@ def try_refresh_session(
 
     if not password:
         raise InstagramAuthError(
-            "Sessão expirada. Use Reconectar com senha, sessionid ou cookies web."
+            "Sessão expirada. Use sessionid ou cookies web (Cookie-Editor)."
         )
     return login_with_credentials(
         username,

@@ -1298,63 +1298,104 @@
     document.body.dataset.pageAccountsConnected = "1";
     initTwofaModal();
 
-    document.querySelectorAll(".account-reconnect-btn").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const id = parseInt(btn.dataset.accountId, 10);
-        const uname = btn.dataset.username || "";
-        runReconnect(id, uname, { mode: "auto" }, btn);
-      });
-    });
+    const modal = document.getElementById("reconnect-session-modal");
+    let reconnectTarget = null;
 
-    document.querySelectorAll(".account-reconnect-sessionid-btn").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const id = parseInt(btn.dataset.accountId, 10);
-        const uname = btn.dataset.username || "";
-        const input = document.querySelector(`.reconnect-sessionid-input[data-account-id="${id}"]`);
-        const sid = (input?.value || "").trim();
-        if (!sid) {
-          alert("Cole o sessionid do navegador.");
-          return;
-        }
-        runReconnect(id, uname, { mode: "sessionid", sessionid: sid }, btn);
-      });
-    });
+    function closeReconnectModal() {
+      if (!modal) return;
+      modal.classList.remove("modal-overlay--open");
+      modal.setAttribute("aria-hidden", "true");
+      document.body.style.overflow = "";
+      reconnectTarget = null;
+      const sid = document.getElementById("reconnect-modal-sessionid");
+      const cookies = document.getElementById("reconnect-modal-cookies");
+      if (sid) sid.value = "";
+      if (cookies) cookies.value = "";
+    }
 
-    document.querySelectorAll(".account-reconnect-cookies-btn").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const id = parseInt(btn.dataset.accountId, 10);
-        const uname = btn.dataset.username || "";
-        const input = document.querySelector(`.reconnect-cookies-input[data-account-id="${id}"]`);
-        const cookies = (input?.value || "").trim();
-        if (!cookies) {
-          alert("Cole o JSON do Cookie-Editor.");
-          return;
+    function openReconnectModal(accountId, username, hasCookies) {
+      if (!modal) return;
+      reconnectTarget = { accountId, username: username || "" };
+      const title = document.getElementById("reconnect-session-title");
+      const hint = document.getElementById("reconnect-cookies-hint");
+      if (title) {
+        title.textContent = username
+          ? `Reconectar @${username}`
+          : "Reconectar sessão";
+      }
+      if (hint) {
+        if (hasCookies) {
+          hint.hidden = false;
+          hint.textContent =
+            "Esta conta já tem cookies web salvos. Se o sessionid antigo ainda valer, o health check tenta reaproveitar sozinho — se falhou, cole um sessionid/cookies novos.";
+        } else {
+          hint.hidden = false;
+          hint.textContent =
+            "Preferível colar o JSON completo do Cookie-Editor (sessionid + csrftoken) para Stories com link.";
         }
-        runReconnect(id, uname, { mode: "cookies", web_cookies: cookies }, btn);
-      });
-    });
+      }
+      modal.classList.add("modal-overlay--open");
+      modal.setAttribute("aria-hidden", "false");
+      document.body.style.overflow = "hidden";
+      setTimeout(() => document.getElementById("reconnect-modal-sessionid")?.focus(), 40);
+    }
 
-    document.querySelectorAll(".account-reconnect-password-btn").forEach((btn) => {
+    document.querySelectorAll(".account-reconnect-open-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
         const id = parseInt(btn.dataset.accountId, 10);
-        const uname = btn.dataset.username || "";
-        const pwEl = document.querySelector(`.reconnect-password-input[data-account-id="${id}"]`);
-        const faEl = document.querySelector(`.reconnect-2fa-input[data-account-id="${id}"]`);
-        const password = (pwEl?.value || "").trim();
-        if (!password) {
-          alert("Informe a senha.");
-          return;
-        }
-        runReconnect(
+        if (!id) return;
+        openReconnectModal(
           id,
-          uname,
-          {
-            mode: "password",
-            password,
-            verification_code: (faEl?.value || "").trim(),
-          },
-          btn
+          btn.dataset.username || "",
+          btn.dataset.hasCookies === "1"
         );
+      });
+    });
+
+    document.getElementById("reconnect-modal-cancel")?.addEventListener("click", closeReconnectModal);
+    modal?.addEventListener("click", (e) => {
+      if (e.target === modal) closeReconnectModal();
+    });
+
+    document.getElementById("reconnect-modal-sessionid-btn")?.addEventListener("click", () => {
+      if (!reconnectTarget) return;
+      const sid = (document.getElementById("reconnect-modal-sessionid")?.value || "").trim();
+      if (!sid) {
+        alert("Cole o sessionid do navegador.");
+        return;
+      }
+      const btn = document.getElementById("reconnect-modal-sessionid-btn");
+      runReconnect(
+        reconnectTarget.accountId,
+        reconnectTarget.username,
+        { mode: "sessionid", sessionid: sid },
+        btn
+      );
+    });
+
+    document.getElementById("reconnect-modal-cookies-btn")?.addEventListener("click", () => {
+      if (!reconnectTarget) return;
+      const cookies = (document.getElementById("reconnect-modal-cookies")?.value || "").trim();
+      if (!cookies) {
+        alert("Cole o JSON do Cookie-Editor.");
+        return;
+      }
+      const btn = document.getElementById("reconnect-modal-cookies-btn");
+      runReconnect(
+        reconnectTarget.accountId,
+        reconnectTarget.username,
+        { mode: "cookies", web_cookies: cookies },
+        btn
+      );
+    });
+
+    // Um dropdown de proxy aberto por vez (evita empilhar absolute).
+    document.querySelectorAll(".account-actions .proxy-update-panel").forEach((panel) => {
+      panel.addEventListener("toggle", () => {
+        if (!panel.open) return;
+        document.querySelectorAll(".account-actions .proxy-update-panel").forEach((other) => {
+          if (other !== panel) other.open = false;
+        });
       });
     });
   }

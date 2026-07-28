@@ -8,6 +8,7 @@ from sqlalchemy import select
 
 from app.security import decrypt_secret, encrypt_secret
 from app.utils.auth_failures import auth_status_reason, latest_auth_failure_reason
+from app.utils.proxy import clean_sessionid
 from celery_app.config import celery_app
 from core.database import session_scope
 from core.instagram import (
@@ -17,6 +18,7 @@ from core.instagram import (
     deserialize_settings,
     extract_sessionid_from_settings,
     get_ready_client,
+    login_with_sessionid,
     serialize_settings,
     try_refresh_session,
 )
@@ -26,12 +28,31 @@ from core.meta_instagram import (
     validate_token as validate_meta_token,
 )
 from core.notifications import create_notification
-from core.web_cookies import merge_sessionid_into_web_cookies
+from core.web_cookies import decrypt_web_cookies, merge_sessionid_into_web_cookies
 from models.models import InstagramAccount
 
 log = logging.getLogger(__name__)
 
 OFFLINE_STATUSES = frozenset({"needs_login", "proxy_down", "banned"})
+
+
+def _settings_from_web_cookies(
+    encrypted_web_cookies: str | None,
+    *,
+    proxy: str,
+    username: str | None,
+) -> tuple[dict, str | None] | None:
+    """Tenta reviver sessão instagrapi a partir do sessionid nos cookies web salvos."""
+    cookies = decrypt_web_cookies(encrypted_web_cookies)
+    sid = clean_sessionid((cookies or {}).get("sessionid") or "")
+    if not sid:
+        return None
+    settings_dict, resolved_user = login_with_sessionid(
+        sid,
+        proxy=proxy,
+        username_hint=username,
+    )
+    return settings_dict, resolved_user
 
 
 def _notify_offline_if_changed(
@@ -82,7 +103,7 @@ def check_account_health(account_id: int) -> dict:
 
         proxy = account.proxy
         settings_dict = deserialize_settings(account.session_json)
-        password = decrypt_secret(account.encrypted_password)
+        encrypted_web_cookies = account.encrypted_web_cookies
         provider = account.provider or "instagrapi"
         meta_token = decrypt_secret(account.encrypted_meta_access_token)
         meta_token_expires_at = account.meta_token_expires_at
@@ -188,15 +209,15 @@ def check_account_health(account_id: int) -> dict:
         return {"account_id": account_id, "status": "proxy_down"}
 
     if not settings_dict:
-        # Sem session_json: tenta login fresco automático se houver senha salva.
-        if password and username:
-            try:
-                new_settings = try_refresh_session(
-                    settings_dict=None,
-                    proxy=proxy,
-                    username=username,
-                    password=password,
-                )
+        # Sem session_json: tenta sessionid dos cookies web salvos (sem senha).
+        try:
+            revived = _settings_from_web_cookies(
+                encrypted_web_cookies,
+                proxy=proxy,
+                username=username,
+            )
+            if revived:
+                new_settings, resolved_user = revived
                 with session_scope() as db:
                     acc = db.get(InstagramAccount, account_id)
                     if acc and acc.status not in ("paused", "deleted"):
@@ -207,46 +228,38 @@ def check_account_health(account_id: int) -> dict:
                         )
                         if merged:
                             acc.encrypted_web_cookies = merged
+                        if resolved_user:
+                            acc.username = resolved_user
                         acc.status = "active"
                         acc.last_error = None
                         acc.last_login_at = now
                         acc.last_health_check_at = now
-                log.info("health auto-reconnect OK account=%s (sem session_json)", account_id)
-                return {"account_id": account_id, "status": "active", "reconnected": True}
-            except InstagramTwoFactorRequired as exc:
-                log.warning("health auto-reconnect 2FA account=%s", account_id)
-                prev = None
-                uid = uname = None
-                with session_scope() as db:
-                    acc = db.get(InstagramAccount, account_id)
-                    if acc and acc.status not in ("paused", "deleted"):
-                        prev = acc.status
-                        acc.status = "needs_login"
-                        acc.last_error = f"2FA necessário para reconectar: {exc}"[:1000]
-                        acc.last_health_check_at = now
-                        uid, uname = acc.user_id, acc.username
-                _notify_offline_if_changed(
-                    new_status="needs_login",
-                    reason="2FA necessário — reconecte no painel",
-                    prev_status=prev,
-                    user_id=uid,
-                    username=uname,
+                log.info(
+                    "health revive via cookies web OK account=%s (sem session_json)",
+                    account_id,
                 )
-                return {"account_id": account_id, "status": "needs_login", "error": "2fa"}
-            except InstagramAuthError as exc:
-                log.warning("health auto-reconnect falhou account=%s: %s", account_id, exc)
+                return {
+                    "account_id": account_id,
+                    "status": "active",
+                    "reconnected": True,
+                    "via": "web_cookies",
+                }
+        except InstagramAuthError as exc:
+            log.warning(
+                "health revive cookies falhou account=%s: %s", account_id, exc
+            )
         with session_scope() as db:
             acc = db.get(InstagramAccount, account_id)
             if not acc or acc.status in ("paused", "deleted"):
                 return {"account_id": account_id, "status": "needs_login"}
             prev = acc.status
             acc.status = "needs_login"
-            acc.last_error = "Sessão expirada — reconecte a conta"
+            acc.last_error = "Sessão expirada — reconecte com sessionid ou cookies web"
             acc.last_health_check_at = now
             uid, uname = acc.user_id, acc.username
         _notify_offline_if_changed(
             new_status="needs_login",
-            reason="Sessão expirada — reconecte a conta",
+            reason="Sessão expirada — reconecte com sessionid ou cookies web",
             prev_status=prev,
             user_id=uid,
             username=uname,
@@ -254,22 +267,40 @@ def check_account_health(account_id: int) -> dict:
         return {"account_id": account_id, "status": "needs_login"}
 
     try:
+        resolved_user: str | None = None
         try:
             new_settings = try_refresh_session(
                 settings_dict=settings_dict,
                 proxy=proxy,
                 username=username,
-                password=password,
+                password=None,
             )
             cl = get_ready_client(
                 settings_dict=new_settings,
                 proxy=proxy,
                 username=username,
-                password=password,
+                password=None,
             )
             cl.account_info()
         except InstagramAuthError:
-            raise
+            # Sessão instagrapi morta — tenta cookies web salvos antes de marcar offline.
+            revived = _settings_from_web_cookies(
+                encrypted_web_cookies,
+                proxy=proxy,
+                username=username,
+            )
+            if not revived:
+                raise
+            new_settings, resolved_user = revived
+            cl = get_ready_client(
+                settings_dict=new_settings,
+                proxy=proxy,
+                username=resolved_user or username,
+                password=None,
+            )
+            cl.account_info()
+            new_settings = cl.get_settings()
+            log.info("health revive via cookies web OK account=%s", account_id)
         needs_login_from_log: tuple[str, str | None, int | None, str | None] | None = None
         with session_scope() as db:
             acc = db.get(InstagramAccount, account_id)
@@ -288,6 +319,8 @@ def check_account_health(account_id: int) -> dict:
                     )
                     if merged:
                         acc.encrypted_web_cookies = merged
+                    if resolved_user:
+                        acc.username = resolved_user
                     if acc.status in OFFLINE_STATUSES:
                         acc.status = "active"
                     acc.last_error = None
@@ -316,7 +349,7 @@ def check_account_health(account_id: int) -> dict:
             uid, uname = acc.user_id, acc.username
         _notify_offline_if_changed(
             new_status="needs_login",
-            reason="2FA necessário — reconecte no painel",
+            reason="2FA necessário — reconecte no painel com sessionid/cookies",
             prev_status=prev,
             user_id=uid,
             username=uname,

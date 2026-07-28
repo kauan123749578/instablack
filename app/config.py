@@ -57,6 +57,9 @@ class Settings(BaseSettings):
 
     # Instagram Graph API (versão global; credenciais do app ficam em Meus Apps por usuário)
     meta_instagram_graph_version: str = "v25.0"
+    # Quantos publishes Meta podem rodar ao mesmo tempo no worker (tokens diferentes).
+    # 1 era apertado demais com vários usuários; 5–8 é o sweet spot usual.
+    meta_global_max_concurrent: int = 5
     public_base_url: str = ""
 
     ffmpeg_bin: str = "ffmpeg"
