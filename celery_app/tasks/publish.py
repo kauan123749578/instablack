@@ -1073,17 +1073,26 @@ def _execute_publish(
             _mark_account_needs_login(account_id, "Token da API oficial ausente. Reconecte a conta.")
             return {"error": "meta_token_missing"}
 
-        if not proxy or not str(proxy).strip():
-            _mark_account_proxy_down(account_id, "Proxy residencial obrigatória na API oficial")
-            return {"error": "proxy_missing"}
-        if not check_proxy(proxy):
-            _mark_account_proxy_down(account_id, "Proxy vazando IP do servidor ou inacessível")
-            return {"error": "proxy_down"}
-        log.info(
-            "META via proxy residencial account=%s @%s",
-            account_id,
-            username,
-        )
+        meta_proxy = (proxy or "").strip() or None
+        if meta_proxy and not check_proxy(meta_proxy):
+            log.warning(
+                "META proxy inválida account=%s @%s — publicando sem proxy (IP do servidor)",
+                account_id,
+                username,
+            )
+            meta_proxy = None
+        if meta_proxy:
+            log.info(
+                "META via proxy residencial account=%s @%s",
+                account_id,
+                username,
+            )
+        else:
+            log.info(
+                "META sem proxy account=%s @%s — Graph pelo IP do servidor",
+                account_id,
+                username,
+            )
 
         cooldown_sec = max(60, int(meta_min_gap_min or 60) * 60)
         can_pub, wait_sec, claim_reason = _claim_meta_publish_slot(account_id, cooldown_sec)
@@ -1178,7 +1187,7 @@ def _execute_publish(
                     # Thumb da automação = capa do Reel (cover_url) + caption juntos.
                     # Sem delete/republicar: a API não apaga Reel novo (100/33).
                     cover_key=reel_cover,
-                    proxy=proxy,
+                    proxy=meta_proxy,
                 )
             except MetaInstagramError as exc:
                 _release_meta_inflight(account_id)

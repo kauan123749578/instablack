@@ -209,11 +209,13 @@ def _store_meta_account(
     return None
 
 
-def _require_meta_proxy(proxy_raw: str) -> tuple[str | None, dict | None, str | None]:
-    """Valida proxy residencial obrigatória para API Meta. Retorna (norm, meta, error_code)."""
-    normalized = normalize_proxy(proxy_raw or "")
+def _optional_meta_proxy(proxy_raw: str) -> tuple[str | None, dict | None, str | None]:
+    """Proxy opcional para API Meta. Vazio = ok (usa IP do servidor). Retorna (norm, meta, error)."""
+    if not (proxy_raw or "").strip():
+        return None, None, None
+    normalized = normalize_proxy(proxy_raw)
     if not normalized:
-        return None, None, "meta_proxy_required"
+        return None, None, "proxy_invalid"
     diag = diagnose_proxy(proxy_raw.strip() or normalized)
     if not diag.get("ok"):
         return None, None, "proxy_invalid"
@@ -240,7 +242,6 @@ def list_accounts(
         "meta_exchange": "A Meta recusou a conexão. Confira o app e tente novamente.",
         "meta_token_invalid": "Token oficial inválido ou sem acesso à conta.",
         "account_limit": "Seu limite de contas foi atingido.",
-        "meta_proxy_required": "Proxy residencial é obrigatória na API oficial (não usamos IP do servidor).",
         "proxy_invalid": "Proxy inválida ou fora do ar. Teste antes de conectar.",
     }.get(request.query_params.get("error") or "")
     meta_apps_list = list_user_meta_apps(db, user.id)
@@ -265,17 +266,17 @@ def connect_meta_account(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Inicia o Business Login oficial do Instagram (tráfego Graph via proxy)."""
+    """Inicia o Business Login oficial do Instagram (proxy residencial opcional)."""
     meta_app = get_owned_meta_app(db, user.id, app_id) if app_id else None
     if not meta_app:
         return RedirectResponse(
             "/accounts?error=meta_no_app" if app_id else "/accounts?error=meta_not_configured",
             status_code=status.HTTP_303_SEE_OTHER,
         )
-    normalized, proxy_meta, proxy_err = _require_meta_proxy(proxy)
-    if proxy_err or not normalized or not proxy_meta:
+    normalized, proxy_meta, proxy_err = _optional_meta_proxy(proxy)
+    if proxy_err:
         return RedirectResponse(
-            f"/accounts?error={proxy_err or 'meta_proxy_required'}",
+            f"/accounts?error={proxy_err}",
             status_code=status.HTTP_303_SEE_OTHER,
         )
     state = secrets.token_urlsafe(32)
@@ -283,13 +284,17 @@ def connect_meta_account(
     request.session["meta_oauth_state"] = state
     request.session["meta_oauth_user_id"] = user.id
     request.session["meta_oauth_app_id"] = meta_app.id
-    request.session["meta_oauth_proxy"] = normalized
-    request.session["meta_oauth_proxy_meta"] = {
-        "ip": proxy_meta.get("ip"),
-        "geo": proxy_meta.get("geo"),
-        "geo_code": proxy_meta.get("geo_code"),
-        "ok": True,
-    }
+    if normalized and proxy_meta:
+        request.session["meta_oauth_proxy"] = normalized
+        request.session["meta_oauth_proxy_meta"] = {
+            "ip": proxy_meta.get("ip"),
+            "geo": proxy_meta.get("geo"),
+            "geo_code": proxy_meta.get("geo_code"),
+            "ok": True,
+        }
+    else:
+        request.session.pop("meta_oauth_proxy", None)
+        request.session.pop("meta_oauth_proxy_meta", None)
     return RedirectResponse(authorization_url(creds, state), status_code=status.HTTP_302_FOUND)
 
 
@@ -308,10 +313,10 @@ def connect_meta_account_with_token(
             "/accounts?error=meta_app_invalid",
             status_code=status.HTTP_303_SEE_OTHER,
         )
-    normalized, proxy_meta, proxy_err = _require_meta_proxy(proxy)
-    if proxy_err or not normalized or not proxy_meta:
+    normalized, proxy_meta, proxy_err = _optional_meta_proxy(proxy)
+    if proxy_err:
         return RedirectResponse(
-            f"/accounts?error={proxy_err or 'meta_proxy_required'}",
+            f"/accounts?error={proxy_err}",
             status_code=status.HTTP_303_SEE_OTHER,
         )
     token = access_token.strip()
@@ -381,13 +386,8 @@ def meta_oauth_callback(
     if expected_user_id != user.id or expected_app_id != app_id:
         raise HTTPException(status_code=403, detail="Sessão OAuth inválida")
 
-    oauth_proxy = str(request.session.pop("meta_oauth_proxy", "") or "")
+    oauth_proxy = str(request.session.pop("meta_oauth_proxy", "") or "") or None
     oauth_proxy_meta = request.session.pop("meta_oauth_proxy_meta", None) or {}
-    if not oauth_proxy:
-        return RedirectResponse(
-            "/accounts?error=meta_proxy_required",
-            status_code=status.HTTP_303_SEE_OTHER,
-        )
 
     creds = credentials_from_app(meta_app)
     try:
@@ -407,7 +407,7 @@ def meta_oauth_callback(
         profile=profile,
         user_meta_app_id=meta_app.id,
         proxy=oauth_proxy,
-        proxy_meta=oauth_proxy_meta if isinstance(oauth_proxy_meta, dict) else {"ok": True},
+        proxy_meta=oauth_proxy_meta if oauth_proxy and isinstance(oauth_proxy_meta, dict) else None,
     )
     if store_error:
         return RedirectResponse(

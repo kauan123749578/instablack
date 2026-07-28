@@ -195,13 +195,13 @@
               </form>
             </details>
             {% elif acc.provider == 'meta' %}
-            <details class="proxy-update-panel" {% if acc.status == 'proxy_down' or not acc.proxy %}open{% endif %}>
-              <summary class="btn btn-sm {% if not acc.proxy or acc.status == 'proxy_down' %}btn-primary{% endif %}">
-                {% if not acc.proxy %}Definir proxy{% else %}Atualizar proxy{% endif %}
+            <details class="proxy-update-panel" {% if acc.status == 'proxy_down' %}open{% endif %}>
+              <summary class="btn btn-sm">
+                {% if not acc.proxy %}Proxy (opcional){% else %}Atualizar proxy{% endif %}
               </summary>
               <form method="post" action="/accounts/{{ acc.id }}/update-proxy" class="proxy-update-form" data-account="@{{ acc.username }}">
                 <p class="muted" style="margin:0 0 8px;font-size:11px">
-                  API oficial usa esta proxy residencial em todas as calls Graph (não o IP do Railway).
+                  Opcional: se configurar, a Graph API sai por esta proxy residencial em vez do IP do Railway.
                 </p>
                 <input type="text" name="proxy" class="proxy-update-input" required
                        value="{{ proxy_to_raw(acc.proxy) }}"

@@ -860,13 +860,8 @@ def publish_media(
     apagar Reel recém-publicado (100/33). Se a Graph não confirmar caption,
     abortamos (sem fallback em comentário).
 
-    proxy: proxy residencial da conta — obrigatório nas calls Graph (IP fora do Railway).
+    proxy: proxy residencial opcional — se houver, Graph sai por ele (não pelo IP do Railway).
     """
-    if not (proxy or "").strip():
-        raise MetaInstagramError(
-            "Proxy residencial obrigatória para a API oficial. "
-            "Configure a proxy da conta antes de publicar."
-        )
     with meta_proxy_scope(proxy):
         return _publish_media_inner(
             access_token=access_token,

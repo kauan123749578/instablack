@@ -100,51 +100,14 @@ def check_account_health(account_id: int) -> dict:
                     raise MetaInstagramError(
                         "Conta sem app Meta. Cadastre em Meus Apps e reconecte."
                     )
-            if not proxy or not str(proxy).strip():
-                with session_scope() as db:
-                    acc = db.get(InstagramAccount, account_id)
-                    if not acc or acc.status in ("paused", "deleted"):
-                        return {"account_id": account_id, "status": "proxy_down"}
-                    prev = acc.status
-                    acc.status = "proxy_down"
-                    acc.last_error = "Proxy residencial obrigatória na API oficial"
-                    acc.last_health_check_at = now
-                    uid, uname = acc.user_id, acc.username
-                _notify_offline_if_changed(
-                    new_status="proxy_down",
-                    reason="Proxy residencial obrigatória na API oficial",
-                    prev_status=prev,
-                    user_id=uid,
-                    username=uname,
+            meta_proxy = (proxy or "").strip() or None
+            if meta_proxy and not check_proxy(meta_proxy):
+                log.warning(
+                    "META health proxy inválida account=%s — validando sem proxy",
+                    account_id,
                 )
-                return {
-                    "account_id": account_id,
-                    "status": "proxy_down",
-                    "provider": "meta",
-                }
-            if not check_proxy(proxy):
-                with session_scope() as db:
-                    acc = db.get(InstagramAccount, account_id)
-                    if not acc or acc.status in ("paused", "deleted"):
-                        return {"account_id": account_id, "status": "proxy_down"}
-                    prev = acc.status
-                    acc.status = "proxy_down"
-                    acc.last_error = "Proxy vazando IP do servidor ou inacessível"
-                    acc.last_health_check_at = now
-                    uid, uname = acc.user_id, acc.username
-                _notify_offline_if_changed(
-                    new_status="proxy_down",
-                    reason="Proxy vazando IP do servidor ou inacessível",
-                    prev_status=prev,
-                    user_id=uid,
-                    username=uname,
-                )
-                return {
-                    "account_id": account_id,
-                    "status": "proxy_down",
-                    "provider": "meta",
-                }
-            validate_meta_token(meta_token, proxy=proxy)
+                meta_proxy = None
+            validate_meta_token(meta_token, proxy=meta_proxy)
             refreshed_token = None
             refreshed_expires_at = meta_token_expires_at
             expires_cmp = meta_token_expires_at
@@ -155,7 +118,7 @@ def check_account_health(account_id: int) -> dict:
                 and expires_cmp <= now + dt.timedelta(days=7)
             ):
                 refreshed_token, refreshed_expires_at = refresh_meta_token(
-                    meta_token, proxy=proxy
+                    meta_token, proxy=meta_proxy
                 )
             with session_scope() as db:
                 acc = db.get(InstagramAccount, account_id)
