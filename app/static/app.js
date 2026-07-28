@@ -1704,6 +1704,31 @@
     }
   }
 
+  async function loadDashboardHeavy() {
+    const mount = document.getElementById("dash-heavy-mount");
+    if (!mount || mount.dataset.loaded === "1") return;
+    const days = new URLSearchParams(window.location.search).get("days") || "7";
+    try {
+      const res = await fetch(
+        "/api/dashboard/load?days=" + encodeURIComponent(days),
+        { credentials: "same-origin" }
+      );
+      if (!res.ok) throw new Error("fail");
+      const html = await res.text();
+      mount.innerHTML = html;
+      mount.dataset.loaded = "1";
+      initCharts();
+      initPeriodPills();
+      initOgDashboard();
+      initDashActivityPoll();
+      loadDashboardRank();
+      try { if (window.lucide) lucide.createIcons(); } catch (_) {}
+    } catch (_) {
+      mount.innerHTML =
+        '<div class="og-rank-empty" style="padding:2rem">Não foi possível carregar o painel. <a href="/">Tentar de novo</a></div>';
+    }
+  }
+
   function initOgDashboard() {
     const tooltip = document.getElementById("og-chart-tooltip");
     const chartWrap = document.getElementById("og-line-chart");
@@ -1784,7 +1809,9 @@
     rankModal?.addEventListener("click", (e) => {
       if (e.target === rankModal) closeRankModal();
     });
-    loadDashboardRank();
+    if (!document.getElementById("dash-heavy-mount")) {
+      loadDashboardRank();
+    }
   }
 
   const directUploadConcurrency = 6;
@@ -2437,8 +2464,14 @@
     initLucide();
     initPrivacyBlur();
     initMetaAppsPage();
-    initCharts();
-    initPeriodPills();
+    const dashLazy = !!document.getElementById("dash-heavy-mount");
+    if (dashLazy) {
+      loadDashboardHeavy();
+    } else {
+      initCharts();
+      initPeriodPills();
+      initOgDashboard();
+    }
     initContentTypeForm();
     initThumbPreview();
     initScheduleMode();
@@ -2447,7 +2480,6 @@
     initAutomationCamouflagePreview();
     initStoryMetaLinkHint();
     initAutomationPlaylistUploads();
-    initOgDashboard();
     initCalendarPicker();
     initCalendarTimes();
     initAccountsConnect();
@@ -2458,7 +2490,7 @@
     initWebPush();
     initProfileNotifications();
     initNotifCard();
-    initDashActivityPoll();
+    if (!dashLazy) initDashActivityPoll();
     initLogsClearForm();
     initLogsWatchPoll();
   }

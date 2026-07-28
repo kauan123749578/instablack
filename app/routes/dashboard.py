@@ -13,7 +13,6 @@ from sqlalchemy.orm import Session, selectinload
 from app.deps import get_current_user, maybe_current_user, maybe_effective_user
 from app.templating import templates
 from app.config import settings
-from app.utils.account_health import offline_accounts
 from app.utils.charts import attach_chart_paths
 from app.utils.official_analytics import empty_official_summary
 from app.utils.timezone import brt_now
@@ -405,31 +404,32 @@ def api_dashboard_rank(
     }
 
 
-@router.get("/")
-def home(
+@router.get("/api/dashboard/load")
+def api_dashboard_load(
     request: Request,
     days: int = 7,
     db: Session = Depends(get_db),
-    user: User | None = Depends(maybe_effective_user),
+    user: User = Depends(get_current_user),
 ):
-    if user is None:
-        return RedirectResponse("/login", status_code=303)
-
+    """HTML do painel pesado — carregado após login para não travar GET /."""
     chart_days = _parse_chart_days(days)
+    ctx = _dashboard_heavy_context(db, user, chart_days)
+    ctx["request"] = request
+    ctx["user"] = user
+    return templates.TemplateResponse("partials/dashboard_heavy.html", ctx)
+
+
+def _dashboard_fast_context(db: Session, user: User, chart_days: int) -> dict:
     today = brt_now().date()
     yesterday = today - dt.timedelta(days=1)
     month_start = today.replace(day=1)
 
-    accounts = db.scalars(
-        select(InstagramAccount)
-        .where(
+    accounts_count = db.scalar(
+        select(func.count(InstagramAccount.id)).where(
             InstagramAccount.user_id == user.id,
             InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
         )
-        .order_by(InstagramAccount.username.asc())
-    ).all()
-
-    accounts_count = len(accounts)
+    ) or 0
     active_automations = db.scalar(
         select(func.count(Automation.id)).where(
             Automation.user_id == user.id,
@@ -461,13 +461,39 @@ def home(
             InstagramAccount.created_at >= _utc_naive(_brt_day_bounds(month_start)[0]),
         )
     ) or 0
-
     new_automations_month = db.scalar(
         select(func.count(Automation.id)).where(
             Automation.user_id == user.id,
             Automation.created_at >= _utc_naive(_brt_day_bounds(month_start)[0]),
         )
     ) or 0
+
+    return {
+        "chart_days": chart_days,
+        "accounts_count": accounts_count,
+        "active_automations": active_automations,
+        "total_automations": total_automations,
+        "pubs_today": pubs_today,
+        "pubs_growth": pubs_growth,
+        "success_rate": success_rate,
+        "rate_delta": rate_delta,
+        "new_accounts_month": new_accounts_month,
+        "new_automations_month": new_automations_month,
+        "now_brt": brt_now(),
+    }
+
+
+def _dashboard_heavy_context(db: Session, user: User, chart_days: int) -> dict:
+    today = brt_now().date()
+
+    accounts = db.scalars(
+        select(InstagramAccount)
+        .where(
+            InstagramAccount.user_id == user.id,
+            InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
+        )
+        .order_by(InstagramAccount.username.asc())
+    ).all()
 
     automations = db.scalars(
         select(Automation)
@@ -504,10 +530,7 @@ def home(
     )
 
     accounts_data = [
-        {
-            "account": acc,
-            "publish_count": account_publish_counts.get(acc.id, 0),
-        }
+        {"account": acc, "publish_count": account_publish_counts.get(acc.id, 0)}
         for acc in accounts
     ]
     accounts_data.sort(key=lambda x: x["publish_count"], reverse=True)
@@ -525,39 +548,44 @@ def home(
     chart_performance, chart_line_path, chart_area_path, chart_max_val = attach_chart_paths(
         chart_performance
     )
-    offline = offline_accounts(db, user.id)
-    official = empty_official_summary(reel_views_days=chart_days)
 
-    return templates.TemplateResponse(
-        "dashboard.html",
-        {
-            "request": request,
-            "user": user,
-            "accounts_count": accounts_count,
-            "accounts_data": accounts_data,
-            "active_automations": active_automations,
-            "total_automations": total_automations,
-            "automations": automations,
-            "pubs_today": pubs_today,
-            "pubs_growth": pubs_growth,
-            "success_rate": success_rate,
-            "rate_delta": rate_delta,
-            "new_accounts_month": new_accounts_month,
-            "new_automations_month": new_automations_month,
-            "next_publications": next_publications,
-            "recent_logs": [],
-            "latest_log_id": latest_log_id,
-            "chart_performance": chart_performance,
-            "chart_line_path": chart_line_path,
-            "chart_area_path": chart_area_path,
-            "chart_max_val": chart_max_val,
-            "chart_days": chart_days,
-            "now_brt": brt_now(),
-            "offline_accounts": offline,
-            "official": official,
-            "failed_videos": [],
-        },
-    )
+    return {
+        "chart_days": chart_days,
+        "accounts_data": accounts_data,
+        "automations": automations,
+        "next_publications": next_publications,
+        "latest_log_id": latest_log_id,
+        "chart_performance": chart_performance,
+        "chart_line_path": chart_line_path,
+        "chart_area_path": chart_area_path,
+        "chart_max_val": chart_max_val,
+        "official": empty_official_summary(reel_views_days=chart_days),
+    }
+
+
+@router.get("/")
+def home(
+    request: Request,
+    days: int = 7,
+    db: Session = Depends(get_db),
+    user: User | None = Depends(maybe_effective_user),
+):
+    if user is None:
+        return RedirectResponse("/login", status_code=303)
+
+    chart_days = _parse_chart_days(days)
+    fast = _dashboard_fast_context(db, user, chart_days)
+    partial = request.headers.get("X-Partial") == "1"
+
+    if partial:
+        heavy = _dashboard_heavy_context(db, user, chart_days)
+        ctx = {**fast, **heavy, "dash_lazy": False}
+    else:
+        ctx = {**fast, "dash_lazy": True}
+
+    ctx["request"] = request
+    ctx["user"] = user
+    return templates.TemplateResponse("dashboard.html", ctx)
 
 
 @router.get("/analytics")
