@@ -39,25 +39,28 @@ def _engine_kwargs() -> dict:
     if settings.is_sqlite:
         return {"connect_args": {"check_same_thread": False}}
     # connect_timeout evita hang infinito se o Postgres estiver inacessível.
-    # Sem statement_timeout global: no boot (web+worker+beat) ele cancelava
-    # a migração/inspeção e gerava QueryCanceled + upstream error.
     #
-    # Celery: NullPool — cada task abre/fecha 1 conexão (sem estoque ocioso).
-    # Web: pool pequeno + timeout curto (falha rápido em vez de travar o painel 30s).
+    # Celery: pool pequenino por processo (prefork × NullPool estourava o PG
+    # e o web ficava sem conexão → QueuePool timeout → upstream/502).
+    # Web: pool maior — SPA + polls abrem várias requests ao mesmo tempo.
     if _is_celery_process():
-        from sqlalchemy.pool import NullPool
-
         return {
-            "poolclass": NullPool,
-            "connect_args": {"connect_timeout": 10},
+            "pool_pre_ping": True,
+            "pool_size": 2,
+            "max_overflow": 2,
+            "pool_timeout": 10,
+            "pool_recycle": 180,
+            "pool_use_lifo": True,
+            "connect_args": {"connect_timeout": 8},
         }
     return {
         "pool_pre_ping": True,
-        "pool_size": 3,
-        "max_overflow": 5,
-        "pool_timeout": 8,
-        "pool_recycle": 280,
-        "connect_args": {"connect_timeout": 10},
+        "pool_size": 8,
+        "max_overflow": 16,
+        "pool_timeout": 12,
+        "pool_recycle": 180,
+        "pool_use_lifo": True,
+        "connect_args": {"connect_timeout": 8},
     }
 
 
@@ -108,6 +111,10 @@ def get_db() -> Iterator[Session]:
     try:
         yield db
     finally:
+        try:
+            db.rollback()
+        except Exception:
+            pass
         db.close()
 
 
@@ -119,7 +126,10 @@ def session_scope() -> Iterator[Session]:
         yield db
         _commit_with_retry(db)
     except Exception:
-        db.rollback()
+        try:
+            db.rollback()
+        except Exception:
+            pass
         raise
     finally:
         db.close()

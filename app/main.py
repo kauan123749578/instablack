@@ -18,6 +18,8 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
+from sqlalchemy.exc import TimeoutError as SATimeoutError
+
 from app.config import settings
 from app.routes import (
     accounts,
@@ -158,6 +160,29 @@ def create_app() -> FastAPI:
     )
     if settings.trust_proxy:
         app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
+
+    @app.exception_handler(SATimeoutError)
+    async def _db_pool_timeout(_request: Request, exc: SATimeoutError):
+        """Pool esgotado → 503 rápido (evita hang longo virar upstream/502)."""
+        log.warning("Postgres pool esgotado: %s", exc)
+        accept = _request.headers.get("accept", "")
+        if "text/html" in accept:
+            return HTMLResponse(
+                "<!doctype html><title>Instablack</title>"
+                "<body style='font-family:system-ui;background:#050505;color:#eee;"
+                "display:grid;place-items:center;min-height:100vh'>"
+                "<div><h1>Painel ocupado</h1>"
+                "<p>Banco temporariamente sem conexão. Atualize em alguns segundos.</p>"
+                "<p><a href='/' style='color:#3d82ff'>Tentar de novo</a></p></div>"
+                "</body>",
+                status_code=503,
+                headers={"Retry-After": "3"},
+            )
+        return JSONResponse(
+            {"detail": "database_busy", "error": "QueuePool timeout"},
+            status_code=503,
+            headers={"Retry-After": "3"},
+        )
 
     static_dir = Path(__file__).resolve().parent / "static"
     static_dir.mkdir(parents=True, exist_ok=True)
