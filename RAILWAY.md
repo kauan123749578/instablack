@@ -227,6 +227,7 @@ PUBLIC_BASE_URL=https://SEU-DOMINIO.up.railway.app
 # Capacidade publish (50–70 users) — ver RAILWAY.md §2b
 META_GLOBAL_MAX_CONCURRENT=18
 META_USER_MAX_CONCURRENT=5
+FFMPEG_MAX_CONCURRENT=2
 
 # Stress test apenas — stub da Graph API (nunca em produção real)
 # META_HTTP_MOCK=false
