@@ -278,12 +278,20 @@ def _build_client(
             cl.set_uuids(_stable_uuids(username_for_device))
         except Exception:
             log.debug("Não foi possível fixar UUIDs do device", exc_info=True)
-    # Locale BR reduz challenge em contas brasileiras
+    # Não sobrescrever country/locale/timezone do dump: misturar Pixel US + BR
+    # acelera challenge / login_required. Só default BR se a sessão não trouxe.
     try:
-        cl.set_locale("pt_BR")
-        cl.set_timezone_offset(-3 * 60 * 60)
-        cl.set_country("BR")
-        cl.set_country_code(55)
+        has_geo = isinstance(settings_dict, dict) and (
+            settings_dict.get("country")
+            or settings_dict.get("locale")
+            or settings_dict.get("timezone_offset") is not None
+            or settings_dict.get("country_code") is not None
+        )
+        if not has_geo:
+            cl.set_locale("pt_BR")
+            cl.set_timezone_offset(-3 * 60 * 60)
+            cl.set_country("BR")
+            cl.set_country_code(55)
     except Exception:
         pass
     return cl
