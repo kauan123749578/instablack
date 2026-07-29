@@ -134,6 +134,9 @@ def _parse_scheduled_at(raw: str | dt.datetime | None) -> dt.datetime | None:
 def _publish_timing(
     scheduled_at: str | dt.datetime | None,
     started_at: dt.datetime | None,
+    *,
+    enqueued_at: str | dt.datetime | None = None,
+    dispatch_countdown: int = 0,
 ) -> dict:
     """Campos de observabilidade para PublishLog + Redis metrics."""
     sched = _parse_scheduled_at(scheduled_at)
@@ -144,11 +147,17 @@ def _publish_timing(
     duration: int | None = None
     if started_at is not None:
         duration = max(0, int((dt.datetime.utcnow() - started_at).total_seconds()))
+    queue_wait: int | None = None
+    enq = _parse_scheduled_at(enqueued_at)
+    if enq is not None and started_at is not None:
+        raw_wait = int((started_at - enq).total_seconds())
+        queue_wait = max(0, raw_wait - max(0, int(dispatch_countdown or 0)))
     return {
         "scheduled_at": sched,
         "started_at": started,
         "schedule_lag_seconds": lag,
         "duration_seconds": duration,
+        "queue_wait_seconds": queue_wait,
     }
 
 
@@ -156,6 +165,7 @@ def _record_timing_metrics(timing: dict, status: str) -> None:
     record_publish_sample(
         schedule_lag_seconds=timing.get("schedule_lag_seconds"),
         duration_seconds=timing.get("duration_seconds"),
+        queue_wait_seconds=timing.get("queue_wait_seconds"),
         status=status,
     )
 
@@ -853,7 +863,12 @@ def execute_automation(self, automation_id: int, scheduled_at: str | None = None
         # account_slot só para fingerprint invisível da mesma legenda (anti-drop Meta)
         publish_to_account.apply_async(
             args=[automation_id, account_id, acc_video_key, acc_queue_index],
-            kwargs={"account_slot": i, "scheduled_at": scheduled_at},
+            kwargs={
+                "account_slot": i,
+                "scheduled_at": scheduled_at,
+                "enqueued_at": dt.datetime.utcnow().isoformat(),
+                "dispatch_countdown": countdown,
+            },
             countdown=countdown,
         )
 
@@ -959,10 +974,18 @@ def publish_to_account(
     queue_index: int | None = None,
     account_slot: int | None = None,
     scheduled_at: str | None = None,
+    enqueued_at: str | None = None,
+    dispatch_countdown: int = 0,
     **_compat_kwargs,
 ) -> dict:
     # _compat_kwargs: ignora caption_by_* de mensagens antigas na fila (não quebra o worker)
     started_at = dt.datetime.utcnow()
+    timing_base = _publish_timing(
+        scheduled_at,
+        started_at,
+        enqueued_at=enqueued_at,
+        dispatch_countdown=dispatch_countdown,
+    )
     with session_scope() as db:
         automation = db.get(Automation, automation_id)
         account = db.get(InstagramAccount, account_id)
@@ -1082,6 +1105,8 @@ def publish_to_account(
                 camouflage_opacity=float(getattr(automation, "camouflage_opacity", 0.25) or 0.25),
                 scheduled_at=scheduled_at,
                 started_at=started_at,
+                enqueued_at=enqueued_at,
+                dispatch_countdown=dispatch_countdown,
             )
         except Exception as exc:
             # Abort de legenda: NÃO retentar a task — cria outro Reel no ar
@@ -1156,10 +1181,17 @@ def _execute_publish(
     camouflage_opacity: float = 0.10,
     scheduled_at: str | dt.datetime | None = None,
     started_at: dt.datetime | None = None,
+    enqueued_at: str | dt.datetime | None = None,
+    dispatch_countdown: int = 0,
 ) -> dict:
     storage = get_storage()
     started_at = started_at or dt.datetime.utcnow()
-    timing_base = {"scheduled_at": scheduled_at, "started_at": started_at}
+    timing_base = _publish_timing(
+        scheduled_at,
+        started_at,
+        enqueued_at=enqueued_at,
+        dispatch_countdown=dispatch_countdown,
+    )
 
     with session_scope() as db:
         account = db.get(InstagramAccount, account_id)
@@ -1556,6 +1588,8 @@ def _execute_publish(
             timing = _publish_timing(
                 timing_base.get("scheduled_at"),
                 timing_base.get("started_at"),
+                enqueued_at=enqueued_at,
+                dispatch_countdown=dispatch_countdown,
             )
             plog = PublishLog(
                 automation_id=automation_id,
@@ -1571,6 +1605,7 @@ def _execute_publish(
                 started_at=timing.get("started_at"),
                 schedule_lag_seconds=timing.get("schedule_lag_seconds"),
                 duration_seconds=timing.get("duration_seconds"),
+                queue_wait_seconds=timing.get("queue_wait_seconds"),
             )
             db.add(plog)
             db.flush()
@@ -1936,6 +1971,8 @@ def _execute_publish(
                     for k, v in _publish_timing(
                         timing_base.get("scheduled_at"),
                         timing_base.get("started_at"),
+                        enqueued_at=enqueued_at,
+                        dispatch_countdown=dispatch_countdown,
                     ).items()
                 },
             )
@@ -1945,7 +1982,12 @@ def _execute_publish(
             notify_user_id = acc.user_id if acc else owner_user_id
             notify_username = acc.username if acc else username
         _record_timing_metrics(
-            _publish_timing(timing_base.get("scheduled_at"), timing_base.get("started_at")),
+            _publish_timing(
+                timing_base.get("scheduled_at"),
+                timing_base.get("started_at"),
+                enqueued_at=enqueued_at,
+                dispatch_countdown=dispatch_countdown,
+            ),
             "success",
         )
 

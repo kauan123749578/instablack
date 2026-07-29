@@ -29,7 +29,7 @@ from core.meta_instagram import (
 )
 from core.notifications import create_notification
 from core.web_cookies import decrypt_web_cookies, merge_sessionid_into_web_cookies
-from models.models import InstagramAccount
+from models.models import InstagramAccount, PublishLog
 
 log = logging.getLogger(__name__)
 
@@ -387,3 +387,22 @@ def check_account_health(account_id: int) -> dict:
                 acc.last_health_check_at = now
                 acc.last_error = str(exc)[:1000]
         return {"account_id": account_id, "status": "error", "error": str(exc)}
+
+
+@celery_app.task(name="celery_app.tasks.health.purge_old_publish_logs")
+def purge_old_publish_logs() -> dict:
+    """Remove publish_logs antigos (retenção configurável). Roda na fila health."""
+    from sqlalchemy import delete
+
+    from app.config import settings
+
+    days = int(getattr(settings, "publish_logs_retention_days", 0) or 0)
+    if days <= 0:
+        return {"skipped": True, "reason": "retention_disabled"}
+
+    cutoff = dt.datetime.utcnow() - dt.timedelta(days=days)
+    with session_scope() as db:
+        result = db.execute(delete(PublishLog).where(PublishLog.created_at < cutoff))
+        deleted = int(result.rowcount or 0)
+    log.info("purge_old_publish_logs: deleted=%s older_than_days=%s", deleted, days)
+    return {"deleted": deleted, "retention_days": days}

@@ -99,4 +99,8 @@ celery_app.conf.beat_schedule = {
         "task": "celery_app.tasks.insights.sync_all_views",
         "schedule": schedule(run_every=900),
     },
+    "purge-publish-logs-daily": {
+        "task": "celery_app.tasks.health.purge_old_publish_logs",
+        "schedule": schedule(run_every=86400),
+    },
 }

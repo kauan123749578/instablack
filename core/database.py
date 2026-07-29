@@ -364,6 +364,8 @@ def _sqlite_migrate(bind=None) -> None:
                 conn.execute(text("ALTER TABLE publish_logs ADD COLUMN schedule_lag_seconds INTEGER"))
             if "duration_seconds" not in pcols:
                 conn.execute(text("ALTER TABLE publish_logs ADD COLUMN duration_seconds INTEGER"))
+            if "queue_wait_seconds" not in pcols:
+                conn.execute(text("ALTER TABLE publish_logs ADD COLUMN queue_wait_seconds INTEGER"))
             conn.execute(
                 text(
                     "CREATE INDEX IF NOT EXISTS ix_publish_logs_account_created "
@@ -603,6 +605,7 @@ def _postgres_migrate(bind=None) -> None:
                 ("started_at", "TIMESTAMPTZ"),
                 ("schedule_lag_seconds", "INTEGER"),
                 ("duration_seconds", "INTEGER"),
+                ("queue_wait_seconds", "INTEGER"),
             ],
         )
         if _table_exists(conn, "publish_logs"):

@@ -309,6 +309,8 @@ class PublishLog(Base):
     )
     schedule_lag_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     duration_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # Tempo na fila Celery (worker_started - enqueued_at, menos countdown intencional)
+    queue_wait_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True

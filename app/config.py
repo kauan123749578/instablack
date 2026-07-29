@@ -71,6 +71,10 @@ class Settings(BaseSettings):
     # Limite de overlays de camuflagem simultâneos (Redis). 0 = sem limite.
     ffmpeg_max_concurrent: int = 2
     beat_tick_seconds: int = 60
+    # Máx. automações despachadas por tick (evita pico de 500+ tasks de uma vez).
+    beat_tick_max_dispatch: int = 150
+    # Retenção de publish_logs (dias). 0 = não apaga automaticamente.
+    publish_logs_retention_days: int = 90
 
     bootstrap_admin_username: str = ""
     bootstrap_admin_password: str = ""

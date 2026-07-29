@@ -4,7 +4,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 
-from sqlalchemy import exists, select, text
+from sqlalchemy import exists, func, select, text
 
 from app.config import settings
 from app.utils.automation_schedule import compute_next_run_after_dispatch
@@ -100,13 +100,29 @@ def tick(self) -> dict:
                     mode or a.schedule_type or "recurring",
                 )
 
+            max_dispatch = max(1, int(getattr(settings, "beat_tick_max_dispatch", 150) or 150))
             due = db.scalars(
-                select(Automation).where(
+                select(Automation)
+                .where(
                     Automation.status == "active",
                     Automation.next_run_at.is_not(None),
                     Automation.next_run_at <= now,
                 )
+                .order_by(Automation.next_run_at.asc(), Automation.id.asc())
+                .limit(max_dispatch)
             ).all()
+            deferred_due = 0
+            if len(due) >= max_dispatch:
+                deferred_due = db.scalar(
+                    select(func.count())
+                    .select_from(Automation)
+                    .where(
+                        Automation.status == "active",
+                        Automation.next_run_at.is_not(None),
+                        Automation.next_run_at <= now,
+                    )
+                ) or 0
+                deferred_due = max(0, int(deferred_due) - len(due))
 
             for a in due:
                 scheduled_at = _as_naive_utc(a.next_run_at)
@@ -165,8 +181,20 @@ def tick(self) -> dict:
             execute_automation.delay(aid, scheduled_iso)
             dispatched.append(aid)
 
-        log.info("tick: %d automações disparadas heal=%d", len(dispatched), healed)
-        return {"now": now.isoformat(), "dispatched": dispatched, "healed": healed}
+        log.info(
+            "tick: %d automações disparadas heal=%d deferred_due=%d max=%d",
+            len(dispatched),
+            healed,
+            deferred_due,
+            max_dispatch,
+        )
+        return {
+            "now": now.isoformat(),
+            "dispatched": dispatched,
+            "healed": healed,
+            "deferred_due": deferred_due,
+            "max_dispatch": max_dispatch,
+        }
     finally:
         if client is not None:
             try:

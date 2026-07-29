@@ -9,6 +9,7 @@ log = logging.getLogger(__name__)
 
 _SAMPLE_KEY_LAG = "metrics:schedule_lag_seconds"
 _SAMPLE_KEY_DUR = "metrics:publish_duration_seconds"
+_SAMPLE_KEY_QUEUE = "metrics:queue_wait_seconds"
 _SAMPLE_KEY_OK = "metrics:uploads_ok_ts"
 _SAMPLE_KEY_FAIL = "metrics:uploads_fail_ts"
 _DEFER_KEY = "metrics:meta_defer"
@@ -58,6 +59,7 @@ def record_publish_sample(
     *,
     schedule_lag_seconds: float | None,
     duration_seconds: float | None,
+    queue_wait_seconds: float | None = None,
     status: str,
 ) -> None:
     """Registra amostra após um publish (success/failed)."""
@@ -70,6 +72,9 @@ def record_publish_sample(
         if duration_seconds is not None and duration_seconds >= 0:
             pipe.lpush(_SAMPLE_KEY_DUR, f"{duration_seconds:.3f}")
             pipe.ltrim(_SAMPLE_KEY_DUR, 0, _MAX_SAMPLES - 1)
+        if queue_wait_seconds is not None and queue_wait_seconds >= 0:
+            pipe.lpush(_SAMPLE_KEY_QUEUE, f"{queue_wait_seconds:.3f}")
+            pipe.ltrim(_SAMPLE_KEY_QUEUE, 0, _MAX_SAMPLES - 1)
         now = time.time()
         if status == "success":
             pipe.lpush(_SAMPLE_KEY_OK, str(now))
@@ -150,15 +155,63 @@ def redis_latency_ms() -> float | None:
         return None
 
 
+def _build_alerts(
+    *,
+    queue_depth: dict[str, int],
+    lag_summary: dict[str, Any],
+    queue_wait_summary: dict[str, Any],
+    redis_latency_ms: float | None,
+) -> list[dict[str, str]]:
+    alerts: list[dict[str, str]] = []
+    publish_q = int(queue_depth.get("publish") or 0)
+    if publish_q > 100:
+        alerts.append(
+            {
+                "level": "warning",
+                "code": "publish_queue_high",
+                "message": f"Fila publish={publish_q} (>100)",
+            }
+        )
+    lag_p95 = lag_summary.get("p95")
+    if lag_p95 is not None and float(lag_p95) > 120:
+        alerts.append(
+            {
+                "level": "warning",
+                "code": "schedule_lag_p95_high",
+                "message": f"schedule_lag p95={lag_p95}s (>120)",
+            }
+        )
+    qw_p95 = queue_wait_summary.get("p95")
+    if qw_p95 is not None and float(qw_p95) > 180:
+        alerts.append(
+            {
+                "level": "warning",
+                "code": "queue_wait_p95_high",
+                "message": f"queue_wait p95={qw_p95}s (>180)",
+            }
+        )
+    if redis_latency_ms is not None and redis_latency_ms > 500:
+        alerts.append(
+            {
+                "level": "warning",
+                "code": "redis_latency_high",
+                "message": f"Redis latency={redis_latency_ms}ms (>500)",
+            }
+        )
+    return alerts
+
+
 def collect_capacity_metrics() -> dict[str, Any]:
     """Snapshot para GET /admin/metrics."""
     lag_samples: list[float] = []
     dur_samples: list[float] = []
+    queue_samples: list[float] = []
     defer: dict[str, int] = {}
     try:
         client = _redis()
         lag_samples = [float(x) for x in client.lrange(_SAMPLE_KEY_LAG, 0, _MAX_SAMPLES - 1)]
         dur_samples = [float(x) for x in client.lrange(_SAMPLE_KEY_DUR, 0, _MAX_SAMPLES - 1)]
+        queue_samples = [float(x) for x in client.lrange(_SAMPLE_KEY_QUEUE, 0, _MAX_SAMPLES - 1)]
         for key in client.scan_iter(match=f"{_DEFER_KEY}:*", count=50):
             reason = str(key).split(":", 2)[-1]
             defer[reason] = int(client.get(key) or 0)
@@ -186,20 +239,42 @@ def collect_capacity_metrics() -> dict[str, Any]:
     except Exception as exc:
         workers = {"error": str(exc)[:160]}
 
+    queue_depth = queue_depths()
+    lag_summary = _summarize(lag_samples)
+    dur_summary = _summarize(dur_samples)
+    queue_wait_summary = _summarize(queue_samples)
+    redis_ms = redis_latency_ms()
+
     return {
         "ok": True,
-        "queue_depth": queue_depths(),
-        "schedule_lag_seconds": _summarize(lag_samples),
-        "publish_duration_seconds": _summarize(dur_samples),
+        "queue_depth": queue_depth,
+        "queues": {
+            "publish": queue_depth.get("publish", 0),
+            "health": queue_depth.get("health", 0),
+            "beat": queue_depth.get("beat", 0),
+            "default": queue_depth.get("default", 0),
+        },
+        "schedule_lag_seconds": lag_summary,
+        "publish_duration_seconds": dur_summary,
+        "queue_wait_seconds": queue_wait_summary,
         "uploads_per_minute": _count_recent(_SAMPLE_KEY_OK, 60),
         "failed_uploads_per_minute": _count_recent(_SAMPLE_KEY_FAIL, 60),
         "meta_defer_count": defer,
         **meta_inflight_counts(),
         "workers": workers,
-        "redis_latency_ms": redis_latency_ms(),
+        "redis_latency_ms": redis_ms,
+        "alerts": _build_alerts(
+            queue_depth=queue_depth,
+            lag_summary=lag_summary,
+            queue_wait_summary=queue_wait_summary,
+            redis_latency_ms=redis_ms,
+        ),
         "slo": {
             "schedule_lag_p95_target_sec": 120,
             "schedule_lag_p99_target_sec": 300,
+            "queue_wait_p95_target_sec": 180,
+            "publish_queue_warn": 100,
+            "redis_latency_warn_ms": 500,
         },
     }
 
