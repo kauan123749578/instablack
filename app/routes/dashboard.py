@@ -510,11 +510,12 @@ def _dashboard_shell_context(chart_days: int) -> dict:
 
 
 def _dashboard_safe_scalar(db: Session, stmt, *, default=0, label: str = "kpi"):
-    """KPI leve: nunca derruba o painel se o Postgres cancelar por timeout."""
+    """KPI leve: nunca derruba o painel se o Postgres cancelar por timeout/lock."""
     try:
         if not settings.is_sqlite:
-            # Reaplica após rollback — SET LOCAL morre com a transaction.
-            db.execute(text("SET LOCAL statement_timeout = '2500'"))
+            # lock_timeout: sob FOR UPDATE do worker, falha em ms — não espera 2.5s.
+            db.execute(text("SET LOCAL lock_timeout = '500ms'"))
+            db.execute(text("SET LOCAL statement_timeout = '1500ms'"))
         return db.scalar(stmt) or default
     except OperationalError as exc:
         log.warning("dashboard %s timeout/erro — fallback %s: %s", label, default, exc)
@@ -528,9 +529,9 @@ def _dashboard_safe_scalar(db: Session, stmt, *, default=0, label: str = "kpi"):
 def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
     """Monta o painel inteiro com o mínimo de round-trips ao Postgres."""
     if not settings.is_sqlite:
-        # 2.5s: se o DB estiver lento, cai no fallback rápido — NÃO deixa a página
-        # carregando minutos (timeout alto = “fica carregando” no browser).
-        db.execute(text("SET LOCAL statement_timeout = '2500'"))
+        # lock_timeout: COUNT/SELECT não esperam o worker soltar FOR UPDATE.
+        db.execute(text("SET LOCAL lock_timeout = '500ms'"))
+        db.execute(text("SET LOCAL statement_timeout = '1500ms'"))
 
     today = brt_now().date()
     yesterday = today - dt.timedelta(days=1)
@@ -557,26 +558,16 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
             pass
         if not settings.is_sqlite:
             try:
-                db.execute(text("SET LOCAL statement_timeout = '2500'"))
+                db.execute(text("SET LOCAL lock_timeout = '500ms'"))
+                db.execute(text("SET LOCAL statement_timeout = '1500ms'"))
             except Exception:
                 pass
         account_ids = []
         log_by_day = {}
         accounts = []
 
-    active_automations = _dashboard_safe_scalar(
-        db,
-        select(func.count(Automation.id)).where(
-            Automation.user_id == user.id,
-            Automation.status == "active",
-        ),
-        label="active_automations",
-    )
-    total_automations = _dashboard_safe_scalar(
-        db,
-        select(func.count(Automation.id)).where(Automation.user_id == user.id),
-        label="total_automations",
-    )
+    # NÃO fazer COUNT(*) em automations — sob FOR UPDATE do worker isso trava
+    # o painel (QueryCanceled em loop). KPI vem da lista limitada abaixo.
     new_accounts_month = _dashboard_safe_scalar(
         db,
         select(func.count(InstagramAccount.id)).where(
@@ -586,14 +577,7 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
         ),
         label="new_accounts_month",
     )
-    new_automations_month = _dashboard_safe_scalar(
-        db,
-        select(func.count(Automation.id)).where(
-            Automation.user_id == user.id,
-            Automation.created_at >= _utc_naive(_brt_day_bounds(month_start)[0]),
-        ),
-        label="new_automations_month",
-    )
+    new_automations_month = 0
 
     today_counts = log_by_day.get(today, {"success": 0, "failed": 0, "skipped": 0})
     yesterday_counts = log_by_day.get(yesterday, {"success": 0, "failed": 0, "skipped": 0})
@@ -638,6 +622,9 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
         automations = []
         next_publications = []
         automation_account_counts = {}
+
+    active_automations = len(automations)
+    total_automations = active_automations
 
     # Contagem por conta nos últimos 30d travava o painel (scan gigante em publish_logs).
     # Ordena por username; posts aparecem no ranking/analytics.
@@ -717,7 +704,8 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
 
 def _dashboard_fast_context(db: Session, user: User, chart_days: int) -> dict:
     if not settings.is_sqlite:
-        db.execute(text("SET LOCAL statement_timeout = '2500'"))
+        db.execute(text("SET LOCAL lock_timeout = '500ms'"))
+        db.execute(text("SET LOCAL statement_timeout = '1500ms'"))
 
     today = brt_now().date()
     yesterday = today - dt.timedelta(days=1)
@@ -733,19 +721,10 @@ def _dashboard_fast_context(db: Session, user: User, chart_days: int) -> dict:
         account_ids = []
 
     accounts_count = len(account_ids)
-    active_automations = _dashboard_safe_scalar(
-        db,
-        select(func.count(Automation.id)).where(
-            Automation.user_id == user.id,
-            Automation.status == "active",
-        ),
-        label="active_automations",
-    )
-    total_automations = _dashboard_safe_scalar(
-        db,
-        select(func.count(Automation.id)).where(Automation.user_id == user.id),
-        label="total_automations",
-    )
+    # Sem COUNT em automations (lock do worker). KPI fica 0 aqui; lista no HTML.
+    active_automations = 0
+    total_automations = 0
+    new_automations_month = 0
 
     pubs_today = _count_logs_by_accounts(db, account_ids, status="success", day=today)
     pubs_yesterday = _count_logs_by_accounts(db, account_ids, status="success", day=yesterday)
@@ -770,14 +749,6 @@ def _dashboard_fast_context(db: Session, user: User, chart_days: int) -> dict:
             InstagramAccount.created_at >= _utc_naive(_brt_day_bounds(month_start)[0]),
         ),
         label="new_accounts_month",
-    )
-    new_automations_month = _dashboard_safe_scalar(
-        db,
-        select(func.count(Automation.id)).where(
-            Automation.user_id == user.id,
-            Automation.created_at >= _utc_naive(_brt_day_bounds(month_start)[0]),
-        ),
-        label="new_automations_month",
     )
 
     return {

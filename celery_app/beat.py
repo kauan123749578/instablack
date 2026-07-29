@@ -4,15 +4,15 @@ from __future__ import annotations
 import datetime as dt
 import logging
 
-from sqlalchemy import select, text
+from sqlalchemy import exists, select, text
 
 from app.utils.automation_schedule import compute_next_run_after_dispatch
 from app.utils.calendar_schedule import next_calendar_run, parse_calendar_days
-from app.utils.intervals import effective_meta_min_interval
+from app.utils.intervals import META_MIN_INTERVAL
 from celery_app.config import celery_app
 from celery_app.tasks.publish import execute_automation
 from core.database import session_scope
-from models.models import Automation
+from models.models import Automation, InstagramAccount, automation_accounts
 
 log = logging.getLogger(__name__)
 
@@ -104,7 +104,17 @@ def tick() -> dict:
 
             meta_floor = 0
             if (a.schedule_type or "") != "calendar":
-                meta_floor = effective_meta_min_interval(a.accounts or [])
+                # EXISTS — não lazy-load a.accounts (travava automations + painel).
+                has_meta = db.scalar(
+                    select(
+                        exists().where(
+                            automation_accounts.c.automation_id == a.id,
+                            InstagramAccount.id == automation_accounts.c.account_id,
+                            InstagramAccount.provider == "meta",
+                        )
+                    )
+                )
+                meta_floor = META_MIN_INTERVAL if has_meta else 0
             nxt, posts_in_batch = compute_next_run_after_dispatch(
                 a,
                 now,

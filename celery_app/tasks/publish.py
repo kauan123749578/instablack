@@ -69,7 +69,7 @@ from core.metadata import MetadataStripError
 from core.notifications import create_notification, notify_publish_success
 from core.storage import get_storage
 from core.web_cookies import decrypt_web_cookies, merge_sessionid_into_web_cookies
-from models.models import Automation, InstagramAccount, PublishLog
+from models.models import Automation, InstagramAccount, PublishLog, automation_accounts
 
 log = logging.getLogger(__name__)
 
@@ -620,12 +620,21 @@ def execute_automation(self, automation_id: int, scheduled_at: str | None = None
         stagger_enabled, stagger_min, stagger_max = resolve_stagger_config(
             automation, anti_prefs
         )
-        # Dispara lazy-load das contas ainda com o row lock
-        accounts = list(automation.accounts)
+        # IDs via JOIN — NÃO lazy-load automation.accounts sob FOR UPDATE
+        # (carregava 30+ contas e segurava lock → painel COUNT travava).
+        account_rows = db.execute(
+            select(InstagramAccount.id, InstagramAccount.status)
+            .join(
+                automation_accounts,
+                automation_accounts.c.account_id == InstagramAccount.id,
+            )
+            .where(automation_accounts.c.automation_id == automation_id)
+        ).all()
         account_ids = [
-            acc.id
-            for acc in accounts
-            if acc.status not in ("banned", "proxy_down", "paused", "needs_login", "deleted")
+            row.id
+            for row in account_rows
+            if row.status
+            not in ("banned", "proxy_down", "paused", "needs_login", "deleted")
         ]
         if not account_ids:
             # Não consome mídia; mantém active e tenta de novo em breve.
