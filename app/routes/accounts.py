@@ -109,24 +109,30 @@ def _set_account_proxy(acc: InstagramAccount, normalized: str, meta: dict) -> No
 
 
 def _backfill_proxy_meta(db: Session, accounts: list[InstagramAccount]) -> None:
-    """Completa IP/geo faltando — no máx. 1 lookup de rede por request (não trava a página)."""
+    """Completa IP/geo faltando — no máx. 1 lookup de rede por request.
+
+    Commit do IP local ANTES do HTTP geo: senão a sessão fica
+    `idle in transaction` durante o lookup e bloqueia DDL/locks no Postgres.
+    """
     dirty = False
-    geo_lookups = 0
+    need_geo: InstagramAccount | None = None
     for acc in accounts:
         if not acc.proxy or (acc.proxy_ip and acc.proxy_geo):
             continue
         if not acc.proxy_ip:
             acc.proxy_ip = proxy_host(acc.proxy)
             dirty = True
-        if acc.proxy_ip and not acc.proxy_geo and geo_lookups < 1:
-            from app.utils.proxy import lookup_ip_geo
-            geo = lookup_ip_geo(acc.proxy_ip)
-            geo_lookups += 1
-            if geo:
-                acc.proxy_geo = geo["label"]
-                dirty = True
+        if acc.proxy_ip and not acc.proxy_geo and need_geo is None:
+            need_geo = acc
     if dirty:
         db.commit()
+    if need_geo is not None:
+        from app.utils.proxy import lookup_ip_geo
+
+        geo = lookup_ip_geo(need_geo.proxy_ip)
+        if geo:
+            need_geo.proxy_geo = geo["label"]
+            db.commit()
 
 
 def _load_user_accounts(db: Session, user: User) -> list[InstagramAccount]:

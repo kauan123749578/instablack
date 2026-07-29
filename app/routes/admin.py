@@ -276,6 +276,65 @@ def db_health_locks(
     )
 
 
+@router.post("/db-health/unlock")
+def db_health_unlock(
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_owner_user),
+    min_secs: int = 30,
+):
+    """Mata backends travados: idle in transaction e ALTER/DDL esperando lock.
+
+    Use uma vez se /db-health mostrar fila de AccessExclusiveLock. Owner only.
+    """
+    from fastapi.responses import JSONResponse
+    from sqlalchemy import text
+
+    _ = admin
+    if db.bind and db.bind.dialect.name == "sqlite":
+        return JSONResponse({"ok": True, "killed": [], "note": "sqlite"})
+
+    secs = max(10, min(int(min_secs or 30), 600))
+    rows = db.execute(
+        text(
+            """
+            SELECT pid, state, LEFT(query, 120) AS query,
+                   EXTRACT(EPOCH FROM (now() - query_start))::int AS secs
+            FROM pg_stat_activity
+            WHERE datname = current_database()
+              AND pid <> pg_backend_pid()
+              AND (
+                    (state = 'idle in transaction'
+                     AND EXTRACT(EPOCH FROM (now() - xact_start)) > :secs)
+                 OR (state = 'active'
+                     AND wait_event_type = 'Lock'
+                     AND EXTRACT(EPOCH FROM (now() - query_start)) > :secs
+                     AND query ILIKE 'ALTER TABLE%')
+              )
+            """
+        ),
+        {"secs": secs},
+    ).mappings().all()
+
+    killed = []
+    for r in rows:
+        pid = int(r["pid"])
+        ok = db.execute(
+            text("SELECT pg_terminate_backend(:pid)"),
+            {"pid": pid},
+        ).scalar()
+        killed.append(
+            {
+                "pid": pid,
+                "terminated": bool(ok),
+                "state": r["state"],
+                "secs": r["secs"],
+                "query": r["query"],
+            }
+        )
+    db.commit()
+    return JSONResponse({"ok": True, "killed": killed, "min_secs": secs})
+
+
 @router.post("/broadcast")
 def broadcast_notification(
     title: str = Form(""),

@@ -365,8 +365,11 @@ def _sqlite_migrate(bind=None) -> None:
 def _postgres_migrate(bind=None) -> None:
     """Adiciona colunas novas em Postgres sem Alembic.
 
-    Usa ADD COLUMN IF NOT EXISTS (leve e seguro sob corrida web/worker/beat)
-    em vez de inspect.get_columns(), que no catálogo do PG pode demorar/travar.
+    Importante: NÃO use `ADD COLUMN IF NOT EXISTS` às cegas. No Postgres isso
+    ainda pede AccessExclusiveLock mesmo quando a coluna já existe — e com
+    web/worker vivos isso trava SELECT/UPDATE (painel infinito / 499).
+
+    Fluxo seguro: lê information_schema → ALTER só se faltar → lock_timeout 3s.
     """
     if settings.is_sqlite:
         return
@@ -380,14 +383,57 @@ def _postgres_migrate(bind=None) -> None:
             ).scalar()
         )
 
-    def _add_columns(conn, table: str, columns: list[tuple[str, str]]) -> None:
+    def _column_names(conn, table: str) -> set[str]:
+        rows = conn.execute(
+            text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_schema = 'public' AND table_name = :t"
+            ),
+            {"t": table},
+        ).scalars()
+        return {str(r) for r in rows}
+
+    def _add_columns_safe(conn, table: str, columns: list[tuple[str, str]]) -> None:
         if not _table_exists(conn, table):
             return
-        for col, ddl in columns:
-            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {ddl}"))
+        existing = _column_names(conn, table)
+        missing = [(col, ddl) for col, ddl in columns if col not in existing]
+        if not missing:
+            return
+        conn.execute(text("SET LOCAL lock_timeout = '3000ms'"))
+        for i, (col, ddl) in enumerate(missing):
+            sp = f"sp_mig_{i}"
+            try:
+                conn.execute(text(f"SAVEPOINT {sp}"))
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
+                conn.execute(text(f"RELEASE SAVEPOINT {sp}"))
+                log.info("migrate: added %s.%s", table, col)
+            except Exception as exc:
+                log.warning("migrate: skip ALTER %s.%s — %s", table, col, exc)
+                try:
+                    conn.execute(text(f"ROLLBACK TO SAVEPOINT {sp}"))
+                    conn.execute(text(f"RELEASE SAVEPOINT {sp}"))
+                except Exception:
+                    pass
+
+    def _create_indexes_safe(conn, statements: list[str]) -> None:
+        conn.execute(text("SET LOCAL lock_timeout = '3000ms'"))
+        for i, sql in enumerate(statements):
+            sp = f"sp_idx_{i}"
+            try:
+                conn.execute(text(f"SAVEPOINT {sp}"))
+                conn.execute(text(sql))
+                conn.execute(text(f"RELEASE SAVEPOINT {sp}"))
+            except Exception as exc:
+                log.warning("migrate: skip index — %s", exc)
+                try:
+                    conn.execute(text(f"ROLLBACK TO SAVEPOINT {sp}"))
+                    conn.execute(text(f"RELEASE SAVEPOINT {sp}"))
+                except Exception:
+                    pass
 
     with db_engine.begin() as conn:
-        _add_columns(
+        _add_columns_safe(
             conn,
             "automations",
             [
@@ -417,24 +463,43 @@ def _postgres_migrate(bind=None) -> None:
             ],
         )
         if _table_exists(conn, "automations"):
+            # NÃO rode ALTER COLUMN TYPE em todo boot — AccessExclusiveLock.
+            # Só se ainda for varchar(8) legado.
             try:
-                conn.execute(text("ALTER TABLE automations ALTER COLUMN calendar_time TYPE TEXT"))
-            except Exception:
-                pass
-            conn.execute(
-                text(
+                col_udt = conn.execute(
+                    text(
+                        "SELECT data_type, character_maximum_length "
+                        "FROM information_schema.columns "
+                        "WHERE table_schema='public' AND table_name='automations' "
+                        "AND column_name='calendar_time'"
+                    )
+                ).first()
+                if col_udt and col_udt[0] == "character varying" and (col_udt[1] or 0) <= 8:
+                    conn.execute(text("SET LOCAL lock_timeout = '3000ms'"))
+                    try:
+                        conn.execute(text("SAVEPOINT sp_cal_time"))
+                        conn.execute(text("ALTER TABLE automations ALTER COLUMN calendar_time TYPE TEXT"))
+                        conn.execute(text("RELEASE SAVEPOINT sp_cal_time"))
+                    except Exception as exc:
+                        log.warning("migrate: skip calendar_time TYPE change — %s", exc)
+                        try:
+                            conn.execute(text("ROLLBACK TO SAVEPOINT sp_cal_time"))
+                            conn.execute(text("RELEASE SAVEPOINT sp_cal_time"))
+                        except Exception:
+                            pass
+            except Exception as exc:
+                log.warning("migrate: skip calendar_time TYPE change — %s", exc)
+            _create_indexes_safe(
+                conn,
+                [
                     "CREATE INDEX IF NOT EXISTS ix_automations_user_status "
-                    "ON automations (user_id, status)"
-                )
-            )
-            conn.execute(
-                text(
+                    "ON automations (user_id, status)",
                     "CREATE INDEX IF NOT EXISTS ix_automations_user_created "
-                    "ON automations (user_id, created_at)"
-                )
+                    "ON automations (user_id, created_at)",
+                ],
             )
 
-        _add_columns(
+        _add_columns_safe(
             conn,
             "users",
             [
@@ -457,7 +522,7 @@ def _postgres_migrate(bind=None) -> None:
                 )
             )
 
-        _add_columns(
+        _add_columns_safe(
             conn,
             "instagram_accounts",
             [
@@ -478,14 +543,15 @@ def _postgres_migrate(bind=None) -> None:
             ],
         )
         if _table_exists(conn, "instagram_accounts"):
-            conn.execute(
-                text(
+            _create_indexes_safe(
+                conn,
+                [
                     "CREATE INDEX IF NOT EXISTS ix_instagram_accounts_user_status "
-                    "ON instagram_accounts (user_id, status)"
-                )
+                    "ON instagram_accounts (user_id, status)",
+                ],
             )
 
-        _add_columns(
+        _add_columns_safe(
             conn,
             "publish_logs",
             [
@@ -502,37 +568,26 @@ def _postgres_migrate(bind=None) -> None:
             ],
         )
         if _table_exists(conn, "publish_logs"):
-            conn.execute(
-                text(
+            _create_indexes_safe(
+                conn,
+                [
                     "CREATE INDEX IF NOT EXISTS ix_publish_logs_account_created "
-                    "ON publish_logs (account_id, created_at)"
-                )
-            )
-            conn.execute(
-                text(
+                    "ON publish_logs (account_id, created_at)",
                     "CREATE INDEX IF NOT EXISTS ix_publish_logs_account_status "
-                    "ON publish_logs (account_id, status)"
-                )
-            )
-            conn.execute(
-                text(
+                    "ON publish_logs (account_id, status)",
                     "CREATE INDEX IF NOT EXISTS ix_publish_logs_account_created_status "
-                    "ON publish_logs (account_id, created_at, status)"
-                )
-            )
-            conn.execute(
-                text(
+                    "ON publish_logs (account_id, created_at, status)",
                     "CREATE INDEX IF NOT EXISTS ix_publish_logs_status_created "
-                    "ON publish_logs (status, created_at)"
-                )
+                    "ON publish_logs (status, created_at)",
+                ],
             )
 
-        _add_columns(
+        _add_columns_safe(
             conn,
             "app_notifications",
             [("publish_log_id", "INTEGER")],
         )
-        _add_columns(
+        _add_columns_safe(
             conn,
             "warmup_jobs",
             [
