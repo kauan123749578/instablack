@@ -121,6 +121,21 @@ def _redis_ttl_seconds(client, key: str, fallback: int) -> int:
     return max(60, fallback)
 
 
+def _bump_automation_run_counters(db, automation_id: int | None) -> Automation | None:
+    """UPDATE atômico — 30 workers não fazem read-modify-write na mesma linha."""
+    if not automation_id:
+        return None
+    now = dt.datetime.utcnow()
+    db.execute(
+        text(
+            "UPDATE automations SET last_run_at = :now, "
+            "total_runs = COALESCE(total_runs, 0) + 1 WHERE id = :id"
+        ),
+        {"now": now, "id": int(automation_id)},
+    )
+    return db.get(Automation, int(automation_id))
+
+
 def _meta_global_active_key() -> str:
     """Slots Meta em andamento (ZSET com expiry por membro — auto-limpa crash)."""
     return "meta:global_active"
@@ -1472,12 +1487,7 @@ def _execute_publish(
                 acc.last_login_at = dt.datetime.utcnow()
                 acc.status = "active"
                 acc.last_error = None
-            auto = None
-            if automation_id is not None:
-                auto = db.get(Automation, automation_id)
-                if auto:
-                    auto.last_run_at = dt.datetime.utcnow()
-                    auto.total_runs = (auto.total_runs or 0) + 1
+            auto = _bump_automation_run_counters(db, automation_id)
             plog = PublishLog(
                 automation_id=automation_id,
                 account_id=account_id,
@@ -1828,10 +1838,9 @@ def _execute_publish(
                 acc.last_error = None
 
             if automation_id is not None:
-                auto = db.get(Automation, automation_id)
-                if auto:
-                    auto.last_run_at = dt.datetime.utcnow()
-                    auto.total_runs = (auto.total_runs or 0) + 1
+                auto = _bump_automation_run_counters(db, automation_id)
+            else:
+                auto = None
 
             plog = PublishLog(
                 automation_id=automation_id,
