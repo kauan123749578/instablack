@@ -222,8 +222,10 @@ def _sync_one_log_meta(log_id: int, account_id: int, media_id: str) -> bool:
         proxy = (account.proxy or "").strip() or None
         if not token:
             return False
-        if proxy and not check_proxy(proxy):
-            proxy = None
+
+    # check_proxy FORA do session — evita idle in transaction.
+    if proxy and not check_proxy(proxy):
+        proxy = None
 
     try:
         stats = fetch_media_insights(token, media_id, proxy=proxy)

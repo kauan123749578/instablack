@@ -168,6 +168,24 @@ def get_db() -> Iterator[Session]:
             pass
 
 
+def release_db_transaction(db: Session) -> None:
+    """Fecha a transação atual antes de I/O de rede (HTTP, instagrapi, Meta).
+
+    Sem isso o Postgres fica `idle in transaction` com o último SELECT
+    (ex.: instagram_accounts) enquanto a app espera proxy/API.
+    """
+    try:
+        if db.new or db.dirty or db.deleted:
+            _commit_with_retry(db)
+        else:
+            db.rollback()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+
 @contextmanager
 def session_scope() -> Iterator[Session]:
     """Sessão transacional para uso fora do FastAPI (ex.: tasks Celery)."""

@@ -30,7 +30,7 @@ from app.utils.account_limits import (
 from app.utils.auth_failures import mark_accounts_from_latest_auth_failures
 from app.utils.meta_apps import credentials_from_app, get_owned_meta_app, list_user_meta_apps
 from app.utils.platform_settings import META_TOKEN_YOUTUBE_URL, get_platform_setting
-from core.database import get_db
+from core.database import get_db, release_db_transaction
 from core.meta_instagram import (
     MetaInstagramError,
     account_profile,
@@ -111,28 +111,36 @@ def _set_account_proxy(acc: InstagramAccount, normalized: str, meta: dict) -> No
 def _backfill_proxy_meta(db: Session, accounts: list[InstagramAccount]) -> None:
     """Completa IP/geo faltando — no máx. 1 lookup de rede por request.
 
-    Commit do IP local ANTES do HTTP geo: senão a sessão fica
-    `idle in transaction` durante o lookup e bloqueia DDL/locks no Postgres.
+    Sempre libera a transação do SELECT antes do HTTP geo; senão o Postgres
+    fica `idle in transaction` no SELECT instagram_accounts.
     """
     dirty = False
-    need_geo: InstagramAccount | None = None
+    need_geo_id: int | None = None
+    need_geo_ip: str | None = None
     for acc in accounts:
         if not acc.proxy or (acc.proxy_ip and acc.proxy_geo):
             continue
         if not acc.proxy_ip:
             acc.proxy_ip = proxy_host(acc.proxy)
             dirty = True
-        if acc.proxy_ip and not acc.proxy_geo and need_geo is None:
-            need_geo = acc
+        if acc.proxy_ip and not acc.proxy_geo and need_geo_id is None:
+            need_geo_id = acc.id
+            need_geo_ip = acc.proxy_ip
     if dirty:
         db.commit()
-    if need_geo is not None:
-        from app.utils.proxy import lookup_ip_geo
+    else:
+        release_db_transaction(db)
+    if need_geo_id is None or not need_geo_ip:
+        return
+    from app.utils.proxy import lookup_ip_geo
 
-        geo = lookup_ip_geo(need_geo.proxy_ip)
-        if geo:
-            need_geo.proxy_geo = geo["label"]
-            db.commit()
+    geo = lookup_ip_geo(need_geo_ip)
+    if not geo:
+        return
+    acc = db.get(InstagramAccount, need_geo_id)
+    if acc and not acc.proxy_geo:
+        acc.proxy_geo = geo["label"]
+        db.commit()
 
 
 def _load_user_accounts(db: Session, user: User) -> list[InstagramAccount]:
@@ -258,6 +266,7 @@ def list_accounts(
     token_youtube_url = get_platform_setting(
         db, META_TOKEN_YOUTUBE_URL, default="https://youtu.be/EA0iEb92sZg"
     )
+    release_db_transaction(db)
     return templates.TemplateResponse(
         "accounts.html",
         {
@@ -283,6 +292,7 @@ def connect_meta_account(
             "/accounts?error=meta_no_app" if app_id else "/accounts?error=meta_not_configured",
             status_code=status.HTTP_303_SEE_OTHER,
         )
+    release_db_transaction(db)
     normalized, proxy_meta, proxy_err = _optional_meta_proxy(proxy)
     if proxy_err:
         return RedirectResponse(
@@ -323,6 +333,8 @@ def connect_meta_account_with_token(
             "/accounts?error=meta_app_invalid",
             status_code=status.HTTP_303_SEE_OTHER,
         )
+    meta_app_id = meta_app.id
+    release_db_transaction(db)
     normalized, proxy_meta, proxy_err = _optional_meta_proxy(proxy)
     if proxy_err:
         return RedirectResponse(
@@ -348,7 +360,7 @@ def connect_meta_account_with_token(
         token=token,
         expires_at=None,
         profile=profile,
-        user_meta_app_id=meta_app.id,
+        user_meta_app_id=meta_app_id,
         proxy=normalized,
         proxy_meta=proxy_meta,
     )
@@ -566,13 +578,16 @@ def connected_accounts(
         for acc in accounts
         if (acc.provider or "instagrapi") != "meta"
     }
+    meta_display = _meta_account_display(accounts)
+    # Não segurar SELECT instagram_accounts aberto durante o render.
+    release_db_transaction(db)
     return templates.TemplateResponse(
         "accounts_connected.html",
         {
             **_accounts_page_context(request, user, accounts, ok=ok_msg, error=err_msg or None),
             "offline_accounts": offline,
             "cookie_flags": cookie_flags,
-            "meta_display": _meta_account_display(accounts),
+            "meta_display": meta_display,
         },
     )
 
@@ -626,6 +641,8 @@ def add_account(
             status_code=status.HTTP_400_BAD_REQUEST,
         )
 
+    # Auth deps já abriram SELECT; solta antes de testar proxy / instagrapi.
+    release_db_transaction(db)
     proxy_meta = diagnose_proxy(proxy_raw.strip() or proxy)
     if not proxy_meta["ok"]:
         accounts = _load_user_accounts(db, user)
@@ -804,12 +821,14 @@ def update_account_proxy(
             "/accounts/connected?error=proxy_vazio",
             status_code=status.HTTP_303_SEE_OTHER,
         )
+    release_db_transaction(db)
     diag = diagnose_proxy(proxy)
     if not diag["ok"]:
         return RedirectResponse(
             "/accounts/connected?error=proxy_invalid",
             status_code=status.HTTP_303_SEE_OTHER,
         )
+    acc = _get_owned_account(db, account_id, user)
     _set_account_proxy(acc, normalized, diag)
     if acc.status == "proxy_down":
         acc.status = "active"
@@ -845,11 +864,14 @@ def update_account_web_cookies(
         )
 
     sid = clean_sessionid(parsed["sessionid"])
+    proxy = acc.proxy
+    username_hint = acc.username
+    release_db_transaction(db)
     try:
         settings_dict, resolved_user = login_with_sessionid(
             sid,
-            proxy=acc.proxy,
-            username_hint=acc.username,
+            proxy=proxy,
+            username_hint=username_hint,
         )
     except InstagramAuthError:
         return RedirectResponse(
@@ -857,6 +879,7 @@ def update_account_web_cookies(
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
+    acc = _get_owned_account(db, account_id, user)
     acc.session_json = serialize_settings(settings_dict)
     acc.encrypted_web_cookies = encrypt_web_cookies(parsed)
     if resolved_user:
@@ -885,6 +908,7 @@ def reconnect_account_session(
     """Reconecta sessão instagrapi / cookies web (form POST — redirect)."""
     acc = _get_owned_account(db, account_id, user)
     result = _perform_account_reconnect(
+        db,
         acc,
         mode=mode,
         password=password,
@@ -923,6 +947,7 @@ def reconnect_account_api(
     """Reconecta sessão instagrapi/web via AJAX (estilo postagemIG — botão Reconectar)."""
     acc = _get_owned_account(db, account_id, user)
     result = _perform_account_reconnect(
+        db,
         acc,
         mode=body.mode,
         password=body.password,
@@ -936,6 +961,7 @@ def reconnect_account_api(
 
 
 def _perform_account_reconnect(
+    db: Session,
     acc: InstagramAccount,
     *,
     mode: str = "auto",
@@ -944,7 +970,10 @@ def _perform_account_reconnect(
     sessionid: str = "",
     web_cookies: str = "",
 ) -> dict:
-    """Lógica compartilhada de reconexão instagrapi / cookies web."""
+    """Lógica compartilhada de reconexão instagrapi / cookies web.
+
+    Libera a transação do SELECT antes de qualquer login/rede.
+    """
     if (acc.provider or "instagrapi") == "meta":
         return {
             "status": "error",
@@ -958,19 +987,27 @@ def _perform_account_reconnect(
             "message": "Proxy ausente — atualize a proxy antes de reconectar.",
         }
 
+    account_id = acc.id
+    proxy = acc.proxy
+    username = acc.username
+    session_json = acc.session_json
+    encrypted_web_cookies = acc.encrypted_web_cookies
+    release_db_transaction(db)
+
     mode_norm = (mode or "auto").strip().lower()
+    settings_dict = None
+    resolved_user: str | None = None
+    new_encrypted_web: str | None = None
     try:
         if mode_norm == "cookies":
             parsed = parse_web_cookies_blob(web_cookies)
             sid = clean_sessionid(parsed["sessionid"])
             settings_dict, resolved_user = login_with_sessionid(
                 sid,
-                proxy=acc.proxy,
-                username_hint=acc.username,
+                proxy=proxy,
+                username_hint=username,
             )
-            acc.encrypted_web_cookies = encrypt_web_cookies(parsed)
-            if resolved_user:
-                acc.username = resolved_user
+            new_encrypted_web = encrypt_web_cookies(parsed)
         elif mode_norm == "sessionid":
             sid = clean_sessionid(sessionid)
             if not sid:
@@ -981,26 +1018,22 @@ def _perform_account_reconnect(
                 }
             settings_dict, resolved_user = login_with_sessionid(
                 sid,
-                proxy=acc.proxy,
-                username_hint=acc.username,
+                proxy=proxy,
+                username_hint=username,
             )
-            if resolved_user:
-                acc.username = resolved_user
-            merged = merge_sessionid_into_web_cookies(acc.encrypted_web_cookies, sid)
+            merged = merge_sessionid_into_web_cookies(encrypted_web_cookies, sid)
             if merged:
-                acc.encrypted_web_cookies = merged
+                new_encrypted_web = merged
         elif mode_norm in ("auto", "session"):
-            # Sem usuário/senha: renova session_json ou revive via cookies web salvos.
-            settings_dict = None
             try:
                 settings_dict = try_refresh_session(
-                    settings_dict=deserialize_settings(acc.session_json),
-                    proxy=acc.proxy,
-                    username=acc.username,
+                    settings_dict=deserialize_settings(session_json),
+                    proxy=proxy,
+                    username=username,
                     password=None,
                 )
             except InstagramAuthError:
-                cookies = decrypt_web_cookies(acc.encrypted_web_cookies)
+                cookies = decrypt_web_cookies(encrypted_web_cookies)
                 sid = clean_sessionid((cookies or {}).get("sessionid") or "")
                 if not sid:
                     return {
@@ -1010,15 +1043,15 @@ def _perform_account_reconnect(
                     }
                 settings_dict, resolved_user = login_with_sessionid(
                     sid,
-                    proxy=acc.proxy,
-                    username_hint=acc.username,
+                    proxy=proxy,
+                    username_hint=username,
                 )
-                if resolved_user:
-                    acc.username = resolved_user
             new_sid = extract_sessionid_from_settings(settings_dict)
-            merged = merge_sessionid_into_web_cookies(acc.encrypted_web_cookies, new_sid)
+            merged = merge_sessionid_into_web_cookies(
+                new_encrypted_web or encrypted_web_cookies, new_sid
+            )
             if merged:
-                acc.encrypted_web_cookies = merged
+                new_encrypted_web = merged
         elif mode_norm == "password":
             return {
                 "status": "error",
@@ -1032,7 +1065,18 @@ def _perform_account_reconnect(
                 "message": "Modo de reconexão inválido. Use sessionid ou cookies.",
             }
 
+        acc = db.get(InstagramAccount, account_id)
+        if not acc or acc.status == "deleted":
+            return {
+                "status": "error",
+                "error_code": "auth",
+                "message": "Conta não encontrada.",
+            }
         acc.session_json = serialize_settings(settings_dict)
+        if new_encrypted_web is not None:
+            acc.encrypted_web_cookies = new_encrypted_web
+        if resolved_user:
+            acc.username = resolved_user
         acc.status = "active"
         acc.last_login_at = dt.datetime.utcnow()
         acc.last_error = None
@@ -1045,7 +1089,7 @@ def _perform_account_reconnect(
         return {
             "status": "needs_2fa",
             "message": str(exc),
-            "username": acc.username,
+            "username": username,
         }
     except WebCookiesError:
         return {
