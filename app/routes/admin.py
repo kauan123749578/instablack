@@ -276,6 +276,64 @@ def db_health_locks(
     )
 
 
+@router.get("/metrics")
+def capacity_metrics(
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_owner_user),
+):
+    """Métricas de capacidade: filas, schedule_lag, duração publish (owner only)."""
+    from fastapi.responses import JSONResponse
+    from sqlalchemy import text
+
+    from core.capacity_metrics import collect_capacity_metrics
+
+    _ = admin
+    payload = collect_capacity_metrics()
+
+    # Amostras recentes do Postgres (complementa Redis)
+    db_lag: dict = {"count": 0}
+    try:
+        if db.bind and db.bind.dialect.name != "sqlite":
+            rows = db.execute(
+                text(
+                    """
+                    SELECT schedule_lag_seconds, duration_seconds, status
+                    FROM publish_logs
+                    WHERE created_at > now() - interval '24 hours'
+                      AND schedule_lag_seconds IS NOT NULL
+                    ORDER BY id DESC
+                    LIMIT 500
+                    """
+                )
+            ).mappings().all()
+        else:
+            rows = db.execute(
+                text(
+                    """
+                    SELECT schedule_lag_seconds, duration_seconds, status
+                    FROM publish_logs
+                    WHERE schedule_lag_seconds IS NOT NULL
+                    ORDER BY id DESC
+                    LIMIT 500
+                    """
+                )
+            ).mappings().all()
+        lags = [float(r["schedule_lag_seconds"]) for r in rows if r.get("schedule_lag_seconds") is not None]
+        durs = [float(r["duration_seconds"]) for r in rows if r.get("duration_seconds") is not None]
+        from core.capacity_metrics import _summarize
+
+        db_lag = {
+            "schedule_lag_seconds_24h": _summarize(lags),
+            "publish_duration_seconds_24h": _summarize(durs),
+            "sample_rows": len(rows),
+        }
+    except Exception as exc:
+        db_lag = {"error": str(exc)[:160]}
+
+    payload["db_samples"] = db_lag
+    return JSONResponse(payload)
+
+
 @router.post("/db-health/unlock")
 def db_health_unlock(
     db: Session = Depends(get_db),

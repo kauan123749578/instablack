@@ -38,6 +38,11 @@ from app.utils.automation_videos import playlist_items, playlist_is_exhausted, r
 from app.utils.intervals import meta_min_interval_for_account
 from celery_app.config import celery_app
 from core.anti_farm_prefs import get_anti_farm_prefs_by_id
+from core.capacity_metrics import (
+    ffmpeg_slot,
+    record_meta_defer,
+    record_publish_sample,
+)
 from core.database import session_scope
 from core.instagram import (
     InstagramAuthError,
@@ -109,6 +114,50 @@ def _meta_inflight_key(account_id: int) -> str:
 
 def _meta_defer_sched_key(account_id: int) -> str:
     return f"meta:defer_sched:{int(account_id)}"
+
+
+def _parse_scheduled_at(raw: str | dt.datetime | None) -> dt.datetime | None:
+    if raw is None:
+        return None
+    if isinstance(raw, dt.datetime):
+        value = raw
+    else:
+        try:
+            value = dt.datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        except Exception:
+            return None
+    if value.tzinfo is not None:
+        return value.astimezone(dt.timezone.utc).replace(tzinfo=None)
+    return value
+
+
+def _publish_timing(
+    scheduled_at: str | dt.datetime | None,
+    started_at: dt.datetime | None,
+) -> dict:
+    """Campos de observabilidade para PublishLog + Redis metrics."""
+    sched = _parse_scheduled_at(scheduled_at)
+    started = started_at or dt.datetime.utcnow()
+    lag: int | None = None
+    if sched is not None:
+        lag = max(0, int((started - sched).total_seconds()))
+    duration: int | None = None
+    if started_at is not None:
+        duration = max(0, int((dt.datetime.utcnow() - started_at).total_seconds()))
+    return {
+        "scheduled_at": sched,
+        "started_at": started,
+        "schedule_lag_seconds": lag,
+        "duration_seconds": duration,
+    }
+
+
+def _record_timing_metrics(timing: dict, status: str) -> None:
+    record_publish_sample(
+        schedule_lag_seconds=timing.get("schedule_lag_seconds"),
+        duration_seconds=timing.get("duration_seconds"),
+        status=status,
+    )
 
 
 def _redis_ttl_seconds(client, key: str, fallback: int) -> int:
@@ -804,7 +853,7 @@ def execute_automation(self, automation_id: int, scheduled_at: str | None = None
         # account_slot só para fingerprint invisível da mesma legenda (anti-drop Meta)
         publish_to_account.apply_async(
             args=[automation_id, account_id, acc_video_key, acc_queue_index],
-            kwargs={"account_slot": i},
+            kwargs={"account_slot": i, "scheduled_at": scheduled_at},
             countdown=countdown,
         )
 
@@ -909,9 +958,11 @@ def publish_to_account(
     video_key: str | None = None,
     queue_index: int | None = None,
     account_slot: int | None = None,
+    scheduled_at: str | None = None,
     **_compat_kwargs,
 ) -> dict:
     # _compat_kwargs: ignora caption_by_* de mensagens antigas na fila (não quebra o worker)
+    started_at = dt.datetime.utcnow()
     with session_scope() as db:
         automation = db.get(Automation, automation_id)
         account = db.get(InstagramAccount, account_id)
@@ -1029,6 +1080,8 @@ def publish_to_account(
                 playlist_index=int(posted_index),
                 camouflage_cover_key=getattr(automation, "camouflage_cover_key", None),
                 camouflage_opacity=float(getattr(automation, "camouflage_opacity", 0.25) or 0.25),
+                scheduled_at=scheduled_at,
+                started_at=started_at,
             )
         except Exception as exc:
             # Abort de legenda: NÃO retentar a task — cria outro Reel no ar
@@ -1059,12 +1112,14 @@ def publish_to_account(
 
         if result.get("deferred"):
             wait = max(20, min(int(result.get("wait_seconds") or 3600), 6 * 3600))
+            reason = str(result.get("reason") or "meta_defer")
+            record_meta_defer(reason)
             log.info(
                 "Meta defer automation=%s account=%s wait=%ss reason=%s",
                 automation_id,
                 account_id,
                 wait,
-                result.get("reason"),
+                reason,
             )
 
             def _sched_acct(countdown: int) -> None:
@@ -1072,6 +1127,7 @@ def publish_to_account(
                     args=[automation_id, account_id, vk, posted_index],
                     kwargs={
                         "account_slot": int(account_slot) if account_slot is not None else 0,
+                        "scheduled_at": scheduled_at,
                     },
                     countdown=countdown,
                 )
@@ -1098,8 +1154,12 @@ def _execute_publish(
     playlist_index: int | None = None,
     camouflage_cover_key: str | None = None,
     camouflage_opacity: float = 0.10,
+    scheduled_at: str | dt.datetime | None = None,
+    started_at: dt.datetime | None = None,
 ) -> dict:
     storage = get_storage()
+    started_at = started_at or dt.datetime.utcnow()
+    timing_base = {"scheduled_at": scheduled_at, "started_at": started_at}
 
     with session_scope() as db:
         account = db.get(InstagramAccount, account_id)
@@ -1233,7 +1293,11 @@ def _execute_publish(
             return {"error": "meta_token_missing"}
 
         meta_proxy = (proxy or "").strip() or None
-        if meta_proxy and not check_proxy(meta_proxy):
+        if (
+            meta_proxy
+            and not getattr(settings, "meta_http_mock", False)
+            and not check_proxy(meta_proxy)
+        ):
             log.warning(
                 "META proxy inválida account=%s @%s — publicando sem proxy (IP do servidor)",
                 account_id,
@@ -1280,25 +1344,26 @@ def _execute_publish(
             ):
                 tmp_dir = Path(tempfile.mkdtemp(prefix="meta_camu_"))
                 try:
-                    camu_path = _render_camouflage_reel(
-                        storage,
-                        video_key=video_key,
-                        camouflage_cover_key=camouflage_cover_key,
-                        camouflage_opacity=float(camouflage_opacity or 0.25),
-                        tmp_dir=tmp_dir,
-                        automation_id=automation_id,
-                    )
-                    # Limpa metadados antes da Meta baixar o arquivo público.
-                    clean_path = tmp_dir / "camu_clean.mp4"
-                    try:
-                        upload_path, _ = prepare_clean_media(
-                            camu_path,
-                            clean_path,
-                            content_type="reel",
-                            account_hint=username,
+                    with ffmpeg_slot():
+                        camu_path = _render_camouflage_reel(
+                            storage,
+                            video_key=video_key,
+                            camouflage_cover_key=camouflage_cover_key,
+                            camouflage_opacity=float(camouflage_opacity or 0.25),
+                            tmp_dir=tmp_dir,
+                            automation_id=automation_id,
                         )
-                    except MetadataStripError:
-                        upload_path = camu_path
+                        # Limpa metadados antes da Meta baixar o arquivo público.
+                        clean_path = tmp_dir / "camu_clean.mp4"
+                        try:
+                            upload_path, _ = prepare_clean_media(
+                                camu_path,
+                                clean_path,
+                                content_type="reel",
+                                account_hint=username,
+                            )
+                        except MetadataStripError:
+                            upload_path = camu_path
                     temp_camu_key = _upload_temp_media(storage, upload_path, suggested_ext=".mp4")
                     publish_key = temp_camu_key
                     log.info(
@@ -1488,6 +1553,10 @@ def _execute_publish(
                 acc.status = "active"
                 acc.last_error = None
             auto = _bump_automation_run_counters(db, automation_id)
+            timing = _publish_timing(
+                timing_base.get("scheduled_at"),
+                timing_base.get("started_at"),
+            )
             plog = PublishLog(
                 automation_id=automation_id,
                 account_id=account_id,
@@ -1498,12 +1567,17 @@ def _execute_publish(
                 video_key=video_key,
                 caption_ok=caption_ok if (content_type or "reel") in ("reel", "photo") else None,
                 error=log_error,
+                scheduled_at=timing.get("scheduled_at"),
+                started_at=timing.get("started_at"),
+                schedule_lag_seconds=timing.get("schedule_lag_seconds"),
+                duration_seconds=timing.get("duration_seconds"),
             )
             db.add(plog)
             db.flush()
             publish_log_id = plog.id
             if auto and (auto.start_mode or "") == "now":
                 _complete_now_automation_if_ready(db, auto)
+        _record_timing_metrics(timing, log_status)
 
         if log_status == "success":
             _mark_meta_published(account_id, cooldown_sec, owner_user_id)
@@ -1644,15 +1718,16 @@ def _execute_publish(
                 and raw_path.suffix.lower() in VIDEO_EXT
             ):
                 try:
-                    work_path = _render_camouflage_reel(
-                        storage,
-                        video_key=video_key,
-                        camouflage_cover_key=camouflage_cover_key,
-                        camouflage_opacity=float(camouflage_opacity or 0.25),
-                        tmp_dir=tmp_dir,
-                        automation_id=automation_id,
-                        video_path=raw_path,
-                    )
+                    with ffmpeg_slot():
+                        work_path = _render_camouflage_reel(
+                            storage,
+                            video_key=video_key,
+                            camouflage_cover_key=camouflage_cover_key,
+                            camouflage_opacity=float(camouflage_opacity or 0.25),
+                            tmp_dir=tmp_dir,
+                            automation_id=automation_id,
+                            video_path=raw_path,
+                        )
                 except Exception as camu_exc:
                     log.exception(
                         "Camuflagem falhou automation=%s key=%s",
@@ -1856,12 +1931,23 @@ def _execute_publish(
                 raw_sha256=(meta_info or {}).get("raw_sha256"),
                 clean_sha256=(meta_info or {}).get("clean_sha256"),
                 clean_size=int((meta_info or {}).get("clean_size") or 0) or None,
+                **{
+                    k: v
+                    for k, v in _publish_timing(
+                        timing_base.get("scheduled_at"),
+                        timing_base.get("started_at"),
+                    ).items()
+                },
             )
             db.add(plog)
             db.flush()
             publish_log_id = plog.id
             notify_user_id = acc.user_id if acc else owner_user_id
             notify_username = acc.username if acc else username
+        _record_timing_metrics(
+            _publish_timing(timing_base.get("scheduled_at"), timing_base.get("started_at")),
+            "success",
+        )
 
         uid = notify_user_id or owner_user_id
         if uid:
@@ -1947,12 +2033,15 @@ def _log_failure(
     owner_user_id: int | None = None,
     username: str | None = None,
     notify: bool = True,
+    scheduled_at: str | dt.datetime | None = None,
+    started_at: dt.datetime | None = None,
 ) -> None:
     from sqlalchemy.exc import IntegrityError
 
     uid = owner_user_id
     uname = username
     aid = automation_id
+    timing = _publish_timing(scheduled_at, started_at)
     with session_scope() as db:
         if aid is not None and db.get(Automation, aid) is None:
             aid = None
@@ -1964,6 +2053,10 @@ def _log_failure(
                     status="failed",
                     content_type=content_type,
                     error=error[:2000],
+                    scheduled_at=timing.get("scheduled_at"),
+                    started_at=timing.get("started_at"),
+                    schedule_lag_seconds=timing.get("schedule_lag_seconds"),
+                    duration_seconds=timing.get("duration_seconds"),
                 )
             )
             db.flush()
@@ -1980,6 +2073,10 @@ def _log_failure(
                     status="failed",
                     content_type=content_type,
                     error=error[:2000],
+                    scheduled_at=timing.get("scheduled_at"),
+                    started_at=timing.get("started_at"),
+                    schedule_lag_seconds=timing.get("schedule_lag_seconds"),
+                    duration_seconds=timing.get("duration_seconds"),
                 )
             )
         if uid is None or uname is None:
@@ -1987,6 +2084,8 @@ def _log_failure(
             if acc:
                 uid = uid or acc.user_id
                 uname = uname or acc.username
+
+    _record_timing_metrics(timing, "failed")
 
     if uid and notify:
         _notify_publish_failure_once(

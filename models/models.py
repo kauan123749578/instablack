@@ -263,6 +263,7 @@ class Automation(Base):
     __table_args__ = (
         Index("ix_automations_user_status", "user_id", "status"),
         Index("ix_automations_user_created", "user_id", "created_at"),
+        Index("ix_automations_status_next_run", "status", "next_run_at"),
     )
 
 
@@ -299,6 +300,15 @@ class PublishLog(Base):
     raw_sha256: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     clean_sha256: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     clean_size: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    # Observabilidade de capacidade (schedule_lag = started_at - scheduled_at)
+    scheduled_at: Mapped[Optional[dt.datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    started_at: Mapped[Optional[dt.datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    schedule_lag_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    duration_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True

@@ -57,14 +57,19 @@ class Settings(BaseSettings):
 
     # Instagram Graph API (versão global; credenciais do app ficam em Meus Apps por usuário)
     meta_instagram_graph_version: str = "v25.0"
-    # Quantos publishes Meta podem rodar ao mesmo tempo no worker (tokens diferentes).
-    # 1 era apertado demais com vários usuários; 5–8 é o sweet spot usual.
-    meta_global_max_concurrent: int = 5
-    # Teto por usuário Instablack: evita 1 cliente com 30 contas engolir a fila.
-    meta_user_max_concurrent: int = 2
+    # Quantos publishes Meta podem rodar ao mesmo tempo (tokens diferentes).
+    # 18 sustenta ~50–70 users × ~1 Reel/h com folga (clamp 1–20 no claim).
+    meta_global_max_concurrent: int = 18
+    # Teto por usuário Instablack: power users com muitas contas.
+    meta_user_max_concurrent: int = 5
+    # Stress test: stub Graph API (sem Instagram real). Nunca ligar em prod real.
+    meta_http_mock: bool = False
+    meta_http_mock_delay_ms: int = 150
     public_base_url: str = ""
 
     ffmpeg_bin: str = "ffmpeg"
+    # Limite de overlays de camuflagem simultâneos (Redis). 0 = sem limite.
+    ffmpeg_max_concurrent: int = 2
     beat_tick_seconds: int = 60
 
     bootstrap_admin_username: str = ""

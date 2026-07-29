@@ -271,6 +271,12 @@ def _sqlite_migrate(bind=None) -> None:
                 "ON automations (user_id, created_at)"
             )
         )
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_automations_status_next_run "
+                "ON automations (status, next_run_at)"
+            )
+        )
         if "users" in insp.get_table_names():
             ucols = {c["name"] for c in insp.get_columns("users")}
             if "display_name" not in ucols:
@@ -350,6 +356,14 @@ def _sqlite_migrate(bind=None) -> None:
                 conn.execute(text("ALTER TABLE publish_logs ADD COLUMN clean_size INTEGER"))
             if "caption_ok" not in pcols:
                 conn.execute(text("ALTER TABLE publish_logs ADD COLUMN caption_ok BOOLEAN"))
+            if "scheduled_at" not in pcols:
+                conn.execute(text("ALTER TABLE publish_logs ADD COLUMN scheduled_at DATETIME"))
+            if "started_at" not in pcols:
+                conn.execute(text("ALTER TABLE publish_logs ADD COLUMN started_at DATETIME"))
+            if "schedule_lag_seconds" not in pcols:
+                conn.execute(text("ALTER TABLE publish_logs ADD COLUMN schedule_lag_seconds INTEGER"))
+            if "duration_seconds" not in pcols:
+                conn.execute(text("ALTER TABLE publish_logs ADD COLUMN duration_seconds INTEGER"))
             conn.execute(
                 text(
                     "CREATE INDEX IF NOT EXISTS ix_publish_logs_account_created "
@@ -514,6 +528,8 @@ def _postgres_migrate(bind=None) -> None:
                     "ON automations (user_id, status)",
                     "CREATE INDEX IF NOT EXISTS ix_automations_user_created "
                     "ON automations (user_id, created_at)",
+                    "CREATE INDEX IF NOT EXISTS ix_automations_status_next_run "
+                    "ON automations (status, next_run_at)",
                 ],
             )
 
@@ -583,6 +599,10 @@ def _postgres_migrate(bind=None) -> None:
                 ("clean_sha256", "VARCHAR(64)"),
                 ("clean_size", "INTEGER"),
                 ("caption_ok", "BOOLEAN"),
+                ("scheduled_at", "TIMESTAMPTZ"),
+                ("started_at", "TIMESTAMPTZ"),
+                ("schedule_lag_seconds", "INTEGER"),
+                ("duration_seconds", "INTEGER"),
             ],
         )
         if _table_exists(conn, "publish_logs"):

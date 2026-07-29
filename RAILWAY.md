@@ -7,11 +7,12 @@ Guia para subir o instablack em produção.
 | Componente | Função |
 |---|---|
 | **web** | FastAPI (painel) |
-| **worker** | Celery worker (publicações) |
+| **worker-publish** | Celery — só fila `publish` (1–2 réplicas) |
+| **worker-misc** | Celery — `beat`/`health`/`default` (1 réplica) |
 | **beat** | Celery beat (agendador) |
 | **PostgreSQL** | Banco de dados |
 | **Redis** | Broker do Celery |
-| **Cloudflare R2** | Mídia compartilhada (web + worker) — recomendado |
+| **Cloudflare R2** | Mídia compartilhada (web + workers) — recomendado |
 
 ---
 
@@ -23,9 +24,9 @@ Guia para subir o instablack em produção.
 
 ---
 
-## 2. Criar os 3 services
+## 2. Criar os services
 
-Crie **3 services** no mesmo repositório:
+Crie **4 services** no mesmo repositório (web + 2 workers + beat):
 
 ### Service `web`
 
@@ -35,11 +36,26 @@ bash scripts/railway-web.sh
 
 Gere domínio público em **Settings → Networking**.
 
-### Service `worker`
+### Service `worker-publish` (publicações)
 
 ```bash
-bash scripts/railway-worker.sh
+bash scripts/railway-worker-publish.sh
 ```
+
+- Fila: só `publish`
+- `CELERY_CONCURRENCY=10` (default do script)
+- **1–2 réplicas** para 50–70 usuários
+- Variáveis Meta: `META_GLOBAL_MAX_CONCURRENT=18`, `META_USER_MAX_CONCURRENT=5`
+
+### Service `worker-misc` (tick / health / insights)
+
+```bash
+bash scripts/railway-worker-misc.sh
+```
+
+- Filas: `beat,health,default`
+- `CELERY_CONCURRENCY=2`–`4`
+- **1 réplica** (não precisa escalar com publish)
 
 ### Service `beat`
 
@@ -49,7 +65,25 @@ bash scripts/railway-beat.sh
 
 **Apenas 1 réplica** do beat.
 
+> Legado: `scripts/railway-worker.sh` ainda sobe todas as filas juntas — só use em
+> dev. Em produção as filas misturadas fazem health/insights roubarem slots de publish.
+
 ---
+
+## 2b. Capacidade (50–70 usuários)
+
+| Env | Valor sugerido | Onde |
+|-----|----------------|------|
+| `META_GLOBAL_MAX_CONCURRENT` | `18` | worker-publish (+ shared) |
+| `META_USER_MAX_CONCURRENT` | `5` | worker-publish |
+| `CELERY_CONCURRENCY` | `10` | worker-publish |
+| `CELERY_CONCURRENCY` | `4` | worker-misc |
+| `STORAGE_BACKEND` | `s3` (R2) | web + workers |
+| `FFMPEG_MAX_CONCURRENT` | `2` | worker-publish |
+
+Métricas (owner): `GET /admin/metrics` — `schedule_lag`, profundidade das filas, duração publish.
+
+Stress test sem Instagram: `META_HTTP_MOCK=true` + `python scripts/stress_meta_mock.py --help`.
 
 ## 3. Storage — Cloudflare R2 (recomendado)
 
@@ -160,7 +194,7 @@ Se não usar R2:
 
 ## 4. Variáveis de ambiente
 
-Configure nos **3 services** (ou use Shared Variables):
+Configure nos **services** (ou Shared Variables):
 
 ```env
 APP_ENV=production
@@ -173,7 +207,7 @@ ALLOW_REGISTRATION=true
 DATABASE_URL=${{Postgres.DATABASE_URL}}
 REDIS_URL=${{Redis.REDIS_URL}}
 
-# Cloudflare R2 (recomendado)
+# Cloudflare R2 (recomendado — obrigatório se web ≠ worker)
 STORAGE_BACKEND=s3
 S3_BUCKET=instablack-media
 S3_ENDPOINT_URL=https://SEU_ACCOUNT_ID.r2.cloudflarestorage.com
@@ -190,6 +224,12 @@ S3_REGION=auto
 # Instagram Graph (versão global; apps Meta ficam em Meus Apps por usuário)
 META_INSTAGRAM_GRAPH_VERSION=v25.0
 PUBLIC_BASE_URL=https://SEU-DOMINIO.up.railway.app
+# Capacidade publish (50–70 users) — ver RAILWAY.md §2b
+META_GLOBAL_MAX_CONCURRENT=18
+META_USER_MAX_CONCURRENT=5
+
+# Stress test apenas — stub da Graph API (nunca em produção real)
+# META_HTTP_MOCK=false
 
 # Alternativa sem R2:
 # STORAGE_BACKEND=local
@@ -209,14 +249,14 @@ BOOTSTRAP_ADMIN_IS_ADMIN=true
 # Dono da plataforma (@ de login EXATO). Sem isso (ou errado) você vira só Admin no /admin.
 OWNER_USERNAME=kauawqi
 
-# Web Push — MESMAS keys no web E no worker (cooperative-dream)
-# Sem isso no worker: sino funciona, celular NÃO recebe Story/erro/sessão expirada
-# (só às vezes sucesso via fallback do browser aberto).
-# No Railway: Variables → Shared / worker service → copie VAPID_* do web.
+# Web Push — MESMAS keys no web E nos workers
 VAPID_PUBLIC_KEY=<mesma do web>
 VAPID_PRIVATE_KEY=<mesma do web>
 VAPID_SUBJECT=mailto:seu-email@dominio.com
 ```
+
+No **worker-publish**: `CELERY_CONCURRENCY=10`.  
+No **worker-misc**: `CELERY_CONCURRENCY=4`.
 
 O código converte `postgres://` para `postgresql+psycopg2://` automaticamente.
 

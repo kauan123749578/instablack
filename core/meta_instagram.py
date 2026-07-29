@@ -68,6 +68,8 @@ class MetaInstagramError(RuntimeError):
 
 def _http(method: str, url: str, *, proxy: str | None = None, **kwargs) -> requests.Response:
     """HTTP para a Meta — usa proxy da conta (nunca cai no IP do Railway se houver proxy)."""
+    if getattr(settings, "meta_http_mock", False):
+        return _mock_meta_http(method, url, **kwargs)
     raw = proxy if proxy is not None else _meta_proxy_cv.get()
     if raw:
         px = proxies_for(raw)
@@ -78,6 +80,53 @@ def _http(method: str, url: str, *, proxy: str | None = None, **kwargs) -> reque
         kwargs.setdefault("proxies", px)
         _log.debug("META %s via proxy → %s", method.upper(), url[:96])
     return requests.request(method, url, **kwargs)
+
+
+def _mock_meta_http(method: str, url: str, **kwargs) -> requests.Response:
+    """Stub Graph API para stress test (META_HTTP_MOCK=true)."""
+    import json
+    import re
+
+    delay_ms = int(getattr(settings, "meta_http_mock_delay_ms", 150) or 0)
+    if delay_ms > 0:
+        time.sleep(min(delay_ms, 5000) / 1000.0)
+
+    path = urlsplit(url).path or ""
+    lower = path.lower()
+    payload: dict = {"id": "mock_media_1"}
+
+    if "/media_publish" in lower or lower.endswith("/media_publish"):
+        payload = {"id": f"mock_published_{int(time.time())}"}
+    elif re.search(r"/media/?$", lower) or "/media?" in (url.lower()):
+        payload = {"id": f"mock_container_{int(time.time())}"}
+    elif "status_code" in (kwargs.get("params") or {}) or "/?" in url:
+        # container status poll
+        if re.search(r"/\d+", path) or "mock_container" in path:
+            payload = {"status_code": "FINISHED", "status": "FINISHED", "id": "mock_container"}
+    elif "permalink" in lower or "fields=" in url.lower():
+        if "permalink" in str(kwargs.get("params") or {}).get("fields", "") or "permalink" in url.lower():
+            payload = {
+                "id": "mock_media_1",
+                "permalink": "https://www.instagram.com/reel/MOCK/",
+                "caption": (kwargs.get("params") or {}).get("caption") or "ok",
+            }
+        else:
+            payload = {"status_code": "FINISHED", "id": "mock_container"}
+    elif method.upper() == "GET":
+        payload = {
+            "id": "mock_media_1",
+            "status_code": "FINISHED",
+            "permalink": "https://www.instagram.com/reel/MOCK/",
+            "username": "mock_user",
+            "followers_count": 100,
+        }
+
+    resp = requests.Response()
+    resp.status_code = 200
+    resp._content = json.dumps(payload).encode("utf-8")
+    resp.headers["Content-Type"] = "application/json"
+    resp.url = url
+    return resp
 
 
 META_SCOPES = (
@@ -737,6 +786,9 @@ def _validate_public_media_url(
     """
     import time
 
+    if getattr(settings, "meta_http_mock", False):
+        return
+
     last_exc: Exception | None = None
     for attempt in range(3):
         try:
@@ -798,12 +850,13 @@ def _wait_container(
         status = str(data.get("status_code") or data.get("status") or "").upper()
         if status in ("FINISHED", "PUBLISHED"):
             # Mesmo com FINISHED a Meta às vezes ainda rejeita publish (race 9007).
-            if settle_seconds > 0:
-                time.sleep(settle_seconds)
+            settle = 0.0 if getattr(settings, "meta_http_mock", False) else settle_seconds
+            if settle > 0:
+                time.sleep(settle)
             return
         if status in ("ERROR", "EXPIRED"):
             raise MetaInstagramError(f"Container da Meta terminou com status {status}.")
-        time.sleep(5)
+        time.sleep(0.05 if getattr(settings, "meta_http_mock", False) else 5)
     raise MetaInstagramError("A Meta demorou mais de 5 minutos para processar a mídia.")
 
 
