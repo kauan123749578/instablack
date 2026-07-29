@@ -247,6 +247,12 @@ def _sqlite_migrate(bind=None) -> None:
                 "ON automations (user_id, status)"
             )
         )
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_automations_user_created "
+                "ON automations (user_id, created_at)"
+            )
+        )
         if "users" in insp.get_table_names():
             ucols = {c["name"] for c in insp.get_columns("users")}
             if "display_name" not in ucols:
@@ -419,6 +425,12 @@ def _postgres_migrate(bind=None) -> None:
                 text(
                     "CREATE INDEX IF NOT EXISTS ix_automations_user_status "
                     "ON automations (user_id, status)"
+                )
+            )
+            conn.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_automations_user_created "
+                    "ON automations (user_id, created_at)"
                 )
             )
 

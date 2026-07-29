@@ -214,6 +214,68 @@ def save_meta_youtube_urls(
     )
 
 
+@router.get("/db-health")
+def db_health_locks(
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_owner_user),
+):
+    """Diagnóstico: quem segura lock / query longa (owner only).
+
+    Equivalente ao pg_stat_activity + pg_locks que o ChatGPT pediu.
+    """
+    from fastapi.responses import JSONResponse
+    from sqlalchemy import text
+
+    _ = admin
+    if db.bind and db.bind.dialect.name == "sqlite":
+        return JSONResponse({"ok": True, "engine": "sqlite", "note": "sem locks PG"})
+
+    activity = db.execute(
+        text(
+            """
+            SELECT pid, usename, state, wait_event_type, wait_event,
+                   LEFT(query, 180) AS query,
+                   EXTRACT(EPOCH FROM (now() - query_start))::int AS secs
+            FROM pg_stat_activity
+            WHERE datname = current_database()
+              AND pid <> pg_backend_pid()
+              AND state IS NOT NULL
+            ORDER BY query_start NULLS LAST
+            LIMIT 40
+            """
+        )
+    ).mappings().all()
+    locks = db.execute(
+        text(
+            """
+            SELECT l.locktype, l.mode, l.granted, l.pid,
+                   c.relname AS relation,
+                   LEFT(a.query, 120) AS query,
+                   a.state
+            FROM pg_locks l
+            LEFT JOIN pg_class c ON c.oid = l.relation
+            LEFT JOIN pg_stat_activity a ON a.pid = l.pid
+            WHERE l.database = (SELECT oid FROM pg_database WHERE datname = current_database())
+              AND NOT l.granted
+            LIMIT 40
+            """
+        )
+    ).mappings().all()
+    long_tx = [
+        dict(r)
+        for r in activity
+        if (r.get("secs") or 0) >= 5 or (r.get("state") or "") == "idle in transaction"
+    ]
+    return JSONResponse(
+        {
+            "ok": True,
+            "activity": [dict(r) for r in activity],
+            "waiting_locks": [dict(r) for r in locks],
+            "suspicious": long_tx,
+        }
+    )
+
+
 @router.post("/broadcast")
 def broadcast_notification(
     title: str = Form(""),

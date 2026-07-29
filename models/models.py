@@ -262,6 +262,7 @@ class Automation(Base):
 
     __table_args__ = (
         Index("ix_automations_user_status", "user_id", "status"),
+        Index("ix_automations_user_created", "user_id", "created_at"),
     )
 
 

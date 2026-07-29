@@ -606,10 +606,9 @@ def execute_automation(self, automation_id: int, scheduled_at: str | None = None
     stagger_min = 2
     stagger_max = 8
 
+    # Fase 1: leitura SEM lock — prefs/contas fora do FOR UPDATE.
     with session_scope() as db:
-        automation = db.execute(
-            select(Automation).where(Automation.id == automation_id).with_for_update()
-        ).scalar_one_or_none()
+        automation = db.get(Automation, automation_id)
         if not automation:
             return {"error": "automation_not_found", "id": automation_id}
         if automation.status != "active":
@@ -620,8 +619,6 @@ def execute_automation(self, automation_id: int, scheduled_at: str | None = None
         stagger_enabled, stagger_min, stagger_max = resolve_stagger_config(
             automation, anti_prefs
         )
-        # IDs via JOIN — NÃO lazy-load automation.accounts sob FOR UPDATE
-        # (carregava 30+ contas e segurava lock → painel COUNT travava).
         account_rows = db.execute(
             select(InstagramAccount.id, InstagramAccount.status)
             .join(
@@ -637,9 +634,7 @@ def execute_automation(self, automation_id: int, scheduled_at: str | None = None
             not in ("banned", "proxy_down", "paused", "needs_login", "deleted")
         ]
         if not account_ids:
-            # Não consome mídia; mantém active e tenta de novo em breve.
             retry_at = dt.datetime.utcnow() + dt.timedelta(minutes=5)
-            automation.next_run_at = retry_at
             db.execute(
                 text("UPDATE automations SET next_run_at = :nxt WHERE id = :id"),
                 {"nxt": retry_at, "id": automation_id},
@@ -659,6 +654,40 @@ def execute_automation(self, automation_id: int, scheduled_at: str | None = None
                 "code": PLAYLIST_CODE,
                 "next_run_at": retry_at.isoformat(),
             }
+
+    # Fase 2: lock CURTO só pro claim. NOWAIT = nunca segura o painel esperando.
+    with session_scope() as db:
+        try:
+            automation = db.execute(
+                select(Automation)
+                .where(Automation.id == automation_id)
+                .with_for_update(nowait=True)
+            ).scalar_one_or_none()
+        except Exception as exc:
+            # LockNotAvailable / could not obtain lock
+            msg = str(exc).lower()
+            if "lock" in msg or "could not obtain" in msg:
+                log.warning(
+                    "PLAYLIST %s lock busy automation=%s — reagenda sem bloquear painel",
+                    PLAYLIST_CODE,
+                    automation_id,
+                )
+                execute_automation.apply_async(
+                    args=[automation_id, scheduled_at],
+                    countdown=15,
+                )
+                return {
+                    "deferred": True,
+                    "reason": "row_locked",
+                    "id": automation_id,
+                    "code": PLAYLIST_CODE,
+                }
+            raise
+
+        if not automation:
+            return {"error": "automation_not_found", "id": automation_id}
+        if automation.status != "active":
+            return {"skipped": True, "reason": "not_active", "code": PLAYLIST_CODE}
 
         items = playlist_items(automation)
         total_videos = len(items)
