@@ -137,25 +137,38 @@ def _parse_scheduled_at(raw: str | dt.datetime | None) -> dt.datetime | None:
 
 def _publish_timing(
     scheduled_at: str | dt.datetime | None,
-    started_at: dt.datetime | None,
+    started_at: str | dt.datetime | None,
     *,
     enqueued_at: str | dt.datetime | None = None,
     dispatch_countdown: int = 0,
 ) -> dict:
-    """Campos de observabilidade para PublishLog + Redis metrics."""
+    """Campos de observabilidade para PublishLog + Redis metrics.
+
+    Aceita datetime ou ISO string (pending Meta no Redis serializa com isoformat).
+    """
     sched = _parse_scheduled_at(scheduled_at)
-    started = started_at or dt.datetime.utcnow()
+    started = _parse_scheduled_at(started_at) or dt.datetime.utcnow()
     lag: int | None = None
     if sched is not None:
-        lag = max(0, int((started - sched).total_seconds()))
+        try:
+            lag = max(0, int((started - sched).total_seconds()))
+        except Exception:
+            lag = None
     duration: int | None = None
-    if started_at is not None:
-        duration = max(0, int((dt.datetime.utcnow() - started_at).total_seconds()))
+    started_for_duration = _parse_scheduled_at(started_at)
+    if started_for_duration is not None:
+        try:
+            duration = max(0, int((dt.datetime.utcnow() - started_for_duration).total_seconds()))
+        except Exception:
+            duration = None
     queue_wait: int | None = None
     enq = _parse_scheduled_at(enqueued_at)
-    if enq is not None and started_at is not None:
-        raw_wait = int((started_at - enq).total_seconds())
-        queue_wait = max(0, raw_wait - max(0, int(dispatch_countdown or 0)))
+    if enq is not None and started_for_duration is not None:
+        try:
+            raw_wait = int((started_for_duration - enq).total_seconds())
+            queue_wait = max(0, raw_wait - max(0, int(dispatch_countdown or 0)))
+        except Exception:
+            queue_wait = None
     return {
         "scheduled_at": sched,
         "started_at": started,
@@ -2503,9 +2516,20 @@ def _fail_meta_pending_job(
 
 
 def _complete_meta_pending_success(*, account_id: int, job: dict, result: dict) -> dict:
-    """Persistência + cooldown após media_publish async."""
+    """Persistência + cooldown após media_publish async.
+
+    Grava PublishLog ANTES de notificações/side-effects — o post já está no IG.
+    """
     automation_id = job.get("automation_id")
+    try:
+        automation_id = int(automation_id) if automation_id is not None else None
+    except (TypeError, ValueError):
+        automation_id = None
     owner_user_id = job.get("owner_user_id")
+    try:
+        owner_user_id = int(owner_user_id) if owner_user_id is not None else None
+    except (TypeError, ValueError):
+        owner_user_id = None
     username = str(job.get("username") or "")
     content_type = job.get("content_type") or "reel"
     video_key = job.get("video_key")
@@ -2522,23 +2546,6 @@ def _complete_meta_pending_success(*, account_id: int, job: dict, result: dict) 
         "caption_verified": job.get("caption_verified"),
     }
 
-    log.info(
-        "META capa RESULT (async) account=%s thumb=%s cover_applied=%s cover_error=%r url=%s",
-        username,
-        thumb_key or "-",
-        cover_applied,
-        cover_error or None,
-        result.get("url"),
-    )
-    if content_type == "reel" and thumb_key and not cover_applied:
-        create_notification(
-            owner_user_id,
-            "Reels publicado sem a capa personalizada",
-            f"@{username}: {(cover_error or 'capa não aplicada')[:160]}",
-            kind="warning",
-            link="/logs",
-        )
-
     caption_verified = result.get("caption_verified")
     via_comment = caption_verified == "via_comment"
     if via_comment:
@@ -2549,15 +2556,6 @@ def _complete_meta_pending_success(*, account_id: int, job: dict, result: dict) 
         caption_ok = None
     else:
         caption_ok = False
-    if content_type in ("reel", "photo") and caption_verified is None:
-        create_notification(
-            owner_user_id,
-            "Reels: legenda ainda não apareceu na Graph",
-            f"@{username}: publicamos com caption, mas a Meta demorou a indexar. "
-            "Confira o post no Instagram.",
-            kind="warning",
-            link=str(result.get("url") or "/logs"),
-        )
 
     publish_log_id: int | None = None
     log_status = "success"
@@ -2566,53 +2564,124 @@ def _complete_meta_pending_success(*, account_id: int, job: dict, result: dict) 
         log_status = "failed"
         log_error = "Abortado: Reel/Foto sem legenda confirmada"
 
-    timing = _publish_timing(
-        job.get("scheduled_at"),
-        job.get("started_at"),
-        enqueued_at=job.get("enqueued_at"),
-        dispatch_countdown=int(job.get("dispatch_countdown") or 0),
-    )
-    with session_scope() as db:
-        acc = db.get(InstagramAccount, account_id)
-        if acc:
-            acc.last_login_at = dt.datetime.utcnow()
-            acc.status = "active"
-            acc.last_error = None
-        auto = _bump_automation_run_counters(db, automation_id)
-        plog = PublishLog(
-            automation_id=automation_id,
-            account_id=account_id,
-            status=log_status,
-            content_type=content_type,
-            media_id=result.get("id"),
-            media_url=result.get("url"),
-            video_key=video_key,
-            caption_ok=caption_ok if content_type in ("reel", "photo") else None,
-            error=log_error,
-            scheduled_at=timing.get("scheduled_at"),
-            started_at=timing.get("started_at"),
-            schedule_lag_seconds=timing.get("schedule_lag_seconds"),
-            duration_seconds=timing.get("duration_seconds"),
-            queue_wait_seconds=timing.get("queue_wait_seconds"),
+    try:
+        timing = _publish_timing(
+            job.get("scheduled_at"),
+            job.get("started_at"),
+            enqueued_at=job.get("enqueued_at"),
+            dispatch_countdown=int(job.get("dispatch_countdown") or 0),
         )
-        db.add(plog)
-        db.flush()
-        publish_log_id = plog.id
-        if auto and (auto.start_mode or "") == "now":
-            _complete_now_automation_if_ready(db, auto)
-    _record_timing_metrics(timing, log_status)
+    except Exception:
+        log.exception(
+            "META async timing falhou account=%s — gravando PublishLog sem métricas",
+            account_id,
+        )
+        timing = {
+            "scheduled_at": None,
+            "started_at": dt.datetime.utcnow(),
+            "schedule_lag_seconds": None,
+            "duration_seconds": None,
+            "queue_wait_seconds": None,
+        }
+
+    # 1) Persistência do log — prioridade absoluta (post já está no Instagram).
+    try:
+        with session_scope() as db:
+            acc = db.get(InstagramAccount, account_id)
+            if acc:
+                acc.last_login_at = dt.datetime.utcnow()
+                acc.status = "active"
+                acc.last_error = None
+            auto = _bump_automation_run_counters(db, automation_id)
+            plog = PublishLog(
+                automation_id=automation_id,
+                account_id=account_id,
+                status=log_status,
+                content_type=content_type,
+                media_id=str(result.get("id") or "")[:64] or None,
+                media_url=str(result.get("url") or "")[:512] or None,
+                video_key=video_key,
+                caption_ok=caption_ok if content_type in ("reel", "photo") else None,
+                error=log_error,
+                scheduled_at=timing.get("scheduled_at"),
+                started_at=timing.get("started_at"),
+                schedule_lag_seconds=timing.get("schedule_lag_seconds"),
+                duration_seconds=timing.get("duration_seconds"),
+                queue_wait_seconds=timing.get("queue_wait_seconds"),
+            )
+            db.add(plog)
+            db.flush()
+            publish_log_id = plog.id
+            if auto and (auto.start_mode or "") == "now":
+                try:
+                    _complete_now_automation_if_ready(db, auto)
+                except Exception:
+                    log.exception(
+                        "complete_now_automation falhou automation=%s", automation_id
+                    )
+    except Exception:
+        log.exception(
+            "CRITICAL: PublishLog async falhou após media_publish account=%s media=%s",
+            account_id,
+            result.get("id"),
+        )
+        # Ainda libera slots / limpa pending para não travar a conta.
+        _clear_meta_pending(account_id)
+        _cleanup_temp_camu_key(job.get("temp_camu_key"))
+        _release_meta_inflight(account_id, owner_user_id)
+        raise
+
+    try:
+        _record_timing_metrics(timing, log_status)
+    except Exception:
+        pass
 
     _clear_meta_pending(account_id)
     _cleanup_temp_camu_key(job.get("temp_camu_key"))
 
+    log.info(
+        "META capa RESULT (async) account=%s thumb=%s cover_applied=%s cover_error=%r url=%s log_id=%s",
+        username,
+        thumb_key or "-",
+        cover_applied,
+        cover_error or None,
+        result.get("url"),
+        publish_log_id,
+    )
+
+    # 2) Notificações — nunca podem impedir o log (já gravado).
+    try:
+        if content_type == "reel" and thumb_key and not cover_applied:
+            create_notification(
+                owner_user_id,
+                "Reels publicado sem a capa personalizada",
+                f"@{username}: {(cover_error or 'capa não aplicada')[:160]}",
+                kind="warning",
+                link="/logs",
+            )
+        if content_type in ("reel", "photo") and caption_verified is None:
+            create_notification(
+                owner_user_id,
+                "Reels: legenda ainda não apareceu na Graph",
+                f"@{username}: publicamos com caption, mas a Meta demorou a indexar. "
+                "Confira o post no Instagram.",
+                kind="warning",
+                link=str(result.get("url") or "/logs"),
+            )
+    except Exception:
+        log.exception("notificação pós-publish async falhou account=%s", account_id)
+
     if log_status == "success":
         _mark_meta_published(account_id, cooldown_sec, owner_user_id)
-        notify_publish_success(
-            owner_user_id,
-            username,
-            content_type=content_type,
-            publish_log_id=publish_log_id,
-        )
+        try:
+            notify_publish_success(
+                owner_user_id,
+                username,
+                content_type=content_type,
+                publish_log_id=publish_log_id,
+            )
+        except Exception:
+            log.exception("notify_publish_success async falhou account=%s", account_id)
     else:
         _release_meta_inflight(account_id, owner_user_id)
 
@@ -2625,6 +2694,7 @@ def _complete_meta_pending_success(*, account_id: int, job: dict, result: dict) 
         "video_key": video_key,
         "camouflage_applied": bool(job.get("camouflage_applied")),
         "caption_ok": caption_ok,
+        "publish_log_id": publish_log_id,
         **result,
     }
 
@@ -2792,6 +2862,59 @@ def meta_poll_container(self, account_id: int, job_token: str) -> dict:
         polls=poll_count,
         ready_total_seconds=ready_total,
     )
-    return _complete_meta_pending_success(
-        account_id=account_id, job=job, result=finalized
-    )
+    try:
+        return _complete_meta_pending_success(
+            account_id=account_id, job=job, result=finalized
+        )
+    except Exception as exc:
+        # Post já está no Instagram — último recurso para não sumir do painel.
+        log.exception(
+            "META complete após publish falhou account=%s media=%s: %s",
+            account_id,
+            finalized.get("id"),
+            exc,
+        )
+        try:
+            with session_scope() as db:
+                plog = PublishLog(
+                    automation_id=job.get("automation_id"),
+                    account_id=account_id,
+                    status="success",
+                    content_type=job.get("content_type") or "reel",
+                    media_id=str(finalized.get("id") or "")[:64] or None,
+                    media_url=str(finalized.get("url") or "")[:512] or None,
+                    video_key=job.get("video_key"),
+                    error=f"log_recover: {exc}"[:500],
+                )
+                db.add(plog)
+                db.flush()
+                recover_id = plog.id
+            _clear_meta_pending(account_id)
+            _cleanup_temp_camu_key(job.get("temp_camu_key"))
+            _mark_meta_published(
+                account_id,
+                int(job.get("cooldown_sec") or 3600),
+                job.get("owner_user_id"),
+            )
+            log.info(
+                "META PublishLog recovered after complete failure log_id=%s account=%s",
+                recover_id,
+                account_id,
+            )
+            return {
+                "ok": True,
+                "provider": "meta",
+                "async": True,
+                "recovered_log": True,
+                "publish_log_id": recover_id,
+                **finalized,
+            }
+        except Exception:
+            log.exception(
+                "META recover PublishLog ALSO failed account=%s media=%s",
+                account_id,
+                finalized.get("id"),
+            )
+            _clear_meta_pending(account_id)
+            _release_meta_inflight(account_id, job.get("owner_user_id"))
+            raise
