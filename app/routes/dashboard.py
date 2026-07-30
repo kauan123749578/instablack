@@ -626,12 +626,40 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
     active_automations = len(automations)
     total_automations = active_automations
 
-    # Contagem por conta nos últimos 30d travava o painel (scan gigante em publish_logs).
-    # Ordena por username; posts aparecem no ranking/analytics.
+    # Contagem de posts por conta (30d). Timeout local já está em 1500ms.
+    account_publish_counts: dict[int, int] = {}
+    if account_ids:
+        try:
+            account_publish_counts = dict(
+                db.execute(
+                    select(PublishLog.account_id, func.count(PublishLog.id))
+                    .where(
+                        PublishLog.account_id.in_(account_ids),
+                        PublishLog.status == "success",
+                        PublishLog.created_at
+                        >= _utc_naive(_brt_day_bounds(today - dt.timedelta(days=30))[0]),
+                    )
+                    .group_by(PublishLog.account_id)
+                ).all()
+            )
+        except OperationalError as exc:
+            log.warning("dashboard account publish counts timeout: %s", exc)
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            if not settings.is_sqlite:
+                try:
+                    db.execute(text("SET LOCAL lock_timeout = '500ms'"))
+                    db.execute(text("SET LOCAL statement_timeout = '1500ms'"))
+                except Exception:
+                    pass
+
     accounts_data = [
-        {"account": acc, "publish_count": 0}
+        {"account": acc, "publish_count": account_publish_counts.get(acc.id, 0)}
         for acc in accounts
     ]
+    accounts_data.sort(key=lambda x: (-x["publish_count"], x["account"].username.lower()))
 
     max_val = 1
     chart_performance: list[dict] = []

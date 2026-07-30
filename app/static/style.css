@@ -470,6 +470,11 @@ body.privacy-blur-handles .ig-handle {
 body.privacy-blur-handles .ig-handle * {
   filter: inherit;
 }
+/* Insights / listas que esqueceram a classe — @ no início do texto */
+body.privacy-blur-handles .og-dash-list-body > strong:not(.ig-handle) {
+  filter: blur(7px);
+  user-select: none;
+}
 
 .notif-dot {
   position: absolute; top: 6px; right: 6px; width: 7px; height: 7px;

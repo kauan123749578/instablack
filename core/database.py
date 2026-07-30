@@ -369,6 +369,8 @@ def _sqlite_migrate(bind=None) -> None:
                 conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN followers_count INTEGER"))
             if "followers_updated_at" not in acols:
                 conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN followers_updated_at DATETIME"))
+            if "profile_pic_url" not in acols:
+                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN profile_pic_url VARCHAR(1024)"))
             if "warmup_enabled" not in acols:
                 conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN warmup_enabled BOOLEAN DEFAULT 0"))
             if "warmup_days" not in acols:
@@ -620,6 +622,7 @@ def _postgres_migrate(bind=None) -> None:
                 ("user_meta_app_id", "INTEGER"),
                 ("followers_count", "INTEGER"),
                 ("followers_updated_at", "TIMESTAMPTZ"),
+                ("profile_pic_url", "VARCHAR(1024)"),
                 ("warmup_enabled", "BOOLEAN DEFAULT FALSE"),
                 ("warmup_days", "INTEGER DEFAULT 7"),
                 ("warmup_started_at", "TIMESTAMPTZ"),

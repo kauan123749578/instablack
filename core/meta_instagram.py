@@ -655,7 +655,7 @@ def fetch_ig_user_metrics(
             "GET",
             _graph_url(ig_user_id),
             params={
-                "fields": "followers_count,media_count",
+                "fields": "followers_count,media_count,profile_picture_url,username",
                 "access_token": access_token,
             },
             timeout=30,
@@ -663,9 +663,11 @@ def fetch_ig_user_metrics(
         data = _json_or_error(response, "Falha ao consultar métricas da conta")
     followers = data.get("followers_count")
     media_count = data.get("media_count")
+    pic = str(data.get("profile_picture_url") or "").strip() or None
     return {
         "followers_count": int(followers) if followers is not None else None,
         "media_count": int(media_count) if media_count is not None else None,
+        "profile_picture_url": pic,
     }
 
 

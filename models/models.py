@@ -156,6 +156,8 @@ class InstagramAccount(Base):
     followers_updated_at: Mapped[Optional[dt.datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # URL pública da foto de perfil (Graph profile_picture_url).
+    profile_pic_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
 
     # password \u00e9 opcional: se vier null, n\u00e3o conseguimos re-logar automaticamente.
     encrypted_password: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)

@@ -104,6 +104,7 @@ def _sync_meta_followers() -> int:
                     or_(
                         InstagramAccount.followers_updated_at.is_(None),
                         InstagramAccount.followers_updated_at < stale_before,
+                        InstagramAccount.profile_pic_url.is_(None),
                     ),
                 )
                 .limit(MAX_META_ACCOUNTS_PER_RUN)
@@ -147,6 +148,9 @@ def _sync_one_meta_followers(account_id: int) -> bool:
             return False
         if metrics.get("followers_count") is not None:
             acc.followers_count = metrics["followers_count"]
+        pic = metrics.get("profile_picture_url")
+        if pic:
+            acc.profile_pic_url = str(pic)[:1024]
         acc.followers_updated_at = dt.datetime.utcnow()
     return True
 
