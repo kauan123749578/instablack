@@ -2681,7 +2681,7 @@ def meta_poll_container(self, account_id: int, job_token: str) -> dict:
             )
 
     try:
-        status = get_container_status(
+        status, status_detail = get_container_status(
             container_id, token, proxy=meta_proxy if meta_proxy else None
         )
     except MetaInstagramError as exc:
@@ -2695,10 +2695,38 @@ def meta_poll_container(self, account_id: int, job_token: str) -> dict:
     job["poll_count"] = poll_count
 
     if status in ("ERROR", "EXPIRED"):
+        # A Meta às vezes marca ERROR cedo e depois FINISHED — tolera alguns polls.
+        if status == "ERROR" and poll_count < 4:
+            _save_meta_pending(account_id, job)
+            countdown = _meta_poll_countdown(poll_count)
+            meta_poll_container.apply_async(
+                args=[account_id, job_token],
+                countdown=countdown,
+            )
+            log.warning(
+                "META poll ERROR early account=%s container=%s poll=%s detail=%r next=%ss",
+                account_id,
+                container_id,
+                poll_count,
+                status_detail,
+                countdown,
+            )
+            return {
+                "ok": True,
+                "processing": True,
+                "status": status,
+                "status_detail": status_detail,
+                "poll_count": poll_count,
+                "countdown": countdown,
+                "error_retry": True,
+            }
+        err = f"Container Meta status={status}"
+        if status_detail:
+            err = f"{err}: {status_detail}"
         return _fail_meta_pending_job(
             account_id=account_id,
             job=job,
-            error=f"Container Meta status={status}",
+            error=err,
         )
 
     if status not in ("FINISHED", "PUBLISHED"):

@@ -840,8 +840,12 @@ def get_container_status(
     access_token: str,
     *,
     proxy: str | None = None,
-) -> str:
-    """Um GET no status do container. Retorna status_code uppercased."""
+) -> tuple[str, str | None]:
+    """Consulta status do container. Retorna (status_code, detail).
+
+    Quando status_code=ERROR, o campo ``status`` da Graph costuma trazer o
+    subcódigo/mensagem (ex.: 2207026 formato inválido, timeout de download).
+    """
     with meta_proxy_scope(proxy):
         response = _http(
             "GET",
@@ -850,7 +854,12 @@ def get_container_status(
             timeout=30,
         )
         data = _json_or_error(response, "Falha ao consultar processamento da mídia")
-    return str(data.get("status_code") or data.get("status") or "").upper()
+    status_code = str(data.get("status_code") or data.get("status") or "").upper()
+    raw_detail = data.get("status")
+    detail = str(raw_detail).strip() if raw_detail is not None else None
+    if detail and detail.upper() == status_code:
+        detail = None
+    return status_code, detail
 
 
 def _wait_container(
@@ -861,7 +870,7 @@ def _wait_container(
 ) -> None:
     """Aguarda status FINISHED (caminho sync / fallback). Preferir poll Celery."""
     for _ in range(60):
-        status = get_container_status(container_id, access_token)
+        status, _detail = get_container_status(container_id, access_token)
         if status in ("FINISHED", "PUBLISHED"):
             settle = 0.0 if getattr(settings, "meta_http_mock", False) else settle_seconds
             if settle > 0:
