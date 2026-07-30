@@ -4,7 +4,9 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import time
+from io import BytesIO
 
+import requests
 from sqlalchemy import or_, select
 
 from app.security import decrypt_secret
@@ -24,6 +26,7 @@ from core.meta_instagram import (
     fetch_media_insights,
     fetch_media_permalink,
 )
+from core.storage import get_storage
 from models.models import InstagramAccount, PublishLog
 
 log = logging.getLogger(__name__)
@@ -31,6 +34,45 @@ log = logging.getLogger(__name__)
 STALE_HOURS = 1
 MAX_LOGS_PER_RUN = 80
 MAX_META_ACCOUNTS_PER_RUN = 40
+MAX_PROFILE_PIC_PER_RUN = 60
+
+
+def _cache_profile_picture(account_id: int, remote_url: str) -> str | None:
+    """Baixa a foto da Meta e salva no R2/local → URL /media/... (estável no painel)."""
+    url = (remote_url or "").strip()
+    if not url.startswith("http"):
+        return None
+    try:
+        resp = requests.get(
+            url,
+            timeout=25,
+            headers={"User-Agent": "instablack-profile-sync/1.0"},
+        )
+        if resp.status_code != 200 or len(resp.content) < 80:
+            log.warning(
+                "profile pic download falhou account=%s http=%s bytes=%s",
+                account_id,
+                resp.status_code,
+                len(resp.content or b""),
+            )
+            return url[:1024]
+        ctype = (resp.headers.get("Content-Type") or "").lower()
+        ext = ".jpg"
+        if "png" in ctype:
+            ext = ".png"
+        elif "webp" in ctype:
+            ext = ".webp"
+        key = f"avatars/ig/{int(account_id)}{ext}"
+        storage = get_storage()
+        storage.save_at_key(
+            key,
+            BytesIO(resp.content),
+            content_type=ctype.split(";")[0].strip() or None,
+        )
+        return f"/media/{key}"
+    except Exception as exc:
+        log.warning("cache profile pic account=%s: %s", account_id, exc)
+        return url[:1024]
 
 
 @celery_app.task(name="celery_app.tasks.insights.sync_all_views")
@@ -105,6 +147,8 @@ def _sync_meta_followers() -> int:
                         InstagramAccount.followers_updated_at.is_(None),
                         InstagramAccount.followers_updated_at < stale_before,
                         InstagramAccount.profile_pic_url.is_(None),
+                        InstagramAccount.profile_pic_url == "",
+                        ~InstagramAccount.profile_pic_url.startswith("/media/"),
                     ),
                 )
                 .limit(MAX_META_ACCOUNTS_PER_RUN)
@@ -142,17 +186,62 @@ def _sync_one_meta_followers(account_id: int) -> bool:
         log.warning("meta followers %s: %s", account_id, exc)
         return False
 
+    # Download da foto FORA do session — não segura conexão no PgBouncer.
+    cached_pic: str | None = None
+    pic = metrics.get("profile_picture_url")
+    if pic:
+        cached_pic = _cache_profile_picture(account_id, str(pic))
+    else:
+        log.info(
+            "meta followers account=%s sem profile_picture_url na Graph",
+            account_id,
+        )
+
     with session_scope() as db:
         acc = db.get(InstagramAccount, account_id)
         if not acc:
             return False
         if metrics.get("followers_count") is not None:
             acc.followers_count = metrics["followers_count"]
-        pic = metrics.get("profile_picture_url")
-        if pic:
-            acc.profile_pic_url = str(pic)[:1024]
+        if cached_pic:
+            acc.profile_pic_url = cached_pic[:1024]
         acc.followers_updated_at = dt.datetime.utcnow()
     return True
+
+
+@celery_app.task(name="celery_app.tasks.insights.refresh_missing_profile_pics")
+def refresh_missing_profile_pics(account_ids: list[int] | None = None) -> dict:
+    """Backfill rápido de fotos de perfil Meta (dashboard dispara quando faltam)."""
+    ids: list[int]
+    if account_ids:
+        ids = [int(x) for x in account_ids][:MAX_PROFILE_PIC_PER_RUN]
+    else:
+        with session_scope() as db:
+            ids = list(
+                db.scalars(
+                    select(InstagramAccount.id)
+                    .where(
+                        InstagramAccount.provider == "meta",
+                        InstagramAccount.status.notin_(("paused", "deleted", "banned")),
+                        or_(
+                            InstagramAccount.profile_pic_url.is_(None),
+                            InstagramAccount.profile_pic_url == "",
+                            ~InstagramAccount.profile_pic_url.startswith("/media/"),
+                        ),
+                    )
+                    .order_by(InstagramAccount.id.asc())
+                    .limit(MAX_PROFILE_PIC_PER_RUN)
+                ).all()
+            )
+    updated = 0
+    for aid in ids:
+        try:
+            if _sync_one_meta_followers(aid):
+                updated += 1
+        except Exception as exc:
+            log.warning("refresh profile pic %s: %s", aid, exc)
+        time.sleep(0.4)
+    return {"requested": len(ids), "updated": updated}
 
 
 def _sync_one_log(log_id: int, account_id: int, media_id: str) -> bool:

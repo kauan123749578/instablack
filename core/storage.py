@@ -16,6 +16,13 @@ B2_KEY_PREFIX = "b2/"
 
 class StorageBackend(Protocol):
     def save(self, src_stream: BinaryIO, suggested_ext: str = ".mp4") -> str: ...
+    def save_at_key(
+        self,
+        key: str,
+        src_stream: BinaryIO,
+        *,
+        content_type: str | None = None,
+    ) -> str: ...
     def download_to(self, key: str, dest_path: Path) -> None: ...
     def open_download(self, key: str, byte_range: str | None = None) -> dict: ...
     def head_download(self, key: str) -> dict: ...
@@ -71,6 +78,24 @@ class LocalStorage:
         raise NotImplementedError("URL assinada requer STORAGE_BACKEND=s3")
 
     def allocate_key(self, key: str) -> str:
+        return key
+
+    def save_at_key(
+        self,
+        key: str,
+        src_stream: BinaryIO,
+        *,
+        content_type: str | None = None,
+    ) -> str:
+        dest = self._abs(key)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            src_stream.seek(0)
+        except Exception:
+            pass
+        with dest.open("wb") as out:
+            shutil.copyfileobj(src_stream, out)
+        _ = content_type
         return key
 
 
@@ -187,6 +212,26 @@ class S3Storage:
     def allocate_key(self, key: str) -> str:
         return key
 
+    def save_at_key(
+        self,
+        key: str,
+        src_stream: BinaryIO,
+        *,
+        content_type: str | None = None,
+    ) -> str:
+        ctype = content_type or self._guess_content_type(Path(key).suffix or ".jpg")
+        try:
+            src_stream.seek(0)
+        except Exception:
+            pass
+        self.client.upload_fileobj(
+            src_stream,
+            self.bucket,
+            key,
+            ExtraArgs={"ContentType": ctype},
+        )
+        return key
+
     def ping(self) -> None:
         """Verifica credenciais e acesso ao bucket."""
         self.client.head_bucket(Bucket=self.bucket)
@@ -214,6 +259,17 @@ class DualS3Storage:
         with self._lock:
             use_secondary = next(self._counter) % 2 == 1
         return f"{B2_KEY_PREFIX}{key}" if use_secondary else key
+
+    def save_at_key(
+        self,
+        key: str,
+        src_stream: BinaryIO,
+        *,
+        content_type: str | None = None,
+    ) -> str:
+        # Avatares ficam no primary (key estável, sem prefixo b2/).
+        backend = self._backend_for(key)
+        return backend.save_at_key(key, src_stream, content_type=content_type)
 
     def save(self, src_stream: BinaryIO, suggested_ext: str = ".mp4") -> str:
         ext = suggested_ext if suggested_ext.startswith(".") else f".{suggested_ext}"

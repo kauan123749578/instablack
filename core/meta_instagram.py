@@ -119,6 +119,7 @@ def _mock_meta_http(method: str, url: str, **kwargs) -> requests.Response:
             "permalink": "https://www.instagram.com/reel/MOCK/",
             "username": "mock_user",
             "followers_count": 100,
+            "profile_picture_url": "https://via.placeholder.com/150",
         }
 
     resp = requests.Response()
@@ -649,7 +650,7 @@ def fetch_ig_user_metrics(
     ig_user_id: str,
     *,
     proxy: str | None = None,
-) -> dict[str, int | None]:
+) -> dict[str, int | str | None]:
     with meta_proxy_scope(proxy):
         response = _http(
             "GET",

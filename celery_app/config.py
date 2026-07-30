@@ -43,6 +43,7 @@ celery_conf: dict = {
         "celery_app.tasks.health.check_all_accounts": {"queue": "beat"},
         "celery_app.tasks.health.check_account_health": {"queue": "health"},
         "celery_app.tasks.insights.sync_all_views": {"queue": "default"},
+        "celery_app.tasks.insights.refresh_missing_profile_pics": {"queue": "default"},
         "celery_app.tasks.warmup.run_warmup_job": {"queue": "default"},
     },
     "broker_connection_retry_on_startup": True,

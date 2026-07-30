@@ -41,6 +41,36 @@ _AUTOMATION_DASH_COLS = (
 )
 _RANK_CACHE: dict[tuple, tuple[float, list[dict]]] = {}
 _RANK_CACHE_TTL = 120.0
+_PROFILE_PIC_ENQUEUE_AT: dict[int, float] = {}
+_PROFILE_PIC_ENQUEUE_COOLDOWN = 90.0
+
+
+def _maybe_enqueue_profile_pics(user_id: int, accounts: list[InstagramAccount]) -> None:
+    """Dispara backfill de fotos Meta se alguma conta ainda não tem /media/avatar."""
+    missing = [
+        int(a.id)
+        for a in accounts
+        if getattr(a, "provider", None) == "meta"
+        and not (getattr(a, "profile_pic_url", None) or "").startswith("/media/")
+    ]
+    if not missing:
+        return
+    now = time.monotonic()
+    last = _PROFILE_PIC_ENQUEUE_AT.get(user_id, 0.0)
+    if now - last < _PROFILE_PIC_ENQUEUE_COOLDOWN:
+        return
+    _PROFILE_PIC_ENQUEUE_AT[user_id] = now
+    try:
+        from celery_app.tasks.insights import refresh_missing_profile_pics
+
+        refresh_missing_profile_pics.delay(missing[:40])
+        log.info(
+            "enfileirou refresh_missing_profile_pics user=%s n=%s",
+            user_id,
+            min(len(missing), 40),
+        )
+    except Exception as exc:
+        log.warning("falha ao enfileirar profile pics: %s", exc)
 
 
 def _parse_chart_days(raw: str | int | None) -> int:
@@ -660,6 +690,7 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
         for acc in accounts
     ]
     accounts_data.sort(key=lambda x: (-x["publish_count"], x["account"].username.lower()))
+    _maybe_enqueue_profile_pics(user.id, accounts)
 
     max_val = 1
     chart_performance: list[dict] = []
@@ -848,6 +879,7 @@ def _dashboard_heavy_context(db: Session, user: User, chart_days: int) -> dict:
         for acc in accounts
     ]
     accounts_data.sort(key=lambda x: x["publish_count"], reverse=True)
+    _maybe_enqueue_profile_pics(user.id, accounts)
 
     latest_log_id = (
         db.scalar(
