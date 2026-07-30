@@ -581,10 +581,20 @@
     async function poll() {
       if (document.hidden) return;
       try {
-        const res = await fetch("/api/logs/latest?since_id=" + latest);
+        // Lista vazia: busca as últimas (since_id=0). Depois só deltas.
+        const bootstrapping = list.children.length === 0;
+        const res = await fetch(
+          "/api/logs/latest?since_id=" + (bootstrapping ? 0 : latest)
+        );
         if (!res.ok) return;
         const data = await res.json();
-        if (!data.items || !data.items.length) return;
+        if (!data.items || !data.items.length) {
+          if (typeof data.latest_id === "number" && data.latest_id > latest) {
+            latest = data.latest_id;
+            panel.dataset.latestId = String(latest);
+          }
+          return;
+        }
         const empty = document.getElementById("dash-activity-empty");
         if (empty) empty.hidden = true;
         list.hidden = false;
@@ -609,6 +619,9 @@
           while (list.children.length > 12) list.removeChild(list.lastElementChild);
         }
         try { if (window.lucide) lucide.createIcons(); } catch (_) {}
+        if (!bootstrapping) {
+          try { loadNotifications(); } catch (_) {}
+        }
       } catch (_) {}
     }
 

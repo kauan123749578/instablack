@@ -184,6 +184,12 @@ def _sync_one_meta_followers(account_id: int) -> bool:
         metrics = fetch_ig_user_metrics(token, ig_user_id, proxy=proxy)
     except MetaInstagramError as exc:
         log.warning("meta followers %s: %s", account_id, exc)
+        if getattr(exc, "code", None) in (102, 190):
+            with session_scope() as db:
+                acc = db.get(InstagramAccount, account_id)
+                if acc and acc.status not in ("paused", "deleted", "banned"):
+                    acc.status = "needs_login"
+                    acc.last_error = str(exc)[:500]
         return False
 
     # Download da foto FORA do session — não segura conexão no PgBouncer.

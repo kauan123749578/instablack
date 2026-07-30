@@ -561,7 +561,8 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
     if not settings.is_sqlite:
         # lock_timeout: COUNT/SELECT não esperam o worker soltar FOR UPDATE.
         db.execute(text("SET LOCAL lock_timeout = '500ms'"))
-        db.execute(text("SET LOCAL statement_timeout = '1500ms'"))
+        # 4s: Insights agregados + gráfico; 1.5s estourava e o painel vinha vazio.
+        db.execute(text("SET LOCAL statement_timeout = '4000ms'"))
 
     today = brt_now().date()
     yesterday = today - dt.timedelta(days=1)
@@ -589,7 +590,7 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
         if not settings.is_sqlite:
             try:
                 db.execute(text("SET LOCAL lock_timeout = '500ms'"))
-                db.execute(text("SET LOCAL statement_timeout = '1500ms'"))
+                db.execute(text("SET LOCAL statement_timeout = '4000ms'"))
             except Exception:
                 pass
         account_ids = []
@@ -751,7 +752,18 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
         "new_automations_month": new_automations_month,
         "next_publications": next_publications,
         "automation_account_counts": automation_account_counts,
-        "latest_log_id": 0,
+        "latest_log_id": (
+            (
+                db.scalar(
+                    select(func.max(PublishLog.id)).where(
+                        PublishLog.account_id.in_(account_ids)
+                    )
+                )
+                if account_ids
+                else 0
+            )
+            or 0
+        ),
         "chart_performance": chart_performance,
         "chart_line_path": chart_line_path,
         "chart_area_path": chart_area_path,

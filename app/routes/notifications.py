@@ -283,9 +283,18 @@ def api_logs_latest(
     if since_id > 0:
         q = q.where(PublishLog.id > since_id)
     rows = list(db.scalars(q).all())
-    # Só dispara push em deltas (since_id>0), não no carregamento inicial
-    if since_id > 0 and rows:
-        _maybe_push_for_new_logs(user.id, rows)
+    # Bootstrap e deltas: garante notificação in-app se o worker não criou.
+    if rows:
+        try:
+            synced = _sync_notifications_from_logs(db, user)
+        except Exception:
+            log.exception("sync notifications from logs falhou user=%s", user.id)
+            synced = []
+        # Push só em deltas (não no carregamento inicial — evita flood).
+        if since_id > 0:
+            _maybe_push_for_new_logs(user.id, rows)
+            if synced:
+                _maybe_push_for_new_logs(user.id, synced)
     return {
         "items": [
             {

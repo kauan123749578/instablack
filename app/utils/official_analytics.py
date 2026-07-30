@@ -57,8 +57,39 @@ def user_official_insights_summary(
         selected_id = None
 
     accounts = [a for a in all_meta if selected_id is None or a.id == selected_id]
+    account_ids = [a.id for a in accounts]
 
-    since = dt.datetime.utcnow() - dt.timedelta(days=max(1, reel_views_days))
+    since = _utc_naive(dt.datetime.utcnow() - dt.timedelta(days=max(1, reel_views_days)))
+    views_by_account: dict[int, int] = {}
+    success_by_account: dict[int, int] = {}
+
+    # 2 queries agregadas no lugar de 2×N (timeout do dashboard com muitas contas).
+    if account_ids:
+        for aid, views in db.execute(
+            select(
+                PublishLog.account_id,
+                func.coalesce(func.sum(PublishLog.play_count), 0),
+            )
+            .where(
+                PublishLog.account_id.in_(account_ids),
+                PublishLog.status == "success",
+                PublishLog.content_type == "reel",
+                PublishLog.created_at >= since,
+            )
+            .group_by(PublishLog.account_id)
+        ).all():
+            views_by_account[int(aid)] = int(views or 0)
+
+        for aid, cnt in db.execute(
+            select(PublishLog.account_id, func.count(PublishLog.id))
+            .where(
+                PublishLog.account_id.in_(account_ids),
+                PublishLog.status == "success",
+            )
+            .group_by(PublishLog.account_id)
+        ).all():
+            success_by_account[int(aid)] = int(cnt or 0)
+
     total_followers = 0
     followers_known = 0
     account_rows: list[dict] = []
@@ -68,26 +99,12 @@ def user_official_insights_summary(
         if followers is not None:
             total_followers += followers
             followers_known += 1
-        views = db.scalar(
-            select(func.coalesce(func.sum(PublishLog.play_count), 0)).where(
-                PublishLog.account_id == acc.id,
-                PublishLog.status == "success",
-                PublishLog.content_type == "reel",
-                PublishLog.created_at >= _utc_naive(since),
-            )
-        ) or 0
-        ok_count = db.scalar(
-            select(func.count(PublishLog.id)).where(
-                PublishLog.account_id == acc.id,
-                PublishLog.status == "success",
-            )
-        ) or 0
         account_rows.append(
             {
                 "account": acc,
                 "followers": followers,
-                "reel_views_period": int(views),
-                "success_count": int(ok_count),
+                "reel_views_period": views_by_account.get(acc.id, 0),
+                "success_count": success_by_account.get(acc.id, 0),
             }
         )
 
@@ -113,7 +130,7 @@ def user_official_insights_summary(
         if selected_id is not None:
             reels_q = reels_q.where(PublishLog.account_id == selected_id)
 
-        recent_reels = db.scalars(reels_q).all()
+        recent_reels = list(db.scalars(reels_q).all())
 
         for reel in recent_reels:
             acc_id = reel.account.id if reel.account else None
