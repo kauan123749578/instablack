@@ -203,36 +203,17 @@ def _batch_status_counts(
         PublishLog.created_at < _utc_naive(last_end),
     )
 
-    if settings.is_sqlite:
-        rows = db.execute(
-            select(PublishLog.created_at, PublishLog.status)
-            .where(PublishLog.account_id.in_(account_ids), *time_filters)
-        ).all()
-        for created_at, status in rows:
-            day = _brt_date_from_db(created_at)
-            if day in out and status in out[day]:
-                out[day][status] += 1
-        return out
-
-    day_col = func.date(
-        func.timezone(
-            "America/Sao_Paulo",
-            func.timezone("UTC", PublishLog.created_at),
-        )
-    )
+    # Bucket em Python com o mesmo BRT de _count_logs_by_accounts / Top do Dia.
+    # Agrupar no Postgres com timezone('UTC', timestamptz) + America/Sao_Paulo
+    # jogava posts da noite de hoje no dia seguinte → KPI 0 e gráfico vazio.
     rows = db.execute(
-        select(
-            day_col.label("day"),
-            PublishLog.status,
-            func.count(PublishLog.id).label("cnt"),
-        )
+        select(PublishLog.created_at, PublishLog.status)
         .where(PublishLog.account_id.in_(account_ids), *time_filters)
-        .group_by(day_col, PublishLog.status)
     ).all()
-    for row_day, status, cnt in rows:
-        day = row_day.date() if isinstance(row_day, dt.datetime) else row_day
+    for created_at, status in rows:
+        day = _brt_date_from_db(created_at)
         if day in out and status in out[day]:
-            out[day][status] = int(cnt or 0)
+            out[day][status] += 1
     return out
 
 
@@ -642,16 +623,19 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
     )
     new_automations_month = 0
 
-    today_counts = log_by_day.get(today, {"success": 0, "failed": 0, "skipped": 0})
-    yesterday_counts = log_by_day.get(yesterday, {"success": 0, "failed": 0, "skipped": 0})
-    pubs_today = today_counts["success"]
-    pubs_yesterday = yesterday_counts["success"]
+    # KPI do dia: bounds BRT (igual /logs e Top do Dia), não só o dict do gráfico.
+    pubs_today = _count_logs_by_accounts(db, account_ids, status="success", day=today)
+    pubs_yesterday = _count_logs_by_accounts(db, account_ids, status="success", day=yesterday)
+    failed_today = _count_logs_by_accounts(db, account_ids, status="failed", day=today)
+    skipped_today = _count_logs_by_accounts(db, account_ids, status="skipped", day=today)
+    failed_yesterday = _count_logs_by_accounts(db, account_ids, status="failed", day=yesterday)
+    skipped_yesterday = _count_logs_by_accounts(db, account_ids, status="skipped", day=yesterday)
     pubs_growth = _growth_pct(pubs_today, pubs_yesterday)
-    total_logs_today = sum(today_counts.values())
-    total_yesterday = sum(yesterday_counts.values())
+    total_logs_today = pubs_today + failed_today + skipped_today
+    total_yesterday = pubs_yesterday + failed_yesterday + skipped_yesterday
     success_rate = round(pubs_today / total_logs_today * 100, 1) if total_logs_today else 0.0
     rate_yesterday = (
-        round(yesterday_counts["success"] / total_yesterday * 100, 1) if total_yesterday else 0.0
+        round(pubs_yesterday / total_yesterday * 100, 1) if total_yesterday else 0.0
     )
     rate_delta = round(success_rate - rate_yesterday, 1) if total_yesterday or total_logs_today else None
 
