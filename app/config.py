@@ -59,9 +59,15 @@ class Settings(BaseSettings):
     meta_instagram_graph_version: str = "v25.0"
     # Quantos publishes Meta podem rodar ao mesmo tempo (tokens diferentes).
     # 18 sustenta ~50–70 users × ~1 Reel/h com folga (clamp 1–20 no claim).
+    # Com submit+poll, o teto limita containers em voo (não workers dormindo).
     meta_global_max_concurrent: int = 18
     # Teto por usuário Instablack: power users com muitas contas.
     meta_user_max_concurrent: int = 5
+    # Submit → poll Celery (worker não dorme 40–90s no processamento Meta).
+    # Desligue (false) para voltar ao wait sync local.
+    meta_async_submit_poll: bool = True
+    # Timeout total submit→READY/publish (segundos).
+    meta_poll_timeout_sec: int = 600
     # Stress test: stub Graph API (sem Instagram real). Nunca ligar em prod real.
     meta_http_mock: bool = False
     meta_http_mock_delay_ms: int = 150

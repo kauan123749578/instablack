@@ -12,6 +12,11 @@ _SAMPLE_KEY_DUR = "metrics:publish_duration_seconds"
 _SAMPLE_KEY_QUEUE = "metrics:queue_wait_seconds"
 _SAMPLE_KEY_OK = "metrics:uploads_ok_ts"
 _SAMPLE_KEY_FAIL = "metrics:uploads_fail_ts"
+_SAMPLE_KEY_META_SUBMIT = "metrics:meta_submit_seconds"
+_SAMPLE_KEY_META_PROCESS = "metrics:meta_process_seconds"
+_SAMPLE_KEY_META_POLLS = "metrics:meta_polls_per_publish"
+_SAMPLE_KEY_META_READY = "metrics:meta_ready_total_seconds"
+_META_POLL_TIMEOUT_KEY = "metrics:meta_poll_timeout"
 _DEFER_KEY = "metrics:meta_defer"
 _MAX_SAMPLES = 2000
 
@@ -95,6 +100,38 @@ def record_meta_defer(reason: str) -> None:
         client.expire(key, 86400)
     except Exception:
         pass
+
+
+def record_meta_poll_sample(
+    *,
+    submit_seconds: float | None = None,
+    process_seconds: float | None = None,
+    polls: int | None = None,
+    ready_total_seconds: float | None = None,
+    timed_out: bool = False,
+) -> None:
+    """Amostras do fluxo submit+poll (Fase C)."""
+    try:
+        client = _redis()
+        pipe = client.pipeline()
+        if submit_seconds is not None and submit_seconds >= 0:
+            pipe.lpush(_SAMPLE_KEY_META_SUBMIT, f"{submit_seconds:.3f}")
+            pipe.ltrim(_SAMPLE_KEY_META_SUBMIT, 0, _MAX_SAMPLES - 1)
+        if process_seconds is not None and process_seconds >= 0:
+            pipe.lpush(_SAMPLE_KEY_META_PROCESS, f"{process_seconds:.3f}")
+            pipe.ltrim(_SAMPLE_KEY_META_PROCESS, 0, _MAX_SAMPLES - 1)
+        if polls is not None and polls >= 0:
+            pipe.lpush(_SAMPLE_KEY_META_POLLS, str(int(polls)))
+            pipe.ltrim(_SAMPLE_KEY_META_POLLS, 0, _MAX_SAMPLES - 1)
+        if ready_total_seconds is not None and ready_total_seconds >= 0:
+            pipe.lpush(_SAMPLE_KEY_META_READY, f"{ready_total_seconds:.3f}")
+            pipe.ltrim(_SAMPLE_KEY_META_READY, 0, _MAX_SAMPLES - 1)
+        if timed_out:
+            pipe.incr(_META_POLL_TIMEOUT_KEY)
+            pipe.expire(_META_POLL_TIMEOUT_KEY, 86400)
+        pipe.execute()
+    except Exception as exc:
+        log.debug("record_meta_poll_sample falhou: %s", exc)
 
 
 def queue_depths() -> dict[str, int]:
@@ -219,12 +256,30 @@ def collect_capacity_metrics() -> dict[str, Any]:
     lag_samples: list[float] = []
     dur_samples: list[float] = []
     queue_samples: list[float] = []
+    meta_submit_samples: list[float] = []
+    meta_process_samples: list[float] = []
+    meta_polls_samples: list[float] = []
+    meta_ready_samples: list[float] = []
     defer: dict[str, int] = {}
+    poll_timeouts = 0
     try:
         client = _redis()
         lag_samples = [float(x) for x in client.lrange(_SAMPLE_KEY_LAG, 0, _MAX_SAMPLES - 1)]
         dur_samples = [float(x) for x in client.lrange(_SAMPLE_KEY_DUR, 0, _MAX_SAMPLES - 1)]
         queue_samples = [float(x) for x in client.lrange(_SAMPLE_KEY_QUEUE, 0, _MAX_SAMPLES - 1)]
+        meta_submit_samples = [
+            float(x) for x in client.lrange(_SAMPLE_KEY_META_SUBMIT, 0, _MAX_SAMPLES - 1)
+        ]
+        meta_process_samples = [
+            float(x) for x in client.lrange(_SAMPLE_KEY_META_PROCESS, 0, _MAX_SAMPLES - 1)
+        ]
+        meta_polls_samples = [
+            float(x) for x in client.lrange(_SAMPLE_KEY_META_POLLS, 0, _MAX_SAMPLES - 1)
+        ]
+        meta_ready_samples = [
+            float(x) for x in client.lrange(_SAMPLE_KEY_META_READY, 0, _MAX_SAMPLES - 1)
+        ]
+        poll_timeouts = int(client.get(_META_POLL_TIMEOUT_KEY) or 0)
         for key in client.scan_iter(match=f"{_DEFER_KEY}:*", count=50):
             reason = str(key).split(":", 2)[-1]
             defer[reason] = int(client.get(key) or 0)
@@ -273,6 +328,11 @@ def collect_capacity_metrics() -> dict[str, Any]:
         "uploads_per_minute": _count_recent(_SAMPLE_KEY_OK, 60),
         "failed_uploads_per_minute": _count_recent(_SAMPLE_KEY_FAIL, 60),
         "meta_defer_count": defer,
+        "meta_submit_seconds": _summarize(meta_submit_samples),
+        "meta_process_seconds": _summarize(meta_process_samples),
+        "meta_polls_per_publish": _summarize(meta_polls_samples),
+        "meta_ready_total_seconds": _summarize(meta_ready_samples),
+        "meta_poll_timeout_count": poll_timeouts,
         **meta_inflight_counts(),
         "workers": workers,
         "redis_latency_ms": redis_ms,

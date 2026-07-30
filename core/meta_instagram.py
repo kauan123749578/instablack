@@ -832,14 +832,14 @@ def _validate_public_media_url(
         ) from last_exc
 
 
-def _wait_container(
+def get_container_status(
     container_id: str,
     access_token: str,
     *,
-    settle_seconds: float = 2.0,
-) -> None:
-    """Aguarda status FINISHED antes do media_publish (docs Meta / erro 9007)."""
-    for _ in range(60):
+    proxy: str | None = None,
+) -> str:
+    """Um GET no status do container. Retorna status_code uppercased."""
+    with meta_proxy_scope(proxy):
         response = _http(
             "GET",
             _graph_url(container_id),
@@ -847,9 +847,19 @@ def _wait_container(
             timeout=30,
         )
         data = _json_or_error(response, "Falha ao consultar processamento da mídia")
-        status = str(data.get("status_code") or data.get("status") or "").upper()
+    return str(data.get("status_code") or data.get("status") or "").upper()
+
+
+def _wait_container(
+    container_id: str,
+    access_token: str,
+    *,
+    settle_seconds: float = 2.0,
+) -> None:
+    """Aguarda status FINISHED (caminho sync / fallback). Preferir poll Celery."""
+    for _ in range(60):
+        status = get_container_status(container_id, access_token)
         if status in ("FINISHED", "PUBLISHED"):
-            # Mesmo com FINISHED a Meta às vezes ainda rejeita publish (race 9007).
             settle = 0.0 if getattr(settings, "meta_http_mock", False) else settle_seconds
             if settle > 0:
                 time.sleep(settle)
@@ -867,6 +877,22 @@ def _is_media_not_ready(exc: MetaInstagramError) -> bool:
     return "media id is not available" in msg or "not ready for publishing" in msg
 
 
+def _publish_container_once(
+    *,
+    ig_user_id: str,
+    container_id: str,
+    access_token: str,
+) -> dict:
+    """Uma tentativa de media_publish (sem sleep longo)."""
+    publish_response = _http(
+        "POST",
+        _graph_url(f"{ig_user_id}/media_publish"),
+        data={"creation_id": container_id, "access_token": access_token},
+        timeout=60,
+    )
+    return _json_or_error(publish_response, "Falha ao publicar container da Meta")
+
+
 def _publish_container(
     *,
     ig_user_id: str,
@@ -877,20 +903,15 @@ def _publish_container(
     last_exc: MetaInstagramError | None = None
     for attempt in range(8):
         try:
-            publish_response = _http(
-                "POST",
-                _graph_url(f"{ig_user_id}/media_publish"),
-                data={"creation_id": container_id, "access_token": access_token},
-                timeout=60,
-            )
-            return _json_or_error(
-                publish_response, "Falha ao publicar container da Meta"
+            return _publish_container_once(
+                ig_user_id=ig_user_id,
+                container_id=container_id,
+                access_token=access_token,
             )
         except MetaInstagramError as exc:
             if not _is_media_not_ready(exc):
                 raise
             last_exc = exc
-            # Reconfirma FINISHED e espera um pouco mais a cada tentativa.
             _wait_container(
                 container_id,
                 access_token,
@@ -900,7 +921,115 @@ def _publish_container(
     raise last_exc
 
 
-def publish_media(
+def _resolve_cover_url(
+    *,
+    content_type: str,
+    cover_key: str | None,
+    media_key: str,
+) -> tuple[str | None, str | None]:
+    """Retorna (cover_url, cover_skip_reason)."""
+    if content_type != "reel":
+        return None, None
+    if not cover_key:
+        reason = "thumb_key ausente na automação"
+        _log.warning("META capa SKIP: %s media=%s", reason, media_key)
+        return None, reason
+    cover_url = public_media_url(cover_key)
+    try:
+        _validate_public_media_url(
+            cover_url,
+            expected_prefix="image/",
+            label="Capa",
+        )
+        _log.info("META capa READY cover_key=%s url=%s", cover_key, cover_url[:120])
+        return cover_url, None
+    except MetaInstagramError as cover_exc:
+        reason = str(cover_exc)[:240]
+        _log.warning(
+            "META capa INVÁLIDA cover_key=%s — seguindo sem capa: %s",
+            cover_key,
+            reason,
+        )
+        return None, reason
+
+
+def _build_media_payload(
+    *,
+    access_token: str,
+    ig_user_id: str,
+    media_key: str,
+    content_type: str,
+    caption_text: str,
+    cover_url: str | None,
+    use_cover: bool,
+) -> dict[str, str]:
+    _ = ig_user_id
+    is_video = Path(media_key).suffix.lower() in VIDEO_EXTENSIONS
+    media_url = public_media_url(media_key)
+    body: dict[str, str] = {"access_token": access_token}
+    if content_type == "reel":
+        body.update(
+            {
+                "media_type": "REELS",
+                "video_url": media_url,
+                "caption": caption_text,
+                "share_to_feed": "true",
+            }
+        )
+        if use_cover and cover_url:
+            body["cover_url"] = cover_url
+    elif content_type == "story":
+        body["media_type"] = "STORIES"
+        body["video_url" if is_video else "image_url"] = media_url
+    else:
+        body["image_url"] = media_url
+        body["caption"] = caption_text
+    return body
+
+
+def _create_media_container(
+    *,
+    ig_user_id: str,
+    content_type: str,
+    body: dict[str, str],
+) -> str:
+    cap = body.get("caption") or ""
+    if content_type in ("reel", "photo") and not cap.strip():
+        raise MetaInstagramError(
+            "Abortado: caption vazia no payload do POST /media (não publica)."
+        )
+    _log.info(
+        "META POST /{ig}/media caption_len=%s utf8_bytes=%s share_to_feed=%s cover=%s preview=%r",
+        len(cap),
+        len(cap.encode("utf-8")),
+        body.get("share_to_feed"),
+        "cover_url" in body,
+        cap[:80],
+    )
+    encoded = urlencode(body, doseq=True, encoding="utf-8", errors="strict")
+    create_response = _http(
+        "POST",
+        _graph_url(f"{ig_user_id}/media"),
+        data=encoded.encode("utf-8"),
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        },
+        timeout=90,
+    )
+    created = _json_or_error(create_response, "Falha ao criar container da Meta")
+    cid = str(created.get("id") or "")
+    if not cid:
+        raise MetaInstagramError("A Meta não retornou o ID do container.")
+    _log.info(
+        "META container created id=%s caption_sent_len=%s cover=%s",
+        cid,
+        len(cap),
+        "cover_url" in body,
+    )
+    return cid
+
+
+def submit_media_container(
     *,
     access_token: str,
     ig_user_id: str,
@@ -910,20 +1039,9 @@ def publish_media(
     cover_key: str | None = None,
     proxy: str | None = None,
 ) -> dict[str, object]:
-    """Cria container, publica e EXIGE legenda em Reel/Foto.
-
-    Caption SEMPRE no POST /{ig-user-id}/media (form UTF-8) — nunca no
-    media_publish. Query string NÃO é usada (trunca legenda longa → Reel
-    sem caption).
-
-    Reel: capa (cover_url) + caption no mesmo POST. Verifica caption na Graph
-    por ~70s; se o campo não indexar (field_missing), segue com aviso.
-    Só aborta se a Meta devolver caption explicitamente vazia.
-
-    proxy: proxy residencial opcional — se houver, Graph sai por ele (não pelo IP do Railway).
-    """
+    """Valida URL + cria container. NÃO espera processamento (async poll)."""
     with meta_proxy_scope(proxy):
-        return _publish_media_inner(
+        return _submit_media_container_inner(
             access_token=access_token,
             ig_user_id=ig_user_id,
             media_key=media_key,
@@ -933,7 +1051,7 @@ def publish_media(
         )
 
 
-def _publish_media_inner(
+def _submit_media_container_inner(
     *,
     access_token: str,
     ig_user_id: str,
@@ -958,198 +1076,166 @@ def _publish_media_inner(
             "Abortado: Reel/Foto sem legenda — a Meta não recebe caption vazio."
         )
 
-    cover_url: str | None = None
-    cover_skip_reason: str | None = None
-    if content_type == "reel":
-        if not cover_key:
-            cover_skip_reason = "thumb_key ausente na automação"
-            _log.warning("META capa SKIP: %s media=%s", cover_skip_reason, media_key)
-        else:
-            cover_url = public_media_url(cover_key)
-            try:
-                _validate_public_media_url(
-                    cover_url,
-                    expected_prefix="image/",
-                    label="Capa",
-                )
-                _log.info(
-                    "META capa READY cover_key=%s url=%s",
-                    cover_key,
-                    cover_url[:120],
-                )
-            except MetaInstagramError as cover_exc:
-                cover_skip_reason = str(cover_exc)[:240]
-                _log.warning(
-                    "META capa INVÁLIDA cover_key=%s — seguindo sem capa: %s",
-                    cover_key,
-                    cover_skip_reason,
-                )
-                cover_url = None
-
+    cover_url, cover_skip_reason = _resolve_cover_url(
+        content_type=content_type,
+        cover_key=cover_key,
+        media_key=media_key,
+    )
     if caption_text:
         _log.info(
-            "META publish caption BEFORE /media content_type=%s len=%s utf8_bytes=%s preview=%r",
+            "META submit caption BEFORE /media content_type=%s len=%s utf8_bytes=%s preview=%r",
             content_type,
             len(caption_text),
             len(caption_text.encode("utf-8")),
             caption_text[:80],
         )
 
-    def _build_payload(
-        *,
-        use_cover: bool,
-        caption_override: str | None = None,
-    ) -> dict[str, str]:
-        # Caption SEMPRE no /media (nunca no media_publish).
-        # Form body UTF-8 — query string trunca legendas longas e a Meta
-        # cria o container SEM caption (explica “às vezes vai, às vezes não”).
-        cap = caption_text if caption_override is None else caption_override
-        body: dict[str, str] = {"access_token": access_token}
-        if content_type == "reel":
-            body.update(
-                {
-                    "media_type": "REELS",
-                    "video_url": media_url,
-                    "caption": cap,
-                    "share_to_feed": "true",
-                }
-            )
-            if use_cover and cover_url:
-                body["cover_url"] = cover_url
-        elif content_type == "story":
-            body["media_type"] = "STORIES"
-            body["video_url" if is_video else "image_url"] = media_url
-        else:  # photo
-            body["image_url"] = media_url
-            body["caption"] = cap
-        return body
+    want_cover = bool(cover_url) and content_type == "reel"
+    use_cover = want_cover
+    cover_applied = False
+    if content_type == "story":
+        use_cover = False
 
-    def _create_container(body: dict[str, str]) -> str:
-        cap = body.get("caption") or ""
-        if content_type in ("reel", "photo") and not cap.strip():
-            raise MetaInstagramError(
-                "Abortado: caption vazia no payload do POST /media (não publica)."
-            )
-        _log.info(
-            "META POST /{ig}/media caption_len=%s utf8_bytes=%s share_to_feed=%s cover=%s preview=%r",
-            len(cap),
-            len(cap.encode("utf-8")),
-            body.get("share_to_feed"),
-            "cover_url" in body,
-            cap[:80],
-        )
-        # application/x-www-form-urlencoded; charset=UTF-8 (doc + Postman)
-        encoded = urlencode(body, doseq=True, encoding="utf-8", errors="strict")
-        create_response = _http(
-            "POST",
-            _graph_url(f"{ig_user_id}/media"),
-            data=encoded.encode("utf-8"),
-            headers={
-                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-            },
-            timeout=90,
-        )
-        created = _json_or_error(create_response, "Falha ao criar container da Meta")
-        cid = str(created.get("id") or "")
-        if not cid:
-            raise MetaInstagramError("A Meta não retornou o ID do container.")
-        _log.info(
-            "META container created id=%s caption_sent_len=%s cover=%s",
-            cid,
-            len(cap),
-            "cover_url" in body,
-        )
-        return cid
-
-    def _one_publish(
-        *,
-        use_cover: bool,
-        caption_override: str | None = None,
-    ) -> tuple[str, str | None, bool]:
-        """Retorna (media_id, permalink, cover_applied)."""
-        body = _build_payload(use_cover=use_cover, caption_override=caption_override)
-        try:
-            container_id = _create_container(body)
-            cover_applied = bool(use_cover and cover_url and "cover_url" in body)
-        except MetaInstagramError as exc:
-            detail = str(exc).lower()
-            cover_rejected = any(
-                marker in detail
-                for marker in ("cover_url", "cover photo", "thumbnail", "thumb image")
-            )
-            if not (use_cover and cover_url and cover_rejected):
-                raise
-            _log.warning("META capa rejeitada no create — retry sem capa: %s", exc)
-            body = _build_payload(use_cover=False, caption_override=caption_override)
-            container_id = _create_container(body)
-            cover_applied = False
-
-        _wait_container(container_id, access_token)
-        published = _publish_container(
+    body = _build_media_payload(
+        access_token=access_token,
+        ig_user_id=ig_user_id,
+        media_key=media_key,
+        content_type=content_type,
+        caption_text=caption_text,
+        cover_url=cover_url,
+        use_cover=use_cover,
+    )
+    try:
+        container_id = _create_media_container(
             ig_user_id=ig_user_id,
-            container_id=container_id,
-            access_token=access_token,
+            content_type=content_type,
+            body=body,
         )
+        cover_applied = bool(use_cover and cover_url and "cover_url" in body)
+    except MetaInstagramError as exc:
+        detail = str(exc).lower()
+        cover_rejected = any(
+            marker in detail
+            for marker in ("cover_url", "cover photo", "thumbnail", "thumb image")
+        )
+        if not (use_cover and cover_url and cover_rejected):
+            raise
+        _log.warning("META capa rejeitada no create — retry sem capa: %s", exc)
+        body = _build_media_payload(
+            access_token=access_token,
+            ig_user_id=ig_user_id,
+            media_key=media_key,
+            content_type=content_type,
+            caption_text=caption_text,
+            cover_url=cover_url,
+            use_cover=False,
+        )
+        container_id = _create_media_container(
+            ig_user_id=ig_user_id,
+            content_type=content_type,
+            body=body,
+        )
+        cover_applied = False
+
+    submitted_at = dt.datetime.utcnow().isoformat()
+    cover_error = None
+    if content_type == "reel" and want_cover and not cover_applied:
+        cover_error = cover_skip_reason or "capa não aplicada"
+    return {
+        "container_id": container_id,
+        "cover_applied": cover_applied if content_type == "reel" else False,
+        "cover_error": cover_error,
+        "caption_sent_len": 0 if content_type == "story" else len(caption_text),
+        "caption_verified": None if content_type == "story" else True,
+        "submitted_at": submitted_at,
+        "content_type": content_type,
+    }
+
+
+def finalize_media_publish(
+    *,
+    access_token: str,
+    ig_user_id: str,
+    container_id: str,
+    proxy: str | None = None,
+    settle_seconds: float = 2.0,
+    allow_not_ready: bool = False,
+) -> dict[str, object]:
+    """media_publish + permalink. Se allow_not_ready e 9007 → {not_ready: True}."""
+    with meta_proxy_scope(proxy):
+        settle = 0.0 if getattr(settings, "meta_http_mock", False) else max(0.0, settle_seconds)
+        if settle > 0:
+            time.sleep(settle)
+        try:
+            if allow_not_ready:
+                published = _publish_container_once(
+                    ig_user_id=ig_user_id,
+                    container_id=container_id,
+                    access_token=access_token,
+                )
+            else:
+                published = _publish_container(
+                    ig_user_id=ig_user_id,
+                    container_id=container_id,
+                    access_token=access_token,
+                )
+        except MetaInstagramError as exc:
+            if allow_not_ready and _is_media_not_ready(exc):
+                return {"not_ready": True, "error": str(exc)[:240]}
+            raise
         mid = str(published.get("id") or "")
         if not mid:
             raise MetaInstagramError("A Meta não retornou o ID da publicação.")
-        # Permalink rápido — sem sleep longo nem verify de caption (travava worker/painel).
-        time.sleep(1.5)
+        if not getattr(settings, "meta_http_mock", False):
+            time.sleep(1.5)
         link: str | None = None
         try:
             link = fetch_media_permalink(access_token, mid)
         except MetaInstagramError:
             link = None
-        return mid, link, cover_applied
-
-    # Story: sem exigência de caption
-    if content_type == "story":
-        media_id, permalink, cover_applied = _one_publish(use_cover=False)
         return {
-            "id": media_id,
+            "id": mid,
             "code": None,
-            "url": permalink,
-            "cover_applied": False,
-            "cover_error": None,
-            "caption_sent_len": 0,
-            "caption_verified": None,
+            "url": link,
+            "not_ready": False,
         }
 
-    cover_error: str | None = cover_skip_reason
-    cover_applied = False
-    want_cover = bool(cover_url)
-    permalink: str | None = None
-    media_id = ""
 
-    # Preferir caption no post: se houver capa, tenta caption+cover juntos.
-    if want_cover:
-        _log.info(
-            "META capa ATTEMPT cover_key=%s (caption+cover juntos)",
-            cover_key,
+def publish_media(
+    *,
+    access_token: str,
+    ig_user_id: str,
+    media_key: str,
+    content_type: str,
+    caption: str = "",
+    cover_key: str | None = None,
+    proxy: str | None = None,
+) -> dict[str, object]:
+    """Caminho sync: submit + wait local + finalize (flag async off / fallback)."""
+    with meta_proxy_scope(proxy):
+        submitted = _submit_media_container_inner(
+            access_token=access_token,
+            ig_user_id=ig_user_id,
+            media_key=media_key,
+            content_type=content_type,
+            caption=caption,
+            cover_key=cover_key,
         )
-        media_id, permalink, cover_applied = _one_publish(use_cover=True)
-    else:
-        _log.info(
-            "META capa NÃO usada reason=%s — publish só com caption",
-            cover_skip_reason or "sem cover_url",
+        container_id = str(submitted["container_id"])
+        _wait_container(container_id, access_token)
+        finalized = finalize_media_publish(
+            access_token=access_token,
+            ig_user_id=ig_user_id,
+            container_id=container_id,
+            settle_seconds=0.0,
+            allow_not_ready=False,
         )
-        media_id, permalink, cover_applied = _one_publish(use_cover=False)
-
-    # Caption já foi enviada no POST /media. Verificação Graph removida:
-    # atrasava o worker minutos e derrubava o painel sob carga.
-    _log.info(
-        "META capa RESULT media=%s cover_applied=%s cover_error=%r caption_sent_len=%s (verify off)",
-        media_id,
-        cover_applied,
-        cover_error,
-        len(caption_text),
-    )
-    return {
-        "id": media_id,
-        "code": None,
-        "url": permalink,
-        "cover_applied": cover_applied,
-        "cover_error": cover_error if not cover_applied and want_cover else None,
-        "caption_sent_len": len(caption_text),
-        "caption_verified": True,
-    }
+        return {
+            "id": finalized.get("id"),
+            "code": None,
+            "url": finalized.get("url"),
+            "cover_applied": submitted.get("cover_applied"),
+            "cover_error": submitted.get("cover_error"),
+            "caption_sent_len": submitted.get("caption_sent_len"),
+            "caption_verified": submitted.get("caption_verified"),
+        }

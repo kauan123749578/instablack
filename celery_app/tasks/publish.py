@@ -41,6 +41,7 @@ from core.anti_farm_prefs import get_anti_farm_prefs_by_id
 from core.capacity_metrics import (
     ffmpeg_slot,
     record_meta_defer,
+    record_meta_poll_sample,
     record_publish_sample,
 )
 from core.database import session_scope
@@ -67,7 +68,10 @@ from core.media_prepare import (
 )
 from core.meta_instagram import (
     MetaInstagramError,
+    finalize_media_publish,
+    get_container_status,
     publish_media as publish_meta_media,
+    submit_media_container,
     uniquify_caption_for_account,
 )
 from core.metadata import MetadataStripError
@@ -200,11 +204,12 @@ def _meta_global_active_key() -> str:
     return "meta:global_active"
 
 
-# Inflight por conta: só enquanto o publish roda (camu+Meta ~1–3 min).
-# NÃO usar o cooldown de 60 min aqui — se o worker cair, a conta ficava
-# bloqueada ~15 min (meta_inflight:883s nos logs).
-META_INFLIGHT_TTL_SEC = 240
-META_GLOBAL_SLOT_TTL_SEC = 360
+# Inflight por conta: do submit até publish/fail (poll pode levar até ~10 min).
+# Refresh a cada poll renova o TTL — se o worker cair, a chave expira sozinha.
+META_INFLIGHT_TTL_SEC = 720
+META_GLOBAL_SLOT_TTL_SEC = 720
+META_PENDING_TTL_SEC = 900
+_META_POLL_BACKOFF = (5, 10, 20, 30)
 
 
 def _meta_global_max_concurrent() -> int:
@@ -295,6 +300,96 @@ def _release_meta_user_slot(client, user_id: int | None, account_id: int) -> Non
         client.zrem(_meta_user_active_key(int(user_id)), str(int(account_id)))
     except Exception:
         pass
+
+
+def _refresh_meta_slots(account_id: int, user_id: int | None = None) -> None:
+    """Renova TTL dos slots enquanto o poll async está em andamento."""
+    import time as _time
+
+    client = _redis()
+    if client is None:
+        return
+    now = _time.time()
+    expiry = now + float(META_GLOBAL_SLOT_TTL_SEC)
+    try:
+        pipe = client.pipeline()
+        pipe.expire(_meta_inflight_key(account_id), META_INFLIGHT_TTL_SEC)
+        pipe.zadd(_meta_global_active_key(), {str(int(account_id)): expiry})
+        if user_id:
+            pipe.zadd(
+                _meta_user_active_key(int(user_id)),
+                {str(int(account_id)): expiry},
+            )
+        pipe.execute()
+    except Exception as exc:
+        log.warning("refresh_meta_slots falhou account=%s: %s", account_id, exc)
+
+
+def _meta_pending_key(account_id: int) -> str:
+    return f"meta:pending:{int(account_id)}"
+
+
+def _save_meta_pending(account_id: int, payload: dict) -> None:
+    import json
+
+    client = _redis()
+    if client is None:
+        raise RuntimeError("Redis indisponível para pending Meta")
+    client.set(
+        _meta_pending_key(account_id),
+        json.dumps(payload, default=str),
+        ex=META_PENDING_TTL_SEC,
+    )
+
+
+def _load_meta_pending(account_id: int) -> dict | None:
+    import json
+
+    client = _redis()
+    if client is None:
+        return None
+    raw = client.get(_meta_pending_key(account_id))
+    if not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _clear_meta_pending(account_id: int) -> None:
+    client = _redis()
+    if client is None:
+        return
+    try:
+        client.delete(_meta_pending_key(account_id))
+    except Exception:
+        pass
+
+
+def _meta_poll_countdown(poll_count: int) -> float:
+    if getattr(settings, "meta_http_mock", False):
+        return 0.1
+    idx = min(max(0, int(poll_count)), len(_META_POLL_BACKOFF) - 1)
+    return float(_META_POLL_BACKOFF[idx])
+
+
+def _meta_poll_timeout_sec() -> int:
+    try:
+        n = int(getattr(settings, "meta_poll_timeout_sec", 600) or 600)
+    except Exception:
+        n = 600
+    return max(60, min(n, 1800))
+
+
+def _cleanup_temp_camu_key(temp_camu_key: str | None) -> None:
+    if not temp_camu_key:
+        return
+    try:
+        get_storage().delete(temp_camu_key)
+    except Exception:
+        log.warning("Falha ao apagar temp camuflagem key=%s", temp_camu_key)
 
 
 def _inflight_user_id(client, account_id: int) -> int | None:
@@ -1378,6 +1473,7 @@ def _execute_publish(
         publish_key = video_key
         temp_camu_key: str | None = None
         tmp_dir: Path | None = None
+        async_submitted = False
         try:
             if (
                 camouflage_cover_key
@@ -1440,12 +1536,112 @@ def _execute_publish(
             try:
                 reel_cover = thumb_key if (content_type or "reel") == "reel" else None
                 log.info(
-                    "META publish start account=%s automation=%s thumb_key=%s cover_will_send=%s",
+                    "META publish start account=%s automation=%s thumb_key=%s cover_will_send=%s async=%s",
                     username,
                     automation_id,
                     reel_cover or "-",
                     bool(reel_cover),
+                    bool(getattr(settings, "meta_async_submit_poll", True)),
                 )
+                use_async = bool(getattr(settings, "meta_async_submit_poll", True))
+                if use_async:
+                    import time as _time
+                    import uuid
+
+                    t0 = _time.perf_counter()
+                    submitted = submit_media_container(
+                        access_token=meta_access_token,
+                        ig_user_id=meta_ig_user_id,
+                        media_key=publish_key,
+                        content_type=content_type,
+                        caption=caption,
+                        cover_key=reel_cover,
+                        proxy=meta_proxy,
+                    )
+                    submit_sec = max(0.0, _time.perf_counter() - t0)
+                    record_meta_poll_sample(submit_seconds=submit_sec)
+                    job_token = uuid.uuid4().hex
+                    submitted_at = str(
+                        submitted.get("submitted_at")
+                        or dt.datetime.utcnow().isoformat()
+                    )
+                    try:
+                        _save_meta_pending(
+                            account_id,
+                            {
+                                "job_token": job_token,
+                                "container_id": str(submitted.get("container_id") or ""),
+                                "automation_id": automation_id,
+                                "account_id": account_id,
+                                "owner_user_id": owner_user_id,
+                                "username": username,
+                                "video_key": video_key,
+                                "publish_key": publish_key,
+                                "temp_camu_key": temp_camu_key,
+                                "thumb_key": thumb_key,
+                                "content_type": content_type or "reel",
+                                "caption": caption or "",
+                                "meta_proxy": meta_proxy,
+                                "cooldown_sec": cooldown_sec,
+                                "playlist_index": playlist_index,
+                                "camouflage_applied": bool(
+                                    camouflage_cover_key
+                                    and (content_type or "reel") == "reel"
+                                ),
+                                "cover_applied": bool(submitted.get("cover_applied")),
+                                "cover_error": submitted.get("cover_error"),
+                                "caption_sent_len": submitted.get("caption_sent_len"),
+                                "caption_verified": submitted.get("caption_verified"),
+                                "scheduled_at": (
+                                    timing_base.get("scheduled_at").isoformat()
+                                    if isinstance(
+                                        timing_base.get("scheduled_at"), dt.datetime
+                                    )
+                                    else timing_base.get("scheduled_at")
+                                ),
+                                "started_at": (
+                                    timing_base.get("started_at").isoformat()
+                                    if isinstance(
+                                        timing_base.get("started_at"), dt.datetime
+                                    )
+                                    else timing_base.get("started_at")
+                                ),
+                                "enqueued_at": enqueued_at,
+                                "dispatch_countdown": dispatch_countdown,
+                                "submitted_at": submitted_at,
+                                "submit_seconds": submit_sec,
+                                "poll_count": 0,
+                            },
+                        )
+                    except Exception:
+                        _release_meta_inflight(account_id, owner_user_id)
+                        _cleanup_temp_camu_key(temp_camu_key)
+                        raise
+                    _refresh_meta_slots(account_id, owner_user_id)
+                    meta_poll_container.apply_async(
+                        args=[account_id, job_token],
+                        countdown=_meta_poll_countdown(0),
+                    )
+                    async_submitted = True
+                    log.info(
+                        "META submit async account=%s container=%s wait_poll=%ss",
+                        account_id,
+                        submitted.get("container_id"),
+                        _meta_poll_countdown(0),
+                    )
+                    return {
+                        "ok": True,
+                        "submitted": True,
+                        "provider": "meta",
+                        "container_id": submitted.get("container_id"),
+                        "playlist_code": PLAYLIST_CODE,
+                        "playlist_index": playlist_index,
+                        "video_key": video_key,
+                        "camouflage_applied": bool(
+                            camouflage_cover_key and (content_type or "reel") == "reel"
+                        ),
+                    }
+
                 result = publish_meta_media(
                     access_token=meta_access_token,
                     ig_user_id=meta_ig_user_id,
@@ -1490,13 +1686,17 @@ def _execute_publish(
                 _release_meta_inflight(account_id, owner_user_id)
                 raise
         finally:
-            if temp_camu_key:
+            # Async: Meta ainda baixa o MP4 — só limpa temp no poll finalize/timeout.
+            if temp_camu_key and not async_submitted:
                 try:
                     storage.delete(temp_camu_key)
                 except Exception:
                     log.warning("Falha ao apagar temp camuflagem key=%s", temp_camu_key)
             if tmp_dir is not None:
                 shutil.rmtree(tmp_dir, ignore_errors=True)
+
+        if async_submitted:
+            return {"ok": True, "submitted": True, "provider": "meta"}
 
         cover_applied = bool(result.get("cover_applied"))
         cover_error = str(result.get("cover_error") or "")
@@ -2264,3 +2464,306 @@ def _mark_account_proxy_down(account_id: int, reason: str) -> None:
             kind="offline",
             link="/accounts/connected",
         )
+
+
+def _fail_meta_pending_job(
+    *,
+    account_id: int,
+    job: dict,
+    error: str,
+    timed_out: bool = False,
+) -> dict:
+    """Libera slots, limpa pending/temp e registra falha."""
+    automation_id = job.get("automation_id")
+    owner_user_id = job.get("owner_user_id")
+    username = job.get("username")
+    content_type = job.get("content_type") or "reel"
+    _clear_meta_pending(account_id)
+    _cleanup_temp_camu_key(job.get("temp_camu_key"))
+    _release_meta_inflight(account_id, owner_user_id if owner_user_id else None)
+    if timed_out:
+        record_meta_poll_sample(timed_out=True)
+    _log_failure(
+        automation_id,
+        account_id,
+        error,
+        content_type=content_type,
+        owner_user_id=owner_user_id,
+        username=username,
+        notify=False,
+    )
+    _notify_publish_failure_once(
+        account_id=account_id,
+        owner_user_id=owner_user_id,
+        username=username,
+        content_type=content_type,
+        error=error,
+    )
+    return {"error": "meta_poll_failed", "detail": error[:300], "timed_out": timed_out}
+
+
+def _complete_meta_pending_success(*, account_id: int, job: dict, result: dict) -> dict:
+    """Persistência + cooldown após media_publish async."""
+    automation_id = job.get("automation_id")
+    owner_user_id = job.get("owner_user_id")
+    username = str(job.get("username") or "")
+    content_type = job.get("content_type") or "reel"
+    video_key = job.get("video_key")
+    thumb_key = job.get("thumb_key")
+    cooldown_sec = int(job.get("cooldown_sec") or 3600)
+    playlist_index = job.get("playlist_index")
+    cover_applied = bool(job.get("cover_applied") or result.get("cover_applied"))
+    cover_error = str(job.get("cover_error") or "")
+    result = {
+        **result,
+        "cover_applied": cover_applied,
+        "cover_error": cover_error or None,
+        "caption_sent_len": job.get("caption_sent_len"),
+        "caption_verified": job.get("caption_verified"),
+    }
+
+    log.info(
+        "META capa RESULT (async) account=%s thumb=%s cover_applied=%s cover_error=%r url=%s",
+        username,
+        thumb_key or "-",
+        cover_applied,
+        cover_error or None,
+        result.get("url"),
+    )
+    if content_type == "reel" and thumb_key and not cover_applied:
+        create_notification(
+            owner_user_id,
+            "Reels publicado sem a capa personalizada",
+            f"@{username}: {(cover_error or 'capa não aplicada')[:160]}",
+            kind="warning",
+            link="/logs",
+        )
+
+    caption_verified = result.get("caption_verified")
+    via_comment = caption_verified == "via_comment"
+    if via_comment:
+        caption_ok: bool | None = True
+    elif caption_verified is True:
+        caption_ok = True
+    elif caption_verified is None and content_type in ("reel", "photo"):
+        caption_ok = None
+    else:
+        caption_ok = False
+    if content_type in ("reel", "photo") and caption_verified is None:
+        create_notification(
+            owner_user_id,
+            "Reels: legenda ainda não apareceu na Graph",
+            f"@{username}: publicamos com caption, mas a Meta demorou a indexar. "
+            "Confira o post no Instagram.",
+            kind="warning",
+            link=str(result.get("url") or "/logs"),
+        )
+
+    publish_log_id: int | None = None
+    log_status = "success"
+    log_error = None
+    if content_type in ("reel", "photo") and caption_ok is False:
+        log_status = "failed"
+        log_error = "Abortado: Reel/Foto sem legenda confirmada"
+
+    timing = _publish_timing(
+        job.get("scheduled_at"),
+        job.get("started_at"),
+        enqueued_at=job.get("enqueued_at"),
+        dispatch_countdown=int(job.get("dispatch_countdown") or 0),
+    )
+    with session_scope() as db:
+        acc = db.get(InstagramAccount, account_id)
+        if acc:
+            acc.last_login_at = dt.datetime.utcnow()
+            acc.status = "active"
+            acc.last_error = None
+        auto = _bump_automation_run_counters(db, automation_id)
+        plog = PublishLog(
+            automation_id=automation_id,
+            account_id=account_id,
+            status=log_status,
+            content_type=content_type,
+            media_id=result.get("id"),
+            media_url=result.get("url"),
+            video_key=video_key,
+            caption_ok=caption_ok if content_type in ("reel", "photo") else None,
+            error=log_error,
+            scheduled_at=timing.get("scheduled_at"),
+            started_at=timing.get("started_at"),
+            schedule_lag_seconds=timing.get("schedule_lag_seconds"),
+            duration_seconds=timing.get("duration_seconds"),
+            queue_wait_seconds=timing.get("queue_wait_seconds"),
+        )
+        db.add(plog)
+        db.flush()
+        publish_log_id = plog.id
+        if auto and (auto.start_mode or "") == "now":
+            _complete_now_automation_if_ready(db, auto)
+    _record_timing_metrics(timing, log_status)
+
+    _clear_meta_pending(account_id)
+    _cleanup_temp_camu_key(job.get("temp_camu_key"))
+
+    if log_status == "success":
+        _mark_meta_published(account_id, cooldown_sec, owner_user_id)
+        notify_publish_success(
+            owner_user_id,
+            username,
+            content_type=content_type,
+            publish_log_id=publish_log_id,
+        )
+    else:
+        _release_meta_inflight(account_id, owner_user_id)
+
+    return {
+        "ok": log_status == "success",
+        "provider": "meta",
+        "async": True,
+        "playlist_code": PLAYLIST_CODE,
+        "playlist_index": playlist_index,
+        "video_key": video_key,
+        "camouflage_applied": bool(job.get("camouflage_applied")),
+        "caption_ok": caption_ok,
+        **result,
+    }
+
+
+@celery_app.task(
+    name="celery_app.tasks.publish.meta_poll_container",
+    bind=True,
+    max_retries=0,
+)
+def meta_poll_container(self, account_id: int, job_token: str) -> dict:
+    """Consulta status do container Meta e finaliza ou re-agenda (backoff)."""
+    _ = self
+    job = _load_meta_pending(account_id)
+    if not job or str(job.get("job_token") or "") != str(job_token or ""):
+        log.info(
+            "meta_poll skip account=%s token=%s (pending ausente ou token antigo)",
+            account_id,
+            (job_token or "")[:8],
+        )
+        return {"skipped": True, "reason": "no_pending"}
+
+    container_id = str(job.get("container_id") or "")
+    if not container_id:
+        return _fail_meta_pending_job(
+            account_id=account_id, job=job, error="pending sem container_id"
+        )
+
+    submitted_at = _parse_scheduled_at(job.get("submitted_at")) or dt.datetime.utcnow()
+    age = (dt.datetime.utcnow() - submitted_at).total_seconds()
+    timeout = _meta_poll_timeout_sec()
+    if age > timeout:
+        return _fail_meta_pending_job(
+            account_id=account_id,
+            job=job,
+            error=f"Meta poll timeout após {int(age)}s (limite {timeout}s)",
+            timed_out=True,
+        )
+
+    owner_user_id = job.get("owner_user_id")
+    meta_proxy = job.get("meta_proxy") or None
+    _refresh_meta_slots(account_id, owner_user_id)
+
+    with session_scope() as db:
+        acc = db.get(InstagramAccount, account_id)
+        if acc is None:
+            return _fail_meta_pending_job(
+                account_id=account_id, job=job, error="account_not_found"
+            )
+        token = decrypt_secret(acc.encrypted_meta_access_token or "")
+        ig_user_id = (acc.meta_ig_user_id or "").strip()
+        if not token or not ig_user_id:
+            return _fail_meta_pending_job(
+                account_id=account_id, job=job, error="meta_token_missing"
+            )
+
+    try:
+        status = get_container_status(
+            container_id, token, proxy=meta_proxy if meta_proxy else None
+        )
+    except MetaInstagramError as exc:
+        if exc.code in (102, 190):
+            _mark_account_needs_login(account_id, str(exc))
+        return _fail_meta_pending_job(
+            account_id=account_id, job=job, error=f"poll status: {exc}"
+        )
+
+    poll_count = int(job.get("poll_count") or 0) + 1
+    job["poll_count"] = poll_count
+
+    if status in ("ERROR", "EXPIRED"):
+        return _fail_meta_pending_job(
+            account_id=account_id,
+            job=job,
+            error=f"Container Meta status={status}",
+        )
+
+    if status not in ("FINISHED", "PUBLISHED"):
+        _save_meta_pending(account_id, job)
+        countdown = _meta_poll_countdown(poll_count)
+        meta_poll_container.apply_async(
+            args=[account_id, job_token],
+            countdown=countdown,
+        )
+        log.info(
+            "META poll PROCESSING account=%s container=%s poll=%s next=%ss age=%.0fs",
+            account_id,
+            container_id,
+            poll_count,
+            countdown,
+            age,
+        )
+        return {
+            "ok": True,
+            "processing": True,
+            "status": status,
+            "poll_count": poll_count,
+            "countdown": countdown,
+        }
+
+    process_sec = max(0.0, age)
+    try:
+        finalized = finalize_media_publish(
+            access_token=token,
+            ig_user_id=ig_user_id,
+            container_id=container_id,
+            proxy=meta_proxy if meta_proxy else None,
+            settle_seconds=2.0,
+            allow_not_ready=True,
+        )
+    except MetaInstagramError as exc:
+        if exc.code in (102, 190):
+            _mark_account_needs_login(account_id, str(exc))
+        if exc.code == 25 or exc.subcode == 2207050 or _meta_user_restricted(exc):
+            _mark_account_meta_restricted(account_id, str(exc))
+        return _fail_meta_pending_job(
+            account_id=account_id, job=job, error=f"finalize: {exc}"
+        )
+
+    if finalized.get("not_ready"):
+        _save_meta_pending(account_id, job)
+        countdown = _meta_poll_countdown(poll_count)
+        meta_poll_container.apply_async(
+            args=[account_id, job_token],
+            countdown=countdown,
+        )
+        return {
+            "ok": True,
+            "processing": True,
+            "status": "NOT_READY_9007",
+            "poll_count": poll_count,
+            "countdown": countdown,
+        }
+
+    ready_total = max(0.0, (dt.datetime.utcnow() - submitted_at).total_seconds())
+    record_meta_poll_sample(
+        process_seconds=process_sec,
+        polls=poll_count,
+        ready_total_seconds=ready_total,
+    )
+    return _complete_meta_pending_success(
+        account_id=account_id, job=job, result=finalized
+    )

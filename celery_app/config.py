@@ -38,6 +38,7 @@ celery_conf: dict = {
         "celery_app.tasks.publish.publish_to_account": {"queue": "publish"},
         "celery_app.tasks.publish.publish_once": {"queue": "publish"},
         "celery_app.tasks.publish.execute_automation": {"queue": "publish"},
+        "celery_app.tasks.publish.meta_poll_container": {"queue": "publish"},
         "celery_app.beat.tick": {"queue": "beat"},
         "celery_app.tasks.health.check_all_accounts": {"queue": "beat"},
         "celery_app.tasks.health.check_account_health": {"queue": "health"},
