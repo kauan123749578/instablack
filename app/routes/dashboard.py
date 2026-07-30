@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import desc, func, select, text
 from sqlalchemy.exc import OperationalError
-from sqlalchemy.orm import Session, load_only
+from sqlalchemy.orm import Session, load_only, selectinload
 
 from app.deps import get_current_user, maybe_current_user, maybe_effective_user
 from app.templating import templates
@@ -153,6 +153,35 @@ def _count_logs(
 ) -> int:
     ids = account_ids if account_ids is not None else _visible_account_ids(db, user_id)
     return _count_logs_by_accounts(db, ids, status=status, day=day)
+
+
+def _recent_publish_logs(
+    db: Session,
+    account_ids: list[int],
+    *,
+    limit: int = 12,
+    status: str | None = None,
+    user: User | None = None,
+) -> list[PublishLog]:
+    """Últimos PublishLog para cards do dashboard (HTML, sem depender do poll JS)."""
+    if not account_ids:
+        return []
+    q = (
+        select(PublishLog)
+        .where(PublishLog.account_id.in_(account_ids))
+        .options(
+            selectinload(PublishLog.account),
+            selectinload(PublishLog.automation),
+        )
+        .order_by(PublishLog.id.desc())
+        .limit(limit)
+    )
+    if status:
+        q = q.where(PublishLog.status == status)
+    cleared_at = getattr(user, "logs_cleared_at", None) if user is not None else None
+    if cleared_at is not None:
+        q = q.where(PublishLog.created_at > cleared_at)
+    return list(db.scalars(q).all())
 
 
 def _batch_status_counts(
@@ -536,6 +565,9 @@ def _dashboard_shell_context(chart_days: int) -> dict:
         "new_accounts_month": 0,
         "new_automations_month": 0,
         "now_brt": brt_now(),
+        "recent_activity": [],
+        "recent_failures": [],
+        "latest_log_id": 0,
     }
 
 
@@ -737,6 +769,22 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
 
         official = empty_official_summary(reel_views_days=chart_days)
 
+    recent_activity: list[PublishLog] = []
+    recent_failures: list[PublishLog] = []
+    try:
+        recent_activity = _recent_publish_logs(db, account_ids, limit=12, user=user)
+        recent_failures = _recent_publish_logs(
+            db, account_ids, limit=8, status="failed", user=user
+        )
+    except OperationalError as exc:
+        log.warning("dashboard recent logs timeout: %s", exc)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+    latest_log_id = recent_activity[0].id if recent_activity else 0
+
     return {
         "chart_days": chart_days,
         "accounts_count": len(account_ids),
@@ -752,18 +800,9 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
         "new_automations_month": new_automations_month,
         "next_publications": next_publications,
         "automation_account_counts": automation_account_counts,
-        "latest_log_id": (
-            (
-                db.scalar(
-                    select(func.max(PublishLog.id)).where(
-                        PublishLog.account_id.in_(account_ids)
-                    )
-                )
-                if account_ids
-                else 0
-            )
-            or 0
-        ),
+        "recent_activity": recent_activity,
+        "recent_failures": recent_failures,
+        "latest_log_id": latest_log_id,
         "chart_performance": chart_performance,
         "chart_line_path": chart_line_path,
         "chart_area_path": chart_area_path,
@@ -893,13 +932,21 @@ def _dashboard_heavy_context(db: Session, user: User, chart_days: int) -> dict:
     accounts_data.sort(key=lambda x: x["publish_count"], reverse=True)
     _maybe_enqueue_profile_pics(user.id, accounts)
 
-    latest_log_id = (
-        db.scalar(
-            select(func.max(PublishLog.id)).where(PublishLog.account_id.in_(account_ids))
+    recent_activity: list[PublishLog] = []
+    recent_failures: list[PublishLog] = []
+    try:
+        recent_activity = _recent_publish_logs(db, account_ids, limit=12, user=user)
+        recent_failures = _recent_publish_logs(
+            db, account_ids, limit=8, status="failed", user=user
         )
-        if account_ids
-        else 0
-    ) or 0
+    except OperationalError as exc:
+        log.warning("dashboard heavy recent logs timeout: %s", exc)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+    latest_log_id = recent_activity[0].id if recent_activity else 0
 
     chart_performance = _chart_performance(db, user.id, chart_days, account_ids=account_ids)
     chart_performance, chart_line_path, chart_area_path, chart_max_val = attach_chart_paths(
@@ -911,6 +958,8 @@ def _dashboard_heavy_context(db: Session, user: User, chart_days: int) -> dict:
         "accounts_data": accounts_data,
         "automations": automations,
         "next_publications": next_publications,
+        "recent_activity": recent_activity,
+        "recent_failures": recent_failures,
         "latest_log_id": latest_log_id,
         "chart_performance": chart_performance,
         "chart_line_path": chart_line_path,

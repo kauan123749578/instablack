@@ -124,8 +124,31 @@
         </div>
         <a href="/logs" class="og-link" data-nav="/logs">Ver todos</a>
       </div>
+      {% if recent_activity is defined and recent_activity %}
+      <div class="og-empty" id="dash-activity-empty" hidden>Nenhuma atividade registrada ainda. Publicações aparecem aqui automaticamente.</div>
+      <ul class="og-timeline" id="dash-activity-list">
+        {% for log in recent_activity[:12] %}
+        <li class="og-timeline-item" data-log-id="{{ log.id }}">
+          <span class="og-timeline-icon og-timeline-icon--{{ log.status }}">
+            <i data-lucide="{% if log.status == 'success' %}check{% elif log.status == 'failed' %}x{% else %}minus{% endif %}"></i>
+          </span>
+          <div class="og-timeline-body">
+            <strong>
+              <span class="ig-handle">@{{ log.account.username if log.account else '?' }}</span>
+              {% if log.automation %} · {{ log.automation.name }}{% endif %}
+            </strong>
+            <span>{{ log.created_at | localtime('%d/%m %H:%M') if log.created_at else '' }}</span>
+          </div>
+          <span class="og-badge og-timeline-badge {% if log.status == 'success' %}badge-green{% elif log.status == 'failed' %}badge-red{% else %}badge-yellow{% endif %}">
+            {% if log.status == 'success' %}Sucesso{% elif log.status == 'failed' %}Erro{% else %}Ignorada{% endif %}
+          </span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
       <div class="og-empty" id="dash-activity-empty">Nenhuma atividade registrada ainda. Publicações aparecem aqui automaticamente.</div>
       <ul class="og-timeline" id="dash-activity-list" hidden></ul>
+      {% endif %}
     </section>
 
     <section class="og-glass-card og-warmup-panel">
@@ -216,7 +239,25 @@
         </div>
         <a href="/logs" class="og-link" data-nav="/logs">Ver logs</a>
       </div>
-      <div class="og-empty">Falhas recentes no <a href="/logs" class="og-link" data-nav="/logs">Log</a>.</div>
+      {% if recent_failures is defined and recent_failures %}
+      <ul class="og-timeline">
+        {% for log in recent_failures[:8] %}
+        <li class="og-timeline-item">
+          <span class="og-timeline-icon og-timeline-icon--failed"><i data-lucide="x"></i></span>
+          <div class="og-timeline-body">
+            <strong>
+              <span class="ig-handle">@{{ log.account.username if log.account else '?' }}</span>
+              {% if log.automation %} · {{ log.automation.name }}{% endif %}
+            </strong>
+            <span>{{ (log.error or 'Falha')[:120] }}</span>
+          </div>
+          <span class="og-badge badge-red">Erro</span>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <div class="og-empty">Nenhuma falha recente. Veja o <a href="/logs" class="og-link" data-nav="/logs">Log</a>.</div>
+      {% endif %}
     </section>
 
   </div>
