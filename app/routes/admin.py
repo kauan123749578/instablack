@@ -234,8 +234,10 @@ def db_health_locks(
         text(
             """
             SELECT pid, usename, state, wait_event_type, wait_event,
+                   application_name,
                    LEFT(query, 180) AS query,
-                   EXTRACT(EPOCH FROM (now() - query_start))::int AS secs
+                   EXTRACT(EPOCH FROM (now() - query_start))::int AS secs,
+                   EXTRACT(EPOCH FROM (now() - xact_start))::int AS xact_secs
             FROM pg_stat_activity
             WHERE datname = current_database()
               AND pid <> pg_backend_pid()
@@ -251,7 +253,8 @@ def db_health_locks(
             SELECT l.locktype, l.mode, l.granted, l.pid,
                    c.relname AS relation,
                    LEFT(a.query, 120) AS query,
-                   a.state
+                   a.state,
+                   a.application_name
             FROM pg_locks l
             LEFT JOIN pg_class c ON c.oid = l.relation
             LEFT JOIN pg_stat_activity a ON a.pid = l.pid
@@ -264,7 +267,9 @@ def db_health_locks(
     long_tx = [
         dict(r)
         for r in activity
-        if (r.get("secs") or 0) >= 5 or (r.get("state") or "") == "idle in transaction"
+        if (r.get("secs") or 0) >= 5
+        or (r.get("xact_secs") or 0) >= 5
+        or (r.get("state") or "") == "idle in transaction"
     ]
     return JSONResponse(
         {

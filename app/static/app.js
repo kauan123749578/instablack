@@ -866,6 +866,29 @@
     update();
   }
 
+  /** Editar automação na lista: Story não pede legenda. */
+  function initEditAutomationCaption() {
+    document.querySelectorAll("select.edit-content-type").forEach((sel) => {
+      const form = sel.closest("form");
+      if (!form) return;
+      const wrap = form.querySelector(".edit-caption-wrap");
+      const field = form.querySelector(".edit-caption-field");
+      if (!wrap || !field) return;
+
+      function sync() {
+        if (sel.value === "story") {
+          wrap.style.display = "none";
+          field.removeAttribute("required");
+        } else {
+          wrap.style.display = "";
+          field.setAttribute("required", "required");
+        }
+      }
+      sel.addEventListener("change", sync);
+      sync();
+    });
+  }
+
   function initThumbPreview() {
     const input = document.getElementById("thumb-input");
     const preview = document.getElementById("thumb-preview");
@@ -2440,6 +2463,7 @@
     initCharts();
     initPeriodPills();
     initContentTypeForm();
+    initEditAutomationCaption();
     initThumbPreview();
     initScheduleMode();
     initMetaIntervalFilter();

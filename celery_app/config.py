@@ -5,7 +5,7 @@ import ssl
 
 from celery import Celery
 from celery.schedules import schedule
-from celery.signals import worker_process_init
+from celery.signals import task_postrun, task_prerun, worker_process_init
 
 from app.config import settings
 
@@ -77,13 +77,37 @@ def _setup_worker_db(**_kwargs) -> None:
 def _dispose_db_pool_on_prefork(**_kwargs) -> None:
     """Após fork do prefork, descarta conexões herdadas do processo pai."""
     try:
-        from core.database import engine
+        from core.database import clear_pg_app_context, engine
 
         engine.dispose(close=True)
+        clear_pg_app_context()
     except Exception:
         import logging
 
         logging.getLogger(__name__).exception("dispose engine no fork falhou")
+
+
+@task_prerun.connect
+def _pg_app_context_on_task(task=None, **_kwargs) -> None:
+    """pg_stat_activity.application_name = celery:<task> (db-health)."""
+    try:
+        from core.database import set_pg_app_context
+
+        name = getattr(task, "name", None) or ""
+        short = name.rsplit(".", 1)[-1] if name else "task"
+        set_pg_app_context(f"celery:{short}")
+    except Exception:
+        pass
+
+
+@task_postrun.connect
+def _pg_app_context_after_task(**_kwargs) -> None:
+    try:
+        from core.database import clear_pg_app_context
+
+        clear_pg_app_context()
+    except Exception:
+        pass
 
 
 celery_app.conf.beat_schedule = {

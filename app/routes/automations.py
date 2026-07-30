@@ -2077,7 +2077,9 @@ async def edit_automation(
         caption_rotate_by_reel=caption_rotate_by_reel,
     )
     caption_clean = normalize_caption_text(caption)
-    if content_type in ("reel", "photo") and not caption_clean:
+    if content_type == "story":
+        caption_clean = ""
+    elif content_type in ("reel", "photo") and not caption_clean:
         raise HTTPException(
             status_code=400,
             detail="Legenda obrigatória para Reel/Foto.",

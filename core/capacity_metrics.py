@@ -161,6 +161,7 @@ def _build_alerts(
     lag_summary: dict[str, Any],
     queue_wait_summary: dict[str, Any],
     redis_latency_ms: float | None,
+    meta_defer_count: dict[str, int] | None = None,
 ) -> list[dict[str, str]]:
     alerts: list[dict[str, str]] = []
     publish_q = int(queue_depth.get("publish") or 0)
@@ -196,6 +197,18 @@ def _build_alerts(
                 "level": "warning",
                 "code": "redis_latency_high",
                 "message": f"Redis latency={redis_latency_ms}ms (>500)",
+            }
+        )
+    defer_total = sum(int(v or 0) for v in (meta_defer_count or {}).values())
+    if defer_total > 150:
+        alerts.append(
+            {
+                "level": "info",
+                "code": "meta_defer_rate_high",
+                "message": (
+                    f"meta_defer total={defer_total} (24h Redis) — "
+                    "proteção Meta/cooldown, não falta de worker"
+                ),
             }
         )
     return alerts
@@ -268,6 +281,7 @@ def collect_capacity_metrics() -> dict[str, Any]:
             lag_summary=lag_summary,
             queue_wait_summary=queue_wait_summary,
             redis_latency_ms=redis_ms,
+            meta_defer_count=defer,
         ),
         "slo": {
             "schedule_lag_p95_target_sec": 120,
@@ -275,6 +289,7 @@ def collect_capacity_metrics() -> dict[str, Any]:
             "queue_wait_p95_target_sec": 180,
             "publish_queue_warn": 100,
             "redis_latency_warn_ms": 500,
+            "meta_defer_warn_total": 150,
         },
     }
 

@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Iterator
 
 from sqlalchemy import create_engine, event, inspect, text
@@ -16,6 +18,9 @@ log = logging.getLogger(__name__)
 
 _COMMIT_RETRIES = 5
 _COMMIT_RETRY_BASE_SEC = 0.15
+
+# Visível em pg_stat_activity.application_name (db-health).
+_pg_app_context: ContextVar[str] = ContextVar("pg_app_context", default="")
 
 
 def _is_locked_error(exc: Exception) -> bool:
@@ -33,6 +38,32 @@ def _is_celery_process() -> bool:
     import sys
 
     return any("celery" in (arg or "").lower() for arg in sys.argv)
+
+
+def default_pg_app_name() -> str:
+    """Nome base do processo: APP_ROLE, senão Railway service, senão web/celery."""
+    role = (os.getenv("APP_ROLE") or "").strip()
+    if role:
+        return role[:63]
+    svc = (os.getenv("RAILWAY_SERVICE_NAME") or "").strip()
+    if svc:
+        return f"railway:{svc}"[:63]
+    if _is_celery_process():
+        return "celery"
+    return "web"
+
+
+def set_pg_app_context(name: str) -> None:
+    """Contexto da request/task (ex.: celery:publish_to_account, http:GET /accounts)."""
+    _pg_app_context.set((name or default_pg_app_name())[:63])
+
+
+def clear_pg_app_context() -> None:
+    _pg_app_context.set("")
+
+
+def current_pg_app_name() -> str:
+    return (_pg_app_context.get() or default_pg_app_name())[:63]
 
 
 def _behind_pgbouncer() -> bool:
@@ -133,6 +164,22 @@ SessionLocal = sessionmaker(
     expire_on_commit=False,
     future=True,
 )
+
+
+@event.listens_for(Session, "after_begin")
+def _set_application_name_on_begin(session, transaction, connection) -> None:
+    """Marca application_name na txn (PgBouncer-safe via set_config local)."""
+    _ = session, transaction
+    if settings.is_sqlite:
+        return
+    name = current_pg_app_name()
+    try:
+        connection.execute(
+            text("SELECT set_config('application_name', :n, true)"),
+            {"n": name},
+        )
+    except Exception:
+        log.debug("set application_name falhou", exc_info=True)
 
 
 class Base(DeclarativeBase):

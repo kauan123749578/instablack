@@ -81,6 +81,7 @@ def create_app() -> FastAPI:
     # Ordem importa: @middleware http entra ANTES do SessionMiddleware.
     # Session/Proxy são add_middleware por último → ficam por fora e
     # request.session já existe quando o view-as roda.
+    # Último @middleware registrado executa primeiro no request.
     @app.middleware("http")
     async def view_as_readonly_middleware(request: Request, call_next):
         view_as_id = request.session.get("view_as_user_id")
@@ -159,6 +160,18 @@ def create_app() -> FastAPI:
                 )
 
         return await call_next(request)
+
+    @app.middleware("http")
+    async def pg_app_name_middleware(request: Request, call_next):
+        """Marca application_name da request (visível em /admin/db-health)."""
+        from core.database import clear_pg_app_context, set_pg_app_context
+
+        path = (request.url.path or "/")[:48]
+        set_pg_app_context(f"http:{request.method} {path}")
+        try:
+            return await call_next(request)
+        finally:
+            clear_pg_app_context()
 
     app.add_middleware(
         SessionMiddleware,

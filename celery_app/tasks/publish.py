@@ -980,12 +980,7 @@ def publish_to_account(
 ) -> dict:
     # _compat_kwargs: ignora caption_by_* de mensagens antigas na fila (não quebra o worker)
     started_at = dt.datetime.utcnow()
-    timing_base = _publish_timing(
-        scheduled_at,
-        started_at,
-        enqueued_at=enqueued_at,
-        dispatch_countdown=dispatch_countdown,
-    )
+    # Sessão CURTA: só lê/copia. Rede Meta/proxy fica FORA (evita idle in transaction).
     with session_scope() as db:
         automation = db.get(Automation, automation_id)
         account = db.get(InstagramAccount, account_id)
@@ -1037,20 +1032,22 @@ def publish_to_account(
         caption = normalize_caption_text(caption)
 
         content_type = automation.content_type or "reel"
+        username = account.username
+        owner_user_id = automation.user_id
         if content_type in ("reel", "photo") and not caption:
             log.error(
                 "PLAYLIST %s ABORT EMPTY CAPTION automation=%s account=%s — NÃO publica Reel/Foto sem legenda",
                 PLAYLIST_CODE,
                 automation_id,
-                account.username,
+                username,
             )
             _log_failure(
                 automation_id,
                 account.id,
                 "Abortado: automação sem legenda (não publica Reel/Foto vazio)",
                 content_type=content_type,
-                owner_user_id=automation.user_id,
-                username=account.username,
+                owner_user_id=owner_user_id,
+                username=username,
             )
             return {"error": "empty_caption", "aborted": True}
 
@@ -1058,12 +1055,20 @@ def publish_to_account(
         if caption and content_type in ("reel", "photo"):
             caption = uniquify_caption_for_account(caption, slot)
 
+        thumb_key = automation.thumb_key
+        story_link = automation.story_link
+        story_sticker_text = automation.story_sticker_text
+        story_layout = _load_story_layout(automation)
+        camouflage_cover_key = getattr(automation, "camouflage_cover_key", None)
+        camouflage_opacity = float(getattr(automation, "camouflage_opacity", 0.25) or 0.25)
+        posted_index = int(posted_index)
+
         if not caption:
             log.warning(
                 "PLAYLIST %s EMPTY CAPTION automation=%s account=%s type=%s — seguindo (story)",
                 PLAYLIST_CODE,
                 automation_id,
-                account.username,
+                username,
                 content_type,
             )
         else:
@@ -1071,7 +1076,7 @@ def publish_to_account(
                 "PLAYLIST %s CAPTION READY automation=%s account=%s cap_len=%s preview=%r",
                 PLAYLIST_CODE,
                 automation_id,
-                account.username,
+                username,
                 len(caption),
                 caption[:48],
             )
@@ -1080,90 +1085,95 @@ def publish_to_account(
             "PLAYLIST %s publish automation=%s account=%s idx=%s slot=%s caption_fixed=True cap_len=%s key=%s camu=%s opacity=%.2f",
             PLAYLIST_CODE,
             automation_id,
-            account.username,
+            username,
             posted_index,
             slot,
             len(caption or ""),
             vk,
-            getattr(automation, "camouflage_cover_key", None) or "-",
-            float(getattr(automation, "camouflage_opacity", 0.25) or 0.25),
+            camouflage_cover_key or "-",
+            camouflage_opacity,
         )
 
-        try:
-            result = _execute_publish(
-                automation_id=automation.id,
-                account_id=account.id,
-                video_key=vk,
-                thumb_key=automation.thumb_key,
-                caption=caption,
-                content_type=content_type,
-                story_link=automation.story_link,
-                story_sticker_text=automation.story_sticker_text,
-                story_layout=_load_story_layout(automation),
-                playlist_index=int(posted_index),
-                camouflage_cover_key=getattr(automation, "camouflage_cover_key", None),
-                camouflage_opacity=float(getattr(automation, "camouflage_opacity", 0.25) or 0.25),
-                scheduled_at=scheduled_at,
-                started_at=started_at,
-                enqueued_at=enqueued_at,
-                dispatch_countdown=dispatch_countdown,
-            )
-        except Exception as exc:
-            # Abort de legenda: NÃO retentar a task — cria outro Reel no ar
-            # (a API não deixa apagar Reel recém-publicado).
-            msg = str(exc)
-            if "SEM legenda" in msg or "caption_missing_abort" in msg:
-                log.error(
-                    "publish_to_account abort caption account=%s automation=%s: %s",
-                    account_id,
-                    automation_id,
-                    msg[:300],
-                )
-                _trip_meta_caption_circuit(ttl_sec=600)
-                _mark_now_automation_failed(automation.id)
-                return {"error": "caption_missing_abort", "detail": msg[:500]}
-            if self.request.retries < self.max_retries:
-                countdown = min(60 * (2 ** self.request.retries), 600)
-                raise self.retry(exc=exc, countdown=countdown)
-            _mark_now_automation_failed(automation.id)
-            _notify_publish_failure_once(
-                account_id=account_id,
-                owner_user_id=automation.user_id,
-                username=account.username,
-                content_type=content_type,
-                error=msg,
-            )
-            return {"error": "publish_failed", "detail": msg[:500]}
-
-        if result.get("deferred"):
-            wait = max(20, min(int(result.get("wait_seconds") or 3600), 6 * 3600))
-            reason = str(result.get("reason") or "meta_defer")
-            record_meta_defer(reason)
-            log.info(
-                "Meta defer automation=%s account=%s wait=%ss reason=%s",
-                automation_id,
+    try:
+        result = _execute_publish(
+            automation_id=automation_id,
+            account_id=account_id,
+            video_key=vk,
+            thumb_key=thumb_key,
+            caption=caption,
+            content_type=content_type,
+            story_link=story_link,
+            story_sticker_text=story_sticker_text,
+            story_layout=story_layout,
+            playlist_index=posted_index,
+            camouflage_cover_key=camouflage_cover_key,
+            camouflage_opacity=camouflage_opacity,
+            scheduled_at=scheduled_at,
+            started_at=started_at,
+            enqueued_at=enqueued_at,
+            dispatch_countdown=dispatch_countdown,
+        )
+    except Exception as exc:
+        # Abort de legenda: NÃO retentar a task — cria outro Reel no ar
+        # (a API não deixa apagar Reel recém-publicado).
+        msg = str(exc)
+        if "SEM legenda" in msg or "caption_missing_abort" in msg:
+            log.error(
+                "publish_to_account abort caption account=%s automation=%s: %s",
                 account_id,
-                wait,
-                reason,
+                automation_id,
+                msg[:300],
+            )
+            _trip_meta_caption_circuit(ttl_sec=600)
+            _mark_now_automation_failed(automation_id)
+            return {"error": "caption_missing_abort", "detail": msg[:500]}
+        if self.request.retries < self.max_retries:
+            countdown = min(60 * (2 ** self.request.retries), 600)
+            raise self.retry(exc=exc, countdown=countdown)
+        _mark_now_automation_failed(automation_id)
+        _notify_publish_failure_once(
+            account_id=account_id,
+            owner_user_id=owner_user_id,
+            username=username,
+            content_type=content_type,
+            error=msg,
+        )
+        return {"error": "publish_failed", "detail": msg[:500]}
+
+    if result.get("deferred"):
+        wait = max(20, min(int(result.get("wait_seconds") or 3600), 6 * 3600))
+        reason = str(result.get("reason") or "meta_defer")
+        record_meta_defer(reason)
+        # Lag mede atraso do retry, não o slot original acumulado pelos defers.
+        retry_scheduled_at = (
+            dt.datetime.utcnow() + dt.timedelta(seconds=wait)
+        ).isoformat()
+        log.info(
+            "Meta defer automation=%s account=%s wait=%ss reason=%s retry_at=%s",
+            automation_id,
+            account_id,
+            wait,
+            reason,
+            retry_scheduled_at,
+        )
+
+        def _sched_acct(countdown: int) -> None:
+            publish_to_account.apply_async(
+                args=[automation_id, account_id, vk, posted_index],
+                kwargs={
+                    "account_slot": int(account_slot) if account_slot is not None else 0,
+                    "scheduled_at": retry_scheduled_at,
+                },
+                countdown=countdown,
             )
 
-            def _sched_acct(countdown: int) -> None:
-                publish_to_account.apply_async(
-                    args=[automation_id, account_id, vk, posted_index],
-                    kwargs={
-                        "account_slot": int(account_slot) if account_slot is not None else 0,
-                        "scheduled_at": scheduled_at,
-                    },
-                    countdown=countdown,
-                )
-
-            scheduled = _schedule_meta_defer_once(
-                account_id=account_id,
-                wait=wait,
-                schedule_fn=_sched_acct,
-            )
-            return {**result, "countdown": wait, "defer_scheduled": scheduled}
-        return result
+        scheduled = _schedule_meta_defer_once(
+            account_id=account_id,
+            wait=wait,
+            schedule_fn=_sched_acct,
+        )
+        return {**result, "countdown": wait, "defer_scheduled": scheduled}
+    return result
 
 
 def _execute_publish(

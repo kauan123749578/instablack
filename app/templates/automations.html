@@ -159,7 +159,7 @@
       {% if a.thumb_original_name %}<li>Capa: {{ a.thumb_original_name }}</li>{% endif %}
       {% if a.camouflage_cover_key %}<li><strong style="color:#3d82ff">Camuflagem ativa</strong> ({{ ((a.camouflage_opacity or 0.25) * 100)|round|int }}%)</li>{% else %}{% if a.content_type == 'reel' %}<li class="muted">Camuflagem: off</li>{% endif %}{% endif %}
     </ul>
-    {% if a.caption %}
+    {% if a.caption and a.content_type != 'story' %}
     <p class="auto-caption">"{{ a.caption[:160] }}{% if a.caption|length > 160 %}…{% endif %}"</p>
     {% endif %}
     <div class="auto-actions">
@@ -217,7 +217,7 @@
         <summary>Editar</summary>
         <form method="post" action="/automations/{{ a.id }}/edit" enctype="multipart/form-data" class="form-grid">
           <label>Tipo
-            <select name="content_type">
+            <select name="content_type" class="edit-content-type">
               <option value="reel" {% if a.content_type == 'reel' %}selected{% endif %}>Reels</option>
               <option value="story" {% if a.content_type == 'story' %}selected{% endif %}>Story</option>
               <option value="photo" {% if a.content_type == 'photo' %}selected{% endif %}>Foto feed</option>
@@ -278,12 +278,15 @@
               <input type="number" name="rest_minutes" min="0" max="10080" value="{{ a.rest_minutes or 0 }}">
             </label>
           </fieldset>
-          <label>Legenda (obrigatória · fixa para todos)
-            <textarea name="caption" rows="8" required>{{ a.caption }}</textarea>
-          </label>
-          <p class="muted" style="margin:6px 0;font-size:12px">
-            Reel/Foto sem legenda não salva e não publica.
-          </p>
+          <div class="edit-caption-wrap"{% if a.content_type == 'story' %} style="display:none"{% endif %}>
+            <label>Legenda (obrigatória · fixa para todos)
+              <textarea name="caption" rows="8" class="edit-caption-field"
+                        {% if a.content_type != 'story' %}required{% endif %}>{{ a.caption }}</textarea>
+            </label>
+            <p class="muted" style="margin:6px 0;font-size:12px">
+              Reel/Foto sem legenda não salva e não publica. Story não usa legenda.
+            </p>
+          </div>
           <label>Trocar capa (.jpg/.png)
             <input type="file" name="thumb" accept="image/jpeg,image/png,image/webp">
           </label>
