@@ -1,0 +1,11 @@
+---
+description: Ler e atualizar AGENT_MEMORY.md — lições de produção Instablack
+alwaysApply: true
+---
+
+# Memória do projeto
+
+1. **Antes** de alterar dashboard, publish Meta/Celery, timezone ou queries de “hoje”/KPI/gráfico: ler `AGENT_MEMORY.md` na raiz.
+2. **Depois** de corrigir bug de produção ou mudar comportamento relevante nessas áreas: atualizar `AGENT_MEMORY.md` (seção “Log de mudanças” + armadilha nova se houver).
+3. Não reintroduzir: double `timezone('UTC', timestamptz)` + `America/Sao_Paulo` para dia BRT; nem quebrar gravação de `PublishLog` após publish async Meta (`started_at` pode ser ISO string).
+4. Se uma parte do painel tem dados e outra não, comparar com o caminho que já funciona (bounds BRT / `PublishLog` simples) — ver tabela em `AGENT_MEMORY.md`.

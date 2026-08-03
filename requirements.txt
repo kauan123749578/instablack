@@ -16,7 +16,7 @@ bcrypt==4.2.1
 celery==5.4.0
 redis==5.2.0
 
-instagrapi==2.16.25
+instagrapi==2.18.12
 Pillow>=11.0.0
 requests>=2.34.2,<3
 
@@ -24,4 +24,5 @@ boto3==1.35.80
 
 python-dotenv==1.0.1
 
+pyotp>=2.9.0,<3
 pywebpush>=2.0.3,<3

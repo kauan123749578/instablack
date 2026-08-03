@@ -1,0 +1,121 @@
+# Instablack — memória do agente
+
+Arquivo vivo. **Antes de mexer em dashboard, publish, timezone ou deploy**, leia isto.  
+**Depois de cada correção relevante**, atualize a seção "Log de mudanças" no final.
+
+Produção: `https://instablack-production.up.railway.app`  
+Stack: FastAPI (web) + Celery workers + Beat + Postgres + Redis (Railway).
+
+---
+
+## Regra de ouro
+
+1. Se posts aparecem no Instagram mas o painel fica em 0 → **não inventar**: olhar `PublishLog`, worker-publish logs e timezone BRT.
+2. Se **uma** área do dashboard tem dados e **outra** não → as queries são diferentes; alinhar ao caminho que já funciona (bounds BRT), não “otimizar” fuso no SQL à cega.
+3. Redeploy: mudança em `publish.py` / Celery → **worker-publish** (e misc se tocar). Mudança em `dashboard.py` / templates → **web**. Build antigo no worker já causou falso “não funcionou”.
+4. Horário do produto é **America/Sao_Paulo (BRT)**. Nunca misturar “dia UTC” com “dia BRT” no KPI.
+
+---
+
+## O que já quebrou (não repetir)
+
+### 1) Meta async publish sem `PublishLog` (corrigido ~`9a14772`)
+
+Fluxo Phase C: `submit_media_container` → Redis pending (`started_at` ISO **string**) → poll → `finalize_media_publish` (post **já no IG**) → `_complete_meta_pending_success` → `_publish_timing(job["started_at"])`.
+
+Bug: `started_at` era `str`, código fazia `started - sched` → `TypeError`. Post ia pro IG, **sem** `PublishLog` / `total_runs` / `last_run_at`.
+
+Sintoma: painel morto, Instagram ok.  
+Fix: parse ISO em `_publish_timing`; gravar log antes de notificação; recuperar log se complete falhar após publish.
+
+### 2) KPI / gráfico zerados com logs e Top do Dia ok (corrigido ~`d7ff7b4`)
+
+- **Ok:** `/logs`, Log de atividades, Top do Dia, Total publicado — usam `PublishLog` simples ou `_brt_day_bounds` + `_utc_naive`.
+- **Quebrado:** Publicações hoje, Taxa de sucesso, Seu Desempenho — `_batch_status_counts` no Postgres com:
+
+```text
+date(timezone('America/Sao_Paulo', timezone('UTC', created_at)))
+```
+
+em coluna **timestamptz**. O double-convert jogava posts da **noite de hoje** para o **dia seguinte**; o gráfico (só últimos 7 dias BRT) **descartava** esses counts → card 0 + chart vazio.
+
+Fix atual (`app/routes/dashboard.py`):
+
+- Bucket do gráfico em **Python** com `_brt_date_from_db` (mesmo critério BRT).
+- KPI do dia via `_count_logs_by_accounts(..., day=today)` (bounds BRT), igual ranking.
+
+**Nunca** voltar a agrupar dia com `timezone('UTC', timestamptz)` + `America/Sao_Paulo` nesse padrão.
+
+### 3) Insights / activity sob carga
+
+- N+1 em Insights esvaziava o painel sob `statement_timeout` — batch + timeout maior.
+- Activity card: preferir HTML server-render de `PublishLog`; poll `since_id` quebrou a UI.
+- Avatars: cache `/media/avatars/ig/...`; enqueue com cooldown.
+
+### 4) Contas Meta `code=190`
+
+Token inválido / checkpoint (“You cannot access the app till you log in”). Afeta publish e Insights (0 views). **Não** é o mesmo bug de KPI/timezone. Conta fica `needs_login`; skip silencioso sem log ainda pode confundir — preferir `PublishLog` skipped/failed ao pular.
+
+---
+
+### 5) Cofre senha + TOTP (Authenticator)
+
+- Campo `encrypted_totp_secret` em `instagram_accounts` (cifrado com `encrypt_secret`).
+- UI: Contas conectadas → **Credenciais / 2FA** (código 6 dígitos ao vivo + copiar).
+- Login/reconectar: se Instagram pedir 2FA e houver TOTP, gera o código automaticamente (`app/utils/totp.py` + `pyotp`).
+- Nunca devolver o secret em plaintext — só o OTP.
+
+---
+
+## Mapa rápido do dashboard
+
+| UI | Fonte | Notas |
+|----|--------|--------|
+| Contas / Automações ativas | contas + lista automações | OK |
+| Publicações hoje / Taxa | `_count_logs_by_accounts` + dia BRT | Alinhar sempre a isto |
+| Seu Desempenho | `_batch_status_counts` → `_brt_date_from_db` | Não reintroduzir SQL timezone quebrado |
+| Log de atividades | `_recent_publish_logs` ORDER BY id DESC | Simples e confiável |
+| Top do Dia | ranking API + bounds BRT | Referência de “hoje” correto |
+| Contas conectadas (N posts) | success ~30d por conta | Número menor que Top do Dia (dia vs 30d / por conta) é esperado |
+| Insights API oficial | Meta insights sync | 0 views ≠ bug de PublishLog |
+
+Timezone helpers: `_brt_day_bounds`, `_utc_naive`, `_brt_date_from_db`, `brt_now()` em `app/routes/dashboard.py` / `app/utils/timezone.py`.
+
+---
+
+## Deploy Railway (checklist)
+
+Serviços típicos: **web**, **worker-publish**, **worker-misc**, **beat**.
+
+| Mudou | Redeploy |
+|-------|----------|
+| `celery_app/tasks/publish.py`, fila publish | worker-publish |
+| insights / tasks misc | worker-misc |
+| beat schedule | beat |
+| `app/routes/*`, templates, estáticos | web |
+
+Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no build velho enquanto o git estava certo.
+
+---
+
+## Convenções ao editar
+
+- Status de `PublishLog`: `success` \| `failed` \| `skipped` (não traduzir no banco).
+- Contas visíveis no dash: `active`, `paused`, `needs_login`, `proxy_down`, `banned`.
+- Não commitar `.env`, credenciais, `.venv-test2-req.txt`, `login_instagram.py` (locais).
+- Commits só quando o usuário pedir (exceto se ele pedir push/deploy explícito no fluxo).
+
+---
+
+## Log de mudanças
+
+| Data | Commit / nota | O quê |
+|------|----------------|-------|
+| 2026-07-30 | `9a14772` | Fix `started_at` str no Meta async → PublishLog volta a gravar |
+| 2026-07-30 | `d7ff7b4` | Fix bucket BRT KPI + gráfico; não usar double timezone Postgres |
+| 2026-07-30 | este arquivo | Criado `AGENT_MEMORY.md` a pedido do usuário para não repetir cagada |
+| 2026-07-31 | local | `instagrapi` → **2.18.12** (`requirements.txt`); `login_instagram.py` login user/senha + validação de sessão (sem sessionid hardcoded) |
+| 2026-07-31 | local | BadPassword em `@deborateixei091` com proxy ok = rejeição IG (`invalid_credentials`). Cookie browser expira rápido; sessão durável = `login(senha)` **uma vez** + `dump_settings`. Script alinhado a `core.instagram.login_with_credentials`. |
+| 2026-08-03 | feature | Cofre por conta: email + senha + TOTP; botão **Cofre** com código Authenticator ao vivo (copiar). |
+
+<!-- Ao corrigir bugs de produção: acrescente uma linha acima e, se for armadilha nova, uma subseção em "O que já quebrou". -->

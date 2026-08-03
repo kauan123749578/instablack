@@ -1093,12 +1093,21 @@
     update();
   }
 
-  function openTwofaModal(message) {
+  let twofaHasTotp = false;
+  let twofaAccountId = null;
+
+  function openTwofaModal(message, opts) {
     const modal = document.getElementById("twofa-modal");
     const codeInput = document.getElementById("twofa-code-input");
     const msgEl = document.getElementById("twofa-message");
+    const useSaved = document.getElementById("twofa-use-saved");
     if (!modal) return;
+    twofaHasTotp = !!(opts && opts.hasTotp);
+    twofaAccountId = opts && opts.accountId ? opts.accountId : null;
     if (msgEl && message) msgEl.textContent = message;
+    if (useSaved) {
+      useSaved.hidden = !twofaHasTotp;
+    }
     modal.classList.add("modal-overlay--open");
     modal.setAttribute("aria-hidden", "false");
     document.body.style.overflow = "hidden";
@@ -1111,11 +1120,42 @@
   function closeTwofaModal() {
     const modal = document.getElementById("twofa-modal");
     const hiddenCode = document.getElementById("verification-code-hidden");
+    const useSaved = document.getElementById("twofa-use-saved");
     if (!modal) return;
     modal.classList.remove("modal-overlay--open");
     modal.setAttribute("aria-hidden", "true");
     document.body.style.overflow = "";
     if (hiddenCode) hiddenCode.value = "";
+    if (useSaved) useSaved.hidden = true;
+    twofaHasTotp = false;
+    twofaAccountId = null;
+  }
+
+  async function fillTwofaFromVault() {
+    const accountId =
+      twofaAccountId ||
+      pendingReconnect?.accountId ||
+      null;
+    const codeInput = document.getElementById("twofa-code-input");
+    if (!accountId || !codeInput) {
+      alert("Salve a chave TOTP em Credenciais / 2FA nesta conta.");
+      return;
+    }
+    try {
+      const res = await fetch(`/accounts/${accountId}/totp-code`, {
+        credentials: "same-origin",
+        headers: { Accept: "application/json" },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.code) {
+        alert(data.error || "Não foi possível gerar o código TOTP.");
+        return;
+      }
+      codeInput.value = data.code;
+      codeInput.focus();
+    } catch (err) {
+      alert(err.message || "Erro ao buscar código TOTP");
+    }
   }
 
   function initTwofaModal() {
@@ -1125,8 +1165,10 @@
     const cancelBtn = document.getElementById("twofa-cancel");
     const submitBtn = document.getElementById("twofa-submit");
     const codeInput = document.getElementById("twofa-code-input");
+    const useSaved = document.getElementById("twofa-use-saved");
 
     cancelBtn?.addEventListener("click", closeTwofaModal);
+    useSaved?.addEventListener("click", fillTwofaFromVault);
     modal.addEventListener("click", (e) => {
       if (e.target === modal) closeTwofaModal();
     });
@@ -1232,7 +1274,10 @@
         if (resp.status === 403 && ct.includes("application/json")) {
           const data = await resp.json();
           if (data.needs_2fa) {
-            openTwofaModal(data.message);
+            const formTotp = !!(form.querySelector('[name="totp_secret"]')?.value || "").trim();
+            openTwofaModal(data.message, {
+              hasTotp: !!(data.has_totp || formTotp),
+            });
             return;
           }
         }
@@ -1288,10 +1333,17 @@
       return;
     }
     if (data.status === "needs_2fa") {
-      pendingReconnect = { accountId, payload: pendingReconnect?.payload || { mode: "auto" } };
-      openTwofaModal(
-        `Digite o código 2FA da conta @${username || data.username || ""}.`
-      );
+      pendingReconnect = {
+        accountId,
+        payload: {
+          ...(pendingReconnect?.payload || { mode: "password" }),
+          mode: pendingReconnect?.payload?.mode || "password",
+        },
+      };
+      openTwofaModal(`Digite o código 2FA da conta @${username || data.username || ""}.`, {
+        hasTotp: !!data.has_totp,
+        accountId,
+      });
       return;
     }
     alert(data.message || "Não foi possível reconectar a sessão.");
@@ -1324,6 +1376,7 @@
     if (!marker) return;
     document.body.dataset.pageAccountsConnected = "1";
     initTwofaModal();
+    initCredsVault();
 
     const modal = document.getElementById("reconnect-session-modal");
     let reconnectTarget = null;
@@ -1340,11 +1393,17 @@
       if (cookies) cookies.value = "";
     }
 
-    function openReconnectModal(accountId, username, hasCookies) {
+    function openReconnectModal(accountId, username, hasCookies, hasPassword) {
       if (!modal) return;
-      reconnectTarget = { accountId, username: username || "" };
+      reconnectTarget = {
+        accountId,
+        username: username || "",
+        hasPassword: !!hasPassword,
+      };
       const title = document.getElementById("reconnect-session-title");
       const hint = document.getElementById("reconnect-cookies-hint");
+      const pwBtn = document.getElementById("reconnect-modal-password-btn");
+      const pwDiv = document.getElementById("reconnect-password-divider");
       if (title) {
         title.textContent = username
           ? `Reconectar @${username}`
@@ -1361,6 +1420,8 @@
             "Preferível colar o JSON completo do Cookie-Editor (sessionid + csrftoken) para Stories com link.";
         }
       }
+      if (pwBtn) pwBtn.hidden = !hasPassword;
+      if (pwDiv) pwDiv.hidden = !hasPassword;
       modal.classList.add("modal-overlay--open");
       modal.setAttribute("aria-hidden", "false");
       document.body.style.overflow = "hidden";
@@ -1374,7 +1435,8 @@
         openReconnectModal(
           id,
           btn.dataset.username || "",
-          btn.dataset.hasCookies === "1"
+          btn.dataset.hasCookies === "1",
+          btn.dataset.hasPassword === "1"
         );
       });
     });
@@ -1382,6 +1444,17 @@
     document.getElementById("reconnect-modal-cancel")?.addEventListener("click", closeReconnectModal);
     modal?.addEventListener("click", (e) => {
       if (e.target === modal) closeReconnectModal();
+    });
+
+    document.getElementById("reconnect-modal-password-btn")?.addEventListener("click", () => {
+      if (!reconnectTarget) return;
+      const btn = document.getElementById("reconnect-modal-password-btn");
+      runReconnect(
+        reconnectTarget.accountId,
+        reconnectTarget.username,
+        { mode: "password" },
+        btn
+      );
     });
 
     document.getElementById("reconnect-modal-sessionid-btn")?.addEventListener("click", () => {
@@ -1424,6 +1497,195 @@
           if (other !== panel) other.open = false;
         });
       });
+    });
+  }
+
+  function initCredsVault() {
+    const modal = document.getElementById("creds-vault-modal");
+    if (!modal || modal.dataset.bound === "1") return;
+    modal.dataset.bound = "1";
+
+    let target = null;
+    let pollTimer = null;
+
+    function stopPoll() {
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    }
+
+    function setStatus(hasPassword, hasTotp, hasEmail) {
+      const el = document.getElementById("creds-vault-status");
+      if (!el) return;
+      el.textContent = [
+        hasEmail ? "Email salvo" : "Sem email",
+        hasPassword ? "Senha salva" : "Sem senha",
+        hasTotp ? "Authenticator ok" : "Sem Authenticator",
+      ].join(" · ");
+    }
+
+    async function refreshTotpCode() {
+      if (!target?.accountId) return;
+      const live = document.getElementById("creds-totp-live");
+      const codeEl = document.getElementById("creds-totp-code");
+      const remEl = document.getElementById("creds-totp-remaining");
+      try {
+        const res = await fetch(`/accounts/${target.accountId}/totp-code`, {
+          credentials: "same-origin",
+          headers: { Accept: "application/json" },
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.code) {
+          if (live) live.hidden = true;
+          return;
+        }
+        if (live) live.hidden = false;
+        if (codeEl) codeEl.textContent = data.code;
+        if (remEl) remEl.textContent = String(data.seconds_remaining ?? "—");
+      } catch {
+        if (live) live.hidden = true;
+      }
+    }
+
+    function closeModal() {
+      stopPoll();
+      modal.classList.remove("modal-overlay--open");
+      modal.setAttribute("aria-hidden", "true");
+      document.body.style.overflow = "";
+      target = null;
+      ["creds-vault-password", "creds-vault-totp", "creds-vault-msg"].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.value = id === "creds-vault-msg" ? undefined : "";
+        if (el && id === "creds-vault-msg") el.textContent = "";
+      });
+      const pw = document.getElementById("creds-vault-password");
+      const totp = document.getElementById("creds-vault-totp");
+      const email = document.getElementById("creds-vault-email");
+      const msg = document.getElementById("creds-vault-msg");
+      if (pw) pw.value = "";
+      if (totp) totp.value = "";
+      if (email) email.value = "";
+      if (msg) msg.textContent = "";
+    }
+
+    async function openModal(accountId, username, opts) {
+      const hasPassword = !!opts?.hasPassword;
+      const hasTotp = !!opts?.hasTotp;
+      const loginEmail = opts?.loginEmail || "";
+      target = { accountId, username: username || "" };
+      const sub = document.getElementById("creds-vault-subtitle");
+      const userInput = document.getElementById("creds-vault-username");
+      const emailInput = document.getElementById("creds-vault-email");
+      if (sub) sub.textContent = username ? `@${username}` : "";
+      if (userInput) userInput.value = username ? `@${username}` : "";
+      if (emailInput) emailInput.value = loginEmail;
+      setStatus(hasPassword, hasTotp, !!loginEmail);
+      const live = document.getElementById("creds-totp-live");
+      if (live) live.hidden = !hasTotp;
+      modal.classList.add("modal-overlay--open");
+      modal.setAttribute("aria-hidden", "false");
+      document.body.style.overflow = "hidden";
+      stopPoll();
+      if (hasTotp) {
+        await refreshTotpCode();
+        pollTimer = setInterval(refreshTotpCode, 1000);
+      }
+    }
+
+    document.querySelectorAll(".account-creds-open-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const id = parseInt(btn.dataset.accountId, 10);
+        if (!id) return;
+        openModal(id, btn.dataset.username || "", {
+          hasPassword: btn.dataset.hasPassword === "1",
+          hasTotp: btn.dataset.hasTotp === "1",
+          loginEmail: btn.dataset.loginEmail || "",
+        });
+      });
+    });
+
+    document.getElementById("creds-vault-cancel")?.addEventListener("click", closeModal);
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) closeModal();
+    });
+
+    document.getElementById("creds-totp-copy")?.addEventListener("click", async () => {
+      const code = (document.getElementById("creds-totp-code")?.textContent || "").trim();
+      if (!code || code === "------") return;
+      try {
+        await navigator.clipboard.writeText(code);
+        const msg = document.getElementById("creds-vault-msg");
+        if (msg) msg.textContent = "Código copiado.";
+      } catch {
+        alert("Não foi possível copiar.");
+      }
+    });
+
+    async function saveCredentials(payload) {
+      if (!target?.accountId) return;
+      const msg = document.getElementById("creds-vault-msg");
+      try {
+        const res = await fetch(`/accounts/${target.accountId}/credentials`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) {
+          if (msg) msg.textContent = data.error || "Falha ao salvar.";
+          return;
+        }
+        setStatus(!!data.has_password, !!data.has_totp, !!data.has_email);
+        document.querySelectorAll(`.account-creds-open-btn[data-account-id="${target.accountId}"]`).forEach((b) => {
+          b.dataset.hasPassword = data.has_password ? "1" : "0";
+          b.dataset.hasTotp = data.has_totp ? "1" : "0";
+          b.dataset.hasEmail = data.has_email ? "1" : "0";
+          b.dataset.loginEmail = data.login_email || "";
+        });
+        document.querySelectorAll(`.account-reconnect-open-btn[data-account-id="${target.accountId}"]`).forEach((b) => {
+          b.dataset.hasPassword = data.has_password ? "1" : "0";
+          b.dataset.hasTotp = data.has_totp ? "1" : "0";
+        });
+        const pw = document.getElementById("creds-vault-password");
+        const totp = document.getElementById("creds-vault-totp");
+        const email = document.getElementById("creds-vault-email");
+        if (pw) pw.value = "";
+        if (totp) totp.value = "";
+        if (email) email.value = data.login_email || "";
+        if (msg) msg.textContent = "Cofre salvo.";
+        stopPoll();
+        if (data.has_totp) {
+          await refreshTotpCode();
+          pollTimer = setInterval(refreshTotpCode, 1000);
+        } else {
+          const live = document.getElementById("creds-totp-live");
+          if (live) live.hidden = true;
+        }
+      } catch (err) {
+        if (msg) msg.textContent = err.message || "Erro ao salvar.";
+      }
+    }
+
+    document.getElementById("creds-vault-save")?.addEventListener("click", () => {
+      const password = (document.getElementById("creds-vault-password")?.value || "").trim();
+      const totp_secret = (document.getElementById("creds-vault-totp")?.value || "").trim();
+      const login_email = (document.getElementById("creds-vault-email")?.value || "").trim();
+      const payload = { login_email };
+      if (password) payload.password = password;
+      if (totp_secret) payload.totp_secret = totp_secret;
+      saveCredentials(payload);
+    });
+
+    document.getElementById("creds-vault-clear-totp")?.addEventListener("click", () => {
+      if (!confirm("Remover o Authenticator desta conta?")) return;
+      saveCredentials({ clear_totp: true });
+    });
+
+    document.getElementById("creds-vault-clear-password")?.addEventListener("click", () => {
+      if (!confirm("Remover a senha salva desta conta?")) return;
+      saveCredentials({ clear_password: true });
     });
   }
 

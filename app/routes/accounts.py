@@ -16,6 +16,7 @@ from app.security import decrypt_secret, encrypt_secret
 from app.templating import templates
 from app.config import get_settings
 from app.utils.account_health import offline_accounts
+from app.utils.totp import TotpError, current_totp_code, normalize_totp_secret
 from app.utils.proxy import (
     clean_sessionid,
     diagnose_proxy,
@@ -73,6 +74,97 @@ class ReconnectApiBody(BaseModel):
     web_cookies: str = Field(default="", alias="web_cookies")
 
     model_config = {"populate_by_name": True}
+
+
+class CredentialsBody(BaseModel):
+    password: str = ""
+    totp_secret: str = ""
+    login_email: str | None = None
+    clear_password: bool = False
+    clear_totp: bool = False
+    clear_email: bool = False
+
+
+def _encrypt_totp_secret(raw: str | None) -> str | None:
+    if not (raw or "").strip():
+        return None
+    secret = normalize_totp_secret(raw)
+    return encrypt_secret(secret)
+
+
+def _totp_code_from_encrypted(encrypted: str | None) -> str | None:
+    plain = decrypt_secret(encrypted)
+    if not plain:
+        return None
+    try:
+        secret = normalize_totp_secret(plain)
+        code, _ = current_totp_code(secret)
+        return code
+    except TotpError:
+        return None
+
+
+def _login_credentials_with_totp_retry(
+    *,
+    username: str,
+    password: str,
+    proxy: str,
+    verification_code: str | None = None,
+    totp_encrypted: str | None = None,
+    totp_raw: str | None = None,
+):
+    """Login user/senha; se pedir 2FA e houver TOTP, gera código e tenta 1 vez."""
+    code = (verification_code or "").strip() or None
+    if not code:
+        if totp_raw and totp_raw.strip():
+            try:
+                secret = normalize_totp_secret(totp_raw)
+                code, _ = current_totp_code(secret)
+            except TotpError:
+                code = None
+        if not code:
+            code = _totp_code_from_encrypted(totp_encrypted)
+
+    try:
+        return login_with_credentials(
+            username=username,
+            password=password,
+            verification_code=code,
+            proxy=proxy,
+        )
+    except InstagramTwoFactorRequired:
+        if code:
+            raise
+        # Ainda sem código: tenta gerar de novo do secret salvo/form
+        auto = None
+        if totp_raw and totp_raw.strip():
+            try:
+                secret = normalize_totp_secret(totp_raw)
+                auto, _ = current_totp_code(secret)
+            except TotpError:
+                auto = None
+        if not auto:
+            auto = _totp_code_from_encrypted(totp_encrypted)
+        if not auto:
+            raise
+        return login_with_credentials(
+            username=username,
+            password=password,
+            verification_code=auto,
+            proxy=proxy,
+        )
+
+
+def _cred_flags_for_accounts(accounts: list[InstagramAccount]) -> dict[int, dict]:
+    return {
+        int(acc.id): {
+            "has_password": bool(acc.encrypted_password),
+            "has_totp": bool(getattr(acc, "encrypted_totp_secret", None)),
+            "has_email": bool((getattr(acc, "login_email", None) or "").strip()),
+            "login_email": (getattr(acc, "login_email", None) or "").strip() or None,
+        }
+        for acc in accounts
+    }
 
 
 def _accounts_page_context(
@@ -217,6 +309,7 @@ def _store_meta_account(
     existing.meta_token_expires_at = expires_at
     existing.username = profile["username"]
     existing.encrypted_password = None
+    existing.encrypted_totp_secret = None
     existing.session_json = None
     if proxy and proxy_meta:
         _set_account_proxy(existing, proxy, proxy_meta)
@@ -466,6 +559,8 @@ def _revoke_meta_account(
         acc.meta_token_expires_at = None
         acc.session_json = None
         acc.encrypted_password = None
+        acc.encrypted_totp_secret = None
+        acc.login_email = None
         acc.last_error = f"Revogado pela Meta ({confirmation_code})"
         acc.automations.clear()
     if accounts:
@@ -557,6 +652,7 @@ def connected_accounts(
         "cookies_updated": "Cookies web atualizados! Já pode publicar Story com link.",
         "session_reconnected": "Sessão reconectada com sucesso!",
         "session_reconnected_2fa": "Informe o código 2FA e reconecte de novo.",
+        "credentials_updated": "Credenciais / 2FA salvos.",
     }.get(ok_key or "")
     err_key = request.query_params.get("error")
     err_msg = {
@@ -567,10 +663,11 @@ def connected_accounts(
         "cookies_meta": "Contas da API oficial Meta não usam cookies web.",
         "reconnect_meta": "Conta Meta: reconecte pela API oficial em Adicionar conta.",
         "reconnect_failed": "Não foi possível reconectar. Cole um sessionid ou cookies web novos.",
-        "reconnect_password": "Login com senha desativado. Use sessionid ou cookies web.",
+        "reconnect_password": "Senha ausente no cofre. Salve a senha em Credenciais / 2FA ou informe no reconectar.",
         "reconnect_sessionid": "Informe um sessionid válido.",
-        "reconnect_2fa": "Esta conta pediu 2FA. Reconecte com sessionid ou cookies web do navegador.",
+        "reconnect_2fa": "2FA necessário. Salve a chave TOTP em Credenciais / 2FA ou digite o código.",
         "reconnect_proxy": "Proxy ausente ou inválida — atualize a proxy antes de reconectar.",
+        "credentials_totp": "Chave TOTP inválida. Use Base32 ou otpauth:// do Authenticator.",
     }.get(err_key or "")
     offline = offline_accounts(db, user.id)
     cookie_flags = {
@@ -579,6 +676,7 @@ def connected_accounts(
         if (acc.provider or "instagrapi") != "meta"
     }
     meta_display = _meta_account_display(accounts)
+    cred_flags = _cred_flags_for_accounts(accounts)
     # Não segurar SELECT instagram_accounts aberto durante o render.
     release_db_transaction(db)
     return templates.TemplateResponse(
@@ -588,6 +686,7 @@ def connected_accounts(
             "offline_accounts": offline,
             "cookie_flags": cookie_flags,
             "meta_display": meta_display,
+            "cred_flags": cred_flags,
         },
     )
 
@@ -599,6 +698,7 @@ def add_account(
     username: str = Form(""),
     password: str = Form(""),
     verification_code: str = Form(""),
+    totp_secret: str = Form(""),
     sessionid: str = Form(""),
     session_json: str = Form(""),
     web_cookies: str = Form(""),
@@ -625,6 +725,7 @@ def add_account(
         "session_json": session_json.strip(),
         "web_cookies": web_cookies.strip(),
         "proxy": proxy_raw.strip() or proxy,
+        "totp_secret": totp_secret.strip(),
     }
 
     if not proxy:
@@ -660,6 +761,38 @@ def add_account(
 
     encrypted_pw = None
     encrypted_cookies = None
+    encrypted_totp = None
+    if totp_secret.strip():
+        try:
+            encrypted_totp = _encrypt_totp_secret(totp_secret)
+        except TotpError as exc:
+            accounts = _load_user_accounts(db, user)
+            return templates.TemplateResponse(
+                "accounts.html",
+                _accounts_page_context(
+                    request,
+                    user,
+                    accounts,
+                    error=f"Chave TOTP inválida: {exc}",
+                    form=form_state,
+                ),
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+    existing_for_totp = None
+    if username:
+        existing_for_totp = db.scalar(
+            select(InstagramAccount).where(
+                InstagramAccount.user_id == user.id,
+                InstagramAccount.username == username,
+            )
+        )
+    stored_totp = (
+        getattr(existing_for_totp, "encrypted_totp_secret", None)
+        if existing_for_totp is not None
+        else None
+    )
+
     try:
         if use_cookies:
             try:
@@ -705,24 +838,35 @@ def add_account(
         else:
             if not username or not password:
                 raise InstagramAuthError("Usuário e senha são obrigatórios.")
-            settings_dict = login_with_credentials(
+            settings_dict = _login_credentials_with_totp_retry(
                 username=username,
                 password=password,
-                verification_code=verification_code.strip() or None,
                 proxy=proxy,
+                verification_code=verification_code.strip() or None,
+                totp_encrypted=encrypted_totp or stored_totp,
+                totp_raw=totp_secret.strip() or None,
             )
             encrypted_pw = encrypt_secret(password)
 
     except InstagramTwoFactorRequired as exc:
         if request.headers.get("X-Requested-With") == "fetch":
             return JSONResponse(
-                {"needs_2fa": True, "message": str(exc)},
+                {
+                    "needs_2fa": True,
+                    "message": str(exc),
+                    "has_totp": bool(encrypted_totp or stored_totp),
+                },
                 status_code=status.HTTP_403_FORBIDDEN,
             )
         accounts = _load_user_accounts(db, user)
         return templates.TemplateResponse(
             "accounts.html",
-            {**_accounts_page_context(request, user, accounts, error=str(exc), form=form_state), "needs_2fa": True},
+            {
+                **_accounts_page_context(
+                    request, user, accounts, error=str(exc), form=form_state
+                ),
+                "needs_2fa": True,
+            },
             status_code=status.HTTP_403_FORBIDDEN,
         )
     except InstagramAuthError as exc:
@@ -766,6 +910,8 @@ def add_account(
         existing.session_json = serialize_settings(settings_dict)
         if encrypted_pw:
             existing.encrypted_password = encrypted_pw
+        if encrypted_totp:
+            existing.encrypted_totp_secret = encrypted_totp
         if encrypted_cookies:
             existing.encrypted_web_cookies = encrypted_cookies
         existing.meta_ig_user_id = None
@@ -781,6 +927,7 @@ def add_account(
             username=username,
             provider="instagrapi",
             encrypted_password=encrypted_pw,
+            encrypted_totp_secret=encrypted_totp,
             proxy=proxy,
             session_json=serialize_settings(settings_dict),
             encrypted_web_cookies=encrypted_cookies,
@@ -992,6 +1139,8 @@ def _perform_account_reconnect(
     username = acc.username
     session_json = acc.session_json
     encrypted_web_cookies = acc.encrypted_web_cookies
+    encrypted_password = acc.encrypted_password
+    encrypted_totp_secret = getattr(acc, "encrypted_totp_secret", None)
     release_db_transaction(db)
 
     mode_norm = (mode or "auto").strip().lower()
@@ -1033,19 +1182,41 @@ def _perform_account_reconnect(
                     password=None,
                 )
             except InstagramAuthError:
-                cookies = decrypt_web_cookies(encrypted_web_cookies)
-                sid = clean_sessionid((cookies or {}).get("sessionid") or "")
-                if not sid:
-                    return {
-                        "status": "error",
-                        "error_code": "sessionid",
-                        "message": "Sessão expirada. Cole um sessionid novo ou cookies web (Cookie-Editor).",
-                    }
-                settings_dict, resolved_user = login_with_sessionid(
-                    sid,
-                    proxy=proxy,
-                    username_hint=username,
-                )
+                # Sessão morta: tenta senha+TOTP do cofre antes de exigir sessionid.
+                stored_pw = decrypt_secret(encrypted_password)
+                if stored_pw:
+                    try:
+                        settings_dict = _login_credentials_with_totp_retry(
+                            username=username,
+                            password=stored_pw,
+                            proxy=proxy,
+                            verification_code=(verification_code or "").strip() or None,
+                            totp_encrypted=encrypted_totp_secret,
+                        )
+                    except InstagramTwoFactorRequired as exc:
+                        return {
+                            "status": "needs_2fa",
+                            "message": str(exc),
+                            "username": username,
+                            "has_totp": bool(encrypted_totp_secret),
+                        }
+                else:
+                    cookies = decrypt_web_cookies(encrypted_web_cookies)
+                    sid = clean_sessionid((cookies or {}).get("sessionid") or "")
+                    if not sid:
+                        return {
+                            "status": "error",
+                            "error_code": "sessionid",
+                            "message": (
+                                "Sessão expirada. Salve senha+TOTP em Credenciais / 2FA "
+                                "ou cole um sessionid / cookies web."
+                            ),
+                        }
+                    settings_dict, resolved_user = login_with_sessionid(
+                        sid,
+                        proxy=proxy,
+                        username_hint=username,
+                    )
             new_sid = extract_sessionid_from_settings(settings_dict)
             merged = merge_sessionid_into_web_cookies(
                 new_encrypted_web or encrypted_web_cookies, new_sid
@@ -1053,16 +1224,25 @@ def _perform_account_reconnect(
             if merged:
                 new_encrypted_web = merged
         elif mode_norm == "password":
-            return {
-                "status": "error",
-                "error_code": "password",
-                "message": "Login com senha desativado. Use sessionid ou cookies web.",
-            }
+            pw = (password or "").strip() or decrypt_secret(encrypted_password)
+            if not pw:
+                return {
+                    "status": "error",
+                    "error_code": "password",
+                    "message": "Senha ausente. Salve em Credenciais / 2FA ou informe no reconectar.",
+                }
+            settings_dict = _login_credentials_with_totp_retry(
+                username=username,
+                password=pw,
+                proxy=proxy,
+                verification_code=(verification_code or "").strip() or None,
+                totp_encrypted=encrypted_totp_secret,
+            )
         else:
             return {
                 "status": "error",
                 "error_code": "mode",
-                "message": "Modo de reconexão inválido. Use sessionid ou cookies.",
+                "message": "Modo de reconexão inválido. Use sessionid, cookies ou password.",
             }
 
         acc = db.get(InstagramAccount, account_id)
@@ -1077,6 +1257,8 @@ def _perform_account_reconnect(
             acc.encrypted_web_cookies = new_encrypted_web
         if resolved_user:
             acc.username = resolved_user
+        if mode_norm == "password" and (password or "").strip():
+            acc.encrypted_password = encrypt_secret(password.strip())
         acc.status = "active"
         acc.last_login_at = dt.datetime.utcnow()
         acc.last_error = None
@@ -1090,6 +1272,7 @@ def _perform_account_reconnect(
             "status": "needs_2fa",
             "message": str(exc),
             "username": username,
+            "has_totp": bool(encrypted_totp_secret),
         }
     except WebCookiesError:
         return {
@@ -1103,6 +1286,108 @@ def _perform_account_reconnect(
             "error_code": "auth",
             "message": str(exc)[:500],
         }
+
+
+@router.get("/{account_id}/credentials")
+def get_account_credentials_status(
+    account_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Status do cofre (senha/TOTP sem plaintext; email pode voltar)."""
+    acc = _get_owned_account(db, account_id, user)
+    return JSONResponse(
+        {
+            "account_id": acc.id,
+            "username": acc.username,
+            "login_email": (getattr(acc, "login_email", None) or "").strip() or None,
+            "has_password": bool(acc.encrypted_password),
+            "has_totp": bool(getattr(acc, "encrypted_totp_secret", None)),
+            "has_email": bool((getattr(acc, "login_email", None) or "").strip()),
+        }
+    )
+
+
+@router.post("/{account_id}/credentials")
+def update_account_credentials(
+    account_id: int,
+    body: CredentialsBody = Body(default_factory=CredentialsBody),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Atualiza email, senha e/ou chave TOTP no cofre da conta."""
+    acc = _get_owned_account(db, account_id, user)
+    if body.clear_password:
+        acc.encrypted_password = None
+    elif (body.password or "").strip():
+        acc.encrypted_password = encrypt_secret(body.password.strip())
+
+    if body.clear_totp:
+        acc.encrypted_totp_secret = None
+    elif (body.totp_secret or "").strip():
+        try:
+            acc.encrypted_totp_secret = _encrypt_totp_secret(body.totp_secret)
+        except TotpError as exc:
+            return JSONResponse(
+                {"ok": False, "error": str(exc)},
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+
+    if body.clear_email:
+        acc.login_email = None
+    elif body.login_email is not None:
+        email = str(body.login_email).strip()[:255]
+        acc.login_email = email or None
+
+    db.commit()
+    return JSONResponse(
+        {
+            "ok": True,
+            "username": acc.username,
+            "login_email": (acc.login_email or "").strip() or None,
+            "has_password": bool(acc.encrypted_password),
+            "has_totp": bool(acc.encrypted_totp_secret),
+            "has_email": bool((acc.login_email or "").strip()),
+        }
+    )
+
+
+@router.get("/{account_id}/totp-code")
+def get_account_totp_code(
+    account_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Código TOTP atual (6 dígitos) — nunca devolve o secret."""
+    acc = _get_owned_account(db, account_id, user)
+    encrypted = getattr(acc, "encrypted_totp_secret", None)
+    if not encrypted:
+        return JSONResponse(
+            {"ok": False, "error": "TOTP não configurado nesta conta."},
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    plain = decrypt_secret(encrypted)
+    if not plain:
+        return JSONResponse(
+            {"ok": False, "error": "Não foi possível ler a chave TOTP."},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    try:
+        secret = normalize_totp_secret(plain)
+        code, remaining = current_totp_code(secret)
+    except TotpError as exc:
+        return JSONResponse(
+            {"ok": False, "error": str(exc)},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    return JSONResponse(
+        {
+            "ok": True,
+            "code": code,
+            "seconds_remaining": remaining,
+            "username": acc.username,
+        }
+    )
 
 
 @router.post("/{account_id}/pause")
@@ -1145,6 +1430,8 @@ def delete_account(
     acc.status = "deleted"
     acc.session_json = None
     acc.encrypted_password = None
+    acc.encrypted_totp_secret = None
+    acc.login_email = None
     acc.encrypted_meta_access_token = None
     acc.meta_token_expires_at = None
     acc.last_error = "Conta removida do painel"

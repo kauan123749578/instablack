@@ -115,6 +115,18 @@
           </td>
           <td>{{ acc.last_login_at | localtime }}</td>
           <td class="account-actions">
+            {% set cflags = cred_flags.get(acc.id, {}) if cred_flags else {} %}
+            <button type="button"
+                    class="btn btn-sm account-creds-open-btn"
+                    data-account-id="{{ acc.id }}"
+                    data-username="{{ acc.username }}"
+                    data-login-email="{{ cflags.get('login_email') or '' }}"
+                    data-has-password="{{ 1 if cflags.get('has_password') else 0 }}"
+                    data-has-totp="{{ 1 if cflags.get('has_totp') else 0 }}"
+                    data-has-email="{{ 1 if cflags.get('has_email') else 0 }}"
+                    title="Cofre: email, senha e Authenticator">
+              Cofre
+            </button>
             {% if acc.provider != 'meta' %}
             {% set cflag = cookie_flags.get(acc.id, {}) %}
             <button type="button"
@@ -122,6 +134,8 @@
                     data-account-id="{{ acc.id }}"
                     data-username="{{ acc.username }}"
                     data-has-cookies="{{ 1 if cflag.has_csrftoken else 0 }}"
+                    data-has-password="{{ 1 if cflags.get('has_password') else 0 }}"
+                    data-has-totp="{{ 1 if cflags.get('has_totp') else 0 }}"
                     title="Reconectar com sessionid ou cookies web">
               {% if acc.status == 'needs_login' %}Reconectar{% else %}Atualizar sessão{% endif %}
             </button>
@@ -192,9 +206,13 @@
   <div class="modal-card modal-card--reconnect" role="dialog" aria-labelledby="reconnect-session-title" onclick="event.stopPropagation()">
     <h3 id="reconnect-session-title">Reconectar sessão</h3>
     <p class="muted" id="reconnect-session-message">
-      Cole o sessionid do navegador ou o JSON do Cookie-Editor. Usuário/senha não é usado.
+      Cole o sessionid do navegador ou o JSON do Cookie-Editor. Ou use senha+TOTP salvos no cofre.
     </p>
     <p class="muted reconnect-cookies-hint" id="reconnect-cookies-hint" hidden></p>
+    <button type="button" class="btn btn-primary" id="reconnect-modal-password-btn" hidden>
+      Reconectar com senha / 2FA salvos
+    </button>
+    <div class="reconnect-modal-divider" id="reconnect-password-divider" hidden><span>ou</span></div>
     <label class="field-label">Sessionid do navegador
       <input type="text" id="reconnect-modal-sessionid" placeholder="cole o sessionid aqui" autocomplete="off">
     </label>
@@ -212,6 +230,52 @@
     <div class="modal-actions">
       <button type="button" class="btn" id="reconnect-modal-cancel">Fechar</button>
     </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="creds-vault-modal" aria-hidden="true">
+  <div class="modal-card modal-card--reconnect" role="dialog" aria-labelledby="creds-vault-title" onclick="event.stopPropagation()">
+    <h3 id="creds-vault-title">Cofre da conta</h3>
+    <p class="muted" id="creds-vault-subtitle">@conta</p>
+    <p class="muted" style="font-size:12px;margin:0 0 12px">
+      Guarde email, senha e chave do Authenticator desta @ — fica organizado e o código de 6 dígitos fica fácil de copiar.
+    </p>
+
+    <label class="field-label">Usuário Instagram
+      <input type="text" id="creds-vault-username" readonly tabindex="-1">
+    </label>
+    <label class="field-label">Email da conta
+      <input type="email" id="creds-vault-email" autocomplete="off" placeholder="email@exemplo.com">
+    </label>
+    <label class="field-label">Senha (deixe vazio para manter a atual)
+      <input type="password" id="creds-vault-password" autocomplete="new-password" placeholder="••••••••">
+    </label>
+    <label class="field-label">Chave do Authenticator (Base32 ou otpauth://)
+      <input type="text" id="creds-vault-totp" autocomplete="off" placeholder="Cole a chave secreta do app Authenticator">
+    </label>
+    <p class="muted" style="font-size:12px;margin:0">
+      A chave secreta não é mostrada de novo depois de salvar — só o código que muda a cada 30s.
+    </p>
+
+    <div class="creds-totp-live" id="creds-totp-live" hidden>
+      <p class="muted" style="font-size:12px;margin:0 0 6px">Código Authenticator agora</p>
+      <div class="creds-totp-code-row">
+        <code id="creds-totp-code" class="creds-totp-code">------</code>
+        <button type="button" class="btn btn-sm btn-primary" id="creds-totp-copy">Copiar código</button>
+      </div>
+      <p class="muted" style="font-size:12px;margin:4px 0 0">
+        Expira em <span id="creds-totp-remaining">—</span>s
+      </p>
+    </div>
+
+    <p class="muted" id="creds-vault-status" style="font-size:12px;margin-top:12px"></p>
+    <div class="modal-actions" style="flex-wrap:wrap;gap:8px">
+      <button type="button" class="btn btn-primary" id="creds-vault-save">Salvar cofre</button>
+      <button type="button" class="btn" id="creds-vault-clear-totp">Remover Authenticator</button>
+      <button type="button" class="btn" id="creds-vault-clear-password">Remover senha</button>
+      <button type="button" class="btn" id="creds-vault-cancel">Fechar</button>
+    </div>
+    <p class="muted" id="creds-vault-msg" aria-live="polite" style="font-size:12px;margin:8px 0 0"></p>
   </div>
 </div>
 {% endblock %}

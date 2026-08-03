@@ -1350,6 +1350,23 @@ input[type="checkbox"]:checked::after {
   content: ""; flex: 1; height: 1px; background: rgba(255, 255, 255, 0.08);
 }
 .reconnect-cookies-hint { margin: 0; font-size: 12px; }
+.creds-totp-live {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.creds-totp-code-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.creds-totp-code {
+  font-size: 28px;
+  letter-spacing: 0.2em;
+  font-weight: 600;
+}
 
 /* Calendário de agendamento — compacto, não ocupa a tela inteira */
 .calendar-fieldset { border: 1px solid var(--border); padding: 12px; margin: 0; max-width: 360px; }

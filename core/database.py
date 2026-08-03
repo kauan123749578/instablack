@@ -377,6 +377,10 @@ def _sqlite_migrate(bind=None) -> None:
                 conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN warmup_days INTEGER DEFAULT 7"))
             if "warmup_started_at" not in acols:
                 conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN warmup_started_at DATETIME"))
+            if "encrypted_totp_secret" not in acols:
+                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN encrypted_totp_secret TEXT"))
+            if "login_email" not in acols:
+                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN login_email VARCHAR(255)"))
             conn.execute(
                 text(
                     "CREATE INDEX IF NOT EXISTS ix_instagram_accounts_user_status "
@@ -626,6 +630,8 @@ def _postgres_migrate(bind=None) -> None:
                 ("warmup_enabled", "BOOLEAN DEFAULT FALSE"),
                 ("warmup_days", "INTEGER DEFAULT 7"),
                 ("warmup_started_at", "TIMESTAMPTZ"),
+                ("encrypted_totp_secret", "TEXT"),
+                ("login_email", "VARCHAR(255)"),
             ],
         )
         if _table_exists(conn, "instagram_accounts"):

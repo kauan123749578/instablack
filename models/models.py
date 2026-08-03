@@ -161,6 +161,10 @@ class InstagramAccount(Base):
 
     # password \u00e9 opcional: se vier null, n\u00e3o conseguimos re-logar automaticamente.
     encrypted_password: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    # Segredo TOTP do Authenticator (Base32), cifrado — gera código 2FA no painel/login.
+    encrypted_totp_secret: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Email de login da conta IG (cofre / organização).
+    login_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     proxy: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     proxy_ip: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
