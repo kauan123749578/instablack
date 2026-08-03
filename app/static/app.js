@@ -116,12 +116,16 @@
         if (abort && navAbort !== abort) return;
         appContent.innerHTML = newContent.innerHTML;
         delete document.body.dataset.pageAccountsConnected;
+        delete document.body.dataset.pageVault;
         if (doc.body?.dataset?.pageAccountsConnected) {
           document.body.dataset.pageAccountsConnected = doc.body.dataset.pageAccountsConnected;
         }
         // Scripts do bloco {% block scripts %} não vêm no #app-content — procura marcadores no HTML.
         if (html.includes('data-page-accounts-connected="1"') || html.includes("pageAccountsConnected")) {
           document.body.dataset.pageAccountsConnected = "1";
+        }
+        if (html.includes('data-page-vault="1"') || html.includes('data-page-vault')) {
+          document.body.dataset.pageVault = "1";
         }
         if (push) history.pushState({ url }, "", url);
         setActiveNav(new URL(url, window.location.origin).pathname);
@@ -1376,7 +1380,7 @@
     if (!marker) return;
     document.body.dataset.pageAccountsConnected = "1";
     initTwofaModal();
-    initCredsVault();
+    // Cofre virou página /accounts/vault (initVaultPage)
 
     const modal = document.getElementById("reconnect-session-modal");
     let reconnectTarget = null;
@@ -1500,133 +1504,44 @@
     });
   }
 
-  function initCredsVault() {
-    const modal = document.getElementById("creds-vault-modal");
-    if (!modal || modal.dataset.bound === "1") return;
-    modal.dataset.bound = "1";
+  function initVaultPage() {
+    const cards = Array.from(document.querySelectorAll(".vault-card"));
+    if (!cards.length) return;
+    document.body.dataset.pageVault = "1";
 
-    let target = null;
-    let pollTimer = null;
-
-    function stopPoll() {
-      if (pollTimer) {
-        clearInterval(pollTimer);
-        pollTimer = null;
+    async function refreshCardCode(card) {
+      const id = card.dataset.accountId;
+      const box = card.querySelector(".vault-code-box");
+      const codeEl = card.querySelector(".vault-code");
+      const remEl = card.querySelector(".vault-remaining");
+      if (!id || card.dataset.hasTotp !== "1") {
+        if (box) box.hidden = true;
+        return;
       }
-    }
-
-    function setStatus(hasPassword, hasTotp, hasEmail) {
-      const el = document.getElementById("creds-vault-status");
-      if (!el) return;
-      el.textContent = [
-        hasEmail ? "Email salvo" : "Sem email",
-        hasPassword ? "Senha salva" : "Sem senha",
-        hasTotp ? "Authenticator ok" : "Sem Authenticator",
-      ].join(" · ");
-    }
-
-    async function refreshTotpCode() {
-      if (!target?.accountId) return;
-      const live = document.getElementById("creds-totp-live");
-      const codeEl = document.getElementById("creds-totp-code");
-      const remEl = document.getElementById("creds-totp-remaining");
       try {
-        const res = await fetch(`/accounts/${target.accountId}/totp-code`, {
+        const res = await fetch(`/accounts/${id}/totp-code`, {
           credentials: "same-origin",
           headers: { Accept: "application/json" },
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.code) {
-          if (live) live.hidden = true;
+          if (box) box.hidden = true;
           return;
         }
-        if (live) live.hidden = false;
+        if (box) box.hidden = false;
         if (codeEl) codeEl.textContent = data.code;
         if (remEl) remEl.textContent = String(data.seconds_remaining ?? "—");
       } catch {
-        if (live) live.hidden = true;
+        if (box) box.hidden = true;
       }
     }
 
-    function closeModal() {
-      stopPoll();
-      modal.classList.remove("modal-overlay--open");
-      modal.setAttribute("aria-hidden", "true");
-      document.body.style.overflow = "";
-      target = null;
-      ["creds-vault-password", "creds-vault-totp", "creds-vault-msg"].forEach((id) => {
-        const el = document.getElementById(id);
-        if (el) el.value = id === "creds-vault-msg" ? undefined : "";
-        if (el && id === "creds-vault-msg") el.textContent = "";
-      });
-      const pw = document.getElementById("creds-vault-password");
-      const totp = document.getElementById("creds-vault-totp");
-      const email = document.getElementById("creds-vault-email");
-      const msg = document.getElementById("creds-vault-msg");
-      if (pw) pw.value = "";
-      if (totp) totp.value = "";
-      if (email) email.value = "";
-      if (msg) msg.textContent = "";
-    }
-
-    async function openModal(accountId, username, opts) {
-      const hasPassword = !!opts?.hasPassword;
-      const hasTotp = !!opts?.hasTotp;
-      const loginEmail = opts?.loginEmail || "";
-      target = { accountId, username: username || "" };
-      const sub = document.getElementById("creds-vault-subtitle");
-      const userInput = document.getElementById("creds-vault-username");
-      const emailInput = document.getElementById("creds-vault-email");
-      if (sub) sub.textContent = username ? `@${username}` : "";
-      if (userInput) userInput.value = username ? `@${username}` : "";
-      if (emailInput) emailInput.value = loginEmail;
-      setStatus(hasPassword, hasTotp, !!loginEmail);
-      const live = document.getElementById("creds-totp-live");
-      if (live) live.hidden = !hasTotp;
-      modal.classList.add("modal-overlay--open");
-      modal.setAttribute("aria-hidden", "false");
-      document.body.style.overflow = "hidden";
-      stopPoll();
-      if (hasTotp) {
-        await refreshTotpCode();
-        pollTimer = setInterval(refreshTotpCode, 1000);
-      }
-    }
-
-    document.querySelectorAll(".account-creds-open-btn").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const id = parseInt(btn.dataset.accountId, 10);
-        if (!id) return;
-        openModal(id, btn.dataset.username || "", {
-          hasPassword: btn.dataset.hasPassword === "1",
-          hasTotp: btn.dataset.hasTotp === "1",
-          loginEmail: btn.dataset.loginEmail || "",
-        });
-      });
-    });
-
-    document.getElementById("creds-vault-cancel")?.addEventListener("click", closeModal);
-    modal.addEventListener("click", (e) => {
-      if (e.target === modal) closeModal();
-    });
-
-    document.getElementById("creds-totp-copy")?.addEventListener("click", async () => {
-      const code = (document.getElementById("creds-totp-code")?.textContent || "").trim();
-      if (!code || code === "------") return;
+    async function saveCard(card, payload) {
+      const id = card.dataset.accountId;
+      const msg = card.querySelector(".vault-msg");
+      if (!id) return;
       try {
-        await navigator.clipboard.writeText(code);
-        const msg = document.getElementById("creds-vault-msg");
-        if (msg) msg.textContent = "Código copiado.";
-      } catch {
-        alert("Não foi possível copiar.");
-      }
-    });
-
-    async function saveCredentials(payload) {
-      if (!target?.accountId) return;
-      const msg = document.getElementById("creds-vault-msg");
-      try {
-        const res = await fetch(`/accounts/${target.accountId}/credentials`, {
+        const res = await fetch(`/accounts/${id}/credentials`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Accept: "application/json" },
           credentials: "same-origin",
@@ -1637,56 +1552,75 @@
           if (msg) msg.textContent = data.error || "Falha ao salvar.";
           return;
         }
-        setStatus(!!data.has_password, !!data.has_totp, !!data.has_email);
-        document.querySelectorAll(`.account-creds-open-btn[data-account-id="${target.accountId}"]`).forEach((b) => {
-          b.dataset.hasPassword = data.has_password ? "1" : "0";
-          b.dataset.hasTotp = data.has_totp ? "1" : "0";
-          b.dataset.hasEmail = data.has_email ? "1" : "0";
-          b.dataset.loginEmail = data.login_email || "";
-        });
-        document.querySelectorAll(`.account-reconnect-open-btn[data-account-id="${target.accountId}"]`).forEach((b) => {
-          b.dataset.hasPassword = data.has_password ? "1" : "0";
-          b.dataset.hasTotp = data.has_totp ? "1" : "0";
-        });
-        const pw = document.getElementById("creds-vault-password");
-        const totp = document.getElementById("creds-vault-totp");
-        const email = document.getElementById("creds-vault-email");
+        card.dataset.hasTotp = data.has_totp ? "1" : "0";
+        const emailInput = card.querySelector(".vault-email");
+        const pw = card.querySelector(".vault-password");
+        const totp = card.querySelector(".vault-totp");
+        if (emailInput) emailInput.value = data.login_email || "";
         if (pw) pw.value = "";
         if (totp) totp.value = "";
-        if (email) email.value = data.login_email || "";
-        if (msg) msg.textContent = "Cofre salvo.";
-        stopPoll();
-        if (data.has_totp) {
-          await refreshTotpCode();
-          pollTimer = setInterval(refreshTotpCode, 1000);
-        } else {
-          const live = document.getElementById("creds-totp-live");
-          if (live) live.hidden = true;
+        if (msg) msg.textContent = "Salvo.";
+        const badge = card.querySelector(".og-badge");
+        if (badge) {
+          badge.textContent = data.has_totp ? "Authenticator" : "Sem 2FA";
+          badge.classList.toggle("badge-green", !!data.has_totp);
         }
+        await refreshCardCode(card);
       } catch (err) {
         if (msg) msg.textContent = err.message || "Erro ao salvar.";
       }
     }
 
-    document.getElementById("creds-vault-save")?.addEventListener("click", () => {
-      const password = (document.getElementById("creds-vault-password")?.value || "").trim();
-      const totp_secret = (document.getElementById("creds-vault-totp")?.value || "").trim();
-      const login_email = (document.getElementById("creds-vault-email")?.value || "").trim();
-      const payload = { login_email };
-      if (password) payload.password = password;
-      if (totp_secret) payload.totp_secret = totp_secret;
-      saveCredentials(payload);
+    cards.forEach((card) => {
+      if (card.dataset.vaultReady === "1") return;
+      card.dataset.vaultReady = "1";
+
+      card.querySelector(".vault-save")?.addEventListener("click", () => {
+        const login_email = (card.querySelector(".vault-email")?.value || "").trim();
+        const password = (card.querySelector(".vault-password")?.value || "").trim();
+        const totp_secret = (card.querySelector(".vault-totp")?.value || "").trim();
+        const payload = { login_email };
+        if (password) payload.password = password;
+        if (totp_secret) payload.totp_secret = totp_secret;
+        saveCard(card, payload);
+      });
+
+      card.querySelector(".vault-clear-totp")?.addEventListener("click", () => {
+        if (!confirm("Remover Authenticator desta conta?")) return;
+        saveCard(card, { clear_totp: true });
+      });
+
+      card.querySelector(".vault-clear-password")?.addEventListener("click", () => {
+        if (!confirm("Remover senha salva desta conta?")) return;
+        saveCard(card, { clear_password: true });
+      });
+
+      card.querySelector(".vault-copy")?.addEventListener("click", async () => {
+        const code = (card.querySelector(".vault-code")?.textContent || "").trim();
+        const msg = card.querySelector(".vault-msg");
+        if (!code || code === "------") return;
+        try {
+          await navigator.clipboard.writeText(code);
+          if (msg) msg.textContent = "Código copiado.";
+        } catch {
+          alert("Não foi possível copiar.");
+        }
+      });
+
+      refreshCardCode(card);
     });
 
-    document.getElementById("creds-vault-clear-totp")?.addEventListener("click", () => {
-      if (!confirm("Remover o Authenticator desta conta?")) return;
-      saveCredentials({ clear_totp: true });
-    });
+    if (!window.__vaultPoll) {
+      window.__vaultPoll = setInterval(() => {
+        document.querySelectorAll(".vault-card[data-has-totp='1']").forEach((card) => {
+          refreshCardCode(card);
+        });
+      }, 1000);
+    }
+  }
 
-    document.getElementById("creds-vault-clear-password")?.addEventListener("click", () => {
-      if (!confirm("Remover a senha salva desta conta?")) return;
-      saveCredentials({ clear_password: true });
-    });
+  function initCredsVault() {
+    // legado — página dedicada /accounts/vault
   }
 
   function initCalendarPicker() {
@@ -2751,6 +2685,7 @@
     initCalendarTimes();
     initAccountsConnect();
     initAccountsReconnect();
+    initVaultPage();
     initAuthMethodForm();
     initProxyInput();
     initAccountProxyUpdate();

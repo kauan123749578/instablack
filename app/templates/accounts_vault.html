@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Cofre — instablack{% endblock %}
+{% block content %}
+<div class="page-header" data-page-vault="1">
+  <h2><i data-lucide="key-round" class="inline-icon"></i> Cofre</h2>
+  <p class="muted page-header-sub">
+    Email, senha e Authenticator de cada conta — organizado e fácil de copiar o código de 6 dígitos.
+  </p>
+</div>
+
+{% if not accounts %}
+<div class="og-glass-card" style="padding:20px">
+  <p class="muted" style="margin:0">
+    Nenhuma conta conectada.
+    <a href="/accounts" data-nav="/accounts">Adicionar conta</a>
+    ou veja
+    <a href="/accounts/connected" data-nav="/accounts/connected">Contas conectadas</a>.
+  </p>
+</div>
+{% else %}
+<div class="vault-grid">
+  {% for acc in accounts %}
+  {% set cflags = cred_flags.get(acc.id, {}) if cred_flags else {} %}
+  <article class="vault-card og-glass-card"
+           data-account-id="{{ acc.id }}"
+           data-has-totp="{{ 1 if cflags.get('has_totp') else 0 }}">
+    <header class="vault-card-head">
+      <div>
+        <strong class="ig-handle">@{{ acc.username }}</strong>
+        <div class="vault-card-meta muted">
+          {% if acc.provider == 'meta' %}
+          API oficial{% if meta_display.get(acc.id) and meta_display[acc.id].app_name %} · {{ meta_display[acc.id].app_name }}{% endif %}
+          {% else %}
+          Instagrapi / sessão
+          {% endif %}
+          · {{ status_label(acc.status) }}
+        </div>
+      </div>
+      <span class="og-badge {% if cflags.get('has_totp') %}badge-green{% endif %}">
+        {% if cflags.get('has_totp') %}Authenticator{% else %}Sem 2FA{% endif %}
+      </span>
+    </header>
+
+    <label class="field-label">Email
+      <input type="email" class="vault-email" autocomplete="off"
+             value="{{ cflags.get('login_email') or '' }}"
+             placeholder="email@exemplo.com">
+    </label>
+    <label class="field-label">Senha <span class="muted">(vazio = manter)</span>
+      <input type="password" class="vault-password" autocomplete="new-password" placeholder="••••••••">
+    </label>
+    <label class="field-label">Chave Authenticator
+      <input type="text" class="vault-totp" autocomplete="off"
+             placeholder="Base32 ou otpauth://…">
+    </label>
+
+    <div class="creds-totp-live vault-code-box" {% if not cflags.get('has_totp') %}hidden{% endif %}>
+      <p class="muted" style="font-size:12px;margin:0 0 6px">Código agora</p>
+      <div class="creds-totp-code-row">
+        <code class="creds-totp-code vault-code">------</code>
+        <button type="button" class="btn btn-sm btn-primary vault-copy">Copiar</button>
+      </div>
+      <p class="muted" style="font-size:12px;margin:4px 0 0">
+        Expira em <span class="vault-remaining">—</span>s
+      </p>
+    </div>
+
+    <div class="vault-card-actions">
+      <button type="button" class="btn btn-primary btn-sm vault-save">Salvar</button>
+      <button type="button" class="btn btn-sm vault-clear-totp">Remover Authenticator</button>
+      <button type="button" class="btn btn-sm vault-clear-password">Remover senha</button>
+    </div>
+    <p class="muted vault-msg" aria-live="polite" style="font-size:12px;margin:8px 0 0"></p>
+  </article>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

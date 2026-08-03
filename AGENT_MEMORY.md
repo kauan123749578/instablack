@@ -116,6 +116,6 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 | 2026-07-30 | este arquivo | Criado `AGENT_MEMORY.md` a pedido do usuário para não repetir cagada |
 | 2026-07-31 | local | `instagrapi` → **2.18.12** (`requirements.txt`); `login_instagram.py` login user/senha + validação de sessão (sem sessionid hardcoded) |
 | 2026-07-31 | local | BadPassword em `@deborateixei091` com proxy ok = rejeição IG (`invalid_credentials`). Cookie browser expira rápido; sessão durável = `login(senha)` **uma vez** + `dump_settings`. Script alinhado a `core.instagram.login_with_credentials`. |
-| 2026-08-03 | feature | Cofre por conta: email + senha + TOTP; botão **Cofre** com código Authenticator ao vivo (copiar). |
+| 2026-08-03 | feature | Cofre virou aba `/accounts/vault` no sidebar (cards por conta). Botão na tabela não abria por modal fora do `#app-content`. |
 
 <!-- Ao corrigir bugs de produção: acrescente uma linha acima e, se for armadilha nova, uma subseção em "O que já quebrou". -->

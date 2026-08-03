@@ -691,6 +691,27 @@ def connected_accounts(
     )
 
 
+@router.get("/vault")
+def accounts_vault(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_effective_user),
+):
+    """Cofre: email / senha / Authenticator por conta (página dedicada)."""
+    accounts = _load_user_accounts(db, user)
+    cred_flags = _cred_flags_for_accounts(accounts)
+    meta_display = _meta_account_display(accounts)
+    release_db_transaction(db)
+    return templates.TemplateResponse(
+        "accounts_vault.html",
+        {
+            **_accounts_page_context(request, user, accounts),
+            "cred_flags": cred_flags,
+            "meta_display": meta_display,
+        },
+    )
+
+
 @router.post("/add")
 def add_account(
     request: Request,

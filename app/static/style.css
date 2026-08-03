@@ -1367,6 +1367,32 @@ input[type="checkbox"]:checked::after {
   letter-spacing: 0.2em;
   font-weight: 600;
 }
+.vault-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+.vault-card {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.vault-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.vault-card-meta { font-size: 12px; margin-top: 4px; }
+.vault-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+.vault-code-box { margin-top: 4px; }
 
 /* Calendário de agendamento — compacto, não ocupa a tela inteira */
 .calendar-fieldset { border: 1px solid var(--border); padding: 12px; margin: 0; max-width: 360px; }
