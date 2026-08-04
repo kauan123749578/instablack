@@ -4,7 +4,7 @@
 <div class="page-header" data-page-vault="1">
   <h2><i data-lucide="key-round" class="inline-icon"></i> Cofre</h2>
   <p class="muted page-header-sub">
-    Email, senha e Authenticator de cada conta — organizado e fácil de copiar o código de 6 dígitos.
+    Authenticator ao vivo (sem recarregar a página) + email/senha por conta.
   </p>
 </div>
 
@@ -18,11 +18,58 @@
   </p>
 </div>
 {% else %}
+
+<section class="auth-panel" aria-label="Authenticator">
+  <header class="auth-panel-bar">
+    <span class="auth-panel-title">Autenticador</span>
+  </header>
+  <div class="auth-panel-body" id="vault-auth-list">
+    {% for acc in accounts %}
+    {% set cflags = cred_flags.get(acc.id, {}) if cred_flags else {} %}
+    {% if cflags.get('has_totp') %}
+    <button type="button"
+            class="auth-entry vault-auth-item"
+            data-account-id="{{ acc.id }}"
+            data-has-totp="1"
+            title="Clique para copiar">
+      <div class="auth-entry-main">
+        <div class="auth-entry-label">@{{ acc.username }}</div>
+        {% if cflags.get('login_email') %}
+        <div class="auth-entry-sub">{{ cflags.get('login_email') }}</div>
+        {% endif %}
+        <div class="auth-entry-code vault-code">------</div>
+      </div>
+      <div class="auth-timer" aria-hidden="true">
+        <svg class="auth-ring" viewBox="0 0 36 36">
+          <circle class="auth-ring-bg" cx="18" cy="18" r="15.5" />
+          <circle class="auth-ring-fg vault-ring" cx="18" cy="18" r="15.5"
+                  stroke-dasharray="97.4" stroke-dashoffset="0" />
+        </svg>
+      </div>
+    </button>
+    {% endif %}
+    {% endfor %}
+    {% if not has_any_totp %}
+    <p class="auth-empty muted" id="vault-auth-empty">
+      Nenhum Authenticator salvo ainda. Embaixo, cole a <strong>chave secreta</strong>
+      (não o código de 6 dígitos) e clique em Salvar.
+    </p>
+    {% endif %}
+  </div>
+</section>
+
+<p class="muted vault-hint">
+  Cole a <strong>chave secreta</strong> do app Authenticator (Base32 ou otpauth://),
+  não o código azul de 6 dígitos. Depois de salvar, o código aparece em cima e
+  atualiza sozinho a cada 30s — sem F5.
+</p>
+
 <div class="vault-grid">
   {% for acc in accounts %}
   {% set cflags = cred_flags.get(acc.id, {}) if cred_flags else {} %}
   <article class="vault-card og-glass-card"
            data-account-id="{{ acc.id }}"
+           data-username="{{ acc.username }}"
            data-has-totp="{{ 1 if cflags.get('has_totp') else 0 }}">
     <header class="vault-card-head">
       <div>
@@ -36,7 +83,7 @@
           · {{ status_label(acc.status) }}
         </div>
       </div>
-      <span class="og-badge {% if cflags.get('has_totp') %}badge-green{% endif %}">
+      <span class="og-badge {% if cflags.get('has_totp') %}badge-green{% endif %} vault-badge">
         {% if cflags.get('has_totp') %}Authenticator{% else %}Sem 2FA{% endif %}
       </span>
     </header>
@@ -49,28 +96,17 @@
     <label class="field-label">Senha <span class="muted">(vazio = manter)</span>
       <input type="password" class="vault-password" autocomplete="new-password" placeholder="••••••••">
     </label>
-    <label class="field-label">Chave Authenticator
-      <input type="text" class="vault-totp" autocomplete="off"
-             placeholder="Base32 ou otpauth://…">
+    <label class="field-label">Chave secreta Authenticator
+      <input type="text" class="vault-totp" autocomplete="off" spellcheck="false"
+             placeholder="Ex.: JBSW Y3DP EHPK 3PXP  (não cole o código 123456)">
     </label>
-
-    <div class="creds-totp-live vault-code-box" {% if not cflags.get('has_totp') %}hidden{% endif %}>
-      <p class="muted" style="font-size:12px;margin:0 0 6px">Código agora</p>
-      <div class="creds-totp-code-row">
-        <code class="creds-totp-code vault-code">------</code>
-        <button type="button" class="btn btn-sm btn-primary vault-copy">Copiar</button>
-      </div>
-      <p class="muted" style="font-size:12px;margin:4px 0 0">
-        Expira em <span class="vault-remaining">—</span>s
-      </p>
-    </div>
 
     <div class="vault-card-actions">
       <button type="button" class="btn btn-primary btn-sm vault-save">Salvar</button>
       <button type="button" class="btn btn-sm vault-clear-totp">Remover Authenticator</button>
       <button type="button" class="btn btn-sm vault-clear-password">Remover senha</button>
     </div>
-    <p class="muted vault-msg" aria-live="polite" style="font-size:12px;margin:8px 0 0"></p>
+    <p class="vault-msg" aria-live="polite"></p>
   </article>
   {% endfor %}
 </div>

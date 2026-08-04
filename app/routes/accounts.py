@@ -701,6 +701,7 @@ def accounts_vault(
     accounts = _load_user_accounts(db, user)
     cred_flags = _cred_flags_for_accounts(accounts)
     meta_display = _meta_account_display(accounts)
+    has_any_totp = any(bool(f.get("has_totp")) for f in cred_flags.values())
     release_db_transaction(db)
     return templates.TemplateResponse(
         "accounts_vault.html",
@@ -708,7 +709,48 @@ def accounts_vault(
             **_accounts_page_context(request, user, accounts),
             "cred_flags": cred_flags,
             "meta_display": meta_display,
+            "has_any_totp": has_any_totp,
         },
+    )
+
+
+@router.get("/vault/codes")
+def accounts_vault_codes(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Todos os códigos TOTP do usuário — para o Cofre atualizar sem reload."""
+    import time as _time
+
+    accounts = _load_user_accounts(db, user)
+    codes = []
+    for acc in accounts:
+        encrypted = getattr(acc, "encrypted_totp_secret", None)
+        if not encrypted:
+            continue
+        plain = decrypt_secret(encrypted)
+        if not plain:
+            continue
+        try:
+            secret = normalize_totp_secret(plain)
+            code, remaining = current_totp_code(secret)
+        except TotpError:
+            continue
+        codes.append(
+            {
+                "account_id": int(acc.id),
+                "username": acc.username,
+                "code": code,
+                "seconds_remaining": remaining,
+            }
+        )
+    release_db_transaction(db)
+    return JSONResponse(
+        {
+            "ok": True,
+            "codes": codes,
+            "server_time": int(_time.time()),
+        }
     )
 
 
@@ -1347,12 +1389,18 @@ def update_account_credentials(
         acc.encrypted_totp_secret = None
     elif (body.totp_secret or "").strip():
         try:
-            acc.encrypted_totp_secret = _encrypt_totp_secret(body.totp_secret)
+            encrypted = _encrypt_totp_secret(body.totp_secret)
         except TotpError as exc:
             return JSONResponse(
                 {"ok": False, "error": str(exc)},
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
+        if not encrypted:
+            return JSONResponse(
+                {"ok": False, "error": "Chave TOTP vazia após normalizar."},
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        acc.encrypted_totp_secret = encrypted
 
     if body.clear_email:
         acc.login_email = None
@@ -1360,14 +1408,26 @@ def update_account_credentials(
         email = str(body.login_email).strip()[:255]
         acc.login_email = email or None
 
-    db.commit()
+    try:
+        db.commit()
+        db.refresh(acc)
+    except Exception as exc:
+        db.rollback()
+        return JSONResponse(
+            {
+                "ok": False,
+                "error": f"Não foi possível gravar no banco: {exc}"[:400],
+            },
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
     return JSONResponse(
         {
             "ok": True,
             "username": acc.username,
             "login_email": (acc.login_email or "").strip() or None,
             "has_password": bool(acc.encrypted_password),
-            "has_totp": bool(acc.encrypted_totp_secret),
+            "has_totp": bool(getattr(acc, "encrypted_totp_secret", None)),
             "has_email": bool((acc.login_email or "").strip()),
         }
     )

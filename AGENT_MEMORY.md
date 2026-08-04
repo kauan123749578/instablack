@@ -117,5 +117,6 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 | 2026-07-31 | local | `instagrapi` → **2.18.12** (`requirements.txt`); `login_instagram.py` login user/senha + validação de sessão (sem sessionid hardcoded) |
 | 2026-07-31 | local | BadPassword em `@deborateixei091` com proxy ok = rejeição IG (`invalid_credentials`). Cookie browser expira rápido; sessão durável = `login(senha)` **uma vez** + `dump_settings`. Script alinhado a `core.instagram.login_with_credentials`. |
 | 2026-08-03 | feature | Cofre virou aba `/accounts/vault` no sidebar (cards por conta). Botão na tabela não abria por modal fora do `#app-content`. |
+| 2026-08-03 | fix | Cofre: UI Autenticador (código azul + anel), `/vault/codes` batch, salva chave de verdade; rejeita colar código 6 dígitos no lugar da secret. |
 
 <!-- Ao corrigir bugs de produção: acrescente uma linha acima e, se for armadilha nova, uma subseção em "O que já quebrou". -->

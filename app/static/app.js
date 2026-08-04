@@ -1505,41 +1505,151 @@
   }
 
   function initVaultPage() {
-    const cards = Array.from(document.querySelectorAll(".vault-card"));
-    if (!cards.length) return;
+    const onVault =
+      document.querySelector("[data-page-vault]") ||
+      document.querySelector(".vault-card") ||
+      document.querySelector(".auth-panel");
+    if (!onVault) {
+      if (window.__vaultPoll) {
+        clearInterval(window.__vaultPoll);
+        window.__vaultPoll = null;
+      }
+      if (window.__vaultTick) {
+        clearInterval(window.__vaultTick);
+        window.__vaultTick = null;
+      }
+      return;
+    }
     document.body.dataset.pageVault = "1";
 
-    async function refreshCardCode(card) {
-      const id = card.dataset.accountId;
-      const box = card.querySelector(".vault-code-box");
-      const codeEl = card.querySelector(".vault-code");
-      const remEl = card.querySelector(".vault-remaining");
-      if (!id || card.dataset.hasTotp !== "1") {
-        if (box) box.hidden = true;
-        return;
+    const RING = 2 * Math.PI * 15.5; // ~97.39
+    const PERIOD = 30;
+
+    function setMsg(card, text, kind) {
+      const msg = card.querySelector(".vault-msg");
+      if (!msg) return;
+      msg.textContent = text || "";
+      msg.classList.toggle("is-error", kind === "error");
+      msg.classList.toggle("is-ok", kind === "ok");
+    }
+
+    function formatCode(code) {
+      const c = String(code || "").replace(/\s/g, "");
+      if (c.length === 6) return c.slice(0, 3) + " " + c.slice(3);
+      return c || "------";
+    }
+
+    function ensureAuthEntry(accountId, username, email) {
+      const list = document.getElementById("vault-auth-list");
+      if (!list) return null;
+      let item = list.querySelector(`.vault-auth-item[data-account-id="${accountId}"]`);
+      if (item) return item;
+      const empty = document.getElementById("vault-auth-empty");
+      if (empty) empty.remove();
+      item = document.createElement("button");
+      item.type = "button";
+      item.className = "auth-entry vault-auth-item";
+      item.dataset.accountId = String(accountId);
+      item.dataset.hasTotp = "1";
+      item.title = "Clique para copiar";
+      item.innerHTML =
+        '<div class="auth-entry-main">' +
+        `<div class="auth-entry-label">@${username || ""}</div>` +
+        (email ? `<div class="auth-entry-sub">${email}</div>` : "") +
+        '<div class="auth-entry-code vault-code">------</div>' +
+        "</div>" +
+        '<div class="auth-timer" aria-hidden="true">' +
+        '<svg class="auth-ring" viewBox="0 0 36 36">' +
+        '<circle class="auth-ring-bg" cx="18" cy="18" r="15.5" />' +
+        `<circle class="auth-ring-fg vault-ring" cx="18" cy="18" r="15.5" stroke-dasharray="${RING}" stroke-dashoffset="0" />` +
+        "</svg></div>";
+      item.addEventListener("click", () => copyAuthCode(item));
+      list.appendChild(item);
+      return item;
+    }
+
+    function removeAuthEntry(accountId) {
+      const list = document.getElementById("vault-auth-list");
+      const item = list?.querySelector(`.vault-auth-item[data-account-id="${accountId}"]`);
+      item?.remove();
+      if (list && !list.querySelector(".vault-auth-item") && !document.getElementById("vault-auth-empty")) {
+        const p = document.createElement("p");
+        p.className = "auth-empty muted";
+        p.id = "vault-auth-empty";
+        p.innerHTML =
+          'Nenhum Authenticator salvo ainda. Embaixo, cole a <strong>chave secreta</strong> ' +
+          "(não o código de 6 dígitos) e clique em Salvar.";
+        list.appendChild(p);
       }
+    }
+
+    function applyCodeToItem(item, code, secondsRemaining) {
+      if (!item) return;
+      const codeEl = item.querySelector(".vault-code");
+      if (codeEl) codeEl.textContent = formatCode(code);
+      item.dataset.code = String(code || "").replace(/\s/g, "");
+      item.dataset.remaining = String(secondsRemaining ?? PERIOD);
+      item.dataset.syncedAt = String(Date.now());
+      updateRing(item);
+    }
+
+    function updateRing(item) {
+      const ring = item.querySelector(".vault-ring");
+      if (!ring) return;
+      const syncedAt = Number(item.dataset.syncedAt || Date.now());
+      const remAtSync = Number(item.dataset.remaining || PERIOD);
+      const elapsed = (Date.now() - syncedAt) / 1000;
+      let rem = Math.max(0, remAtSync - elapsed);
+      const ratio = rem / PERIOD;
+      ring.setAttribute("stroke-dasharray", String(RING));
+      ring.setAttribute("stroke-dashoffset", String(RING * (1 - ratio)));
+      ring.classList.toggle("is-urgent", rem <= 5);
+    }
+
+    async function copyAuthCode(item) {
+      const code = (item.dataset.code || item.querySelector(".vault-code")?.textContent || "")
+        .replace(/\s/g, "");
+      if (!code || code === "------") return;
       try {
-        const res = await fetch(`/accounts/${id}/totp-code`, {
+        await navigator.clipboard.writeText(code);
+        const label = item.querySelector(".auth-entry-label");
+        const prev = label?.textContent;
+        if (label) {
+          label.textContent = "Copiado!";
+          setTimeout(() => {
+            if (label && prev) label.textContent = prev;
+          }, 900);
+        }
+      } catch {
+        alert("Não foi possível copiar.");
+      }
+    }
+
+    async function refreshAllCodes() {
+      const items = document.querySelectorAll(".vault-auth-item[data-has-totp='1']");
+      if (!items.length) return;
+      try {
+        const res = await fetch("/accounts/vault/codes", {
           credentials: "same-origin",
           headers: { Accept: "application/json" },
         });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.code) {
-          if (box) box.hidden = true;
-          return;
-        }
-        if (box) box.hidden = false;
-        if (codeEl) codeEl.textContent = data.code;
-        if (remEl) remEl.textContent = String(data.seconds_remaining ?? "—");
+        if (!res.ok || !data.ok) return;
+        const byId = new Map((data.codes || []).map((c) => [String(c.account_id), c]));
+        items.forEach((item) => {
+          const row = byId.get(String(item.dataset.accountId));
+          if (!row) return;
+          applyCodeToItem(item, row.code, row.seconds_remaining);
+        });
       } catch {
-        if (box) box.hidden = true;
+        /* silencioso — tenta de novo no próximo tick */
       }
     }
 
     async function saveCard(card, payload) {
       const id = card.dataset.accountId;
-      const msg = card.querySelector(".vault-msg");
       if (!id) return;
+      setMsg(card, "Salvando…", null);
       try {
         const res = await fetch(`/accounts/${id}/credentials`, {
           method: "POST",
@@ -1549,7 +1659,7 @@
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.ok) {
-          if (msg) msg.textContent = data.error || "Falha ao salvar.";
+          setMsg(card, data.error || `Falha ao salvar (${res.status}).`, "error");
           return;
         }
         card.dataset.hasTotp = data.has_totp ? "1" : "0";
@@ -1559,19 +1669,25 @@
         if (emailInput) emailInput.value = data.login_email || "";
         if (pw) pw.value = "";
         if (totp) totp.value = "";
-        if (msg) msg.textContent = "Salvo.";
-        const badge = card.querySelector(".og-badge");
+        const badge = card.querySelector(".vault-badge");
         if (badge) {
           badge.textContent = data.has_totp ? "Authenticator" : "Sem 2FA";
           badge.classList.toggle("badge-green", !!data.has_totp);
         }
-        await refreshCardCode(card);
+        if (data.has_totp) {
+          ensureAuthEntry(id, card.dataset.username || data.username, data.login_email);
+          setMsg(card, "Salvo. Código ao vivo no Autenticador acima.", "ok");
+          await refreshAllCodes();
+        } else {
+          removeAuthEntry(id);
+          setMsg(card, "Salvo.", "ok");
+        }
       } catch (err) {
-        if (msg) msg.textContent = err.message || "Erro ao salvar.";
+        setMsg(card, err.message || "Erro ao salvar.", "error");
       }
     }
 
-    cards.forEach((card) => {
+    document.querySelectorAll(".vault-card").forEach((card) => {
       if (card.dataset.vaultReady === "1") return;
       card.dataset.vaultReady = "1";
 
@@ -1579,9 +1695,24 @@
         const login_email = (card.querySelector(".vault-email")?.value || "").trim();
         const password = (card.querySelector(".vault-password")?.value || "").trim();
         const totp_secret = (card.querySelector(".vault-totp")?.value || "").trim();
+        if (!password && !totp_secret && login_email === (card.querySelector(".vault-email")?.defaultValue || login_email)) {
+          // still allow email-only save
+        }
+        if (totp_secret && /^\d{6}$/.test(totp_secret.replace(/\s/g, ""))) {
+          setMsg(
+            card,
+            "Cole a chave secreta do Authenticator, não o código de 6 dígitos.",
+            "error"
+          );
+          return;
+        }
         const payload = { login_email };
         if (password) payload.password = password;
         if (totp_secret) payload.totp_secret = totp_secret;
+        if (!password && !totp_secret && !login_email && card.dataset.hasTotp !== "1") {
+          setMsg(card, "Preencha email, senha ou a chave do Authenticator.", "error");
+          return;
+        }
         saveCard(card, payload);
       });
 
@@ -1594,29 +1725,24 @@
         if (!confirm("Remover senha salva desta conta?")) return;
         saveCard(card, { clear_password: true });
       });
-
-      card.querySelector(".vault-copy")?.addEventListener("click", async () => {
-        const code = (card.querySelector(".vault-code")?.textContent || "").trim();
-        const msg = card.querySelector(".vault-msg");
-        if (!code || code === "------") return;
-        try {
-          await navigator.clipboard.writeText(code);
-          if (msg) msg.textContent = "Código copiado.";
-        } catch {
-          alert("Não foi possível copiar.");
-        }
-      });
-
-      refreshCardCode(card);
     });
 
-    if (!window.__vaultPoll) {
-      window.__vaultPoll = setInterval(() => {
-        document.querySelectorAll(".vault-card[data-has-totp='1']").forEach((card) => {
-          refreshCardCode(card);
-        });
-      }, 1000);
-    }
+    document.querySelectorAll(".vault-auth-item").forEach((item) => {
+      if (item.dataset.copyBound === "1") return;
+      item.dataset.copyBound = "1";
+      item.addEventListener("click", () => copyAuthCode(item));
+    });
+
+    // Poll de códigos (batch) — sem recarregar a página
+    if (window.__vaultPoll) clearInterval(window.__vaultPoll);
+    refreshAllCodes();
+    window.__vaultPoll = setInterval(refreshAllCodes, 1000);
+
+    // Anima o anel entre os fetches
+    if (window.__vaultTick) clearInterval(window.__vaultTick);
+    window.__vaultTick = setInterval(() => {
+      document.querySelectorAll(".vault-auth-item").forEach(updateRing);
+    }, 200);
   }
 
   function initCredsVault() {
