@@ -33,12 +33,27 @@ def _auth_page_ctx(request: Request, **extra):
 
 
 async def _form_str(request: Request, key: str, default: str = "") -> str:
-    """Lê campo do form urlencoded (compatível com CSRF middleware que já fez request.form())."""
-    form = await request.form()
-    raw = form.get(key)
-    if raw is None:
+    """Lê campo do form. Preferência: request.form(); fallback: body urlencoded."""
+    try:
+        form = await request.form()
+        raw = form.get(key)
+        if raw is not None and not hasattr(raw, "filename"):
+            val = str(raw)
+            if val != "" or key in form:
+                return val
+    except Exception:
+        pass
+    try:
+        from urllib.parse import parse_qs
+
+        body = await request.body()
+        if not body:
+            return default
+        parsed = parse_qs(body.decode("utf-8", errors="ignore"), keep_blank_values=True)
+        vals = parsed.get(key) or []
+        return str(vals[0]) if vals else default
+    except Exception:
         return default
-    return str(raw)
 
 
 @router.get("/login")

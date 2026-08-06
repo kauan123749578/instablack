@@ -53,8 +53,8 @@
     <p class="login-footer">Já é membro? <a href="/login">Entrar</a></p>
   </div>
 
+  <script src="/static/login-fx.js?v=1"></script>
   <script>
-    // Só CSRF no submit — não carregar app.js (SPA) nas páginas públicas.
     (function () {
       document.addEventListener("submit", function (ev) {
         var form = ev.target;

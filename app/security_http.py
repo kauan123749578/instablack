@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import secrets
+from urllib.parse import parse_qs
 
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, Response
@@ -86,18 +87,32 @@ def csrf_forbidden_response(request: Request) -> Response:
 
 
 async def extract_csrf_token(request: Request) -> str | None:
+    """Extrai CSRF sem quebrar o parse posterior do FastAPI.
+
+    Em forms urlencoded NÃO usa request.form() (isso esvaziava username/password
+    no login/registro com Starlette 1.x). Lê o body cacheado e faz parse_qs.
+    """
     header = request.headers.get(CSRF_HEADER) or request.headers.get("X-CSRF-Token")
     if header and header.strip():
         return header.strip()
 
     ctype = (request.headers.get("content-type") or "").lower()
-    # Só parseia body em form urlencoded/multipart se não veio header
-    # (necessário para submit nativo com input hidden csrf_token).
-    if "application/x-www-form-urlencoded" in ctype or "multipart/form-data" in ctype:
+    if "multipart/form-data" in ctype:
         try:
             form = await request.form()
             raw = form.get(CSRF_FORM_FIELD)
             return str(raw) if raw is not None else None
+        except Exception:
+            return None
+
+    if "application/x-www-form-urlencoded" in ctype:
+        try:
+            body = await request.body()
+            if not body:
+                return None
+            parsed = parse_qs(body.decode("utf-8", errors="ignore"), keep_blank_values=True)
+            vals = parsed.get(CSRF_FORM_FIELD) or []
+            return str(vals[0]) if vals else None
         except Exception:
             return None
     return None

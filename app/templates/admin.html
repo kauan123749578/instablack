@@ -93,6 +93,7 @@
   </p>
   <form method="post" action="/admin/invites/create" class="form-grid admin-invite-form"
         style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end">
+    <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
     <label>Usos máximos
       <input type="number" name="max_uses" min="1" max="1000" value="1" style="width:100px">
     </label>
@@ -105,10 +106,12 @@
   </form>
 
   {% if invites %}
-  <form method="post" action="/admin/invites/delete" class="admin-scroll-card" style="margin-top:16px;padding:0;border:1px solid rgba(255,255,255,0.06);border-radius:14px;overflow:hidden"
-        onsubmit="return confirm('Excluir os convites esgotados selecionados?');">
-    <div class="admin-scroll-card-head" style="padding:12px 14px;border-bottom:1px solid rgba(255,255,255,0.06)">
-      <strong style="font-size:13px">Convites gerados</strong>
+  <form method="post" action="/admin/invites/delete" class="admin-scroll-card" id="admin-invites-form" style="margin-top:16px;padding:0;border:1px solid rgba(255,255,255,0.06);border-radius:14px;overflow:hidden"
+        onsubmit="return confirm('Excluir os convites esgotados/desativados selecionados?');">
+    <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
+    <div class="admin-scroll-card-head" style="padding:12px 14px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <strong style="font-size:13px;flex:1">Convites gerados</strong>
+      <button type="button" class="btn btn-sm" id="invites-select-all">Selecionar apagáveis</button>
       <button type="submit" class="btn btn-sm btn-danger">
         <i data-lucide="trash-2"></i> Excluir selecionados
       </button>
@@ -133,7 +136,9 @@
             <tr>
               <td>
                 {% if exhausted %}
-                <input type="checkbox" name="invite_ids" value="{{ inv.id }}">
+                <input type="checkbox" name="invite_ids" value="{{ inv.id }}" class="invite-deletable">
+                {% else %}
+                <span class="muted" title="Desative ou esgote o convite antes de excluir">—</span>
                 {% endif %}
               </td>
               <td><code>{{ inv.code }}</code></td>
@@ -165,6 +170,14 @@
       </div>
     </div>
   </form>
+  <p class="muted" style="margin:8px 0 0;font-size:12px">Só dá pra excluir convites <strong>desativados</strong> ou <strong>esgotados</strong>. Ativos: clique em Desativar antes.</p>
+  <script>
+    document.getElementById("invites-select-all")?.addEventListener("click", function () {
+      document.querySelectorAll("#admin-invites-form .invite-deletable").forEach(function (el) {
+        el.checked = true;
+      });
+    });
+  </script>
   {% endif %}
 </div>
 

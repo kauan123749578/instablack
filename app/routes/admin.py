@@ -180,12 +180,18 @@ def admin_deactivate_invite(
 
 
 @router.post("/invites/delete")
-def admin_delete_invites(
-    invite_ids: list[int] = Form(default=[]),
+async def admin_delete_invites(
+    request: Request,
     db: Session = Depends(get_db),
     admin: User = Depends(get_admin_user),
 ):
-    ids = [int(x) for x in (invite_ids or [])]
+    form = await request.form()
+    ids: list[int] = []
+    for raw in form.getlist("invite_ids"):
+        try:
+            ids.append(int(str(raw)))
+        except (TypeError, ValueError):
+            continue
     # Só apaga esgotados/inativos
     rows = list(db.scalars(select(InviteCode).where(InviteCode.id.in_(ids))).all()) if ids else []
     to_delete = [r.id for r in rows if invite_is_exhausted(r)]
