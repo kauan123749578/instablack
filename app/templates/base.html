@@ -8,6 +8,7 @@
   <link rel="apple-touch-icon" href="/static/favicon.svg" />
   <link rel="manifest" href="/manifest.webmanifest" />
   <meta name="theme-color" content="#1161FE" />
+  <meta name="csrf-token" content="{{ request.session.get('csrf_token', '') }}" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="mobile-web-app-capable" content="yes" />
@@ -25,7 +26,10 @@
   {% if request.state.view_as_active %}
   <div class="view-as-banner" role="status">
     <span>Vendo como <strong>@{{ request.state.view_as_username or (request.state.view_as_user.username if request.state.view_as_user else 'usuário') }}</strong> — somente leitura</span>
-    <a href="/admin/stop-view-as" class="view-as-exit">Sair da visão</a>
+    <form action="/admin/stop-view-as" method="post" class="inline" style="display:inline;margin:0">
+      <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
+      <button type="submit" class="view-as-exit" style="background:none;border:none;color:inherit;cursor:pointer;text-decoration:underline;font:inherit;padding:0">Sair da visão</button>
+    </form>
   </div>
   {% endif %}
 
@@ -52,6 +56,7 @@
               <strong class="sidebar-user-name">{{ user_display_name(user) }}</strong>
             </div>
             <form action="/logout" method="post" class="sidebar-power-form">
+              <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
               <button type="submit" class="sidebar-power-btn" title="Sair" aria-label="Sair">
                 <i data-lucide="power"></i>
               </button>
@@ -241,6 +246,7 @@
         {% endif %}
       </nav>
       <form action="/logout" method="post" class="drawer-logout">
+        <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
         <button type="submit"><i data-lucide="log-out"></i><span>Sair</span></button>
       </form>
     </div>
@@ -264,7 +270,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/lucide@0.475.0/dist/umd/lucide.min.js" crossorigin="anonymous"></script>
-  <script src="/static/app.js?v=87"></script>
+  <script src="/static/app.js?v=88"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

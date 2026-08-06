@@ -1,6 +1,58 @@
 (function () {
   "use strict";
 
+  function csrfToken() {
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    if (meta && meta.content) return meta.content;
+    const hidden = document.querySelector('input[name="csrf_token"]');
+    return hidden && hidden.value ? hidden.value : "";
+  }
+
+  function ensureCsrfOnForm(form) {
+    if (!form || form.method.toLowerCase() === "get") return;
+    const token = csrfToken();
+    if (!token) return;
+    let input = form.querySelector('input[name="csrf_token"]');
+    if (!input) {
+      input = document.createElement("input");
+      input.type = "hidden";
+      input.name = "csrf_token";
+      form.appendChild(input);
+    }
+    input.value = token;
+  }
+
+  document.addEventListener(
+    "submit",
+    (ev) => {
+      const form = ev.target;
+      if (form && form.tagName === "FORM") ensureCsrfOnForm(form);
+    },
+    true
+  );
+
+  document.addEventListener("DOMContentLoaded", () => {
+    document.querySelectorAll("form").forEach(ensureCsrfOnForm);
+  });
+
+  const _fetch = window.fetch.bind(window);
+  window.fetch = function (input, init) {
+    init = init ? { ...init } : {};
+    const method = (init.method || "GET").toUpperCase();
+    if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
+      const headers = new Headers(init.headers || {});
+      const token = csrfToken();
+      if (token && !headers.has("X-CSRF-Token")) {
+        headers.set("X-CSRF-Token", token);
+      }
+      init.headers = headers;
+      if (init.body instanceof FormData && token && !init.body.has("csrf_token")) {
+        init.body.append("csrf_token", token);
+      }
+    }
+    return _fetch(input, init);
+  };
+
   const appContent = document.getElementById("app-content");
   const drawer = document.getElementById("mobile-drawer");
   const drawerOpen = document.getElementById("drawer-open");

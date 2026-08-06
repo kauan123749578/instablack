@@ -344,6 +344,8 @@ def _sqlite_migrate(bind=None) -> None:
                 conn.execute(text("ALTER TABLE users ADD COLUMN anti_farm_prefs_json TEXT"))
             if "logs_cleared_at" not in ucols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN logs_cleared_at DATETIME"))
+            if "session_version" not in ucols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN session_version INTEGER DEFAULT 0"))
             conn.execute(text("UPDATE users SET is_admin = 1 WHERE username = 'admin'"))
         if "instagram_accounts" in insp.get_table_names():
             acols = {c["name"] for c in insp.get_columns("instagram_accounts")}
@@ -601,6 +603,7 @@ def _postgres_migrate(bind=None) -> None:
                 ("notification_prefs_json", "TEXT"),
                 ("anti_farm_prefs_json", "TEXT"),
                 ("logs_cleared_at", "TIMESTAMPTZ"),
+                ("session_version", "INTEGER DEFAULT 0"),
             ],
         )
         if _table_exists(conn, "users"):

@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.deps import get_current_user
-from app.security import hash_password
+from app.security import hash_password, verify_password
 from app.templating import templates
 from core.database import get_db
 from core.notification_prefs import get_notification_prefs, prefs_from_form, save_notification_prefs
@@ -68,14 +68,20 @@ async def profile_update(
     request: Request,
     display_name: str = Form(""),
     avatar: UploadFile | None = File(None),
+    current_password: str = Form(""),
     new_password: str = Form(""),
     new_password_confirm: str = Form(""),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     error: str | None = None
+    password_changed = False
     if new_password or new_password_confirm:
-        if len(new_password) < 8:
+        if not current_password:
+            error = "Informe a senha atual para definir uma nova senha."
+        elif not verify_password(current_password, user.password_hash):
+            error = "Senha atual incorreta."
+        elif len(new_password) < 8:
             error = "A nova senha precisa ter pelo menos 8 caracteres."
         elif new_password != new_password_confirm:
             error = "As senhas não conferem."
@@ -91,6 +97,8 @@ async def profile_update(
 
     if new_password:
         user.password_hash = hash_password(new_password)
+        user.session_version = int(getattr(user, "session_version", 0) or 0) + 1
+        password_changed = True
 
     if avatar and avatar.filename:
         storage = get_storage()
@@ -104,9 +112,24 @@ async def profile_update(
 
     db.commit()
     db.refresh(user)
+
+    if password_changed:
+        # Invalida outros cookies; mantém esta sessão atualizada.
+        request.session["session_version"] = int(user.session_version or 0)
+        request.session["user_id"] = user.id
+
     return templates.TemplateResponse(
         "profile.html",
-        _profile_context(request, user, db, ok="Perfil atualizado com sucesso!"),
+        _profile_context(
+            request,
+            user,
+            db,
+            ok=(
+                "Senha alterada. Outras sessões foram desconectadas."
+                if password_changed
+                else "Perfil atualizado com sucesso!"
+            ),
+        ),
     )
 
 

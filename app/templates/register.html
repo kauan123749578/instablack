@@ -9,6 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/static/style.css?v=3" />
+  <meta name="csrf-token" content="{{ csrf_token or request.session.get('csrf_token', '') }}" />
 </head>
 <body class="login-body">
   <div class="ambient-grid"></div>
@@ -26,6 +27,7 @@
     {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
 
     <form method="post" action="/register">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token or request.session.get('csrf_token', '') }}">
       <label>Código de convite
         <input type="text" name="invite_code" required autofocus
                value="{{ invite_prefill or '' }}"

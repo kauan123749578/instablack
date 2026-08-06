@@ -52,6 +52,19 @@ def get_auth_user(
             status_code=status.HTTP_303_SEE_OTHER,
             headers={"Location": "/login"},
         )
+    # Cookie antigo após troca de senha → força re-login
+    cookie_ver = request.session.get("session_version")
+    db_ver = int(getattr(user, "session_version", 0) or 0)
+    try:
+        cookie_ver_int = int(cookie_ver) if cookie_ver is not None else 0
+    except (TypeError, ValueError):
+        cookie_ver_int = -1
+    if cookie_ver_int != db_ver:
+        request.session.clear()
+        raise HTTPException(
+            status_code=status.HTTP_303_SEE_OTHER,
+            headers={"Location": "/login"},
+        )
     return user
 
 
@@ -62,7 +75,7 @@ def maybe_auth_user(
     if not user_id:
         return None
     try:
-        return db.get(User, user_id)
+        user = db.get(User, user_id)
     except (OperationalError, SATimeoutError) as exc:
         # Não derruba GET / com 500 — trata como sessão ausente e responde rápido.
         log.warning("maybe_auth_user DB indisponível — fallback anon: %s", exc)
@@ -71,6 +84,18 @@ def maybe_auth_user(
         except Exception:
             pass
         return None
+    if user is None or not user.is_active:
+        return None
+    cookie_ver = request.session.get("session_version")
+    db_ver = int(getattr(user, "session_version", 0) or 0)
+    try:
+        cookie_ver_int = int(cookie_ver) if cookie_ver is not None else 0
+    except (TypeError, ValueError):
+        cookie_ver_int = -1
+    if cookie_ver_int != db_ver:
+        request.session.clear()
+        return None
+    return user
 
 
 def _resolve_effective(request: Request, db: Session, auth_user: User) -> User:

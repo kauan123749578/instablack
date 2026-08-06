@@ -137,7 +137,6 @@ def impersonate_user(
     return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
 
 
-@router.get("/stop-view-as")
 @router.post("/stop-view-as")
 def stop_view_as(
     request: Request,

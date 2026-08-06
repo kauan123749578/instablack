@@ -116,13 +116,19 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def warn_production(self) -> Self:
-        """Avisa (sem derrubar o app) sobre configs frágeis em produção."""
+        """Em produção: SECRET_KEY fraca derruba o boot (fail-closed)."""
         if self.app_env != "production":
             return self
 
-        if self.secret_key.strip().lower() in _INSECURE_SECRET_KEYS or len(self.secret_key) < 32:
-            log.warning(
-                "SECRET_KEY fraca em produção: use uma chave aleatória com 32+ caracteres."
+        if (
+            not self.secret_key
+            or self.secret_key.strip().lower() in _INSECURE_SECRET_KEYS
+            or len(self.secret_key.strip()) < 32
+        ):
+            raise RuntimeError(
+                "SECRET_KEY insegura ou ausente em produção. "
+                "Defina uma chave aleatória com 32+ caracteres "
+                '(ex.: python -c "import secrets; print(secrets.token_urlsafe(48))").'
             )
 
         if self.storage_backend == "s3":

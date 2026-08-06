@@ -83,6 +83,48 @@ def create_app() -> FastAPI:
     # request.session já existe quando o view-as roda.
     # Último @middleware registrado executa primeiro no request.
     @app.middleware("http")
+    async def security_csrf_and_headers(request: Request, call_next):
+        """CSRF + headers (roda dentro do SessionMiddleware)."""
+        from app.config import settings as _settings
+        from app.security_http import (
+            csrf_forbidden_response,
+            ensure_csrf_token,
+            extract_csrf_token,
+            security_headers_for,
+            validate_csrf,
+            _is_exempt,
+        )
+
+        try:
+            ensure_csrf_token(request)
+        except Exception:
+            pass
+
+        if request.method in ("POST", "PUT", "PATCH", "DELETE"):
+            path = request.url.path or "/"
+            if not _is_exempt(path):
+                submitted = await extract_csrf_token(request)
+                # Multipart/JSON: exige header (app.js injeta). Form urlencoded: header ou campo.
+                ctype = (request.headers.get("content-type") or "").lower()
+                if "multipart/form-data" in ctype or "application/json" in ctype:
+                    if not validate_csrf(request, submitted):
+                        return csrf_forbidden_response(request)
+                else:
+                    if not validate_csrf(request, submitted):
+                        return csrf_forbidden_response(request)
+
+        response = await call_next(request)
+        security_headers_for(response, production=_settings.is_production)
+        # Expõe token para JS (não é secreto além da sessão HttpOnly cookie)
+        try:
+            token = request.session.get("csrf_token")
+            if token:
+                response.headers["X-CSRF-Token"] = str(token)
+        except Exception:
+            pass
+        return response
+
+    @app.middleware("http")
     async def view_as_readonly_middleware(request: Request, call_next):
         view_as_id = request.session.get("view_as_user_id")
         auth_id = request.session.get("user_id")
@@ -142,10 +184,16 @@ def create_app() -> FastAPI:
                     request.headers.get("x-requested-with") or ""
                 ).lower():
                     return JSONResponse({"error": msg}, status_code=403)
+                csrf = ""
+                try:
+                    csrf = str(request.session.get("csrf_token") or "")
+                except Exception:
+                    csrf = ""
                 return HTMLResponse(
                     f"""<!doctype html><html lang="pt-br"><head><meta charset="utf-8">
                     <title>Somente leitura</title>
                     <meta name="viewport" content="width=device-width, initial-scale=1">
+                    <meta name="csrf-token" content="{csrf}">
                     <style>
                       body{{font-family:system-ui,sans-serif;background:#0b0d12;color:#e8eaed;
                       display:grid;place-items:center;min-height:100vh;margin:0;padding:24px}}
@@ -154,7 +202,10 @@ def create_app() -> FastAPI:
                     </style></head><body><div class="box">
                     <h1 style="font-size:1.2rem;margin:0 0 8px">Somente leitura</h1>
                     <p>{msg}</p>
-                    <p><a href="/admin/stop-view-as">Sair da visão</a> · <a href="/">Voltar</a></p>
+                    <p><form action="/admin/stop-view-as" method="post" style="display:inline">
+                    <input type="hidden" name="csrf_token" value="{csrf}">
+                    <button type="submit" style="background:none;border:none;color:#3d82ff;cursor:pointer;text-decoration:underline;font:inherit;padding:0">Sair da visão</button>
+                    </form> · <a href="/">Voltar</a></p>
                     </div></body></html>""",
                     status_code=403,
                 )
