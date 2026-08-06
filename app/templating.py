@@ -3,8 +3,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any, Mapping
 
 from fastapi.templating import Jinja2Templates
+from starlette.background import BackgroundTask
+from starlette.requests import Request
 
 from app.media_access import signed_media_path, signed_media_url
 from app.utils.anti_farm import captions_textarea_value, parse_captions_json
@@ -55,7 +58,62 @@ def automation_preview_media(automation) -> dict[str, str] | None:
     return {"url": signed_media_path(media_key), "kind": kind}
 
 
-templates = Jinja2Templates(directory="app/templates")
+class CompatJinja2Templates(Jinja2Templates):
+    """Aceita API antiga (name, context) e nova (request, name, context) do Starlette 1.x."""
+
+    def TemplateResponse(self, *args: Any, **kwargs: Any):
+        request: Request | None = kwargs.pop("request", None)
+        name: str | None = kwargs.pop("name", None)
+        context: dict[str, Any] | None = kwargs.pop("context", None)
+        status_code: int = kwargs.pop("status_code", 200)
+        headers: Mapping[str, str] | None = kwargs.pop("headers", None)
+        media_type: str | None = kwargs.pop("media_type", None)
+        background: BackgroundTask | None = kwargs.pop("background", None)
+
+        positional = list(args)
+        if positional and isinstance(positional[0], Request):
+            request = positional.pop(0)
+            if positional and isinstance(positional[0], str):
+                name = positional.pop(0)
+            if positional and isinstance(positional[0], dict):
+                context = positional.pop(0)
+            if positional and isinstance(positional[0], int):
+                status_code = positional.pop(0)
+        elif positional and isinstance(positional[0], str):
+            # Estilo antigo: TemplateResponse("tpl.html", {"request": request, ...})
+            name = positional.pop(0)
+            if positional and isinstance(positional[0], dict):
+                context = positional.pop(0)
+            if positional and isinstance(positional[0], int):
+                status_code = positional.pop(0)
+
+        if context is None:
+            context = {}
+        if request is None:
+            maybe = context.get("request")
+            if isinstance(maybe, Request):
+                request = maybe
+        if request is None or not name:
+            raise TypeError(
+                "TemplateResponse requer request e nome do template "
+                '(use TemplateResponse(request, "x.html", context) '
+                'ou o legado TemplateResponse("x.html", {"request": request, ...}))'
+            )
+        if "request" not in context:
+            context = {**context, "request": request}
+
+        return super().TemplateResponse(
+            request,
+            name,
+            context,
+            status_code=status_code,
+            headers=headers,
+            media_type=media_type,
+            background=background,
+        )
+
+
+templates = CompatJinja2Templates(directory="app/templates")
 templates.env.filters["localtime"] = to_brt
 templates.env.filters["tojson"] = lambda v: json.dumps(v)
 templates.env.filters["signed_media"] = signed_media_url

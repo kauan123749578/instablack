@@ -82,6 +82,8 @@ Token inválido / checkpoint (“You cannot access the app till you log in”). 
 
 Redeploy Fase 2: **web** + **worker-publish** + **worker-misc** + **beat** (Celery TLS + `publish.py` URL assinada).
 
+**Armadilha Starlette 1.x / FastAPI 0.141:** `TemplateResponse` agora é `(request, name, context)`. Chamadas legadas `TemplateResponse("x.html", {"request": ...})` quebram com `TypeError: unhashable type: 'dict'`. Mantemos `CompatJinja2Templates` em `app/templating.py` — não remover sem migrar todas as rotas.
+
 ---
 
 ## Mapa rápido do dashboard
@@ -140,5 +142,6 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 | 2026-08-05 | Fase 2 | `/media` assinado + ownership; View As bloqueia vault/TOTP/cookies/meta-apps; Celery `CERT_REQUIRED`; `validate_proxy_url`. Ver §6. |
 | 2026-08-05 | deps | `pip-audit` limpo: FastAPI 0.141.1 + Starlette ≥1.3.1, Jinja2 3.1.6, multipart 0.0.31, dotenv 1.2.2. |
 | 2026-08-05 | brand | Tema azul → **preto + dourado** (`#D4AF37`); logo fantasma `logo-ghost.png` / favicon. |
+| 2026-08-06 | hotfix | Starlette 1.x quebrou `TemplateResponse(name, ctx)` → 500 no `/login`. Compat em `app/templating.py`. |
 
 <!-- Ao corrigir bugs de produção: acrescente uma linha acima e, se for armadilha nova, uma subseção em "O que já quebrou". -->
