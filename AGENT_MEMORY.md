@@ -139,5 +139,6 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 | 2026-08-05 | `c280915` | Segurança Fase 1: SECRET_KEY fail-closed, rate limit auth, CSRF, headers, session_version, senha atual, logout POST. |
 | 2026-08-05 | Fase 2 | `/media` assinado + ownership; View As bloqueia vault/TOTP/cookies/meta-apps; Celery `CERT_REQUIRED`; `validate_proxy_url`. Ver §6. |
 | 2026-08-05 | deps | `pip-audit` limpo: FastAPI 0.141.1 + Starlette ≥1.3.1, Jinja2 3.1.6, multipart 0.0.31, dotenv 1.2.2. |
+| 2026-08-05 | brand | Tema azul → **preto + dourado** (`#D4AF37`); logo fantasma `logo-ghost.png` / favicon. |
 
 <!-- Ao corrigir bugs de produção: acrescente uma linha acima e, se for armadilha nova, uma subseção em "O que já quebrou". -->

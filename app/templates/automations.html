@@ -65,7 +65,7 @@
 </div>
 {% endif %}
 
-<div class="alert" style="border:1px solid rgba(17,97,254,.28);background:rgba(17,97,254,.06);color:#d7e4ff;margin-bottom:14px;font-size:13px">
+<div class="alert" style="border:1px solid rgba(212,175,55,.28);background:rgba(212,175,55,.06);color:#d7e4ff;margin-bottom:14px;font-size:13px">
   <strong>Story com link:</strong>
   use o
   <a href="/automations/story-studio" style="color:#8eb6ff">Story Link Studio</a>
@@ -157,7 +157,7 @@
       <li><strong style="color:var(--red)">Rascunho sem vídeos</strong> — o upload em blocos não terminou.</li>
       {% endif %}
       {% if a.thumb_original_name %}<li>Capa: {{ a.thumb_original_name }}</li>{% endif %}
-      {% if a.camouflage_cover_key %}<li><strong style="color:#3d82ff">Camuflagem ativa</strong> ({{ ((a.camouflage_opacity or 0.25) * 100)|round|int }}%)</li>{% else %}{% if a.content_type == 'reel' %}<li class="muted">Camuflagem: off</li>{% endif %}{% endif %}
+      {% if a.camouflage_cover_key %}<li><strong style="color:#E8C547">Camuflagem ativa</strong> ({{ ((a.camouflage_opacity or 0.25) * 100)|round|int }}%)</li>{% else %}{% if a.content_type == 'reel' %}<li class="muted">Camuflagem: off</li>{% endif %}{% endif %}
     </ul>
     {% if a.caption and a.content_type != 'story' %}
     <p class="auto-caption">"{{ a.caption[:160] }}{% if a.caption|length > 160 %}…{% endif %}"</p>

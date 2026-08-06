@@ -22,19 +22,19 @@
           {% set n = chart_performance|length %}
           <defs>
             <linearGradient id="ogChartFill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stop-color="#1161FE" stop-opacity="0.42"/>
-              <stop offset="55%" stop-color="#1161FE" stop-opacity="0.12"/>
-              <stop offset="100%" stop-color="#1161FE" stop-opacity="0"/>
+              <stop offset="0%" stop-color="#D4AF37" stop-opacity="0.42"/>
+              <stop offset="55%" stop-color="#D4AF37" stop-opacity="0.12"/>
+              <stop offset="100%" stop-color="#D4AF37" stop-opacity="0"/>
             </linearGradient>
             <linearGradient id="ogChartLine" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stop-color="#3d82ff"/>
-              <stop offset="100%" stop-color="#1161FE"/>
+              <stop offset="0%" stop-color="#E8C547"/>
+              <stop offset="100%" stop-color="#D4AF37"/>
             </linearGradient>
           </defs>
           <path class="og-chart-area" fill="url(#ogChartFill)" stroke="none" d="{{ chart_area_path }}"/>
           <path class="og-line-premium" fill="none" stroke="url(#ogChartLine)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" d="{{ chart_line_path }}"/>
           {% for pt in chart_performance %}
-          <circle class="og-chart-dot" cx="{{ pt.x }}" cy="{{ pt.y }}" r="4" fill="#1161FE" stroke="#050505" stroke-width="2"
+          <circle class="og-chart-dot" cx="{{ pt.x }}" cy="{{ pt.y }}" r="4" fill="#D4AF37" stroke="#050505" stroke-width="2"
             data-tip="{{ pt.label }} {{ pt.date }}: {{ pt.success }} publicaç{% if pt.success == 1 %}ão{% else %}ões{% endif %}"/>
           {% endfor %}
           {% for pt in chart_performance %}

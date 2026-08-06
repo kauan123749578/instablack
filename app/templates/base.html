@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{% block title %}instablack{% endblock %}</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
-  <link rel="apple-touch-icon" href="/static/favicon.svg" />
+  <link rel="apple-touch-icon" href="/static/favicon.png" />
   <link rel="manifest" href="/manifest.webmanifest" />
-  <meta name="theme-color" content="#1161FE" />
+  <meta name="theme-color" content="#D4AF37" />
   <meta name="csrf-token" content="{{ request.session.get('csrf_token', '') }}" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -15,8 +15,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bricolage+Grotesque:wght@600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=48" />
-  <link rel="stylesheet" href="/static/dashboard.css?v=49" />
+  <link rel="stylesheet" href="/static/style.css?v=50" />
+  <link rel="stylesheet" href="/static/dashboard.css?v=50" />
   {% block head %}{% endblock %}
 </head>
 <body class="app-body premium-app{% if request.state.view_as_active %} is-view-as{% endif %}">
@@ -38,7 +38,9 @@
       <div class="sidebar-top">
         <div class="sidebar-brand">
           <div class="brand-mark">
-            <span class="brand-icon brand-icon--ig"><i data-lucide="instagram"></i></span>
+            <span class="brand-icon brand-icon--ghost" aria-hidden="true">
+              <img src="/static/logo-ghost.png" alt="" class="brand-logo" width="34" height="34">
+            </span>
             <span class="brand-text">insta<span class="brand-accent">black</span></span>
           </div>
         </div>

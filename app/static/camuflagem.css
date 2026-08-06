@@ -27,9 +27,9 @@
 }
 
 .camu-tab.is-active {
-  background: var(--primary-dim, rgba(17, 97, 254, 0.14));
+  background: var(--primary-dim, rgba(212, 175, 55, 0.14));
   color: #fff;
-  box-shadow: inset 0 0 0 1px rgba(17, 97, 254, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(212, 175, 55, 0.35);
 }
 
 .camu-panel[hidden] { display: none !important; }
@@ -46,7 +46,7 @@
 
 .camu-card {
   background: var(--card-gradient,
-    radial-gradient(ellipse 100% 75% at 50% 115%, rgba(17, 97, 254, 0.08) 0%, transparent 55%),
+    radial-gradient(ellipse 100% 75% at 50% 115%, rgba(212, 175, 55, 0.08) 0%, transparent 55%),
     rgba(255, 255, 255, 0.03));
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 14px;
@@ -54,8 +54,8 @@
 }
 
 .camu-card--out {
-  border-color: rgba(17, 97, 254, 0.4);
-  box-shadow: 0 8px 24px rgba(17, 97, 254, 0.08);
+  border-color: rgba(212, 175, 55, 0.4);
+  box-shadow: 0 8px 24px rgba(212, 175, 55, 0.08);
 }
 
 .camu-card-head {
@@ -69,7 +69,7 @@
 .camu-card-head i {
   width: 18px;
   height: 18px;
-  color: var(--primary-hover, #3d82ff);
+  color: var(--primary-hover, #E8C547);
 }
 
 .camu-card-head strong { font-size: 14px; }
@@ -83,14 +83,14 @@
   text-transform: uppercase;
   padding: 3px 8px;
   border-radius: 6px;
-  border: 1px solid rgba(17, 97, 254, 0.35);
-  color: var(--primary-hover, #3d82ff);
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  color: var(--primary-hover, #E8C547);
   opacity: 0.35;
 }
 
 .camu-badge.is-on {
   opacity: 1;
-  background: var(--primary-dim, rgba(17, 97, 254, 0.14));
+  background: var(--primary-dim, rgba(212, 175, 55, 0.14));
 }
 
 .camu-checks {
@@ -108,7 +108,7 @@
   cursor: pointer;
 }
 
-.camu-check input { accent-color: var(--primary, #1161FE); }
+.camu-check input { accent-color: var(--primary, #D4AF37); }
 
 .camu-card textarea,
 .camu-panel textarea {
@@ -174,19 +174,19 @@
 .camu-mode span { font-size: 12px; color: var(--muted, #9ca3af); }
 
 .camu-mode.is-active {
-  border-color: rgba(17, 97, 254, 0.55);
-  background: linear-gradient(180deg, rgba(17, 97, 254, 0.16), rgba(17, 97, 254, 0.05));
-  box-shadow: 0 0 0 1px rgba(17, 97, 254, 0.2), 0 8px 20px rgba(17, 97, 254, 0.12);
+  border-color: rgba(212, 175, 55, 0.55);
+  background: linear-gradient(180deg, rgba(212, 175, 55, 0.16), rgba(212, 175, 55, 0.05));
+  box-shadow: 0 0 0 1px rgba(212, 175, 55, 0.2), 0 8px 20px rgba(212, 175, 55, 0.12);
 }
 
-.camu-mode.is-active i { color: var(--primary-hover, #3d82ff); }
+.camu-mode.is-active i { color: var(--primary-hover, #E8C547); }
 
 .camu-mode.is-hot {
   border-color: rgba(61, 130, 255, 0.65);
-  background: linear-gradient(135deg, rgba(17, 97, 254, 0.22), rgba(13, 79, 212, 0.1));
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.22), rgba(13, 79, 212, 0.1));
 }
 
-.camu-mode.is-hot i { color: #93c5fd; }
+.camu-mode.is-hot i { color: #F0D060; }
 
 .camu-mode-hint {
   margin: -6px 0 16px;
@@ -194,23 +194,23 @@
   color: var(--muted, #9ca3af);
 }
 
-.camu-mode-hint.is-aggr { color: var(--primary-hover, #3d82ff); }
+.camu-mode-hint.is-aggr { color: var(--primary-hover, #E8C547); }
 
 .camu-drop {
-  border: 1.5px dashed rgba(17, 97, 254, 0.45);
+  border: 1.5px dashed rgba(212, 175, 55, 0.45);
   border-radius: 14px;
   padding: 28px 18px;
   text-align: center;
-  background: linear-gradient(180deg, rgba(17, 97, 254, 0.08), rgba(17, 97, 254, 0.02));
+  background: linear-gradient(180deg, rgba(212, 175, 55, 0.08), rgba(212, 175, 55, 0.02));
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
 }
 
 .camu-drop:hover,
 .camu-drop.is-drag {
-  border-color: var(--primary-hover, #3d82ff);
-  background: linear-gradient(180deg, rgba(17, 97, 254, 0.16), rgba(17, 97, 254, 0.05));
-  box-shadow: 0 8px 24px rgba(17, 97, 254, 0.12);
+  border-color: var(--primary-hover, #E8C547);
+  background: linear-gradient(180deg, rgba(212, 175, 55, 0.16), rgba(212, 175, 55, 0.05));
+  box-shadow: 0 8px 24px rgba(212, 175, 55, 0.12);
 }
 
 .camu-drop--muted {
@@ -220,16 +220,16 @@
 
 .camu-drop--muted:hover,
 .camu-drop--muted.is-drag {
-  border-color: rgba(17, 97, 254, 0.4);
-  background: rgba(17, 97, 254, 0.06);
+  border-color: rgba(212, 175, 55, 0.4);
+  background: rgba(212, 175, 55, 0.06);
 }
 
 .camu-drop--cover {
   border-color: rgba(61, 130, 255, 0.4);
-  background: linear-gradient(180deg, rgba(61, 130, 255, 0.08), rgba(17, 97, 254, 0.02));
+  background: linear-gradient(180deg, rgba(61, 130, 255, 0.08), rgba(212, 175, 55, 0.02));
 }
 
-.camu-drop--cover i { color: var(--primary-hover, #3d82ff); }
+.camu-drop--cover i { color: var(--primary-hover, #E8C547); }
 
 .camu-drop--wide { width: 100%; }
 
@@ -238,7 +238,7 @@
   height: 28px;
   margin: 0 auto 10px;
   display: block;
-  color: var(--primary-hover, #3d82ff);
+  color: var(--primary-hover, #E8C547);
 }
 
 .camu-drop strong { display: block; font-size: 14px; margin-bottom: 4px; }
@@ -264,14 +264,14 @@
 
 .camu-range {
   width: 100%;
-  accent-color: var(--primary, #1161FE);
+  accent-color: var(--primary, #D4AF37);
 }
 
 .camu-noise-val {
   margin-left: auto;
   font-size: 22px;
   font-weight: 700;
-  background: var(--ig-gradient, linear-gradient(135deg, #1161FE, #3d82ff));
+  background: var(--ig-gradient, linear-gradient(135deg, #D4AF37, #E8C547));
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -308,11 +308,11 @@
 }
 
 .camu-niche-opt.is-active {
-  border-color: rgba(17, 97, 254, 0.5);
-  background: var(--primary-dim, rgba(17, 97, 254, 0.14));
+  border-color: rgba(212, 175, 55, 0.5);
+  background: var(--primary-dim, rgba(212, 175, 55, 0.14));
 }
 
-.camu-niche-opt input { accent-color: var(--primary, #1161FE); }
+.camu-niche-opt input { accent-color: var(--primary, #D4AF37); }
 
 .camu-preview {
   margin-top: 16px;
@@ -324,10 +324,10 @@
   padding: 10px 8px 14px;
   border-radius: 28px;
   background: linear-gradient(160deg, #1a1f2e 0%, #0b0d12 55%, #111827 100%);
-  border: 1px solid rgba(17, 97, 254, 0.35);
+  border: 1px solid rgba(212, 175, 55, 0.35);
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.04) inset,
-    0 18px 40px rgba(17, 97, 254, 0.18);
+    0 18px 40px rgba(212, 175, 55, 0.18);
 }
 
 .camu-phone-notch {
@@ -363,9 +363,9 @@
   position: relative;
   min-height: 220px;
   border-radius: 14px;
-  border: 1px solid rgba(17, 97, 254, 0.25);
+  border: 1px solid rgba(212, 175, 55, 0.25);
   background:
-    linear-gradient(180deg, rgba(17, 97, 254, 0.08), rgba(0, 0, 0, 0.25)),
+    linear-gradient(180deg, rgba(212, 175, 55, 0.08), rgba(0, 0, 0, 0.25)),
     repeating-conic-gradient(#1a1a1a 0% 25%, #111 0% 50%) 0 0 / 20px 20px;
   display: flex;
   align-items: center;
@@ -440,7 +440,7 @@
 }
 
 .camu-result-item a {
-  color: var(--primary-hover, #3d82ff);
+  color: var(--primary-hover, #E8C547);
   font-weight: 600;
   text-decoration: none;
 }
@@ -452,10 +452,10 @@
   margin-top: 10px;
   padding: 6px 10px;
   border-radius: 999px;
-  border: 1px solid rgba(17, 97, 254, 0.35);
-  background: var(--primary-dim, rgba(17, 97, 254, 0.14));
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  background: var(--primary-dim, rgba(212, 175, 55, 0.14));
   font-size: 12px;
-  color: var(--primary-hover, #3d82ff);
+  color: var(--primary-hover, #E8C547);
 }
 
 .camu-pill i { width: 14px; height: 14px; }
@@ -475,7 +475,7 @@
   padding: 14px;
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  background: linear-gradient(180deg, rgba(17, 97, 254, 0.06), rgba(255, 255, 255, 0.02));
+  background: linear-gradient(180deg, rgba(212, 175, 55, 0.06), rgba(255, 255, 255, 0.02));
 }
 
 .camu-meta-feats strong { display: block; margin-bottom: 4px; font-size: 13px; }
