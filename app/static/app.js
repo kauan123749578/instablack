@@ -425,8 +425,8 @@
       if (reg && "showNotification" in reg) {
         await reg.showNotification(title, {
           body,
-          icon: "/static/favicon.svg",
-          badge: "/static/favicon.svg",
+          icon: "/static/favicon.png?v=3",
+          badge: "/static/favicon.png?v=3",
           tag: "instablack-local",
           data: { url: url || "/perfil" },
         });
@@ -434,7 +434,7 @@
       }
     } catch (_) {}
     if ("Notification" in window && Notification.permission === "granted") {
-      new Notification(title, { body, icon: "/static/favicon.svg" });
+      new Notification(title, { body, icon: "/static/favicon.png?v=3" });
     }
   }
 

@@ -32,4 +32,6 @@ Thumbs.db
 # Brand assets do painel (exceção)
 !app/static/logo-ghost.png
 !app/static/favicon.png
+!app/static/favicon-32.png
+!app/static/apple-touch-icon.png
 !app/static/favicon.svg
