@@ -1,6 +1,12 @@
 /* Instablack Session Sync — popup */
 
+const DEFAULT_PANEL = "https://instablack-production.up.railway.app";
+
 const $ = (id) => document.getElementById(id);
+
+function panelOrigin() {
+  return DEFAULT_PANEL;
+}
 
 function setStatus(msg, kind) {
   const el = $("status");
@@ -9,23 +15,22 @@ function setStatus(msg, kind) {
 }
 
 async function loadSettings() {
-  const data = await chrome.storage.local.get(["panelOrigin", "token"]);
-  if (data.panelOrigin) $("panel").value = data.panelOrigin;
+  $("panel").value = DEFAULT_PANEL;
+  $("panel-display").textContent = DEFAULT_PANEL;
+  const data = await chrome.storage.local.get(["token", "proxy"]);
   if (data.token) $("token").value = data.token;
+  if (data.proxy) $("proxy").value = data.proxy;
 }
 
 async function saveSettings() {
-  const panelOrigin = ($("panel").value || "").trim().replace(/\/$/, "");
   const token = ($("token").value || "").trim();
-  await chrome.storage.local.set({ panelOrigin, token });
-  if (panelOrigin) {
-    try {
-      await chrome.permissions.request({ origins: [`${panelOrigin}/*`] });
-    } catch (_) {
-      /* optional */
-    }
-  }
-  setStatus("Configuração salva.", "ok");
+  const proxy = ($("proxy").value || "").trim();
+  await chrome.storage.local.set({
+    panelOrigin: DEFAULT_PANEL,
+    token,
+    proxy,
+  });
+  setStatus("Token salvo.", "ok");
 }
 
 function collectBrowserProfile() {
@@ -92,12 +97,13 @@ async function getInstagramCookies() {
 }
 
 async function api(path, options = {}) {
-  const panelOrigin = ($("panel").value || "").trim().replace(/\/$/, "");
   const token = ($("token").value || "").trim();
-  if (!panelOrigin || !token) {
-    throw new Error("Informe URL do painel e token.");
+  if (!token) {
+    throw new Error(
+      "Falta o token. Clique em “Abrir painel → gerar token”, copie o ibxt_… e cole aqui."
+    );
   }
-  const res = await fetch(`${panelOrigin}${path}`, {
+  const res = await fetch(`${panelOrigin()}${path}`, {
     ...options,
     headers: {
       Accept: "application/json",
@@ -124,25 +130,38 @@ async function reloadAccounts() {
   setStatus("Carregando contas…");
   const data = await api("/api/extension/accounts");
   const sel = $("account");
+  const current = sel.value;
   sel.innerHTML = "";
-  const accounts = data.accounts || [];
-  if (!accounts.length) {
-    sel.innerHTML = '<option value="">Nenhuma conta web no painel</option>';
-    setStatus("Nenhuma conta instagrapi/web encontrada.", "err");
-    return;
-  }
-  for (const a of accounts) {
+  const optNew = document.createElement("option");
+  optNew.value = "";
+  optNew.textContent = "+ Nova conta (do zero)";
+  sel.appendChild(optNew);
+  for (const a of data.accounts || []) {
     const opt = document.createElement("option");
     opt.value = String(a.id);
     opt.textContent = `@${a.username} (${a.status})`;
     sel.appendChild(opt);
   }
-  setStatus(`Contas: ${accounts.length} · painel @${data.panel_user}`, "ok");
+  if (current && [...sel.options].some((o) => o.value === current)) {
+    sel.value = current;
+  }
+  const n = (data.accounts || []).length;
+  setStatus(
+    `OK · ${n} conta(s) · painel @${data.panel_user}\nPode conectar uma nova ou atualizar uma existente.`,
+    "ok"
+  );
 }
 
 async function pushSession() {
-  const accountId = Number(($("account").value || "").trim());
-  if (!accountId) throw new Error("Selecione uma conta.");
+  const rawId = ($("account").value || "").trim();
+  const accountId = rawId ? Number(rawId) : null;
+  const proxy = ($("proxy").value || "").trim();
+
+  if (!accountId && !proxy) {
+    throw new Error(
+      "Conta nova: cole a proxy residencial (ip:porta:user:senha) antes de enviar."
+    );
+  }
 
   setStatus("Lendo cookies do Instagram…");
   const cookies = await getInstagramCookies();
@@ -155,23 +174,37 @@ async function pushSession() {
 
   const browser = collectBrowserProfile();
   setStatus(
-    `Enviando ${cookies.length} cookies + fingerprint…\nUA: ${browser.user_agent.slice(0, 60)}…`
+    `Enviando ${cookies.length} cookies + fingerprint…\n${
+      accountId ? "Atualizando conta #" + accountId : "Criando conta nova"
+    }`
   );
+
+  const payload = {
+    cookies,
+    browser,
+    proxy,
+  };
+  if (accountId) payload.account_id = accountId;
 
   const result = await api("/api/extension/push-session", {
     method: "POST",
-    body: JSON.stringify({
-      account_id: accountId,
-      cookies,
-      browser,
-    }),
+    body: JSON.stringify(payload),
   });
 
   setStatus(
-    `OK · @${result.username}\n${result.cookies_count} cookies + browser salvos.\nSessão ativa no painel.`,
+    `${result.created ? "Conta criada" : "Sessão atualizada"} · @${result.username}\n` +
+      `${result.cookies_count} cookies + browser salvos no painel.`,
     "ok"
   );
+  await reloadAccounts().catch(() => {});
+  if (result.account_id) {
+    $("account").value = String(result.account_id);
+  }
 }
+
+$("open-token").addEventListener("click", () => {
+  chrome.tabs.create({ url: `${DEFAULT_PANEL}/accounts/extension` });
+});
 
 $("save").addEventListener("click", () => {
   saveSettings().catch((e) => setStatus(String(e.message || e), "err"));

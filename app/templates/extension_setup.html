@@ -4,7 +4,7 @@
 <section class="page-head">
   <div>
     <h1>Extensão Chrome</h1>
-    <p class="muted">Envia o jar completo de cookies do Instagram + fingerprint do navegador pro painel — sessão mais parecida com a real.</p>
+    <p class="muted">Gere o token aqui e cole na extensão. A URL do painel já vem pronta na extensão.</p>
   </div>
 </section>
 
@@ -14,22 +14,12 @@
 
 <div class="card-stack" style="max-width:720px">
   <article class="og-card">
-    <h2>1. Instalar</h2>
-    <ol class="muted" style="line-height:1.6;padding-left:1.2rem">
-      <li>Baixe a pasta <code>extension/</code> do repositório (ou copie do projeto).</li>
-      <li>Chrome → <code>chrome://extensions</code> → Modo do desenvolvedor → Carregar sem compactação.</li>
-      <li>Selecione a pasta <code>extension</code>.</li>
-    </ol>
-  </article>
-
-  <article class="og-card">
-    <h2>2. Parear com o painel</h2>
-    <p class="muted">O token autentica a extensão (cookie de sessão do painel não serve no Chrome extension).</p>
-    <p><strong>URL do painel:</strong> <code id="panel-origin">{{ panel_origin }}</code></p>
-    <p class="muted">Status: {% if has_token %}token ativo{% else %}nenhum token ainda{% endif %}</p>
+    <h2>Gerar token (obrigatório)</h2>
+    <p class="muted">A extensão <strong>não</strong> gera token sozinha — é aqui. Sem isso ela não consegue falar com o seu painel.</p>
+    <p class="muted">Status: {% if has_token %}já existe um token ativo (gerar de novo invalida o anterior){% else %}nenhum token ainda{% endif %}</p>
     <div class="btn-row" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">
       <button type="button" class="btn btn-primary" id="ext-gen-token">
-        {% if has_token %}Gerar novo token{% else %}Gerar token{% endif %}
+        Gerar token
       </button>
       {% if has_token %}
       <form method="post" action="/accounts/extension/token/revoke" style="margin:0">
@@ -39,7 +29,7 @@
       {% endif %}
     </div>
     <div id="ext-token-box" hidden style="margin-top:16px">
-      <label class="muted">Cole este token na extensão (só aparece uma vez):</label>
+      <label class="muted">Copie e cole na extensão:</label>
       <div style="display:flex;gap:8px;margin-top:6px">
         <input type="text" id="ext-token-value" readonly style="flex:1;font-family:monospace;font-size:12px">
         <button type="button" class="btn btn-sm" id="ext-copy-token">Copiar</button>
@@ -48,13 +38,14 @@
   </article>
 
   <article class="og-card">
-    <h2>3. Enviar sessão</h2>
-    <ol class="muted" style="line-height:1.6;padding-left:1.2rem">
-      <li>Faça login no Instagram neste Chrome (conta certa).</li>
-      <li>Abra a extensão → cole URL + token → escolha a conta no Instablack.</li>
-      <li>Clique em <strong>Enviar cookies + browser</strong>.</li>
+    <h2>Na extensão</h2>
+    <ol class="muted" style="line-height:1.7;padding-left:1.2rem">
+      <li>Recarregue a extensão em <code>chrome://extensions</code> (botão atualizar).</li>
+      <li>Cole o token → <strong>Salvar token</strong>.</li>
+      <li>Deixe <strong>+ Nova conta (do zero)</strong> selecionado.</li>
+      <li>Cole a <strong>proxy residencial</strong> da conta.</li>
+      <li>Com o Instagram logado no Chrome → <strong>Conectar / enviar sessão</strong>.</li>
     </ol>
-    <p class="muted" style="margin-top:10px">Vai tudo: sessionid, csrftoken, mid, ig_did, datr… e User-Agent, idioma, tela, timezone.</p>
   </article>
 </div>
 

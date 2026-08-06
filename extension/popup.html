@@ -7,7 +7,6 @@
     :root {
       --bg: #050505;
       --card: #121212;
-      --gold: #C9A227;
       --gold2: #E8D48B;
       --text: #f2f2f2;
       --muted: #9a9a9a;
@@ -30,7 +29,18 @@
       color: var(--gold2);
       font-weight: 700;
     }
-    .sub { color: var(--muted); margin-bottom: 12px; font-size: 12px; }
+    .sub { color: var(--muted); margin-bottom: 10px; font-size: 12px; }
+    .steps {
+      background: #0c0c0c;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin-bottom: 10px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.5;
+    }
+    .steps strong { color: var(--gold2); }
     label { display: block; color: var(--muted); margin: 10px 0 4px; font-size: 11px; }
     input, select, button {
       width: 100%;
@@ -40,6 +50,16 @@
       color: var(--text);
       padding: 9px 10px;
       font: inherit;
+    }
+    .fixed-url {
+      font-family: ui-monospace, monospace;
+      font-size: 11px;
+      color: var(--gold2);
+      word-break: break-all;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: #0c0c0c;
     }
     button {
       background: linear-gradient(180deg, #d4af37, #a8841a);
@@ -75,26 +95,38 @@
 </head>
 <body>
   <h1>Instablack Sync</h1>
-  <div class="sub">Manda o jar completo + dados do browser</div>
+  <div class="sub">Conecta a conta do Instagram (neste Chrome) no painel</div>
 
-  <label>URL do painel</label>
-  <input id="panel" placeholder="https://instablack-production.up.railway.app" />
+  <div class="steps">
+    <strong>1.</strong> Clique em “Abrir painel → gerar token”<br>
+    <strong>2.</strong> No site, Gere o token e cole aqui<br>
+    <strong>3.</strong> Logue no IG → escolha “Nova conta” ou uma existente → Enviar
+  </div>
 
-  <label>Token (Contas → Extensão Chrome)</label>
-  <input id="token" type="password" placeholder="ibxt_…" autocomplete="off" />
+  <label>Painel (já configurado)</label>
+  <div class="fixed-url" id="panel-display"></div>
+  <input type="hidden" id="panel" />
+
+  <label>Token (cola o ibxt_… do painel)</label>
+  <input id="token" type="text" placeholder="ibxt_…" autocomplete="off" />
+
+  <button type="button" class="secondary" id="open-token">Abrir painel → gerar token</button>
 
   <div class="row">
-    <button type="button" class="secondary" id="save">Salvar</button>
-    <button type="button" class="secondary" id="reload">Contas</button>
+    <button type="button" class="secondary" id="save">Salvar token</button>
+    <button type="button" class="secondary" id="reload">Atualizar contas</button>
   </div>
 
   <label>Conta no Instablack</label>
   <select id="account">
-    <option value="">— carregue as contas —</option>
+    <option value="">+ Nova conta (do zero)</option>
   </select>
 
-  <button type="button" id="push">Enviar cookies + browser</button>
-  <div id="status" class="status">Pronto. Logue no Instagram neste Chrome antes de enviar.</div>
+  <label>Proxy (obrigatória só na conta nova)</label>
+  <input id="proxy" placeholder="ip:porta:usuario:senha" autocomplete="off" />
+
+  <button type="button" id="push">Conectar / enviar sessão</button>
+  <div id="status" class="status">Cole o token do painel pra começar.</div>
 
   <script src="popup.js"></script>
 </body>
