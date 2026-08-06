@@ -3,47 +3,48 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Entrar Â· instablack</title>
+  <title>Acesso · instablack</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/style.css?v=51" />
+  <link rel="stylesheet" href="/static/style.css?v=52" />
   <meta name="csrf-token" content="{{ csrf_token or request.session.get('csrf_token', '') }}" />
+  <meta name="theme-color" content="#030308" />
 </head>
 <body class="login-body">
   <div class="ambient-grid"></div>
   <canvas class="login-rays" id="login-rays"></canvas>
 
-  <div class="login-card">
-    <div class="login-brand">
+  <div class="login-card login-card--premium">
+    <div class="login-brand login-brand--stack">
       <div class="login-brand-icon" aria-hidden="true">
-        <img src="/static/logo-ghost.png" alt="" width="48" height="48">
+        <img src="/static/logo-ghost.png" alt="" width="56" height="56">
       </div>
       <span class="login-brand-text">instablack</span>
     </div>
-    <span class="login-badge">Acesso privado</span>
-    <h1>Bem-vindo de volta</h1>
-    <p class="subtitle">Painel exclusivo de automaÃ§Ã£o e publicaÃ§Ã£o. Entre com suas credenciais.</p>
+
+    <span class="login-badge">Acesso restrito</span>
+    <h1>Área privada</h1>
 
     {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
 
-    <form method="post" action="/login">
+    <form method="post" action="/login" class="login-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token or request.session.get('csrf_token', '') }}">
-      <label>UsuÃ¡rio
-        <input type="text" name="username" required autofocus autocomplete="username" placeholder="seu usuÃ¡rio">
+      <label>Usuário
+        <input type="text" name="username" required autofocus autocomplete="username" placeholder="seu usuário">
       </label>
       <label>Senha
-        <input type="password" name="password" required autocomplete="current-password" placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢">
+        <input type="password" name="password" required autocomplete="current-password" placeholder="••••••••">
       </label>
-      <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:8px;padding:14px">Entrar no painel</button>
+      <button type="submit" class="btn btn-primary login-submit">Entrar</button>
     </form>
 
     {% if allow_registration %}
-    <p class="login-footer">Sem convite? <a href="/register">Solicitar acesso</a></p>
+    <p class="login-footer">Tem convite? <a href="/register">Criar acesso</a></p>
     {% endif %}
   </div>
 
-  <script src="/static/app.js?v=3"></script>
+  <script src="/static/app.js?v=4"></script>
 </body>
 </html>

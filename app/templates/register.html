@@ -3,54 +3,55 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Criar conta Â· instablack</title>
+  <title>Convite · instablack</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/style.css?v=51" />
+  <link rel="stylesheet" href="/static/style.css?v=52" />
   <meta name="csrf-token" content="{{ csrf_token or request.session.get('csrf_token', '') }}" />
+  <meta name="theme-color" content="#030308" />
 </head>
 <body class="login-body">
   <div class="ambient-grid"></div>
   <canvas class="login-rays" id="login-rays"></canvas>
 
-  <div class="login-card">
-    <div class="login-brand">
+  <div class="login-card login-card--premium">
+    <div class="login-brand login-brand--stack">
       <div class="login-brand-icon" aria-hidden="true">
-        <img src="/static/logo-ghost.png" alt="" width="48" height="48">
+        <img src="/static/logo-ghost.png" alt="" width="56" height="56">
       </div>
       <span class="login-brand-text">instablack</span>
     </div>
-    <span class="login-badge">Convite necessÃ¡rio</span>
+
+    <span class="login-badge">Somente convidados</span>
     <h1>Criar acesso</h1>
-    <p class="subtitle">Use o cÃ³digo de convite para entrar na plataforma.</p>
 
     {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
 
-    <form method="post" action="/register">
+    <form method="post" action="/register" class="login-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token or request.session.get('csrf_token', '') }}">
-      <label>CÃ³digo de convite
+      <label>Código de convite
         <input type="text" name="invite_code" required autofocus
                value="{{ invite_prefill or '' }}"
-               placeholder="Cole o cÃ³digo do link" autocomplete="off" spellcheck="false"
+               placeholder="Cole o código" autocomplete="off" spellcheck="false"
                style="text-transform:uppercase">
       </label>
-      <label>UsuÃ¡rio
-        <input type="text" name="username" required minlength="3" autocomplete="username">
+      <label>Usuário
+        <input type="text" name="username" required minlength="3" autocomplete="username" placeholder="escolha um usuário">
       </label>
       <label>Senha
-        <input type="password" name="password" required minlength="8" autocomplete="new-password">
+        <input type="password" name="password" required minlength="8" autocomplete="new-password" placeholder="mín. 8 caracteres">
       </label>
       <label>Confirmar senha
-        <input type="password" name="password_confirm" required minlength="8" autocomplete="new-password">
+        <input type="password" name="password_confirm" required minlength="8" autocomplete="new-password" placeholder="repita a senha">
       </label>
-      <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:8px;padding:14px">Criar conta</button>
+      <button type="submit" class="btn btn-primary login-submit">Criar acesso</button>
     </form>
 
-    <p class="login-footer">JÃ¡ tem conta? <a href="/login">Entrar no painel</a></p>
+    <p class="login-footer">Já é membro? <a href="/login">Entrar</a></p>
   </div>
 
-  <script src="/static/app.js?v=3"></script>
+  <script src="/static/app.js?v=4"></script>
 </body>
 </html>
