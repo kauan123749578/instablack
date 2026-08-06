@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Acesso ∑ instablack</title>
+  <title>Acesso ¬∑ instablack</title>
   <link rel="icon" href="/static/favicon-32.png?v=4" type="image/png" sizes="32x32" />
   <link rel="icon" href="/static/favicon.png?v=4" type="image/png" sizes="64x64" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -26,17 +26,17 @@
     </div>
 
     <span class="login-badge">Acesso restrito</span>
-    <h1>¡rea privada</h1>
+    <h1>√Årea privada</h1>
 
     {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
 
     <form method="post" action="/login" class="login-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token or request.session.get('csrf_token', '') }}">
-      <label>Usu·rio
-        <input type="text" name="username" required autofocus autocomplete="username" placeholder="seu usu·rio">
+      <label>Usu√°rio
+        <input type="text" name="username" required autofocus autocomplete="username" placeholder="seu usu√°rio">
       </label>
       <label>Senha
-        <input type="password" name="password" required autocomplete="current-password" placeholder="ïïïïïïïï">
+        <input type="password" name="password" required autocomplete="current-password" placeholder="‚Ä¢‚Ä¢‚Ä¢‚Ä¢‚Ä¢‚Ä¢‚Ä¢‚Ä¢">
       </label>
       <button type="submit" class="btn btn-primary login-submit">Entrar</button>
     </form>
