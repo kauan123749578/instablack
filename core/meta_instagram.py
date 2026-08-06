@@ -597,12 +597,14 @@ def _app_media_url(key: str) -> str:
 
 
 def public_media_url(key: str) -> str:
-    """URL HTTPS estável para a Meta baixar a mídia pelo Instablack.
+    """URL HTTPS assinada (HMAC) para a Meta baixar a mídia pelo Instablack.
 
-    O R2 continua sendo apenas o armazenamento interno. Não entregamos sua URL
-    assinada à Meta, pois ela pode expirar ou ser recusada durante o container.
+    O R2 continua só no storage interno. A Meta recebe URL do app com exp+sig
+    (TTL ~6h) — sem cookie, mas sem acesso anônimo permanente pela key sozinha.
     """
-    return _app_media_url(key)
+    from app.media_access import DEFAULT_META_TTL, absolute_signed_media_url
+
+    return absolute_signed_media_url(key, ttl=DEFAULT_META_TTL)
 
 
 def public_origin() -> str:

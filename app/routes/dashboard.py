@@ -14,6 +14,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, load_only, selectinload
 
 from app.deps import get_current_user, maybe_current_user, maybe_effective_user
+from app.media_access import signed_media_path
 from app.templating import templates
 from app.config import settings
 from app.utils.charts import attach_chart_paths
@@ -364,7 +365,7 @@ def _top_platform_players(
             "user_id": r.id,
             "username": r.username,
             "display_name": (r.display_name or r.username),
-            "avatar_url": f"/media/{r.avatar_key}" if r.avatar_key else None,
+            "avatar_url": signed_media_path(r.avatar_key) if r.avatar_key else None,
             "post_count": int(r.post_count),
             "view_count": int(r.view_count or 0),
             "tier": _rank_tier(int(r.post_count)),
@@ -464,7 +465,7 @@ def _viewer_rank_entry(
         "user_id": viewer.id,
         "username": viewer.username,
         "display_name": (viewer.display_name or viewer.username),
-        "avatar_url": f"/media/{viewer.avatar_key}" if viewer.avatar_key else None,
+        "avatar_url": signed_media_path(viewer.avatar_key) if viewer.avatar_key else None,
         "post_count": my_count,
         "view_count": my_views,
         "rank": better + 1 if my_count > 0 else None,

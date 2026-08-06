@@ -51,7 +51,18 @@ celery_conf: dict = {
 }
 
 if settings.redis_url.startswith("rediss://"):
-    ssl_opts = {"ssl_cert_reqs": ssl.CERT_NONE}
+    # CERT_REQUIRED por padrão. Escape hatch: REDIS_SSL_INSECURE=1 (provedores
+    # com cert quebrado). Em produção prefira certificado válido.
+    import os
+
+    insecure = (os.getenv("REDIS_SSL_INSECURE") or "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    ssl_opts = {
+        "ssl_cert_reqs": ssl.CERT_NONE if insecure else ssl.CERT_REQUIRED,
+    }
     celery_conf["broker_use_ssl"] = ssl_opts
     celery_conf["redis_backend_use_ssl"] = ssl_opts
 

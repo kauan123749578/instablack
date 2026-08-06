@@ -616,7 +616,9 @@ def _download_media(storage, key: str, dest_path: Path) -> None:
                 f"Worker não conseguiu baixar a mídia do storage: {storage_exc}"
             ) from storage_exc
 
-        media_url = f"{base_url}/media/{quote(key, safe='/')}"
+        from app.media_access import absolute_signed_media_url
+
+        media_url = absolute_signed_media_url(key)
         log.warning(
             "Download direto do storage falhou para key=%s; tentando serviço web: %s",
             key,

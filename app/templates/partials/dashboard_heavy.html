@@ -213,7 +213,7 @@
         <li class="og-rank-row og-account-rank-row" title="@{{ acc.username }} · {{ item.publish_count }} publicações">
           <div class="og-rank-avatar og-account-avatar og-account-avatar--{{ acc.status }}{% if acc.profile_pic_url %} og-rank-avatar--photo{% endif %}">
             {% if acc.profile_pic_url %}
-            <img src="{{ acc.profile_pic_url }}" alt="" class="og-rank-avatar-img" loading="lazy" referrerpolicy="no-referrer">
+            <img src="{{ acc.profile_pic_url | signed_media }}" alt="" class="og-rank-avatar-img" loading="lazy" referrerpolicy="no-referrer">
             {% else %}
             {{ acc.username[0]|upper }}
             {% endif %}

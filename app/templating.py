@@ -6,6 +6,7 @@ from pathlib import Path
 
 from fastapi.templating import Jinja2Templates
 
+from app.media_access import signed_media_path, signed_media_url
 from app.utils.anti_farm import captions_textarea_value, parse_captions_json
 from app.utils.automation_videos import playlist_items, video_count as automation_video_count
 from app.utils.avatars import user_avatar_url, user_display_name
@@ -40,7 +41,7 @@ def _media_suffix(*values: object) -> str:
 def automation_preview_media(automation) -> dict[str, str] | None:
     thumb_key = getattr(automation, "thumb_key", None)
     if thumb_key:
-        return {"url": f"/media/{thumb_key}", "kind": "image"}
+        return {"url": signed_media_path(thumb_key), "kind": "image"}
 
     content_type = (getattr(automation, "content_type", None) or "reel").lower()
     if content_type not in ("story", "photo"):
@@ -51,12 +52,13 @@ def automation_preview_media(automation) -> dict[str, str] | None:
         return None
     ext = _media_suffix(media_key, getattr(automation, "video_original_name", None))
     kind = "video" if ext in VIDEO_EXTENSIONS else "image"
-    return {"url": f"/media/{media_key}", "kind": kind}
+    return {"url": signed_media_path(media_key), "kind": kind}
 
 
 templates = Jinja2Templates(directory="app/templates")
 templates.env.filters["localtime"] = to_brt
 templates.env.filters["tojson"] = lambda v: json.dumps(v)
+templates.env.filters["signed_media"] = signed_media_url
 templates.env.globals["greeting_for_user"] = greeting_for_user
 templates.env.globals["greeting_period"] = greeting_period
 templates.env.globals["brt_now"] = brt_now
@@ -70,6 +72,7 @@ templates.env.globals["status_badge_class"] = status_badge_class
 templates.env.globals["automation_video_count"] = automation_video_count
 templates.env.globals["automation_playlist_names"] = automation_playlist_names
 templates.env.globals["automation_preview_media"] = automation_preview_media
+templates.env.globals["signed_media_url"] = signed_media_url
 templates.env.globals["proxy_label"] = proxy_label
 templates.env.globals["proxy_to_raw"] = proxy_to_raw
 templates.env.globals["account_proxy_ip"] = account_proxy_ip

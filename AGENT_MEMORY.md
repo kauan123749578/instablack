@@ -61,9 +61,26 @@ Token inválido / checkpoint (“You cannot access the app till you log in”). 
 ### 5) Cofre senha + TOTP (Authenticator)
 
 - Campo `encrypted_totp_secret` em `instagram_accounts` (cifrado com `encrypt_secret`).
-- UI: Contas conectadas → **Credenciais / 2FA** (código 6 dígitos ao vivo + copiar).
+- UI: Contas conectadas → **Credenciais / 2FA** (código 6 dígitos ao vivo + copiar) + página `/accounts/vault`.
 - Login/reconectar: se Instagram pedir 2FA e houver TOTP, gera o código automaticamente (`app/utils/totp.py` + `pyotp`).
 - Nunca devolver o secret em plaintext — só o OTP.
+- **View As:** cofre / TOTP / credentials / cookies web / Meus Apps ficam **bloqueados** (`reject_view_as_secrets` em `app/deps.py`). Não reabrir esses endpoints no impersonate.
+
+---
+
+### 6) Segurança — Fase 1 (`c280915`) e Fase 2
+
+**Fase 1 (auth):** `SECRET_KEY` fail-closed em produção; rate limit login/register (Redis); senha atual + `session_version` ao trocar senha; CSRF + headers HTTP; logout só POST; `session.clear()` no login.
+
+**Fase 2 (mídia / View As / Redis):**
+
+- `/media/{key}` **não é mais público** só pela key. Acesso: assinatura HMAC `?exp=&sig=` **ou** sessão + ownership (`app/media_access.py`).
+- Meta / worker usam `public_media_url` / `absolute_signed_media_url` (TTL ~6h). UI assina avatars/previews (TTL ~2h). Filtro Jinja `signed_media`.
+- **Nunca** voltar a servir `/media` anônimo sem sig/owner — Meta precisa da URL assinada, não da R2 crua.
+- Celery `rediss://`: `ssl_cert_reqs=CERT_REQUIRED`. Se worker não sobe no Railway Redis: escape hatch `REDIS_SSL_INSECURE=1` (temporário).
+- Proxy: `validate_proxy_url` (esquemas http/https/socks*; bloqueia localhost / link-local / `file://`).
+
+Redeploy Fase 2: **web** + **worker-publish** + **worker-misc** + **beat** (Celery TLS + `publish.py` URL assinada).
 
 ---
 
@@ -91,8 +108,9 @@ Serviços típicos: **web**, **worker-publish**, **worker-misc**, **beat**.
 |-------|----------|
 | `celery_app/tasks/publish.py`, fila publish | worker-publish |
 | insights / tasks misc | worker-misc |
-| beat schedule | beat |
-| `app/routes/*`, templates, estáticos | web |
+| beat schedule / `celery_app/config.py` (TLS Redis) | beat + **todos** os workers |
+| `app/routes/*`, templates, estáticos, `/media` | web |
+| `app/media_access.py` + `public_media_url` | web **e** worker-publish (Meta URL assinada) |
 
 Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no build velho enquanto o git estava certo.
 
@@ -118,5 +136,7 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 | 2026-07-31 | local | BadPassword em `@deborateixei091` com proxy ok = rejeição IG (`invalid_credentials`). Cookie browser expira rápido; sessão durável = `login(senha)` **uma vez** + `dump_settings`. Script alinhado a `core.instagram.login_with_credentials`. |
 | 2026-08-03 | feature | Cofre virou aba `/accounts/vault` no sidebar (cards por conta). Botão na tabela não abria por modal fora do `#app-content`. |
 | 2026-08-03 | fix | Cofre: UI Autenticador (código azul + anel), `/vault/codes` batch, salva chave de verdade; rejeita colar código 6 dígitos no lugar da secret. |
+| 2026-08-05 | `c280915` | Segurança Fase 1: SECRET_KEY fail-closed, rate limit auth, CSRF, headers, session_version, senha atual, logout POST. |
+| 2026-08-05 | Fase 2 | `/media` assinado + ownership; View As bloqueia vault/TOTP/cookies/meta-apps; Celery `CERT_REQUIRED`; `validate_proxy_url`. Ver §6. |
 
 <!-- Ao corrigir bugs de produção: acrescente uma linha acima e, se for armadilha nova, uma subseção em "O que já quebrou". -->

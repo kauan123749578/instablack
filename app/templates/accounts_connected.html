@@ -37,9 +37,11 @@
   <a href="/accounts" class="btn btn-primary" data-nav="/accounts">
     <i data-lucide="plus"></i> Adicionar conta
   </a>
+  {% if not request.state.view_as_active %}
   <a href="/accounts/vault" class="btn" data-nav="/accounts/vault">
     <i data-lucide="key-round"></i> Abrir Cofre
   </a>
+  {% endif %}
 </div>
 
 <div class="panel">

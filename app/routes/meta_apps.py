@@ -6,7 +6,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.deps import get_current_user
+from app.deps import get_current_user, reject_view_as_secrets
 from app.security import encrypt_secret
 from app.templating import templates
 from app.utils.meta_apps import (
@@ -31,6 +31,7 @@ def meta_apps_page(
     request: Request,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    _: None = Depends(reject_view_as_secrets),
 ):
     tab = request.query_params.get("tab") or "apps"
     apps = list_user_meta_apps(db, user.id)

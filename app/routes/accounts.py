@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.deps import get_current_user, get_effective_user
+from app.deps import get_current_user, get_effective_user, reject_view_as_secrets
 from app.security import decrypt_secret, encrypt_secret
 from app.templating import templates
 from app.config import get_settings
@@ -22,6 +22,7 @@ from app.utils.proxy import (
     diagnose_proxy,
     normalize_proxy,
     proxy_host,
+    validate_proxy_url,
 )
 from app.utils.account_limits import (
     account_limit_label,
@@ -324,7 +325,10 @@ def _optional_meta_proxy(proxy_raw: str) -> tuple[str | None, dict | None, str |
     """Proxy opcional para API Meta. Vazio = ok (usa IP do servidor). Retorna (norm, meta, error)."""
     if not (proxy_raw or "").strip():
         return None, None, None
-    normalized = normalize_proxy(proxy_raw)
+    try:
+        normalized = validate_proxy_url(proxy_raw)
+    except ValueError:
+        return None, None, "proxy_invalid"
     if not normalized:
         return None, None, "proxy_invalid"
     diag = diagnose_proxy(proxy_raw.strip() or normalized)
@@ -668,6 +672,7 @@ def connected_accounts(
         "reconnect_2fa": "2FA necessário. Salve a chave TOTP em Credenciais / 2FA ou digite o código.",
         "reconnect_proxy": "Proxy ausente ou inválida — atualize a proxy antes de reconectar.",
         "credentials_totp": "Chave TOTP inválida. Use Base32 ou otpauth:// do Authenticator.",
+        "view_as_secrets": "No modo Ver como, cofre / TOTP / cookies / apps Meta ficam bloqueados.",
     }.get(err_key or "")
     offline = offline_accounts(db, user.id)
     cookie_flags = {
@@ -696,6 +701,7 @@ def accounts_vault(
     request: Request,
     db: Session = Depends(get_db),
     user: User = Depends(get_effective_user),
+    _: None = Depends(reject_view_as_secrets),
 ):
     """Cofre: email / senha / Authenticator por conta (página dedicada)."""
     accounts = _load_user_accounts(db, user)
@@ -716,8 +722,10 @@ def accounts_vault(
 
 @router.get("/vault/codes")
 def accounts_vault_codes(
+    request: Request,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    _: None = Depends(reject_view_as_secrets),
 ):
     """Todos os códigos TOTP do usuário — para o Cofre atualizar sem reload."""
     import time as _time
@@ -771,7 +779,10 @@ def add_account(
 ):
     username = username.strip().lstrip("@")
     proxy_raw = proxy
-    proxy = normalize_proxy(proxy)
+    try:
+        proxy = validate_proxy_url(proxy)
+    except ValueError:
+        proxy = ""
     sid = clean_sessionid(sessionid)
     use_sessionid = auth_method == "sessionid"
     use_import = auth_method == "import"
@@ -1013,6 +1024,10 @@ def _get_owned_account(db: Session, account_id: int, user: User) -> InstagramAcc
 @router.post("/test-proxy")
 def test_proxy(proxy: str = Form(...)):
     """Testa proxy sem salvar (AJAX)."""
+    try:
+        validate_proxy_url(proxy)
+    except ValueError as exc:
+        return JSONResponse({"ok": False, "ip": None, "error": str(exc), "geo": None})
     result = diagnose_proxy(proxy)
     return JSONResponse(result)
 
@@ -1025,7 +1040,13 @@ def update_account_proxy(
     user: User = Depends(get_current_user),
 ):
     acc = _get_owned_account(db, account_id, user)
-    normalized = normalize_proxy(proxy)
+    try:
+        normalized = validate_proxy_url(proxy)
+    except ValueError:
+        return RedirectResponse(
+            "/accounts/connected?error=proxy_invalid",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
     if not normalized:
         return RedirectResponse(
             "/accounts/connected?error=proxy_vazio",
@@ -1057,6 +1078,7 @@ def update_account_web_cookies(
     web_cookies: str = Form(""),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    _: None = Depends(reject_view_as_secrets),
 ):
     """Atualiza o jar de cookies web (Cookie-Editor) para Story com link."""
     acc = _get_owned_account(db, account_id, user)
@@ -1356,6 +1378,7 @@ def get_account_credentials_status(
     account_id: int,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    _: None = Depends(reject_view_as_secrets),
 ):
     """Status do cofre (senha/TOTP sem plaintext; email pode voltar)."""
     acc = _get_owned_account(db, account_id, user)
@@ -1377,6 +1400,7 @@ def update_account_credentials(
     body: CredentialsBody = Body(default_factory=CredentialsBody),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    _: None = Depends(reject_view_as_secrets),
 ):
     """Atualiza email, senha e/ou chave TOTP no cofre da conta."""
     acc = _get_owned_account(db, account_id, user)
@@ -1438,6 +1462,7 @@ def get_account_totp_code(
     account_id: int,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
+    _: None = Depends(reject_view_as_secrets),
 ):
     """Código TOTP atual (6 dígitos) — nunca devolve o secret."""
     acc = _get_owned_account(db, account_id, user)

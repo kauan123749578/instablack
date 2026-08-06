@@ -168,6 +168,25 @@ def view_as_active(request: Request) -> bool:
     return bool(request.session.get("view_as_user_id"))
 
 
+def reject_view_as_secrets(request: Request) -> None:
+    """Bloqueia TOTP / vault / cookies / tokens Meta no modo Ver como."""
+    if not view_as_active(request):
+        return
+    accept = request.headers.get("accept", "")
+    msg = (
+        "Segredos (cofre, TOTP, cookies, apps Meta) ficam bloqueados "
+        "no modo Ver como."
+    )
+    if "application/json" in accept or "fetch" in (
+        request.headers.get("x-requested-with") or ""
+    ).lower():
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=msg)
+    raise HTTPException(
+        status_code=status.HTTP_303_SEE_OTHER,
+        headers={"Location": "/accounts/connected?error=view_as_secrets"},
+    )
+
+
 def get_admin_user(
     user: User = Depends(get_auth_user),
 ) -> User:

@@ -34,6 +34,39 @@ def normalize_proxy(raw: str) -> str:
     return s
 
 
+_ALLOWED_PROXY_SCHEMES = frozenset({"http", "https", "socks4", "socks5", "socks5h"})
+
+
+def validate_proxy_url(raw: str) -> str:
+    """Normaliza e valida esquema/host/porta do proxy (mitiga SSRF por formato)."""
+    normalized = normalize_proxy(raw)
+    if not normalized:
+        return ""
+    parsed = urlparse(normalized)
+    scheme = (parsed.scheme or "").lower()
+    if scheme not in _ALLOWED_PROXY_SCHEMES:
+        raise ValueError(
+            f"Esquema de proxy não permitido: {scheme or '(vazio)'}. "
+            "Use http, https, socks4, socks5 ou socks5h."
+        )
+    host = (parsed.hostname or "").strip()
+    if not host:
+        raise ValueError("Proxy sem host.")
+    # Bloqueia esquemas/host usados em SSRF clássico
+    blocked = {
+        "localhost",
+        "127.0.0.1",
+        "0.0.0.0",
+        "::1",
+        "metadata.google.internal",
+    }
+    if host.lower() in blocked or host.startswith("169.254."):
+        raise ValueError("Host de proxy não permitido.")
+    if parsed.port is not None and not (1 <= int(parsed.port) <= 65535):
+        raise ValueError("Porta de proxy inválida.")
+    return normalized
+
+
 def proxy_label(url: str) -> str:
     """Texto curto para UI (esconde senha)."""
     if not url:

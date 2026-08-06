@@ -385,9 +385,30 @@ def create_app() -> FastAPI:
         methods=["GET", "HEAD"],
         include_in_schema=False,
     )
-    def serve_media(file_key: str, request: Request):
+    def serve_media(
+        file_key: str,
+        request: Request,
+        exp: int | None = None,
+        sig: str | None = None,
+    ):
         if ".." in file_key or file_key.startswith("/"):
             raise HTTPException(status_code=400, detail="Chave inválida")
+
+        from app.deps import maybe_current_user
+        from app.media_access import user_owns_media, verify_media_signature
+        from core.database import SessionLocal
+
+        allowed = verify_media_signature(file_key, exp, sig)
+        if not allowed:
+            db = SessionLocal()
+            try:
+                user = maybe_current_user(request, db)
+                if user is not None and user_owns_media(db, user, file_key):
+                    allowed = True
+            finally:
+                db.close()
+        if not allowed:
+            raise HTTPException(status_code=403, detail="Acesso negado à mídia")
 
         if settings.storage_backend == "local":
             base = (settings.base_dir / settings.local_storage_path).resolve()
@@ -398,7 +419,7 @@ def create_app() -> FastAPI:
                 path,
                 headers={
                     "Accept-Ranges": "bytes",
-                    "Cache-Control": "public, max-age=3600",
+                    "Cache-Control": "private, max-age=3600",
                 },
             )
 
@@ -416,7 +437,7 @@ def create_app() -> FastAPI:
 
         headers = {
             "Accept-Ranges": "bytes",
-            "Cache-Control": "public, max-age=3600",
+            "Cache-Control": "private, max-age=3600",
         }
         if obj.get("ContentLength") is not None:
             headers["Content-Length"] = str(obj["ContentLength"])
