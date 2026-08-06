@@ -19,8 +19,8 @@ self.addEventListener("push", (event) => {
   event.waitUntil(
     self.registration.showNotification(data.title || "instablack", {
       body: data.body || "",
-      icon: "/static/favicon.png?v=3",
-      badge: "/static/favicon.png?v=3",
+      icon: "/static/favicon.png?v=4",
+      badge: "/static/favicon.png?v=4",
       tag: tag,
       renotify: true,
       requireInteraction: false,

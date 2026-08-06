@@ -1,11 +1,11 @@
-ï»¿<!doctype html>
+<!doctype html>
 <html lang="pt-br">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Convite Â· instablack</title>
-  <link rel="icon" href="/static/favicon.png?v=3" type="image/png" sizes="64x64" />
-  <link rel="icon" href="/static/favicon.svg?v=3" type="image/svg+xml" />
+  <title>Convite · instablack</title>
+  <link rel="icon" href="/static/favicon-32.png?v=4" type="image/png" sizes="32x32" />
+  <link rel="icon" href="/static/favicon.png?v=4" type="image/png" sizes="64x64" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -32,17 +32,17 @@
 
     <form method="post" action="/register" class="login-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token or request.session.get('csrf_token', '') }}">
-      <label>CÃ³digo de convite
+      <label>Código de convite
         <input type="text" name="invite_code" required autofocus
                value="{{ invite_prefill or '' }}"
-               placeholder="Cole o cÃ³digo" autocomplete="off" spellcheck="false"
+               placeholder="Cole o código" autocomplete="off" spellcheck="false"
                style="text-transform:uppercase">
       </label>
-      <label>UsuÃ¡rio
-        <input type="text" name="username" required minlength="3" autocomplete="username" placeholder="escolha um usuÃ¡rio">
+      <label>Usuário
+        <input type="text" name="username" required minlength="3" autocomplete="username" placeholder="escolha um usuário">
       </label>
       <label>Senha
-        <input type="password" name="password" required minlength="8" autocomplete="new-password" placeholder="mÃ­n. 8 caracteres">
+        <input type="password" name="password" required minlength="8" autocomplete="new-password" placeholder="mín. 8 caracteres">
       </label>
       <label>Confirmar senha
         <input type="password" name="password_confirm" required minlength="8" autocomplete="new-password" placeholder="repita a senha">
@@ -50,7 +50,7 @@
       <button type="submit" class="btn btn-primary login-submit">Criar acesso</button>
     </form>
 
-    <p class="login-footer">JÃ¡ Ã© membro? <a href="/login">Entrar</a></p>
+    <p class="login-footer">Já é membro? <a href="/login">Entrar</a></p>
   </div>
 
   <script src="/static/app.js?v=4"></script>
