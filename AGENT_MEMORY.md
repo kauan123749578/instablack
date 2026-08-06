@@ -145,5 +145,6 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 | 2026-08-06 | hotfix | Starlette 1.x quebrou `TemplateResponse(name, ctx)` → 500 no `/login`. Compat em `app/templating.py`. |
 | 2026-08-06 | bug | Story: form postava em `/automations/new` → erro/re-render virava tela de Reels. Fix: POST `/new/story` + `content_type` forçado + action do form. |
 | 2026-08-06 | bug | Story “Envie o arquivo de mídia” com arquivo selecionado: CSRF middleware chamava `request.form()` no multipart (BaseHTTPMiddleware esvazia body). Reels ok (fetch+header). Fix: multipart CSRF só via header; Story/Foto postam via fetch. |
+| 2026-08-06 | bug | Reels `body.name: Field required` intermitente: `reel-draft` usava `Form()` bind. Reescrito com `request.form()`; erros de validação em fetch voltam JSON. |
 
 <!-- Ao corrigir bugs de produção: acrescente uma linha acima e, se for armadilha nova, uma subseção em "O que já quebrou". -->

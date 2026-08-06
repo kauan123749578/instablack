@@ -391,21 +391,26 @@ def create_app() -> FastAPI:
                 f"{'.'.join(str(x) for x in e.get('loc', ()))}: {e.get('msg')}"
                 for e in exc.errors()[:4]
             )
-            friendly = detail
-            if any("name" in e.get("loc", ()) for e in exc.errors()):
-                friendly = "Nome da automação ausente ou formulário incompleto. Volte e preencha de novo."
-            back = "/automations/new/story" if "/story" in (request.url.path or "") else "/automations/new"
-            return HTMLResponse(
-                f"""<!doctype html><html lang="pt-br"><head><meta charset="utf-8">
-                <title>Erro no formulário</title></head><body style="font-family:system-ui;background:#0b0d12;color:#eee;padding:24px">
-                <h1>Não deu para criar a automação</h1>
-                <p>Confira os campos (nome, mídia, contas, intervalo) e tente de novo.</p>
-                <p style="color:#9ca3af;font-size:13px">{friendly}</p>
-                <p><a href="{back}" style="color:#E8D48B">Voltar</a>
-                · <a href="/automations/new/story" style="color:#E8D48B">Agendar Story</a></p>
-                </body></html>""",
-                status_code=400,
+            friendly = (
+                "Formulário incompleto ou desatualizado. Recarregue a página "
+                "(Ctrl+F5) e tente criar de novo."
             )
+            if any("name" in e.get("loc", ()) for e in exc.errors()):
+                friendly = (
+                    "Não deu para ler o formulário (cache antigo ou envio incompleto). "
+                    "Recarregue com Ctrl+F5 e tente de novo."
+                )
+            # Fetch (reel-draft etc.) precisa de JSON — HTML quebrava o fluxo
+            # e alguns usuários só viam "body.name: Field required".
+            xrw = (request.headers.get("x-requested-with") or "").lower()
+            accept = (request.headers.get("accept") or "").lower()
+            if "fetch" in xrw or "application/json" in accept:
+                return JSONResponse(
+                    {"error": friendly, "detail": detail},
+                    status_code=400,
+                )
+            back = "/automations/new/story" if "/story" in (request.url.path or "") else "/automations/new"
+            return RedirectResponse(f"{back}?error=form", status_code=303)
         return JSONResponse(status_code=422, content={"detail": exc.errors()})
 
     @app.api_route(

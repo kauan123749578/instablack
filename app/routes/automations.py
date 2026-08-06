@@ -322,6 +322,10 @@ def new_automation_page(
     err_key = request.query_params.get("error")
     err_msg = {
         "video": "Selecione pelo menos um vídeo .mp4. A capa (.png/.jpg) é só a thumbnail — não substitui o vídeo.",
+        "form": (
+            "Não deu para ler o formulário (página desatualizada ou envio incompleto). "
+            "Recarregue com Ctrl+F5 e tente de novo."
+        ),
     }.get(err_key or "")
     return templates.TemplateResponse(
         "new_automation.html",
@@ -1415,34 +1419,64 @@ async def create_automation(
 
 @router.post("/new/reel-draft")
 async def create_reel_upload_draft(
-    name: str = Form(""),
-    content_type: str = Form("reel"),
-    caption: str = Form(""),
-    captions_alt: list[str] = Form(default=[]),
-    story_link: str = Form(""),
-    schedule_mode: str = Form("recurring"),
-    interval_minutes: int = Form(60),
-    calendar_days: str = Form(""),
-    calendar_times: list[str] = Form(default=[]),
-    account_ids: list[int] = Form(default=[]),
-    jitter_enabled: str = Form(""),
-    jitter_minutes: int = Form(10),
-    posts_per_batch: int = Form(0),
-    rest_minutes: int = Form(0),
-    stagger_enabled: str = Form(""),
-    stagger_min_minutes: int = Form(DEFAULT_STAGGER_MIN),
-    stagger_max_minutes: int = Form(DEFAULT_STAGGER_MAX),
-    caption_rotate_by_account: str = Form(""),
-    caption_rotate_by_reel: str = Form(""),
-    thumb: UploadFile | None = File(None),
-    camouflage_enabled: str = Form(""),
-    camouflage_cover: UploadFile | None = File(None),
-    camouflage_opacity_pct: str = Form("15"),
+    request: Request,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Cria primeiro o rascunho leve; os vídeos chegam depois em lotes."""
-    name = (name or "").strip() or "Reels"
+    """Cria primeiro o rascunho leve; os vídeos chegam depois em lotes.
+
+    Lê multipart via request.form() (sem Form(...)) — evita
+    body.name: Field required quando o bind do FastAPI perde campos
+    no multipart (mesmo padrão de create_automation).
+    """
+    form = await request.form()
+
+    def _form_str(key: str, default: str = "") -> str:
+        raw = form.get(key)
+        if raw is None:
+            return default
+        return str(raw).strip() if not hasattr(raw, "filename") else default
+
+    def _form_int(key: str, default: int = 0) -> int:
+        try:
+            return int(str(form.get(key) or default).strip() or default)
+        except (TypeError, ValueError):
+            return default
+
+    name = _form_str("name") or "Reels"
+    content_type = _form_str("content_type", "reel") or "reel"
+    caption = normalize_caption_text(_form_str("caption"))
+    story_link = _form_str("story_link")
+    schedule_mode = _form_str("schedule_mode", "recurring") or "recurring"
+    interval_minutes = _form_int("interval_minutes", 60)
+    calendar_days = _form_str("calendar_days")
+    jitter_enabled = _form_str("jitter_enabled")
+    jitter_minutes = _form_int("jitter_minutes", 10)
+    posts_per_batch = _form_int("posts_per_batch", 0)
+    rest_minutes = _form_int("rest_minutes", 0)
+    stagger_enabled = _form_str("stagger_enabled")
+    stagger_min_minutes = _form_int("stagger_min_minutes", DEFAULT_STAGGER_MIN)
+    stagger_max_minutes = _form_int("stagger_max_minutes", DEFAULT_STAGGER_MAX)
+    caption_rotate_by_account = _form_str("caption_rotate_by_account")
+    caption_rotate_by_reel = _form_str("caption_rotate_by_reel")
+    camouflage_enabled = _form_str("camouflage_enabled")
+    camouflage_opacity_pct = _form_str("camouflage_opacity_pct", "15") or "15"
+
+    account_ids: list[int] = []
+    for raw in form.getlist("account_ids"):
+        try:
+            account_ids.append(int(str(raw)))
+        except (TypeError, ValueError):
+            continue
+    calendar_times = [str(x) for x in form.getlist("calendar_times") if str(x).strip()]
+
+    thumb = form.get("thumb")
+    if thumb is not None and not getattr(thumb, "filename", None):
+        thumb = None
+    camouflage_cover = form.get("camouflage_cover")
+    if camouflage_cover is not None and not getattr(camouflage_cover, "filename", None):
+        camouflage_cover = None
+
     if content_type != "reel":
         return JSONResponse({"error": "Upload em lotes disponível apenas para Reels."}, status_code=400)
     if schedule_mode not in ("now", "recurring", "calendar"):
@@ -1488,7 +1522,6 @@ async def create_reel_upload_draft(
         caption_rotate_by_account=caption_rotate_by_account,
         caption_rotate_by_reel=caption_rotate_by_reel,
     )
-    caption = normalize_caption_text(caption)
     captions_json = None  # rotação removida — só legenda fixa
     if not caption:
         return JSONResponse(
@@ -1501,7 +1534,7 @@ async def create_reel_upload_draft(
     camouflage_cover_key = None
     camouflage_opacity = 0.25
     if want_camu:
-        if not camouflage_cover or not camouflage_cover.filename:
+        if not camouflage_cover or not getattr(camouflage_cover, "filename", None):
             return JSONResponse(
                 {"error": "Marcou aplicar camuflagem — envie a imagem de camuflagem."},
                 status_code=400,
