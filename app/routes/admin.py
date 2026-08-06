@@ -496,6 +496,31 @@ def toggle_user_private(
     )
 
 
+@router.post("/users/{user_id}/toggle-instagrapi")
+def toggle_user_instagrapi(
+    user_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_owner_user),
+):
+    """Libera/bloqueia API não oficial (Instagrapi) para um usuário. Só o dono."""
+    target = db.get(User, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    if target.id == admin.id or _is_owner(target):
+        return RedirectResponse(
+            "/admin?error=instagrapi_self",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    if not _admin_can_see(admin, target):
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    target.allow_instagrapi = not bool(getattr(target, "allow_instagrapi", False))
+    db.commit()
+    return RedirectResponse(
+        "/admin?ok=instagrapi",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
 @router.post("/users/{user_id}/toggle-admin")
 def toggle_user_admin(
     user_id: int,

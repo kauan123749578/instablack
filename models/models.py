@@ -44,6 +44,8 @@ class User(Base):
     is_owner: Mapped[bool] = mapped_column(Boolean, default=False)  # dono da plataforma
     # Se true, só o owner vê este usuário no /admin e no rank (outros admins não)
     owner_private: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Libera conectar via Instagrapi (senha / sessionid / session.json). Owner sempre pode.
+    allow_instagrapi: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     # Incrementa na troca de senha — invalida cookies antigos (session_version).
     session_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")

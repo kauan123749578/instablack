@@ -23,7 +23,8 @@
       {% if acc.last_error %}<span class="muted">— {{ acc.last_error[:120] }}</span>{% endif %}
       {% if acc.provider != 'meta' and acc.status == 'needs_login' %}
       <button type="button" class="btn btn-sm btn-primary account-reconnect-open-btn"
-              data-account-id="{{ acc.id }}" data-username="{{ acc.username }}">
+              data-account-id="{{ acc.id }}" data-username="{{ acc.username }}"
+              data-allow-instagrapi="{{ 1 if can_use_instagrapi else 0 }}">
         Reconectar
       </button>
       {% endif %}
@@ -130,6 +131,7 @@
                     data-has-cookies="{{ 1 if cflag.has_csrftoken else 0 }}"
                     data-has-password="{{ 1 if cflags.get('has_password') else 0 }}"
                     data-has-totp="{{ 1 if cflags.get('has_totp') else 0 }}"
+                    data-allow-instagrapi="{{ 1 if can_use_instagrapi else 0 }}"
                     title="Reconectar com sessionid ou cookies web">
               {% if acc.status == 'needs_login' %}Reconectar{% else %}Atualizar sessão{% endif %}
             </button>

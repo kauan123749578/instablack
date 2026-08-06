@@ -1184,7 +1184,7 @@
     const radios = form.querySelectorAll('input[name="auth_method"]');
 
     function update() {
-      const method = form.querySelector('input[name="auth_method"]:checked')?.value || "password";
+      const method = form.querySelector('input[name="auth_method"]:checked')?.value || "meta";
       const isMeta = method === "meta";
       if (passwordInput) {
         passwordInput.required = method === "password";
@@ -1504,7 +1504,7 @@
       if (cookies) cookies.value = "";
     }
 
-    function openReconnectModal(accountId, username, hasCookies, hasPassword) {
+    function openReconnectModal(accountId, username, hasCookies, hasPassword, allowInstagrapi) {
       if (!modal) return;
       reconnectTarget = {
         accountId,
@@ -1531,8 +1531,9 @@
             "Preferível colar o JSON completo do Cookie-Editor (sessionid + csrftoken) para Stories com link.";
         }
       }
-      if (pwBtn) pwBtn.hidden = !hasPassword;
-      if (pwDiv) pwDiv.hidden = !hasPassword;
+      const showPassword = !!hasPassword && !!allowInstagrapi;
+      if (pwBtn) pwBtn.hidden = !showPassword;
+      if (pwDiv) pwDiv.hidden = !showPassword;
       modal.classList.add("modal-overlay--open");
       modal.setAttribute("aria-hidden", "false");
       document.body.style.overflow = "hidden";
@@ -1547,7 +1548,8 @@
           id,
           btn.dataset.username || "",
           btn.dataset.hasCookies === "1",
-          btn.dataset.hasPassword === "1"
+          btn.dataset.hasPassword === "1",
+          btn.dataset.allowInstagrapi === "1"
         );
       });
     });

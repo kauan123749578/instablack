@@ -250,6 +250,11 @@
             {% if is_owner and u.owner_private %}
               <span class="og-badge badge-red">Meu</span>
             {% endif %}
+            {% if is_owner and u.id != user.id and not u.is_owner %}
+              <span class="og-badge {% if u.allow_instagrapi %}badge-green{% else %}badge-red{% endif %}" title="API não oficial Instagrapi">
+                {% if u.allow_instagrapi %}Instagrapi ON{% else %}Instagrapi OFF{% endif %}
+              </span>
+            {% endif %}
           </td>
           <td class="og-muted">{{ u.display_name or '—' }}</td>
           <td>{{ row.ig_count }}{% if u.account_limit is not none %} / {{ u.account_limit }}{% endif %}</td>
@@ -306,6 +311,12 @@
                       onsubmit="return confirm('{% if u.is_admin %}Remover admin de @{{ u.username }}?{% else %}Tornar @{{ u.username }} admin?{% endif %}');">
                   <button type="submit" class="btn btn-sm {% if u.is_admin %}{% else %}btn-primary{% endif %}">
                     {% if u.is_admin %}Remover admin{% else %}Tornar admin{% endif %}
+                  </button>
+                </form>
+                <form method="post" action="/admin/users/{{ u.id }}/toggle-instagrapi"
+                      onsubmit="return confirm('{% if u.allow_instagrapi %}Bloquear Instagrapi (senha/sessionid) para @{{ u.username }}?{% else %}Liberar Instagrapi (API não oficial) para @{{ u.username }}?{% endif %}');">
+                  <button type="submit" class="btn btn-sm {% if u.allow_instagrapi %}{% else %}btn-primary{% endif %}">
+                    {% if u.allow_instagrapi %}Bloquear Instagrapi{% else %}Liberar Instagrapi{% endif %}
                   </button>
                 </form>
               </div>
