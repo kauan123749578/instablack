@@ -312,16 +312,25 @@
       <p class="muted" style="margin:0 0 8px;font-size:12px">
         Se não selecionar nenhuma conta, a automação será criada pausada. Depois você edita, escolhe as contas e clica em Ativar.
       </p>
-      <div class="checkbox-row">
+      <div class="account-pick-toolbar">
+        <button type="button" class="btn btn-sm" id="accounts-select-all">Selecionar todas</button>
+        <button type="button" class="btn btn-sm" id="accounts-select-active">Só ativas</button>
+        <button type="button" class="btn btn-sm" id="accounts-clear">Limpar</button>
+        <span class="muted account-pick-hint" id="accounts-pick-count"></span>
+      </div>
+      <div class="checkbox-row account-pick-grid" id="accounts-pick-grid">
         {% for ac in accounts %}
-        <label>
+        {% set st = ac.status or 'active' %}
+        <label class="account-pick account-pick--{{ st }}"
+               title="{% if st == 'needs_login' %}Sessão expirada — reconecte antes de publicar{% elif st == 'proxy_down' %}Proxy offline{% elif st == 'banned' %}Conta banida{% elif st == 'paused' %}Conta pausada{% else %}Conta ativa{% endif %}">
           <input type="checkbox" name="account_ids" value="{{ ac.id }}"
                  data-provider="{{ ac.provider or 'instagrapi' }}"
+                 data-status="{{ st }}"
                  data-warmup-active="{{ '1' if ac.provider == 'meta' and ac.warmup_enabled else '0' }}"
                  data-created-at="{{ ac.created_at.isoformat() if ac.created_at else '' }}">
-          @{{ ac.username }}
+          <span class="account-pick-user">@{{ ac.username }}</span>
           {% if ac.provider == 'meta' %}<span class="og-badge badge-green" style="font-size:10px">API</span>{% endif %}
-          <span class="muted">({{ status_label(ac.status) }})</span>
+          <span class="og-badge {{ status_badge_class(st) }} account-pick-status">{{ status_label(st) }}</span>
         </label>
         {% endfor %}
       </div>

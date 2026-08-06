@@ -2289,6 +2289,36 @@
     const videoList = document.getElementById("video-file-list");
     const submitBtn = document.getElementById("submit-btn");
 
+    function refreshAccountPickCount() {
+      const boxes = form.querySelectorAll('input[name="account_ids"]');
+      const checked = form.querySelectorAll('input[name="account_ids"]:checked');
+      const el = document.getElementById("accounts-pick-count");
+      if (!el || !boxes.length) return;
+      el.textContent = `${checked.length} de ${boxes.length} selecionada(s)`;
+    }
+
+    function setAccountChecks(predicate) {
+      form.querySelectorAll('input[name="account_ids"]').forEach((box) => {
+        box.checked = !!predicate(box);
+      });
+      refreshAccountPickCount();
+      form.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+
+    document.getElementById("accounts-select-all")?.addEventListener("click", () => {
+      setAccountChecks(() => true);
+    });
+    document.getElementById("accounts-select-active")?.addEventListener("click", () => {
+      setAccountChecks((box) => (box.getAttribute("data-status") || "active") === "active");
+    });
+    document.getElementById("accounts-clear")?.addEventListener("click", () => {
+      setAccountChecks(() => false);
+    });
+    form.addEventListener("change", (e) => {
+      if (e.target && e.target.name === "account_ids") refreshAccountPickCount();
+    });
+    refreshAccountPickCount();
+
     const videoExt = /\.(mp4|mov|webm|m4v|mkv)$/i;
     const imageExt = /\.(jpe?g|png|webp)$/i;
     const maxReelFiles = 300;

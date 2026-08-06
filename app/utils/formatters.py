@@ -40,10 +40,10 @@ def status_label(status: str) -> str:
 
 
 def status_badge_class(status: str) -> str:
-    if status in ("active", "success", "running", "done"):
+    if (status in ("active", "success", "running", "done")):
         return "badge-green"
-    if status in ("paused", "skipped", "needs_login", "pending"):
+    if status in ("paused", "skipped", "pending"):
         return "badge-yellow"
-    if status in ("failed", "proxy_down", "banned"):
+    if status in ("failed", "proxy_down", "banned", "needs_login"):
         return "badge-red"
     return "badge-neutral"
