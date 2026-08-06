@@ -366,7 +366,16 @@ def create_app() -> FastAPI:
     @app.exception_handler(RequestValidationError)
     async def form_validation_error(request: Request, exc: RequestValidationError):
         """Evita JSON cru / 500 opaco em formulários multipart de automações."""
-        if request.method == "POST" and "/automations" in request.url.path:
+        path = request.url.path or "/"
+        if request.method == "POST" and path in ("/register", "/login"):
+            log.warning("Validação auth falhou path=%s errors=%s", path, exc.errors())
+            dest = "/register" if path == "/register" else "/login"
+            invite = request.query_params.get("invite") or ""
+            if path == "/register" and invite:
+                dest = f"/register?invite={invite}"
+            # Mantém o código do convite se veio no Referer
+            return RedirectResponse(dest, status_code=303)
+        if request.method == "POST" and "/automations" in path:
             missing_video = any(
                 ("video" in e.get("loc", ()) or "videos" in e.get("loc", ()))
                 for e in exc.errors()

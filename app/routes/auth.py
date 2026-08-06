@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, Form, Request, status
+from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -30,6 +30,15 @@ def _auth_page_ctx(request: Request, **extra):
     }
     ctx.update(extra)
     return ctx
+
+
+async def _form_str(request: Request, key: str, default: str = "") -> str:
+    """Lê campo do form urlencoded (compatível com CSRF middleware que já fez request.form())."""
+    form = await request.form()
+    raw = form.get(key)
+    if raw is None:
+        return default
+    return str(raw)
 
 
 @router.get("/login")
@@ -62,12 +71,12 @@ def login_page(request: Request, db: Session = Depends(get_db)):
 
 
 @router.post("/login")
-def login(
+async def login(
     request: Request,
-    username: str = Form(...),
-    password: str = Form(...),
     db: Session = Depends(get_db),
 ):
+    username = await _form_str(request, "username")
+    password = await _form_str(request, "password")
     username_norm = username.strip().lower()
     allowed, retry_after = check_auth_rate_limit(
         request, action="login", username=username_norm
@@ -128,20 +137,21 @@ def register_page(request: Request):
 
 
 @router.post("/register")
-def register(
+async def register(
     request: Request,
-    username: str = Form(...),
-    password: str = Form(...),
-    password_confirm: str = Form(...),
-    invite_code: str = Form(...),
     db: Session = Depends(get_db),
 ):
     if not settings.allow_registration:
         return RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
 
+    username = await _form_str(request, "username")
+    password = await _form_str(request, "password")
+    password_confirm = await _form_str(request, "password_confirm")
+    invite_code = await _form_str(request, "invite_code")
+
     allowed, retry_after = check_auth_rate_limit(request, action="register")
+    invite_norm = normalize_invite_code(invite_code)
     if not allowed:
-        invite_norm = normalize_invite_code(invite_code)
         return templates.TemplateResponse(
             "register.html",
             _auth_page_ctx(
@@ -154,21 +164,20 @@ def register(
         )
 
     username_norm = username.strip().lower()
-    invite_norm = normalize_invite_code(invite_code)
     error: str | None = None
 
-    if not is_valid_invite_code(db, invite_norm):
+    if not (username or password or invite_code):
+        error = "Formulário incompleto. Recarregue a página do convite e tente de novo."
+    elif not is_valid_invite_code(db, invite_norm):
         error = "Código de convite inválido ou esgotado."
-
-    if not error:
-        if not username_norm or len(username_norm) < 3:
-            error = "Informe um usuário com pelo menos 3 caracteres."
-        elif len(password) < 8:
-            error = "A senha precisa ter pelo menos 8 caracteres."
-        elif password != password_confirm:
-            error = "As senhas não conferem."
-        elif db.scalar(select(User).where(User.username == username_norm)) is not None:
-            error = "Já existe um usuário com esse nome."
+    elif not username_norm or len(username_norm) < 3:
+        error = "Informe um usuário com pelo menos 3 caracteres."
+    elif len(password) < 8:
+        error = "A senha precisa ter pelo menos 8 caracteres."
+    elif password != password_confirm:
+        error = "As senhas não conferem."
+    elif db.scalar(select(User).where(User.username == username_norm)) is not None:
+        error = "Já existe um usuário com esse nome."
 
     if error:
         return templates.TemplateResponse(

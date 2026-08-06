@@ -53,6 +53,25 @@
     <p class="login-footer">Já é membro? <a href="/login">Entrar</a></p>
   </div>
 
-  <script src="/static/app.js?v=4"></script>
+  <script>
+    // Só CSRF no submit — não carregar app.js (SPA) nas páginas públicas.
+    (function () {
+      document.addEventListener("submit", function (ev) {
+        var form = ev.target;
+        if (!form || form.tagName !== "FORM") return;
+        var meta = document.querySelector('meta[name="csrf-token"]');
+        var token = meta && meta.content ? meta.content : "";
+        if (!token) return;
+        var input = form.querySelector('input[name="csrf_token"]');
+        if (!input) {
+          input = document.createElement("input");
+          input.type = "hidden";
+          input.name = "csrf_token";
+          form.appendChild(input);
+        }
+        input.value = token;
+      }, true);
+    })();
+  </script>
 </body>
 </html>
