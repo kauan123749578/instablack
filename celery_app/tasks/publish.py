@@ -1700,6 +1700,17 @@ def _execute_publish(
                 if exc.code == 25 or exc.subcode == 2207050 or _meta_user_restricted(exc):
                     _mark_account_meta_restricted(account_id, str(exc))
                     return {"error": "meta_restricted"}
+                # Story: permissão / tipo de mídia — deixa o motivo no log (já gravado)
+                if (content_type or "") == "story":
+                    log.warning(
+                        "META story fail account=%s @%s code=%s sub=%s err=%s",
+                        account_id,
+                        username,
+                        getattr(exc, "code", None),
+                        getattr(exc, "subcode", None),
+                        exc,
+                    )
+                    return {"error": "meta_story", "detail": str(exc)}
                 raise
             except Exception:
                 _release_meta_inflight(account_id, owner_user_id)

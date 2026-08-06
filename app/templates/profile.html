@@ -12,6 +12,7 @@
 <div class="dash-grid-2 profile-page-grid">
   <div class="profile-left-stack">
     <form method="post" action="/perfil" enctype="multipart/form-data" class="form-card form-grid">
+      <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
       <label>Nome de exibição
         <input type="text" name="display_name" value="{{ user.display_name or '' }}" placeholder="{{ user.username }}">
       </label>
@@ -36,6 +37,7 @@
     </form>
 
     <form method="post" action="/perfil/notificacoes" class="form-card notify-prefs-form" id="notify-prefs-form">
+      <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
       <div class="notify-prefs-head">
         <h3>Notificações</h3>
         <p class="muted">Escolha quais alertas você quer receber no painel e no sino.</p>

@@ -19,6 +19,8 @@ from models.models import PushSubscription, User
 
 router = APIRouter(prefix="/perfil", tags=["perfil"])
 
+_AVATAR_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
+
 
 def _profile_context(
     request: Request,
@@ -56,6 +58,8 @@ def profile_page(
     ok_key = request.query_params.get("ok")
     ok_msg = {
         "notificacoes": "Preferências de notificação salvas!",
+        "perfil": "Perfil atualizado com sucesso!",
+        "senha": "Senha alterada. Outras sessões foram desconectadas.",
     }.get(ok_key or "")
     return templates.TemplateResponse(
         "profile.html",
@@ -86,10 +90,41 @@ async def profile_update(
         elif new_password != new_password_confirm:
             error = "As senhas não conferem."
 
-    if error:
+    avatar_error: str | None = None
+    new_avatar_key: str | None = None
+    if not error and avatar and avatar.filename:
+        ext = Path(avatar.filename).suffix.lower() or ".jpg"
+        if ext not in _AVATAR_EXTS:
+            avatar_error = "Use foto .jpg, .png ou .webp."
+        else:
+            try:
+                try:
+                    avatar.file.seek(0)
+                except Exception:
+                    pass
+                storage = get_storage()
+                key = f"avatars/user/{user.id}{ext}"
+                # R2/local: sobrescreve a chave estável do usuário
+                if hasattr(storage, "save_at_key"):
+                    new_avatar_key = storage.save_at_key(
+                        key,
+                        avatar.file,
+                        content_type={
+                            ".jpg": "image/jpeg",
+                            ".jpeg": "image/jpeg",
+                            ".png": "image/png",
+                            ".webp": "image/webp",
+                        }.get(ext, "image/jpeg"),
+                    )
+                else:
+                    new_avatar_key = storage.save(avatar.file, suggested_ext=ext)
+            except Exception:
+                avatar_error = "Não deu para salvar a foto. Tente outra imagem."
+
+    if error or avatar_error:
         return templates.TemplateResponse(
             "profile.html",
-            _profile_context(request, user, db, error=error),
+            _profile_context(request, user, db, error=error or avatar_error),
             status_code=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -100,15 +135,14 @@ async def profile_update(
         user.session_version = int(getattr(user, "session_version", 0) or 0) + 1
         password_changed = True
 
-    if avatar and avatar.filename:
-        storage = get_storage()
-        ext = Path(avatar.filename).suffix or ".jpg"
-        if user.avatar_key:
+    if new_avatar_key:
+        old_key = user.avatar_key
+        user.avatar_key = new_avatar_key
+        if old_key and old_key != new_avatar_key:
             try:
-                storage.delete(user.avatar_key)
+                get_storage().delete(old_key)
             except Exception:
                 pass
-        user.avatar_key = storage.save(avatar.file, suggested_ext=ext)
 
     db.commit()
     db.refresh(user)
@@ -117,20 +151,9 @@ async def profile_update(
         # Invalida outros cookies; mantém esta sessão atualizada.
         request.session["session_version"] = int(user.session_version or 0)
         request.session["user_id"] = user.id
+        return RedirectResponse("/perfil?ok=senha", status_code=303)
 
-    return templates.TemplateResponse(
-        "profile.html",
-        _profile_context(
-            request,
-            user,
-            db,
-            ok=(
-                "Senha alterada. Outras sessões foram desconectadas."
-                if password_changed
-                else "Perfil atualizado com sucesso!"
-            ),
-        ),
-    )
+    return RedirectResponse("/perfil?ok=perfil", status_code=303)
 
 
 @router.post("/notificacoes")

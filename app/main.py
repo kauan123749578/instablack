@@ -382,12 +382,15 @@ def create_app() -> FastAPI:
                 f"{'.'.join(str(x) for x in e.get('loc', ()))}: {e.get('msg')}"
                 for e in exc.errors()[:4]
             )
+            friendly = detail
+            if any("name" in e.get("loc", ()) for e in exc.errors()):
+                friendly = "Nome da automação ausente ou formulário incompleto. Volte e preencha de novo."
             return HTMLResponse(
                 f"""<!doctype html><html lang="pt-br"><head><meta charset="utf-8">
                 <title>Erro no formulário</title></head><body style="font-family:system-ui;background:#0b0d12;color:#eee;padding:24px">
                 <h1>Não deu para criar a automação</h1>
-                <p>Confira os campos (mídia, contas, intervalo) e tente de novo.</p>
-                <p style="color:#9ca3af;font-size:13px">{detail}</p>
+                <p>Confira os campos (nome, mídia, contas, intervalo) e tente de novo.</p>
+                <p style="color:#9ca3af;font-size:13px">{friendly}</p>
                 <p><a href="/automations/new" style="color:#E8D48B">Voltar</a>
                 · <a href="/automations/new/story" style="color:#E8D48B">Agendar Story</a></p>
                 </body></html>""",
@@ -434,7 +437,7 @@ def create_app() -> FastAPI:
                 path,
                 headers={
                     "Accept-Ranges": "bytes",
-                    "Cache-Control": "private, max-age=3600",
+                    "Cache-Control": "public, max-age=3600",
                 },
             )
 
@@ -452,7 +455,8 @@ def create_app() -> FastAPI:
 
         headers = {
             "Accept-Ranges": "bytes",
-            "Cache-Control": "private, max-age=3600",
+            # public: a Meta precisa baixar a mídia pela URL assinada sem cookie.
+            "Cache-Control": "public, max-age=3600",
         }
         if obj.get("ContentLength") is not None:
             headers["Content-Length"] = str(obj["ContentLength"])
@@ -461,6 +465,19 @@ def create_app() -> FastAPI:
         if obj.get("ETag"):
             headers["ETag"] = str(obj["ETag"])
         media_type = obj.get("ContentType") or "application/octet-stream"
+        # R2 às vezes grava octet-stream; a Meta rejeita Story sem image/* ou video/*.
+        if not media_type or media_type == "application/octet-stream":
+            ext = Path(file_key).suffix.lower()
+            media_type = {
+                ".jpg": "image/jpeg",
+                ".jpeg": "image/jpeg",
+                ".png": "image/png",
+                ".webp": "image/webp",
+                ".mp4": "video/mp4",
+                ".mov": "video/quicktime",
+                ".webm": "video/webm",
+                ".m4v": "video/mp4",
+            }.get(ext, media_type)
 
         if request.method == "HEAD":
             return Response(

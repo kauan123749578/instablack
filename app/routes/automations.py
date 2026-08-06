@@ -820,7 +820,7 @@ def new_calendar_page(
 @router.post("/new/calendar")
 async def create_calendar_automation(
     request: Request,
-    name: str = Form(...),
+    name: str = Form(""),
     content_type: str = Form("reel"),
     caption: str = Form(""),
     story_link: str = Form(""),
@@ -833,6 +833,7 @@ async def create_calendar_automation(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    name = (name or "").strip() or "Reels calendário"
     days = parse_calendar_days(calendar_days)
     times = parse_calendar_times(",".join(calendar_times) if calendar_times else calendar_time)
     time_stored = times_to_storage(times)
@@ -925,37 +926,62 @@ async def create_calendar_automation(
 @router.post("/new")
 async def create_automation(
     request: Request,
-    name: str = Form(...),
-    content_type: str = Form("reel"),
-    caption: str = Form(""),
-    captions_alt: list[str] = Form(default=[]),
-    story_link: str = Form(""),
-    story_sticker_text: str = Form(""),
-    schedule_mode: str = Form("recurring"),
-    interval_minutes: str = Form("60"),
-    calendar_days: str = Form(""),
-    calendar_time: str = Form("10:00"),
-    calendar_times: list[str] = Form(default=[]),
-    account_ids: list[int] = Form(default=[]),
-    video_count: int = Form(0),
-    jitter_enabled: str = Form(""),
-    jitter_minutes: int = Form(10),
-    posts_per_batch: int = Form(0),
-    rest_minutes: int = Form(0),
-    stagger_enabled: str = Form(""),
-    stagger_min_minutes: int = Form(DEFAULT_STAGGER_MIN),
-    stagger_max_minutes: int = Form(DEFAULT_STAGGER_MAX),
-    caption_rotate_by_account: str = Form(""),
-    caption_rotate_by_reel: str = Form(""),
-    thumb: UploadFile | None = File(None),
-    camouflage_enabled: str = Form(""),
-    camouflage_cover: UploadFile | None = File(None),
-    camouflage_opacity_pct: str = Form("15"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    # Lê o multipart uma vez (evita Form(...) + request.form() brigando e
+    # "body.name: Field required" quando o campo some no bind).
+    form = await request.form()
+
+    def _form_str(key: str, default: str = "") -> str:
+        raw = form.get(key)
+        if raw is None:
+            return default
+        return str(raw).strip() if not hasattr(raw, "filename") else default
+
+    def _form_int(key: str, default: int = 0) -> int:
+        try:
+            return int(str(form.get(key) or default).strip() or default)
+        except (TypeError, ValueError):
+            return default
+
+    content_type = _form_str("content_type", "reel") or "reel"
+    name = _form_str("name")
+    if not name:
+        name = {
+            "story": "Story",
+            "photo": "Foto no feed",
+            "reel": "Reels",
+        }.get(content_type, "Automação")
+    caption = normalize_caption_text(_form_str("caption"))
+    story_link = _form_str("story_link")
+    story_sticker_text = _form_str("story_sticker_text")
+    schedule_mode = _form_str("schedule_mode", "recurring") or "recurring"
+    calendar_days = _form_str("calendar_days")
+    calendar_time = _form_str("calendar_time", "10:00") or "10:00"
+    video_count = _form_int("video_count", 0)
+    jitter_enabled = _form_str("jitter_enabled")
+    jitter_minutes = _form_int("jitter_minutes", 10)
+    posts_per_batch = _form_int("posts_per_batch", 0)
+    rest_minutes = _form_int("rest_minutes", 0)
+    stagger_enabled = _form_str("stagger_enabled")
+    stagger_min_minutes = _form_int("stagger_min_minutes", DEFAULT_STAGGER_MIN)
+    stagger_max_minutes = _form_int("stagger_max_minutes", DEFAULT_STAGGER_MAX)
+    caption_rotate_by_account = _form_str("caption_rotate_by_account")
+    caption_rotate_by_reel = _form_str("caption_rotate_by_reel")
+    camouflage_enabled = _form_str("camouflage_enabled")
+    camouflage_opacity_pct = _form_str("camouflage_opacity_pct", "15") or "15"
+
+    account_ids: list[int] = []
+    for raw in form.getlist("account_ids"):
+        try:
+            account_ids.append(int(str(raw)))
+        except (TypeError, ValueError):
+            continue
+
+    calendar_times = [str(x) for x in form.getlist("calendar_times") if str(x).strip()]
     try:
-        interval_minutes_int = int(str(interval_minutes or "60").strip() or "60")
+        interval_minutes_int = int(_form_str("interval_minutes", "60") or "60")
     except (TypeError, ValueError):
         interval_minutes_int = 60
     interval_minutes = interval_minutes_int
@@ -970,7 +996,6 @@ async def create_automation(
         caption_rotate_by_account=caption_rotate_by_account,
         caption_rotate_by_reel=caption_rotate_by_reel,
     )
-    caption = normalize_caption_text(caption)
     captions_json = None  # rotação removida — só legenda fixa
     submitted_cal_times: list[str] = []
     for raw_time in (calendar_times or [calendar_time]):
@@ -993,8 +1018,13 @@ async def create_automation(
         elif not cal_times:
             error = "Informe pelo menos um horário de publicação."
 
-    # Só via request.form() — evita perder arquivos do input multiple
-    form = await request.form()
+    thumb = form.get("thumb")
+    if thumb is not None and not getattr(thumb, "filename", None):
+        thumb = None
+    camouflage_cover = form.get("camouflage_cover")
+    if camouflage_cover is not None and not getattr(camouflage_cover, "filename", None):
+        camouflage_cover = None
+
     upload_files: list[UploadFile] = []
     if not error:
         if content_type == "reel":
@@ -1025,7 +1055,7 @@ async def create_automation(
                 error = "Selecione no máximo 30 mídias por automação de Stories."
             elif content_type == "story":
                 allowed_story_ext = {
-                    ".jpg", ".jpeg", ".png", ".webp", ".heic",
+                    ".jpg", ".jpeg", ".png", ".webp",
                     ".mp4", ".mov", ".webm",
                 }
                 bad = [
@@ -1034,7 +1064,10 @@ async def create_automation(
                     if Path(f.filename or "").suffix.lower() not in allowed_story_ext
                 ]
                 if bad:
-                    error = f"Formato inválido para Story: {', '.join(bad)}"
+                    error = (
+                        f"Formato inválido para Story: {', '.join(bad)}. "
+                        "Use JPG/PNG/WebP ou MP4/MOV (HEIC do iPhone não funciona na API Meta)."
+                    )
 
     if not error and content_type == "story" and schedule_mode == "calendar":
         if len(submitted_cal_times) != len(upload_files):
@@ -1373,7 +1406,7 @@ async def create_automation(
 
 @router.post("/new/reel-draft")
 async def create_reel_upload_draft(
-    name: str = Form(...),
+    name: str = Form(""),
     content_type: str = Form("reel"),
     caption: str = Form(""),
     captions_alt: list[str] = Form(default=[]),
@@ -1400,6 +1433,7 @@ async def create_reel_upload_draft(
     user: User = Depends(get_current_user),
 ):
     """Cria primeiro o rascunho leve; os vídeos chegam depois em lotes."""
+    name = (name or "").strip() or "Reels"
     if content_type != "reel":
         return JSONResponse({"error": "Upload em lotes disponível apenas para Reels."}, status_code=400)
     if schedule_mode not in ("now", "recurring", "calendar"):

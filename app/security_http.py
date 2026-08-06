@@ -91,6 +91,8 @@ async def extract_csrf_token(request: Request) -> str | None:
         return header.strip()
 
     ctype = (request.headers.get("content-type") or "").lower()
+    # Só parseia body em form urlencoded/multipart se não veio header
+    # (necessário para submit nativo com input hidden csrf_token).
     if "application/x-www-form-urlencoded" in ctype or "multipart/form-data" in ctype:
         try:
             form = await request.form()

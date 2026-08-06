@@ -2343,7 +2343,9 @@
 
     function draftFormData() {
       const data = new FormData();
-      ["name", "content_type", "caption", "story_link", "story_sticker_text", "interval_minutes", "jitter_minutes", "posts_per_batch", "rest_minutes", "stagger_min_minutes", "stagger_max_minutes"].forEach((name) => {
+      const nameField = form.querySelector('[name="name"]');
+      data.append("name", (nameField?.value || "").trim() || "Reels");
+      ["content_type", "caption", "story_link", "story_sticker_text", "interval_minutes", "jitter_minutes", "posts_per_batch", "rest_minutes", "stagger_min_minutes", "stagger_max_minutes"].forEach((name) => {
         const field = form.querySelector(`[name="${name}"]`);
         if (field) data.append(name, field.value || "");
       });
