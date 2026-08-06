@@ -29,9 +29,12 @@
   <a href="/aquecimento" data-nav="/aquecimento" class="btn btn-sm">Abrir Aquecimento (ligar/desligar + explicação)</a>
 </div>
 
-<form method="post" action="/automations/new" enctype="multipart/form-data" class="form-card form-card--premium form-grid" id="automation-form">
+<form method="post" action="{% if default_content_type == 'story' %}/automations/new/story{% else %}/automations/new{% endif %}" enctype="multipart/form-data" class="form-card form-card--premium form-grid" id="automation-form">
   <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
   <input type="hidden" name="video_count" id="video-count-input" value="0">
+  {% if default_content_type == 'story' %}
+  <input type="hidden" name="content_type" value="story">
+  {% endif %}
 
   <section class="form-section">
     <header class="form-section-head">
@@ -46,7 +49,7 @@
     </label>
 
     <label>Tipo de conteúdo
-      <select name="content_type" id="content-type" required>
+      <select {% if default_content_type == 'story' %}id="content-type"{% else %}name="content_type" id="content-type"{% endif %} required {% if default_content_type == 'story' %}data-locked="story"{% endif %}>
         <option value="reel" {% if default_content_type == 'reel' %}selected{% endif %}>Reels (vídeo)</option>
         <option value="story" {% if default_content_type == 'story' %}selected{% endif %}>Story (foto ou vídeo)</option>
         <option value="photo" {% if default_content_type == 'photo' %}selected{% endif %}>Foto no feed</option>

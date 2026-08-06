@@ -381,7 +381,7 @@ def create_app() -> FastAPI:
                 for e in exc.errors()
             )
             if missing_video:
-                dest = "/automations/new/story" if "/story" in request.url.path else "/automations/new"
+                dest = "/automations/new/story" if "/story" in (request.url.path or "") else "/automations/new"
                 return RedirectResponse(
                     f"{dest}?error=video",
                     status_code=303,
@@ -394,13 +394,14 @@ def create_app() -> FastAPI:
             friendly = detail
             if any("name" in e.get("loc", ()) for e in exc.errors()):
                 friendly = "Nome da automação ausente ou formulário incompleto. Volte e preencha de novo."
+            back = "/automations/new/story" if "/story" in (request.url.path or "") else "/automations/new"
             return HTMLResponse(
                 f"""<!doctype html><html lang="pt-br"><head><meta charset="utf-8">
                 <title>Erro no formulário</title></head><body style="font-family:system-ui;background:#0b0d12;color:#eee;padding:24px">
                 <h1>Não deu para criar a automação</h1>
                 <p>Confira os campos (nome, mídia, contas, intervalo) e tente de novo.</p>
                 <p style="color:#9ca3af;font-size:13px">{friendly}</p>
-                <p><a href="/automations/new" style="color:#E8D48B">Voltar</a>
+                <p><a href="{back}" style="color:#E8D48B">Voltar</a>
                 · <a href="/automations/new/story" style="color:#E8D48B">Agendar Story</a></p>
                 </body></html>""",
                 status_code=400,

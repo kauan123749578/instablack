@@ -143,5 +143,6 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 | 2026-08-05 | deps | `pip-audit` limpo: FastAPI 0.141.1 + Starlette ≥1.3.1, Jinja2 3.1.6, multipart 0.0.31, dotenv 1.2.2. |
 | 2026-08-05 | brand | Tema azul → **preto + dourado** (`#D4AF37`); logo fantasma `logo-ghost.png` / favicon. |
 | 2026-08-06 | hotfix | Starlette 1.x quebrou `TemplateResponse(name, ctx)` → 500 no `/login`. Compat em `app/templating.py`. |
+| 2026-08-06 | bug | Story: form postava em `/automations/new` → erro/re-render virava tela de Reels. Fix: POST `/new/story` + `content_type` forçado + action do form. |
 
 <!-- Ao corrigir bugs de produção: acrescente uma linha acima e, se for armadilha nova, uma subseção em "O que já quebrou". -->

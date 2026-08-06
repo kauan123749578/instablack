@@ -930,6 +930,18 @@
         window.location.href = "/automations/new/story";
         return;
       }
+      // Na página de Story, trocar para Reels/Foto vai para o formulário certo
+      // (evita postar Story em /new e “voltar” pra tela de Reels no erro).
+      if (
+        window.location.pathname.endsWith("/story") &&
+        sel.value !== "story"
+      ) {
+        window.location.href =
+          sel.value === "photo"
+            ? "/automations/new?type=photo"
+            : "/automations/new";
+        return;
+      }
       update();
     });
     update();

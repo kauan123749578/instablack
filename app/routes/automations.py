@@ -356,6 +356,10 @@ def new_story_page(
         )
         .order_by(InstagramAccount.username.asc())
     ).all()
+    err_key = request.query_params.get("error")
+    err_msg = {
+        "video": "Selecione a mídia do Story (foto JPG/PNG/WebP ou vídeo MP4/MOV).",
+    }.get(err_key or "")
     return templates.TemplateResponse(
         "new_automation.html",
         {
@@ -369,7 +373,7 @@ def new_story_page(
             "anti_farm_prefs": get_anti_farm_prefs(user),
             "content_types": CONTENT_TYPES,
             "default_content_type": "story",
-            "error": None,
+            "error": err_msg or None,
         },
     )
 
@@ -924,6 +928,7 @@ async def create_calendar_automation(
 
 
 @router.post("/new")
+@router.post("/new/story")
 async def create_automation(
     request: Request,
     db: Session = Depends(get_db),
@@ -945,7 +950,11 @@ async def create_automation(
         except (TypeError, ValueError):
             return default
 
-    content_type = _form_str("content_type", "reel") or "reel"
+    # POST em /new/story sempre é Story — evita cair no fluxo/tela de Reels
+    # quando o select some no multipart ou a URL de erro vira /automations/new.
+    path = (request.url.path or "").rstrip("/")
+    force_story = path.endswith("/new/story")
+    content_type = "story" if force_story else (_form_str("content_type", "reel") or "reel")
     name = _form_str("name")
     if not name:
         name = {
