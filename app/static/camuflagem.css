@@ -182,8 +182,8 @@
 .camu-mode.is-active i { color: var(--primary-hover, #E8C547); }
 
 .camu-mode.is-hot {
-  border-color: rgba(61, 130, 255, 0.65);
-  background: linear-gradient(135deg, rgba(212, 175, 55, 0.22), rgba(13, 79, 212, 0.1));
+  border-color: rgba(212, 175, 55, 0.65);
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.22), rgba(166, 124, 0, 0.1));
 }
 
 .camu-mode.is-hot i { color: #F0D060; }
@@ -225,8 +225,8 @@
 }
 
 .camu-drop--cover {
-  border-color: rgba(61, 130, 255, 0.4);
-  background: linear-gradient(180deg, rgba(61, 130, 255, 0.08), rgba(212, 175, 55, 0.02));
+  border-color: rgba(212, 175, 55, 0.4);
+  background: linear-gradient(180deg, rgba(212, 175, 55, 0.08), rgba(212, 175, 55, 0.02));
 }
 
 .camu-drop--cover i { color: var(--primary-hover, #E8C547); }

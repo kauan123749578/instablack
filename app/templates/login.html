@@ -1,14 +1,14 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="pt-br">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Entrar · instablack</title>
+  <title>Entrar Â· instablack</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/style.css?v=50" />
+  <link rel="stylesheet" href="/static/style.css?v=51" />
   <meta name="csrf-token" content="{{ csrf_token or request.session.get('csrf_token', '') }}" />
 </head>
 <body class="login-body">
@@ -24,17 +24,17 @@
     </div>
     <span class="login-badge">Acesso privado</span>
     <h1>Bem-vindo de volta</h1>
-    <p class="subtitle">Painel exclusivo de automação e publicação. Entre com suas credenciais.</p>
+    <p class="subtitle">Painel exclusivo de automaÃ§Ã£o e publicaÃ§Ã£o. Entre com suas credenciais.</p>
 
     {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
 
     <form method="post" action="/login">
       <input type="hidden" name="csrf_token" value="{{ csrf_token or request.session.get('csrf_token', '') }}">
-      <label>Usuário
-        <input type="text" name="username" required autofocus autocomplete="username" placeholder="seu usuário">
+      <label>UsuÃ¡rio
+        <input type="text" name="username" required autofocus autocomplete="username" placeholder="seu usuÃ¡rio">
       </label>
       <label>Senha
-        <input type="password" name="password" required autocomplete="current-password" placeholder="••••••••">
+        <input type="password" name="password" required autocomplete="current-password" placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢">
       </label>
       <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:8px;padding:14px">Entrar no painel</button>
     </form>

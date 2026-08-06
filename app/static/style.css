@@ -277,11 +277,11 @@ a:hover { color: var(--primary-hover); }
 .btn-calendar {
   display: flex; align-items: center; gap: 10px;
   padding: 10px 16px; margin-bottom: 10px; border-radius: 12px;
-  background: rgba(131, 58, 180, 0.12); border: 1px solid rgba(131, 58, 180, 0.35);
-  color: #c4b5fd; font-weight: 600; font-size: 13px;
+  background: rgba(212, 175, 55, 0.12); border: 1px solid rgba(212, 175, 55, 0.35);
+  color: #F0D060; font-weight: 600; font-size: 13px;
   transition: background 0.15s;
 }
-.btn-calendar:hover { background: rgba(131, 58, 180, 0.2); color: #ddd6fe; }
+.btn-calendar:hover { background: rgba(212, 175, 55, 0.2); color: #FFF3C4; }
 
 /* Lucide — ícones profissionais */
 .lucide, [data-lucide] { flex-shrink: 0; stroke-width: 1.75; }
@@ -358,11 +358,11 @@ a:hover { color: var(--primary-hover); }
 .btn-calendar-outline {
   display: inline-flex; align-items: center; gap: 8px;
   padding: 9px 16px; border-radius: 10px;
-  background: rgba(131, 58, 180, 0.1); border: 1px solid rgba(131, 58, 180, 0.35);
-  color: #c4b5fd; font-weight: 600; font-size: 13px;
+  background: rgba(212, 175, 55, 0.1); border: 1px solid rgba(212, 175, 55, 0.35);
+  color: #F0D060; font-weight: 600; font-size: 13px;
 }
-.btn-calendar-outline:hover { background: rgba(131, 58, 180, 0.18); color: #ddd6fe; }
-.type-badge--cal { background: rgba(131,58,180,0.2); color: #c4b5fd; }
+.btn-calendar-outline:hover { background: rgba(212, 175, 55, 0.18); color: #FFF3C4; }
+.type-badge--cal { background: rgba(212,175,55,0.2); color: #F0D060; }
 .auto-card { background: var(--card-gradient); border: 1px solid var(--border-pink); border-radius: 0; padding: 18px; box-shadow: 0 8px 24px rgba(212, 175, 55, 0.08); }
 .btn-story-outline .lucide, .page-header-actions .btn-primary .lucide { width: 16px; height: 16px; }
 .page-header-sub { margin: 4px 0 0; font-size: 13px; }
@@ -680,7 +680,7 @@ body.privacy-blur-handles .og-dash-list-body > strong:not(.ig-handle) {
 /* Gauge */
 .gauge-wrap { display: flex; flex-direction: column; align-items: center; margin-top: 4px; max-width: 100%; }
 .gauge-svg { width: 130px; height: 72px; max-width: 130px; max-height: 72px; }
-.gauge-track { fill: none; stroke: rgba(17,48,254,0.12); stroke-width: 10; stroke-linecap: round; }
+.gauge-track { fill: none; stroke: rgba(212,175,55,0.12); stroke-width: 10; stroke-linecap: round; }
 .gauge-fill { fill: none; stroke: var(--og-purple, #D4AF37); stroke-width: 10; stroke-linecap: round; transition: stroke-dashoffset 1s ease; }
 .gauge-value { font-size: 22px; font-weight: 700; margin-top: -6px; }
 
@@ -692,8 +692,8 @@ body.privacy-blur-handles .og-dash-list-body > strong:not(.ig-handle) {
 .chart-sub { font-size: 10px; letter-spacing: 0.06em; }
 .chart-wrap { position: relative; height: 280px; }
 .chart-svg { width: 100%; height: 100%; }
-.chart-bar { fill: rgba(17,48,254,0.2); transition: fill 0.2s; cursor: pointer; }
-.chart-bar:hover { fill: rgba(17,48,254,0.55); }
+.chart-bar { fill: rgba(212,175,55,0.2); transition: fill 0.2s; cursor: pointer; }
+.chart-bar:hover { fill: rgba(212,175,55,0.55); }
 .chart-line { fill: none; stroke: var(--primary-hover); stroke-width: 2; stroke-linecap: round; }
 .chart-label { fill: var(--muted); font-size: 11px; }
 .chart-tooltip {
@@ -707,8 +707,8 @@ body.privacy-blur-handles .og-dash-list-body > strong:not(.ig-handle) {
 /* Activity / instances */
 .badge-live {
   font-size: 10px; padding: 3px 8px; border-radius: 0;
-  background: rgba(17,48,254,0.12); color: var(--primary-hover);
-  border: 1px solid rgba(17,48,254,0.25);
+  background: rgba(212,175,55,0.12); color: var(--primary-hover);
+  border: 1px solid rgba(212,175,55,0.25);
 }
 .activity-list {
   list-style: none; padding: 0; margin: 0; max-height: 240px; overflow-y: auto;
@@ -817,7 +817,7 @@ body.privacy-blur-handles .og-dash-list-body > strong:not(.ig-handle) {
   min-height: 110px;
   padding: 18px 16px;
   border-radius: 14px;
-  border: 1px dashed rgba(147,197,253,0.35);
+  border: 1px dashed rgba(240, 208, 96,0.35);
   background: linear-gradient(180deg, rgba(212,175,55,0.1), rgba(212,175,55,0.03));
   color: rgba(255,255,255,0.78);
   font-size: 13px;
@@ -869,7 +869,7 @@ body.privacy-blur-handles .og-dash-list-body > strong:not(.ig-handle) {
   font-size: 12px;
   color: var(--muted);
 }
-.auto-playlist-preview .is-current { color: #38bdf8; font-weight: 600; }
+.auto-playlist-preview .is-current { color: #E8C547; font-weight: 600; }
 .auto-playlist-more { margin: 6px 0 0; font-size: 11px; }
 .official-api-card {
   display: block;
@@ -993,7 +993,7 @@ input[type="checkbox"]:checked::after {
 .table { width: 100%; border-collapse: collapse; }
 .table th, .table td { padding: 11px 14px; text-align: left; border-bottom: 1px solid var(--border); }
 .table th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
-.table tr:hover td { background: rgba(17,48,254,0.03); }
+.table tr:hover td { background: rgba(212,175,55,0.03); }
 
 /* Auto cards */
 .auto-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
@@ -1143,7 +1143,7 @@ input[type="checkbox"]:checked::after {
 .auth-method-group-title {
   font-size: 12px;
   font-weight: 600;
-  color: #60a5fa;
+  color: #E8C547;
   margin-bottom: 8px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -1174,7 +1174,7 @@ input[type="checkbox"]:checked::after {
 .auth-method-chip:has(input:checked) {
   border-color: #E8C547;
   background: linear-gradient(155deg, rgba(212, 175, 55, 0.32) 0%, rgba(8, 16, 36, 0.9) 100%);
-  box-shadow: 0 0 0 1px rgba(61, 130, 255, 0.35), 0 10px 28px rgba(212, 175, 55, 0.22);
+  box-shadow: 0 0 0 1px rgba(212, 175, 55, 0.35), 0 10px 28px rgba(212, 175, 55, 0.22);
 }
 .auth-method-chip input {
   position: absolute;
@@ -1191,10 +1191,10 @@ input[type="checkbox"]:checked::after {
 }
 .auth-method-chip-desc {
   font-size: 11px;
-  color: #8aa4c8;
+  color: #C9B87A;
   line-height: 1.35;
 }
-.auth-method-chip:has(input:checked) .auth-method-chip-desc { color: #b8d4ff; }
+.auth-method-chip:has(input:checked) .auth-method-chip-desc { color: #F5E6A8; }
 .form-card:has(input[name="auth_method"][value="meta"]:checked) #non-meta-fields { display: none; }
 .form-card:has(input[name="auth_method"][value="meta"]:checked) #meta-wrap { display: block; }
 
@@ -1204,7 +1204,7 @@ input[type="checkbox"]:checked::after {
   background:
     linear-gradient(145deg, rgba(212, 175, 55, 0.18) 0%, rgba(8, 12, 24, 0.95) 42%, rgba(3, 6, 14, 0.98) 100%);
   box-shadow:
-    0 0 0 1px rgba(61, 130, 255, 0.12) inset,
+    0 0 0 1px rgba(212, 175, 55, 0.12) inset,
     0 18px 48px rgba(212, 175, 55, 0.18);
 }
 .form-card--connect h3 {
@@ -1439,7 +1439,7 @@ input[type="checkbox"]:checked::after {
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
 }
 .auth-panel-bar {
-  background: #1a73e8;
+  background: #D4AF37;
   color: #fff;
   padding: 12px 16px;
   text-align: center;
@@ -1477,8 +1477,8 @@ input[type="checkbox"]:checked::after {
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 .auth-entry:hover {
-  border-color: #1a73e8;
-  box-shadow: 0 2px 8px rgba(26, 115, 232, 0.12);
+  border-color: #D4AF37;
+  box-shadow: 0 2px 8px rgba(212, 175, 55, 0.12);
 }
 .auth-entry-main { flex: 1; min-width: 0; }
 .auth-entry-label {
@@ -1496,7 +1496,7 @@ input[type="checkbox"]:checked::after {
   font-size: 28px;
   font-weight: 700;
   letter-spacing: 0.18em;
-  color: #1a73e8;
+  color: #D4AF37;
   font-variant-numeric: tabular-nums;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
@@ -1517,7 +1517,7 @@ input[type="checkbox"]:checked::after {
 }
 .auth-ring-fg {
   fill: none;
-  stroke: #1a73e8;
+  stroke: #D4AF37;
   stroke-width: 3.5;
   stroke-linecap: round;
   transition: stroke-dashoffset 0.35s linear, stroke 0.2s;

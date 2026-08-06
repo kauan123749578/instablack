@@ -1,13 +1,13 @@
-{% extends "base.html" %}
-{% block title %}{% if default_content_type == 'story' %}Agendar Story{% else %}Nova automação{% endif %}{% endblock %}
+﻿{% extends "base.html" %}
+{% block title %}{% if default_content_type == 'story' %}Agendar Story{% else %}Nova automaÃ§Ã£o{% endif %}{% endblock %}
 {% block content %}
-<link rel="stylesheet" href="/static/camuflagem.css?v=3" />
+<link rel="stylesheet" href="/static/camuflagem.css?v=5" />
 <div class="page-header">
-  <h2>{% if default_content_type == 'story' %}Agendar Story{% else %}Nova automação{% endif %}</h2>
+  <h2>{% if default_content_type == 'story' %}Agendar Story{% else %}Nova automaÃ§Ã£o{% endif %}</h2>
   {% if default_content_type == 'story' %}
-  <p class="muted page-header-sub">Agende ou poste Story (foto/vídeo). Link clicável só com login/senha ou cookies — não com API Meta.</p>
+  <p class="muted page-header-sub">Agende ou poste Story (foto/vÃ­deo). Link clicÃ¡vel sÃ³ com login/senha ou cookies â€” nÃ£o com API Meta.</p>
   {% else %}
-  <p class="muted page-header-sub">Reels: selecione vários vídeos e uma capa única.</p>
+  <p class="muted page-header-sub">Reels: selecione vÃ¡rios vÃ­deos e uma capa Ãºnica.</p>
   {% endif %}
 </div>
 
@@ -15,18 +15,18 @@
 
 <div class="panel" style="margin-bottom:16px">
   <p style="margin:0 0 8px;font-size:14px">
-    <strong>Proteção anti-farm</strong>
-    — espaçamento entre contas, vídeos diferentes e aquecimento Meta.
+    <strong>ProteÃ§Ã£o anti-farm</strong>
+    â€” espaÃ§amento entre contas, vÃ­deos diferentes e aquecimento Meta.
     {% set af = anti_farm_prefs or {} %}
     <span class="muted" style="font-size:12px">
       Agora:
-      espaçamento {% if af.get('stagger_enabled', true) %}ligado{% else %}desligado{% endif %} ·
-      vídeos {% if af.get('media_rotate_enabled', true) %}ligado{% else %}desligado{% endif %} ·
+      espaÃ§amento {% if af.get('stagger_enabled', true) %}ligado{% else %}desligado{% endif %} Â·
+      vÃ­deos {% if af.get('media_rotate_enabled', true) %}ligado{% else %}desligado{% endif %} Â·
       aquecimento {% if af.get('meta_warmup_enabled', true) %}ligado{% else %}desligado{% endif %}.
-      Legenda é fixa (mesma em todos os Reels/contas).
+      Legenda Ã© fixa (mesma em todos os Reels/contas).
     </span>
   </p>
-  <a href="/aquecimento" data-nav="/aquecimento" class="btn btn-sm">Abrir Aquecimento (ligar/desligar + explicação)</a>
+  <a href="/aquecimento" data-nav="/aquecimento" class="btn btn-sm">Abrir Aquecimento (ligar/desligar + explicaÃ§Ã£o)</a>
 </div>
 
 <form method="post" action="/automations/new" enctype="multipart/form-data" class="form-card form-card--premium form-grid" id="automation-form">
@@ -36,50 +36,50 @@
     <header class="form-section-head">
       <i data-lucide="file-text"></i>
       <div>
-        <h3>Conteúdo</h3>
-        <p>Nome, tipo e legenda da publicação</p>
+        <h3>ConteÃºdo</h3>
+        <p>Nome, tipo e legenda da publicaÃ§Ã£o</p>
       </div>
     </header>
-    <label>Nome da automação
+    <label>Nome da automaÃ§Ã£o
       <input type="text" name="name" required placeholder="{% if default_content_type == 'story' %}Ex.: Story dias 1, 15 e 30{% else %}Ex.: Reels a cada 1 hora{% endif %}">
     </label>
 
-    <label>Tipo de conteúdo
+    <label>Tipo de conteÃºdo
       <select name="content_type" id="content-type" required>
-        <option value="reel" {% if default_content_type == 'reel' %}selected{% endif %}>Reels (vídeo)</option>
-        <option value="story" {% if default_content_type == 'story' %}selected{% endif %}>Story (foto ou vídeo)</option>
+        <option value="reel" {% if default_content_type == 'reel' %}selected{% endif %}>Reels (vÃ­deo)</option>
+        <option value="story" {% if default_content_type == 'story' %}selected{% endif %}>Story (foto ou vÃ­deo)</option>
         <option value="photo" {% if default_content_type == 'photo' %}selected{% endif %}>Foto no feed</option>
       </select>
     </label>
 
     <div id="caption-wrap">
       <label>Legenda <span class="muted" id="caption-required-mark" style="color:#f87171">*</span>
-        <textarea name="caption" id="caption-field" rows="10" placeholder="Cole aqui a legenda do Reel…" required></textarea>
+        <textarea name="caption" id="caption-field" rows="10" placeholder="Cole aqui a legenda do Reelâ€¦" required></textarea>
       </label>
       <p class="muted" style="margin:8px 0 0;font-size:13px">
-        <strong>Obrigatória</strong> para Reel e Foto. Fixa: todos usam o mesmo texto.
-        Sem legenda <strong>não cria</strong> e <strong>não publica</strong>.
+        <strong>ObrigatÃ³ria</strong> para Reel e Foto. Fixa: todos usam o mesmo texto.
+        Sem legenda <strong>nÃ£o cria</strong> e <strong>nÃ£o publica</strong>.
       </p>
     </div>
 
     <div id="story-link-wrap">
       <p class="muted" style="margin:0 0 10px;font-size:12px;line-height:1.45">
-        <strong>Link clicável no Story</strong> funciona só com
+        <strong>Link clicÃ¡vel no Story</strong> funciona sÃ³ com
         <strong>login/senha (instagrapi)</strong> ou <strong>API web (cookies)</strong>.
         Contas da <strong>API oficial (Meta)</strong> publicam o Story normalmente,
-        mas <strong>sem</strong> sticker de link — a Meta não oferece esse recurso.
+        mas <strong>sem</strong> sticker de link â€” a Meta nÃ£o oferece esse recurso.
       </p>
       <div id="story-link-fields">
-        <label>Link do Story (URL clicável)
+        <label>Link do Story (URL clicÃ¡vel)
           <input type="url" name="story_link" id="story-link-input" placeholder="https://seusite.com/pagina">
         </label>
-        <label style="margin-top:10px">Texto do botão (opcional)
+        <label style="margin-top:10px">Texto do botÃ£o (opcional)
           <input type="text" name="story_sticker_text" id="story-sticker-input" maxlength="60" placeholder="Ex.: GOOGLE.COM ou CLIQUE AQUI">
         </label>
       </div>
       <p class="muted" id="story-link-meta-only" style="display:none;margin-top:8px;font-size:12px;color:#f59e0b">
-        Só contas API Meta selecionadas — campos de link ocultos. O Story será publicado
-        <strong>sem link</strong> (foto/vídeo ok). Para link, use conta login/senha ou cookies.
+        SÃ³ contas API Meta selecionadas â€” campos de link ocultos. O Story serÃ¡ publicado
+        <strong>sem link</strong> (foto/vÃ­deo ok). Para link, use conta login/senha ou cookies.
       </p>
     </div>
   </section>
@@ -88,26 +88,26 @@
     <header class="form-section-head">
       <i data-lucide="clapperboard"></i>
       <div>
-        <h3>Mídia</h3>
+        <h3>MÃ­dia</h3>
         <p>Arquivos e capa enviados direto ao armazenamento</p>
       </div>
     </header>
-    <label id="media-label" class="dropzone-field">Vídeos Reels (.mp4) <strong style="color:var(--red)">*</strong>
+    <label id="media-label" class="dropzone-field">VÃ­deos Reels (.mp4) <strong style="color:var(--red)">*</strong>
       <div class="dropzone">
         <i data-lucide="upload-cloud"></i>
-        <span>Toque para selecionar ou arraste os vídeos</span>
+        <span>Toque para selecionar ou arraste os vÃ­deos</span>
         <input type="file" id="video-input" name="videos" accept="video/mp4,video/quicktime,video/webm" multiple>
       </div>
-      <span id="video-file-name" class="muted" style="display:block;margin-top:4px;font-size:12px">Nenhum vídeo selecionado</span>
-      <span id="reel-upload-help" class="muted" style="display:block;margin-top:4px;font-size:12px">O rascunho é criado primeiro e os arquivos sobem em paralelo.</span>
+      <span id="video-file-name" class="muted" style="display:block;margin-top:4px;font-size:12px">Nenhum vÃ­deo selecionado</span>
+      <span id="reel-upload-help" class="muted" style="display:block;margin-top:4px;font-size:12px">O rascunho Ã© criado primeiro e os arquivos sobem em paralelo.</span>
       <ul id="video-file-list" class="video-file-list muted" style="display:none;margin:6px 0 0;padding-left:18px;font-size:12px"></ul>
     </label>
 
     <div id="thumb-wrap">
-      <label class="dropzone-field">Capa para <strong>todos</strong> os Reels (.jpg/.png — 9:16)
+      <label class="dropzone-field">Capa para <strong>todos</strong> os Reels (.jpg/.png â€” 9:16)
         <div class="dropzone dropzone--sm">
           <i data-lucide="image-plus"></i>
-          <span>Capa opcional (mesma imagem em todos os vídeos)</span>
+          <span>Capa opcional (mesma imagem em todos os vÃ­deos)</span>
           <input type="file" id="thumb-input" name="thumb" accept="image/jpeg,image/png,image/webp">
         </div>
         <img id="thumb-preview" style="display:none;margin-top:8px;max-width:120px;border-radius:8px" alt="Preview">
@@ -120,13 +120,13 @@
         <div>
           <h3 style="margin:0;font-size:15px">Camuflagem do Reel</h3>
           <p class="muted" style="margin:4px 0 0;font-size:12px">
-            A mesma imagem é misturada em <strong>todos</strong> os Reels no momento do post.
+            A mesma imagem Ã© misturada em <strong>todos</strong> os Reels no momento do post.
           </p>
         </div>
       </header>
       <label class="checkbox-row" style="margin-bottom:12px">
         <input type="checkbox" id="camouflage-enabled" name="camouflage_enabled" value="1">
-        <strong>Aplicar camuflagem</strong> em todos os Reels desta automação
+        <strong>Aplicar camuflagem</strong> em todos os Reels desta automaÃ§Ã£o
       </label>
       <div id="camouflage-options" style="display:none">
         <label class="dropzone-field">Imagem de camuflagem <strong style="color:var(--red)">*</strong>
@@ -136,7 +136,7 @@
             <input type="file" id="camouflage-cover-input" name="camouflage_cover" accept="image/jpeg,image/png,image/webp">
           </div>
         </label>
-        <label style="margin-top:12px;display:block">Opacidade (recomendado 20–30%)
+        <label style="margin-top:12px;display:block">Opacidade (recomendado 20â€“30%)
           <div style="display:flex;align-items:center;gap:12px">
             <input type="range" id="camouflage-opacity" name="camouflage_opacity_pct" min="5" max="40" value="25" style="flex:1">
             <strong id="camouflage-opacity-val" style="min-width:42px;color:var(--primary-hover,#E8C547)">25%</strong>
@@ -147,7 +147,7 @@
           <div class="camu-phone-screen" id="camouflage-preview">
             <div class="camu-preview-empty" id="camouflage-preview-empty">
               <strong>Preview</strong>
-              Selecione um vídeo + imagem de camuflagem.
+              Selecione um vÃ­deo + imagem de camuflagem.
             </div>
           </div>
         </div>
@@ -161,7 +161,7 @@
       <i data-lucide="clock-3"></i>
       <div>
         <h3>Agendamento</h3>
-        <p>Quando e com que frequência publicar</p>
+        <p>Quando e com que frequÃªncia publicar</p>
       </div>
     </header>
 
@@ -171,7 +171,7 @@
       {% if default_content_type == 'story' %}
       <label class="radio-pill">
         <input type="radio" name="schedule_mode" value="calendar" id="mode-calendar" checked>
-        <span>Agendar por calendário + horário</span>
+        <span>Agendar por calendÃ¡rio + horÃ¡rio</span>
       </label>
       <label class="radio-pill">
         <input type="radio" name="schedule_mode" value="now" id="mode-now">
@@ -180,7 +180,7 @@
       {% else %}
       <label class="radio-pill">
         <input type="radio" name="schedule_mode" value="recurring" id="mode-recurring" checked>
-        <span>Rodar em intervalo (inicia já)</span>
+        <span>Rodar em intervalo (inicia jÃ¡)</span>
       </label>
       <label class="radio-pill">
         <input type="radio" name="schedule_mode" value="now" id="mode-now">
@@ -188,7 +188,7 @@
       </label>
       <label class="radio-pill">
         <input type="radio" name="schedule_mode" value="calendar" id="mode-calendar">
-        <span>Agendar por calendário</span>
+        <span>Agendar por calendÃ¡rio</span>
       </label>
       {% endif %}
       </div>
@@ -206,91 +206,91 @@
           {% endfor %}
         </select>
         <span class="muted" id="meta-interval-hint" style="display:none;margin-top:6px;font-size:12px;color:#f59e0b">
-          Contas API Meta: mínimo <strong>1 hora</strong> entre posts na <strong>mesma conta</strong>
-          (limite diário ~25). Variação de horário não antecipa abaixo de 1h.
-          Se ainda estiver cedo demais, o post é reagendado — não fica Ignorada.
+          Contas API Meta: mÃ­nimo <strong>1 hora</strong> entre posts na <strong>mesma conta</strong>
+          (limite diÃ¡rio ~25). VariaÃ§Ã£o de horÃ¡rio nÃ£o antecipa abaixo de 1h.
+          Se ainda estiver cedo demais, o post Ã© reagendado â€” nÃ£o fica Ignorada.
         </span>
         <span class="muted" id="meta-warmup-hint" style="display:none;margin-top:6px;font-size:12px">
-          Contas Meta com menos de 7 dias usam mínimo 3h entre posts.
+          Contas Meta com menos de 7 dias usam mÃ­nimo 3h entre posts.
         </span>
       </label>
 
       <fieldset class="humanize-fieldset" style="margin-top:14px">
-        <legend>Espaçamento entre contas <span class="muted">(anti-farm)</span></legend>
+        <legend>EspaÃ§amento entre contas <span class="muted">(anti-farm)</span></legend>
         <label class="checkbox-row" style="margin-bottom:8px">
           <input type="checkbox" name="stagger_enabled" value="1" id="stagger-enabled"
                  {% if (anti_farm_prefs or {}).get('stagger_enabled', true) %}checked{% endif %}>
-          Espalhar posts entre as contas do mesmo ciclo (não postar todas no mesmo minuto)
+          Espalhar posts entre as contas do mesmo ciclo (nÃ£o postar todas no mesmo minuto)
         </label>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-          <label>Mínimo entre contas (minutos)
+          <label>MÃ­nimo entre contas (minutos)
             <input type="number" name="stagger_min_minutes" id="stagger-min" min="1" max="120"
                    value="{{ (anti_farm_prefs or {}).get('stagger_min_minutes', 2) }}">
           </label>
-          <label>Máximo entre contas (minutos)
+          <label>MÃ¡ximo entre contas (minutos)
             <input type="number" name="stagger_max_minutes" id="stagger-max" min="1" max="120"
                    value="{{ (anti_farm_prefs or {}).get('stagger_max_minutes', 8) }}">
           </label>
         </div>
         <span class="muted" style="display:block;margin-top:6px;font-size:12px">
-          Ex.: mín 3 e máx 10 → a 1ª conta posta já; a 2ª espera ~3–10 min; a 3ª ~6–20 min…
-          Assim a “1 por hora” não dispara 10 contas entre 02:14:27 e 02:14:58.
+          Ex.: mÃ­n 3 e mÃ¡x 10 â†’ a 1Âª conta posta jÃ¡; a 2Âª espera ~3â€“10 min; a 3Âª ~6â€“20 minâ€¦
+          Assim a â€œ1 por horaâ€ nÃ£o dispara 10 contas entre 02:14:27 e 02:14:58.
         </span>
       </fieldset>
 
       <fieldset class="humanize-fieldset" style="margin-top:14px">
-        <legend>Variação de horário <span class="muted">(anti-ban)</span></legend>
+        <legend>VariaÃ§Ã£o de horÃ¡rio <span class="muted">(anti-ban)</span></legend>
         <label class="checkbox-row" style="margin-bottom:8px">
           <input type="checkbox" name="jitter_enabled" value="1" id="jitter-enabled">
-          Ativar variação aleatória no intervalo
+          Ativar variaÃ§Ã£o aleatÃ³ria no intervalo
         </label>
-        <label>Variação máxima (minutos)
+        <label>VariaÃ§Ã£o mÃ¡xima (minutos)
           <input type="number" name="jitter_minutes" id="jitter-minutes" min="1" max="120" value="10">
           <span class="muted" style="display:block;margin-top:4px;font-size:12px">
-            Ex.: intervalo 60 min + variação 10 → posta entre ~50 e ~70 minutos (para cima ou para baixo).
+            Ex.: intervalo 60 min + variaÃ§Ã£o 10 â†’ posta entre ~50 e ~70 minutos (para cima ou para baixo).
           </span>
         </label>
       </fieldset>
 
       <fieldset class="humanize-fieldset" style="margin-top:14px">
-        <legend>Descanso após lote</legend>
+        <legend>Descanso apÃ³s lote</legend>
         <label>Posts por ciclo
           <input type="number" name="posts_per_batch" min="0" max="500" value="0">
           <span class="muted" style="display:block;margin-top:4px;font-size:12px">0 = desligado. Ex.: 10 posts e depois descansa.</span>
         </label>
         <label>Minutos de descanso
           <input type="number" name="rest_minutes" min="0" max="10080" value="0">
-          <span class="muted" style="display:block;margin-top:4px;font-size:12px">Após o lote, espera esse tempo e volta a postar.</span>
+          <span class="muted" style="display:block;margin-top:4px;font-size:12px">ApÃ³s o lote, espera esse tempo e volta a postar.</span>
         </label>
       </fieldset>
     </div>
 
     <div id="calendar-wrap">
       <fieldset class="calendar-fieldset">
-        <legend>Dias do mês</legend>
+        <legend>Dias do mÃªs</legend>
         <div class="calendar-toolbar">
           <button type="button" class="btn btn-sm" id="cal-select-all">Selecionar todos</button>
           <button type="button" class="btn btn-sm" id="cal-clear">Limpar</button>
           <span class="muted" id="cal-count">0 dias selecionados</span>
         </div>
         <div class="calendar-weekdays">
-          <span>Dom</span><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span>
+          <span>Dom</span><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>SÃ¡b</span>
         </div>
         <div class="calendar-grid" id="calendar-grid"></div>
         <input type="hidden" name="calendar_days" id="calendar-days-input" value="[]">
       </fieldset>
-      <label>{% if default_content_type == 'story' %}Um horário para cada Story (BRT){% else %}Horários de publicação (BRT){% endif %}
+      <label>{% if default_content_type == 'story' %}Um horÃ¡rio para cada Story (BRT){% else %}HorÃ¡rios de publicaÃ§Ã£o (BRT){% endif %}
         <div id="calendar-times-list" class="calendar-times-list">
           <div class="calendar-time-row">
             <input type="time" name="calendar_times" value="10:00">
           </div>
         </div>
-        <button type="button" class="btn btn-sm" id="cal-add-time" style="margin-top:8px">+ Adicionar horário</button>
+        <button type="button" class="btn btn-sm" id="cal-add-time" style="margin-top:8px">+ Adicionar horÃ¡rio</button>
         <span class="muted" id="calendar-times-help" style="display:block;margin-top:4px;font-size:12px">
           {% if default_content_type == 'story' %}
-          Selecione as mídias acima. Use “Selecionar todos” para o mês inteiro. Cada Story tem seu horário (ex.: 12:00 e 18:00) e repete nos dias marcados.
+          Selecione as mÃ­dias acima. Use â€œSelecionar todosâ€ para o mÃªs inteiro. Cada Story tem seu horÃ¡rio (ex.: 12:00 e 18:00) e repete nos dias marcados.
           {% else %}
-          Vários horários no mesmo dia (ex.: 10:00, 15:00, 21:00).
+          VÃ¡rios horÃ¡rios no mesmo dia (ex.: 10:00, 15:00, 21:00).
           {% endif %}
         </span>
       </label>
@@ -302,14 +302,14 @@
       <i data-lucide="users"></i>
       <div>
         <h3>Contas</h3>
-        <p>Quem recebe as publicações (opcional no rascunho)</p>
+        <p>Quem recebe as publicaÃ§Ãµes (opcional no rascunho)</p>
       </div>
     </header>
     <fieldset class="accounts-fieldset">
-      <legend>Contas que vão receber <span class="muted">(opcional)</span></legend>
+      <legend>Contas que vÃ£o receber <span class="muted">(opcional)</span></legend>
       {% if accounts %}
       <p class="muted" style="margin:0 0 8px;font-size:12px">
-        Se não selecionar nenhuma conta, a automação será criada pausada. Depois você edita, escolhe as contas e clica em Ativar.
+        Se nÃ£o selecionar nenhuma conta, a automaÃ§Ã£o serÃ¡ criada pausada. Depois vocÃª edita, escolhe as contas e clica em Ativar.
       </p>
       <div class="checkbox-row">
         {% for ac in accounts %}
@@ -331,7 +331,7 @@
   </section>
 
   <button type="submit" class="btn btn-primary btn-gradient-lg" id="submit-btn">
-    {% if default_content_type == 'story' %}Agendar Story{% else %}Criar automação{% endif %}
+    {% if default_content_type == 'story' %}Agendar Story{% else %}Criar automaÃ§Ã£o{% endif %}
   </button>
 </form>
 {% endblock %}

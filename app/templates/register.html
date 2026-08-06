@@ -1,14 +1,14 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="pt-br">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Criar conta · instablack</title>
+  <title>Criar conta Â· instablack</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/style.css?v=50" />
+  <link rel="stylesheet" href="/static/style.css?v=51" />
   <meta name="csrf-token" content="{{ csrf_token or request.session.get('csrf_token', '') }}" />
 </head>
 <body class="login-body">
@@ -22,21 +22,21 @@
       </div>
       <span class="login-brand-text">instablack</span>
     </div>
-    <span class="login-badge">Convite necessário</span>
+    <span class="login-badge">Convite necessÃ¡rio</span>
     <h1>Criar acesso</h1>
-    <p class="subtitle">Use o código de convite para entrar na plataforma.</p>
+    <p class="subtitle">Use o cÃ³digo de convite para entrar na plataforma.</p>
 
     {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
 
     <form method="post" action="/register">
       <input type="hidden" name="csrf_token" value="{{ csrf_token or request.session.get('csrf_token', '') }}">
-      <label>Código de convite
+      <label>CÃ³digo de convite
         <input type="text" name="invite_code" required autofocus
                value="{{ invite_prefill or '' }}"
-               placeholder="Cole o código do link" autocomplete="off" spellcheck="false"
+               placeholder="Cole o cÃ³digo do link" autocomplete="off" spellcheck="false"
                style="text-transform:uppercase">
       </label>
-      <label>Usuário
+      <label>UsuÃ¡rio
         <input type="text" name="username" required minlength="3" autocomplete="username">
       </label>
       <label>Senha
@@ -48,7 +48,7 @@
       <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:8px;padding:14px">Criar conta</button>
     </form>
 
-    <p class="login-footer">Já tem conta? <a href="/login">Entrar no painel</a></p>
+    <p class="login-footer">JÃ¡ tem conta? <a href="/login">Entrar no painel</a></p>
   </div>
 
   <script src="/static/app.js?v=3"></script>
