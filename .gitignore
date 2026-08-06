@@ -23,9 +23,13 @@ Thumbs.db
 # Arquivo solto não relacionado ao projeto
 /index.html
 
-# M\u00eddia local
+# Mídia local
 *.jpg
 *.jpeg
 *.png
 *.mp4
 *.mov
+# Brand assets do painel (exceção)
+!app/static/logo-ghost.png
+!app/static/favicon.png
+!app/static/favicon.svg
