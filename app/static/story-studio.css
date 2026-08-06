@@ -6,15 +6,15 @@
   width: 100%;
   max-width: none;
   min-height: calc(100vh - 120px);
-  border: 1px solid rgba(212, 175, 55, 0.35);
+  border: 1px solid rgba(201, 162, 39, 0.35);
   border-radius: 18px;
   overflow: hidden;
   background:
-    radial-gradient(ellipse 80% 60% at 0% 0%, rgba(212, 175, 55, 0.14), transparent 55%),
-    radial-gradient(ellipse 70% 50% at 100% 100%, rgba(212, 175, 55, 0.08), transparent 50%),
+    radial-gradient(ellipse 80% 60% at 0% 0%, rgba(201, 162, 39, 0.14), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 100% 100%, rgba(201, 162, 39, 0.08), transparent 50%),
     #080808;
   box-shadow:
-    0 0 0 1px rgba(212, 175, 55, 0.08) inset,
+    0 0 0 1px rgba(201, 162, 39, 0.08) inset,
     0 24px 64px rgba(0, 0, 0, 0.45);
 }
 
@@ -24,9 +24,9 @@
   align-items: center;
   padding: 22px;
   background:
-    radial-gradient(circle at 22% 12%, rgba(212, 175, 55, 0.16), transparent 42%),
+    radial-gradient(circle at 22% 12%, rgba(201, 162, 39, 0.16), transparent 42%),
     linear-gradient(180deg, #0a0a0a 0%, #070707 100%);
-  border-right: 1px solid rgba(212, 175, 55, 0.18);
+  border-right: 1px solid rgba(201, 162, 39, 0.18);
 }
 
 .phone-shell {
@@ -72,7 +72,7 @@
 
 .sticker {
   --background: #fff;
-  --icon: #D4AF37;
+  --icon: #C9A227;
   --text: #000;
   position: absolute;
   left: 50%;
@@ -120,24 +120,24 @@
 }
 
 .sticker.rainbow .sticker-text {
-  background: linear-gradient(90deg, #ff4500, #ffd700, #32cd32, #D4AF37, #E8C547);
+  background: linear-gradient(90deg, #ff4500, #ffd700, #32cd32, #C9A227, #E8D48B);
   color: transparent;
   background-clip: text;
   -webkit-background-clip: text;
 }
 
 .sticker.white { --background: rgb(255 255 255 / 0.5); --icon: #fff; --text: #fff; }
-.sticker.rainbow { --background: #fff; --icon: #D4AF37; }
-.sticker.solid { --background: #fff; --icon: #D4AF37; --text: #D4AF37; }
+.sticker.rainbow { --background: #fff; --icon: #C9A227; }
+.sticker.solid { --background: #fff; --icon: #C9A227; --text: #C9A227; }
 .sticker.brand { --background: #fff; --icon: #cf2876; --text: #000; }
-.sticker.black-text { --background: transparent; --icon: #D4AF37; --text: #000; }
+.sticker.black-text { --background: transparent; --icon: #C9A227; --text: #000; }
 .sticker.white-text { --background: transparent; --icon: #fff; --text: #fff; }
 
 .sticker.selected::after {
   content: "";
   position: absolute;
   inset: -4px;
-  border: 2px solid #E8C547;
+  border: 2px solid #E8D48B;
   border-radius: 999px;
   pointer-events: none;
 }
@@ -150,7 +150,7 @@
   bottom: -7px;
   border-radius: 2px;
   background: #fff;
-  border: 2px solid #E8C547;
+  border: 2px solid #E8D48B;
   cursor: nwse-resize;
   z-index: 3;
 }
@@ -158,8 +158,8 @@
 /* Editor central */
 .studio-editor {
   padding: 18px 20px;
-  background: linear-gradient(180deg, rgba(212, 175, 55, 0.06) 0%, #0e1219 40%);
-  border-right: 1px solid rgba(212, 175, 55, 0.18);
+  background: linear-gradient(180deg, rgba(201, 162, 39, 0.06) 0%, #0e1219 40%);
+  border-right: 1px solid rgba(201, 162, 39, 0.18);
   overflow-y: auto;
 }
 
@@ -169,7 +169,7 @@
   gap: 6px;
   margin-bottom: 18px;
   padding: 4px;
-  border: 1px solid rgba(212, 175, 55, 0.2);
+  border: 1px solid rgba(201, 162, 39, 0.2);
   border-radius: 14px;
   background: rgba(0, 0, 0, 0.28);
 }
@@ -190,8 +190,8 @@
 .studio-tab:hover { color: #dce5ef; background: rgba(255,255,255,0.04); }
 .studio-tab.active {
   color: #fff;
-  background: linear-gradient(135deg, #D4AF37, #E8C547);
-  box-shadow: 0 8px 20px rgba(212, 175, 55, 0.35);
+  background: linear-gradient(135deg, #C9A227, #E8D48B);
+  box-shadow: 0 8px 20px rgba(201, 162, 39, 0.35);
 }
 
 .studio-tab-panel { display: none; }
@@ -209,7 +209,7 @@
 .studio-editor input,
 .studio-editor select {
   width: 100%;
-  border: 1px solid rgba(212, 175, 55, 0.22);
+  border: 1px solid rgba(201, 162, 39, 0.22);
   border-radius: 11px;
   padding: 10px 12px;
   background: rgba(0, 0, 0, 0.35);
@@ -220,11 +220,11 @@
 }
 
 .studio-editor input:focus,
-.studio-editor select:focus { border-color: #E8C547; }
+.studio-editor select:focus { border-color: #E8D48B; }
 
 .studio-editor input[type="range"] {
   padding: 0;
-  accent-color: #E8C547;
+  accent-color: #E8D48B;
 }
 
 .input-with-action {
@@ -252,9 +252,9 @@
 .file-drop {
   display: block;
   padding: 16px 12px;
-  border: 1px dashed rgba(212, 175, 55, 0.4);
+  border: 1px dashed rgba(201, 162, 39, 0.4);
   border-radius: 14px;
-  background: linear-gradient(160deg, rgba(212, 175, 55, 0.1), rgba(0, 0, 0, 0.25));
+  background: linear-gradient(160deg, rgba(201, 162, 39, 0.1), rgba(0, 0, 0, 0.25));
   color: #9aa3b2;
   font-size: 12px;
   text-align: center;
@@ -263,9 +263,9 @@
 }
 
 .file-drop:hover {
-  border-color: #E8C547;
+  border-color: #E8D48B;
   color: #f5f0e6;
-  box-shadow: 0 0 0 1px rgba(212, 175, 55, 0.2);
+  box-shadow: 0 0 0 1px rgba(201, 162, 39, 0.2);
 }
 
 .studio-app.mode-native .custom-only { display: none !important; }
@@ -283,7 +283,7 @@
   font-size: 22px;
   font-weight: 700;
   letter-spacing: -0.02em;
-  background: linear-gradient(90deg, #fff 0%, #F0D060 100%);
+  background: linear-gradient(90deg, #fff 0%, #F5E08A 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -297,7 +297,7 @@
   border-radius: 14px;
   overflow: hidden;
   background: #191d25;
-  border: 1px solid rgba(212, 175, 55, 0.28);
+  border: 1px solid rgba(201, 162, 39, 0.28);
 }
 
 .publish-thumb img {
@@ -331,7 +331,7 @@
 .btn-studio.secondary { color: #dce5ef; background: #242a35; }
 .btn-studio.primary {
   color: #fff;
-  background: linear-gradient(135deg, #D4AF37, #E8C547);
+  background: linear-gradient(135deg, #C9A227, #E8D48B);
   font-size: 14px;
   letter-spacing: 0.04em;
   margin-top: auto;
@@ -339,13 +339,13 @@
 }
 .btn-studio.schedule {
   color: #f5f0e6;
-  background: linear-gradient(135deg, #8B6914 0%, #D4AF37 55%, #E8C547 100%);
+  background: linear-gradient(135deg, #8B6914 0%, #C9A227 55%, #E8D48B 100%);
   letter-spacing: 0.04em;
-  box-shadow: 0 8px 24px rgba(212, 175, 55, 0.28);
+  box-shadow: 0 8px 24px rgba(201, 162, 39, 0.28);
 }
 @keyframes studioPulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(212, 175, 55, 0.45), 0 8px 24px rgba(212, 175, 55, 0.28); }
-  50% { box-shadow: 0 0 0 10px rgba(212, 175, 55, 0), 0 10px 28px rgba(212, 175, 55, 0.4); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(201, 162, 39, 0.45), 0 8px 24px rgba(201, 162, 39, 0.28); }
+  50% { box-shadow: 0 0 0 10px rgba(201, 162, 39, 0), 0 10px 28px rgba(201, 162, 39, 0.4); }
 }
 
 .studio-accounts {
@@ -364,7 +364,7 @@
   gap: 8px;
   margin: 0;
   padding: 10px 12px;
-  border: 1px solid rgba(212, 175, 55, 0.22);
+  border: 1px solid rgba(201, 162, 39, 0.22);
   border-radius: 12px;
   background: rgba(0, 0, 0, 0.28);
   cursor: pointer;
@@ -373,16 +373,16 @@
   transition: border-color 0.18s, background 0.18s;
 }
 .studio-account-chip:has(input:checked) {
-  border-color: #E8C547;
-  background: linear-gradient(155deg, rgba(212, 175, 55, 0.28), rgba(8, 8, 10, 0.9));
-  box-shadow: 0 0 0 1px rgba(212, 175, 55, 0.25);
+  border-color: #E8D48B;
+  background: linear-gradient(155deg, rgba(201, 162, 39, 0.28), rgba(8, 8, 10, 0.9));
+  box-shadow: 0 0 0 1px rgba(201, 162, 39, 0.25);
 }
-.studio-account-chip input { accent-color: #D4AF37; }
+.studio-account-chip input { accent-color: #C9A227; }
 .studio-empty-accounts {
   padding: 14px;
   border-radius: 12px;
-  border: 1px dashed rgba(212, 175, 55, 0.35);
-  background: rgba(212, 175, 55, 0.08);
+  border: 1px dashed rgba(201, 162, 39, 0.35);
+  background: rgba(201, 162, 39, 0.08);
   display: grid;
   gap: 8px;
 }
@@ -407,7 +407,7 @@
   border-radius: 8px;
   background: #12161e;
 }
-.studio-media-list li.active { border-color: #E8C547; }
+.studio-media-list li.active { border-color: #E8D48B; }
 .studio-media-pick {
   flex: 1;
   border: 0;
@@ -463,8 +463,8 @@
   cursor: pointer;
 }
 .studio-editor .cal-day--selected {
-  background: rgba(212, 175, 55, 0.28);
-  border-color: #E8C547;
+  background: rgba(201, 162, 39, 0.28);
+  border-color: #E8D48B;
 }
 .studio-editor .cal-day--empty {
   border: 0;

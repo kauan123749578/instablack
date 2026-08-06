@@ -198,13 +198,13 @@ def create_app() -> FastAPI:
                       body{{font-family:system-ui,sans-serif;background:#0b0d12;color:#e8eaed;
                       display:grid;place-items:center;min-height:100vh;margin:0;padding:24px}}
                       .box{{max-width:420px;background:#141824;border:1px solid #2a3142;border-radius:12px;padding:24px}}
-                      a{{color:#E8C547}}
+                      a{{color:#E8D48B}}
                     </style></head><body><div class="box">
                     <h1 style="font-size:1.2rem;margin:0 0 8px">Somente leitura</h1>
                     <p>{msg}</p>
                     <p><form action="/admin/stop-view-as" method="post" style="display:inline">
                     <input type="hidden" name="csrf_token" value="{csrf}">
-                    <button type="submit" style="background:none;border:none;color:#E8C547;cursor:pointer;text-decoration:underline;font:inherit;padding:0">Sair da visão</button>
+                    <button type="submit" style="background:none;border:none;color:#E8D48B;cursor:pointer;text-decoration:underline;font:inherit;padding:0">Sair da visão</button>
                     </form> · <a href="/">Voltar</a></p>
                     </div></body></html>""",
                     status_code=403,
@@ -246,7 +246,7 @@ def create_app() -> FastAPI:
                 "display:grid;place-items:center;min-height:100vh'>"
                 "<div><h1>Painel ocupado</h1>"
                 "<p>Banco temporariamente sem conexão. Atualize em alguns segundos.</p>"
-                "<p><a href='/' style='color:#E8C547'>Tentar de novo</a></p></div>"
+                "<p><a href='/' style='color:#E8D48B'>Tentar de novo</a></p></div>"
                 "</body>",
                 status_code=503,
                 headers={"Retry-After": "2"},
@@ -269,7 +269,7 @@ def create_app() -> FastAPI:
                 "display:grid;place-items:center;min-height:100vh'>"
                 "<div><h1>Banco reiniciando</h1>"
                 "<p>Conexão com o Postgres caiu. Atualize em 2–3 segundos.</p>"
-                "<p><a href='/login' style='color:#E8C547'>Voltar ao login</a></p></div>"
+                "<p><a href='/login' style='color:#E8D48B'>Voltar ao login</a></p></div>"
                 "</body>",
                 status_code=503,
                 headers={"Retry-After": "2"},
@@ -335,7 +335,7 @@ def create_app() -> FastAPI:
                 "scope": "/",
                 "display": "standalone",
                 "background_color": "#030308",
-                "theme_color": "#D4AF37",
+                "theme_color": "#C9A227",
                 "orientation": "portrait-primary",
                 "icons": [
                     {
@@ -379,8 +379,8 @@ def create_app() -> FastAPI:
                 <h1>Não deu para criar a automação</h1>
                 <p>Confira os campos (mídia, contas, intervalo) e tente de novo.</p>
                 <p style="color:#9ca3af;font-size:13px">{detail}</p>
-                <p><a href="/automations/new" style="color:#E8C547">Voltar</a>
-                · <a href="/automations/new/story" style="color:#E8C547">Agendar Story</a></p>
+                <p><a href="/automations/new" style="color:#E8D48B">Voltar</a>
+                · <a href="/automations/new/story" style="color:#E8D48B">Agendar Story</a></p>
                 </body></html>""",
                 status_code=400,
             )

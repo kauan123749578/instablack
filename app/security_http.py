@@ -78,7 +78,7 @@ def csrf_forbidden_response(request: Request) -> Response:
         <title>CSRF</title></head>
         <body style="font-family:system-ui;background:#0b0d12;color:#eee;padding:24px">
         <h1>Requisição bloqueada</h1><p>{msg}</p>
-        <p><a href="javascript:history.back()" style="color:#D4AF37">Voltar</a></p>
+        <p><a href="javascript:history.back()" style="color:#C9A227">Voltar</a></p>
         </body></html>""",
         status_code=403,
     )
