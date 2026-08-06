@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Extensão Chrome · instablack{% endblock %}
+{% block content %}
+<section class="page-head">
+  <div>
+    <h1>Extensão Chrome</h1>
+    <p class="muted">Envia o jar completo de cookies do Instagram + fingerprint do navegador pro painel — sessão mais parecida com a real.</p>
+  </div>
+</section>
+
+{% if request.query_params.get('revoked') %}
+<div class="flash flash-ok">Token revogado.</div>
+{% endif %}
+
+<div class="card-stack" style="max-width:720px">
+  <article class="og-card">
+    <h2>1. Instalar</h2>
+    <ol class="muted" style="line-height:1.6;padding-left:1.2rem">
+      <li>Baixe a pasta <code>extension/</code> do repositório (ou copie do projeto).</li>
+      <li>Chrome → <code>chrome://extensions</code> → Modo do desenvolvedor → Carregar sem compactação.</li>
+      <li>Selecione a pasta <code>extension</code>.</li>
+    </ol>
+  </article>
+
+  <article class="og-card">
+    <h2>2. Parear com o painel</h2>
+    <p class="muted">O token autentica a extensão (cookie de sessão do painel não serve no Chrome extension).</p>
+    <p><strong>URL do painel:</strong> <code id="panel-origin">{{ panel_origin }}</code></p>
+    <p class="muted">Status: {% if has_token %}token ativo{% else %}nenhum token ainda{% endif %}</p>
+    <div class="btn-row" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">
+      <button type="button" class="btn btn-primary" id="ext-gen-token">
+        {% if has_token %}Gerar novo token{% else %}Gerar token{% endif %}
+      </button>
+      {% if has_token %}
+      <form method="post" action="/accounts/extension/token/revoke" style="margin:0">
+        <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
+        <button type="submit" class="btn">Revogar</button>
+      </form>
+      {% endif %}
+    </div>
+    <div id="ext-token-box" hidden style="margin-top:16px">
+      <label class="muted">Cole este token na extensão (só aparece uma vez):</label>
+      <div style="display:flex;gap:8px;margin-top:6px">
+        <input type="text" id="ext-token-value" readonly style="flex:1;font-family:monospace;font-size:12px">
+        <button type="button" class="btn btn-sm" id="ext-copy-token">Copiar</button>
+      </div>
+    </div>
+  </article>
+
+  <article class="og-card">
+    <h2>3. Enviar sessão</h2>
+    <ol class="muted" style="line-height:1.6;padding-left:1.2rem">
+      <li>Faça login no Instagram neste Chrome (conta certa).</li>
+      <li>Abra a extensão → cole URL + token → escolha a conta no Instablack.</li>
+      <li>Clique em <strong>Enviar cookies + browser</strong>.</li>
+    </ol>
+    <p class="muted" style="margin-top:10px">Vai tudo: sessionid, csrftoken, mid, ig_did, datr… e User-Agent, idioma, tela, timezone.</p>
+  </article>
+</div>
+
+<script>
+(function () {
+  const btn = document.getElementById("ext-gen-token");
+  const box = document.getElementById("ext-token-box");
+  const input = document.getElementById("ext-token-value");
+  const copyBtn = document.getElementById("ext-copy-token");
+  if (!btn) return;
+  btn.addEventListener("click", async () => {
+    const csrf = document.querySelector('meta[name="csrf-token"]')?.content || "";
+    btn.disabled = true;
+    try {
+      const res = await fetch("/accounts/extension/token", {
+        method: "POST",
+        headers: {
+          "Accept": "application/json",
+          "X-CSRF-Token": csrf,
+          "X-Requested-With": "fetch",
+        },
+        credentials: "same-origin",
+      });
+      const data = await res.json();
+      if (!res.ok || !data.token) throw new Error(data.detail || "Falha ao gerar token");
+      input.value = data.token;
+      box.hidden = false;
+    } catch (err) {
+      alert(err.message || String(err));
+    } finally {
+      btn.disabled = false;
+    }
+  });
+  copyBtn?.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(input.value);
+      copyBtn.textContent = "OK";
+      setTimeout(() => { copyBtn.textContent = "Copiar"; }, 1200);
+    } catch (_) {}
+  });
+})();
+</script>
+{% endblock %}

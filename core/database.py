@@ -604,6 +604,7 @@ def _postgres_migrate(bind=None) -> None:
                 ("anti_farm_prefs_json", "TEXT"),
                 ("logs_cleared_at", "TIMESTAMPTZ"),
                 ("session_version", "INTEGER DEFAULT 0"),
+                ("extension_token_hash", "VARCHAR(64)"),
             ],
         )
         if _table_exists(conn, "users"):
@@ -626,6 +627,7 @@ def _postgres_migrate(bind=None) -> None:
                 ("proxy_ip", "VARCHAR(45)"),
                 ("proxy_geo", "VARCHAR(64)"),
                 ("encrypted_web_cookies", "TEXT"),
+                ("encrypted_web_browser", "TEXT"),
                 ("user_meta_app_id", "INTEGER"),
                 ("followers_count", "INTEGER"),
                 ("followers_updated_at", "TIMESTAMPTZ"),

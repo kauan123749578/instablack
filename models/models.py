@@ -47,6 +47,8 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     # Incrementa na troca de senha — invalida cookies antigos (session_version).
     session_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Hash SHA-256 do token da extensão Chrome (pareamento).
+    extension_token_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     account_limit: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=None)
     notification_prefs_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     anti_farm_prefs_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -174,6 +176,8 @@ class InstagramAccount(Base):
     session_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     # Cookies web completos (Cookie-Editor) cifrados — necessários para Story com link.
     encrypted_web_cookies: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Fingerprint do browser (UA, idioma, tela…) capturado pela extensão — cifrado.
+    encrypted_web_browser: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     status: Mapped[str] = mapped_column(String(32), default="active")  # active | paused | needs_login | proxy_down | banned | deleted
     last_login_at: Mapped[Optional[dt.datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

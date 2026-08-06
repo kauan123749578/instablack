@@ -548,6 +548,7 @@ def publish_reel(
     thumbnail_path: Path | None = None,
     web_cookies: dict[str, str] | None = None,
     share_to_feed: bool = True,
+    browser: dict | None = None,
 ) -> dict:
     if not video_path.exists():
         raise FileNotFoundError(f"Vídeo não encontrado: {video_path}")
@@ -567,6 +568,7 @@ def publish_reel(
             cover_path=thumbnail_path,
             web_cookies=web_cookies,
             share_to_feed=share_to_feed,
+            browser=browser,
         )
 
     media = cl.clip_upload(video_path, caption, thumbnail=thumbnail_path)
@@ -648,6 +650,7 @@ def publish_story(
     sticker_text: str | None = None,
     story_layout: dict | None = None,
     web_cookies: dict[str, str] | None = None,
+    browser: dict | None = None,
 ) -> dict:
     if not media_path.exists():
         raise FileNotFoundError(f"Mídia não encontrada: {media_path}")
@@ -698,6 +701,7 @@ def publish_story(
                     else bool((sticker_text or "").strip())
                 ),
                 web_cookies=web_cookies,
+                browser=browser,
             )
         log.warning(
             "Story com link sem cookies web (csrftoken); usando instagrapi mobile"

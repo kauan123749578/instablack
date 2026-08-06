@@ -29,6 +29,7 @@ from app.routes import (
     automations,
     camuflagem,
     dashboard,
+    extension_api,
     logs,
     meta_apps,
     notifications,
@@ -288,6 +289,8 @@ def create_app() -> FastAPI:
     app.include_router(dashboard.router)
     app.include_router(logs.router)
     app.include_router(accounts.router)
+    app.include_router(extension_api.router)
+    app.include_router(extension_api.panel_router)
     app.include_router(meta_apps.router)
     app.include_router(automations.router)
     app.include_router(aquecimento.router)

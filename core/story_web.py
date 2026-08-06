@@ -18,6 +18,8 @@ from urllib.parse import urlparse
 import requests
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
+from core.web_browser import accept_language_header
+
 log = logging.getLogger(__name__)
 
 IG_APP_ID = "936619743392459"
@@ -131,15 +133,6 @@ def cookies_from_client(cl: Any, *, require_csrf: bool = True) -> dict[str, str]
     return cookies
 
 
-DEFAULT_UA = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/124.0.0.0 Safari/537.36"
-)
-# Header típico do Instagram web (Opalite/INSSIST no navegador).
-WEB_ASBD_ID = "359341"
-
-
 def merge_web_cookies(
     cl: Any,
     web_cookies: dict[str, str] | None = None,
@@ -177,14 +170,23 @@ def _web_user_agent(cl: Any) -> str:
 def build_web_session(
     cl: Any,
     web_cookies: dict[str, str] | None = None,
+    browser: dict[str, Any] | None = None,
 ) -> requests.Session:
     cookies = merge_web_cookies(cl, web_cookies)
+    ua = ""
+    if browser and str(browser.get("user_agent") or "").strip():
+        ua = str(browser["user_agent"]).strip()
+    if not ua:
+        ua = _web_user_agent(cl)
+    accept_lang = accept_language_header(browser) or (
+        "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7"
+    )
     session = requests.Session()
     session.headers.update(
         {
             "accept": "*/*",
-            "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
-            "user-agent": _web_user_agent(cl),
+            "accept-language": accept_lang,
+            "user-agent": ua,
             "x-ig-app-id": IG_APP_ID,
             "x-asbd-id": WEB_ASBD_ID,
             "x-requested-with": "XMLHttpRequest",
@@ -546,6 +548,7 @@ def publish_photo_story_web_link(
     variant: str = "default",
     draw_sticker: bool = False,
     web_cookies: dict[str, str] | None = None,
+    browser: dict[str, Any] | None = None,
     work_dir: Path | None = None,
 ) -> dict:
     """Publica Story de foto com link via API web (NÃO usa instagrapi upload).
@@ -574,7 +577,7 @@ def publish_photo_story_web_link(
         draw_sticker=draw_sticker,
     )
 
-    session = build_web_session(cl, web_cookies)
+    session = build_web_session(cl, web_cookies, browser=browser)
     _warmup_web_session(session)
     upload_id = str(int(time.time() * 1000))
     log.info(

@@ -35,3 +35,4 @@ Thumbs.db
 !app/static/favicon-32.png
 !app/static/apple-touch-icon.png
 !app/static/favicon.svg
+!extension/icons/*.png

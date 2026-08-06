@@ -24,6 +24,7 @@ _CSRF_EXEMPT_PREFIXES = (
     "/accounts/meta/callback",
     "/accounts/meta/data-deletion",
     "/accounts/meta/deauthorize",
+    "/api/extension/",
 )
 
 

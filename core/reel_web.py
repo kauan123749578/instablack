@@ -237,12 +237,13 @@ def publish_reel_web(
     web_cookies: dict[str, str] | None = None,
     share_to_feed: bool = True,
     work_dir: Path | None = None,
+    browser: dict[str, Any] | None = None,
 ) -> dict:
     """Publica Reel via API web com capa customizada (Opalite/INSSIST)."""
     if not video_path.exists():
         raise FileNotFoundError(f"Vídeo não encontrado: {video_path}")
 
-    session = build_web_session(cl, web_cookies)
+    session = build_web_session(cl, web_cookies, browser=browser)
     _warmup_web_session(session)
 
     upload_id = _upload_id()

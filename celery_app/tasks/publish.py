@@ -78,6 +78,7 @@ from core.metadata import MetadataStripError
 from core.notifications import create_notification, notify_publish_success
 from core.storage import get_storage
 from core.web_cookies import decrypt_web_cookies, merge_sessionid_into_web_cookies
+from core.web_browser import decrypt_web_browser
 from models.models import Automation, InstagramAccount, PublishLog, automation_accounts
 
 log = logging.getLogger(__name__)
@@ -1345,6 +1346,9 @@ def _execute_publish(
         account_warmup_days = int(getattr(account, "warmup_days", 7) or 7)
         account_warmup_started_at = getattr(account, "warmup_started_at", None)
         web_cookies = decrypt_web_cookies(account.encrypted_web_cookies)
+        web_browser = decrypt_web_browser(
+            getattr(account, "encrypted_web_browser", None)
+        )
         if (
             provider == "meta"
             and account_status == "needs_login"
@@ -2126,6 +2130,7 @@ def _execute_publish(
                     sticker_text=story_sticker_text,
                     story_layout=story_layout,
                     web_cookies=web_cookies,
+                    browser=web_browser,
                 )
             elif content_type == "photo":
                 result = publish_photo_feed(cl, clean_path, caption)
@@ -2136,6 +2141,7 @@ def _execute_publish(
                     caption,
                     thumbnail_path=thumb_path,
                     web_cookies=web_cookies,
+                    browser=web_browser,
                 )
         except Exception as exc:
             if looks_auth_required(exc):
