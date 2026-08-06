@@ -818,7 +818,7 @@ body.premium-app .shark-content { padding: 24px 32px 80px; }
 }
 .rank-modal-inner {
   position: relative;
-  background: linear-gradient(180deg, #141820 0%, #0c0e14 100%);
+  background: linear-gradient(180deg, #121212 0%, #0a0a0a 100%);
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 20px;
   padding: 18px 16px 14px;
@@ -994,7 +994,7 @@ body.premium-app .shark-content { padding: 24px 32px 80px; }
   border-radius: 16px;
   border: 1px solid rgba(212, 175, 55, 0.4);
   background:
-    linear-gradient(135deg, rgba(212, 175, 55, 0.22) 0%, rgba(8, 12, 24, 0.92) 45%, rgba(5, 5, 5, 0.98) 100%);
+    linear-gradient(135deg, rgba(212, 175, 55, 0.22) 0%, rgba(8, 8, 10, 0.92) 45%, rgba(5, 5, 5, 0.98) 100%);
   box-shadow: 0 16px 40px rgba(212, 175, 55, 0.16);
 }
 .analytics-insights-hero-top {

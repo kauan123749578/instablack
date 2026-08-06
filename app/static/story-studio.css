@@ -12,7 +12,7 @@
   background:
     radial-gradient(ellipse 80% 60% at 0% 0%, rgba(212, 175, 55, 0.14), transparent 55%),
     radial-gradient(ellipse 70% 50% at 100% 100%, rgba(212, 175, 55, 0.08), transparent 50%),
-    #080a10;
+    #080808;
   box-shadow:
     0 0 0 1px rgba(212, 175, 55, 0.08) inset,
     0 24px 64px rgba(0, 0, 0, 0.45);
@@ -25,7 +25,7 @@
   padding: 22px;
   background:
     radial-gradient(circle at 22% 12%, rgba(212, 175, 55, 0.16), transparent 42%),
-    linear-gradient(180deg, #0a0d14 0%, #07090e 100%);
+    linear-gradient(180deg, #0a0a0a 0%, #070707 100%);
   border-right: 1px solid rgba(212, 175, 55, 0.18);
 }
 
@@ -264,7 +264,7 @@
 
 .file-drop:hover {
   border-color: #E8C547;
-  color: #e8f1ff;
+  color: #f5f0e6;
   box-shadow: 0 0 0 1px rgba(212, 175, 55, 0.2);
 }
 
@@ -275,7 +275,7 @@
   display: flex;
   flex-direction: column;
   padding: 20px 18px;
-  background: linear-gradient(180deg, #10151f 0%, #0a0d14 100%);
+  background: linear-gradient(180deg, #101010 0%, #0a0a0a 100%);
 }
 
 .publish-title {
@@ -338,7 +338,7 @@
   animation: studioPulse 2.2s ease-in-out infinite;
 }
 .btn-studio.schedule {
-  color: #e8f1ff;
+  color: #f5f0e6;
   background: linear-gradient(135deg, #8B6914 0%, #D4AF37 55%, #E8C547 100%);
   letter-spacing: 0.04em;
   box-shadow: 0 8px 24px rgba(212, 175, 55, 0.28);
@@ -374,7 +374,7 @@
 }
 .studio-account-chip:has(input:checked) {
   border-color: #E8C547;
-  background: linear-gradient(155deg, rgba(212, 175, 55, 0.28), rgba(8, 16, 36, 0.9));
+  background: linear-gradient(155deg, rgba(212, 175, 55, 0.28), rgba(8, 8, 10, 0.9));
   box-shadow: 0 0 0 1px rgba(212, 175, 55, 0.25);
 }
 .studio-account-chip input { accent-color: #D4AF37; }
@@ -386,7 +386,7 @@
   display: grid;
   gap: 8px;
 }
-.studio-empty-accounts strong { font-size: 13px; color: #e8f1ff; }
+.studio-empty-accounts strong { font-size: 13px; color: #f5f0e6; }
 .studio-empty-accounts p { margin: 0; font-size: 12px; color: #C9B87A; line-height: 1.45; }
 .studio-hint { margin: 6px 0 0; font-size: 11px; line-height: 1.4; }
 
