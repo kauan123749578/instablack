@@ -25,6 +25,9 @@
 {% if ok == 'private' %}
 <div class="alert alert-ok">Visibilidade do usuário atualizada.</div>
 {% endif %}
+{% if ok == 'instagrapi' %}
+<div class="alert alert-ok">Acesso Instagrapi (API não oficial) atualizado.</div>
+{% endif %}
 {% if ok == 'broadcast' %}
 <div class="alert alert-ok">Notificação enviada para {{ request.query_params.get('n') or 'todos os' }} usuário(s).</div>
 {% endif %}
@@ -54,6 +57,9 @@
 {% endif %}
 {% if error == 'private_self' %}
 <div class="alert alert-error">Não é possível marcar o dono como usuário privado.</div>
+{% endif %}
+{% if error == 'instagrapi_self' %}
+<div class="alert alert-error">O dono já tem Instagrapi liberado. Não precisa marcar nessa conta.</div>
 {% endif %}
 {% if error == 'limit_invalid' %}
 <div class="alert alert-error">Informe um número válido para o limite de contas.</div>
