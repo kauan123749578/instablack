@@ -17,32 +17,31 @@
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      width: 360px;
+      width: 340px;
       font: 13px/1.45 system-ui, sans-serif;
       background: var(--bg);
       color: var(--text);
       padding: 14px;
     }
     h1 {
-      margin: 0 0 4px;
+      margin: 0 0 2px;
       font-size: 15px;
       color: var(--gold2);
       font-weight: 700;
     }
-    .sub { color: var(--muted); margin-bottom: 10px; font-size: 12px; }
-    .steps {
-      background: #0c0c0c;
-      border: 1px solid var(--line);
+    .sub { color: var(--muted); margin-bottom: 12px; font-size: 12px; }
+    .step-now {
+      background: #14110a;
+      border: 1px solid #5a4a18;
+      color: var(--gold2);
       border-radius: 8px;
-      padding: 8px 10px;
-      margin-bottom: 10px;
-      color: var(--muted);
-      font-size: 11px;
-      line-height: 1.5;
+      padding: 10px;
+      margin-bottom: 12px;
+      font-size: 12px;
+      font-weight: 600;
     }
-    .steps strong { color: var(--gold2); }
     label { display: block; color: var(--muted); margin: 10px 0 4px; font-size: 11px; }
-    input, select, button {
+    input, button {
       width: 100%;
       border-radius: 8px;
       border: 1px solid var(--line);
@@ -51,30 +50,19 @@
       padding: 9px 10px;
       font: inherit;
     }
-    .fixed-url {
-      font-family: ui-monospace, monospace;
-      font-size: 11px;
-      color: var(--gold2);
-      word-break: break-all;
-      padding: 8px 10px;
-      border-radius: 8px;
-      border: 1px solid var(--line);
-      background: #0c0c0c;
-    }
     button {
       background: linear-gradient(180deg, #d4af37, #a8841a);
       color: #111;
       border: none;
       font-weight: 700;
       cursor: pointer;
-      margin-top: 12px;
+      margin-top: 10px;
     }
     button:disabled { opacity: 0.55; cursor: wait; }
     button.secondary {
       background: transparent;
       color: var(--gold2);
       border: 1px solid var(--line);
-      margin-top: 8px;
       font-weight: 600;
     }
     .status {
@@ -89,44 +77,27 @@
     }
     .status.ok { border-color: #2a5a40; color: var(--ok); }
     .status.err { border-color: #5a2a2a; color: var(--err); }
-    .row { display: flex; gap: 8px; }
-    .row > * { flex: 1; }
+    .hint { color: var(--muted); font-size: 11px; margin-top: 6px; }
   </style>
 </head>
 <body>
   <h1>Instablack Sync</h1>
-  <div class="sub">Conecta a conta do Instagram (neste Chrome) no painel</div>
+  <div class="sub">Liga o Instagram deste Chrome no painel</div>
 
-  <div class="steps">
-    <strong>1.</strong> Clique em “Abrir painel → gerar token”<br>
-    <strong>2.</strong> No site, Gere o token e cole aqui<br>
-    <strong>3.</strong> Logue no IG → escolha “Nova conta” ou uma existente → Enviar
-  </div>
+  <div class="step-now" id="step-now">Passo 1: cole o token e a proxy</div>
 
-  <label>Painel (já configurado)</label>
-  <div class="fixed-url" id="panel-display"></div>
-  <input type="hidden" id="panel" />
-
-  <label>Token (cola o ibxt_… do painel)</label>
+  <label>Token (do site Extensão Chrome)</label>
   <input id="token" type="text" placeholder="ibxt_…" autocomplete="off" />
 
-  <button type="button" class="secondary" id="open-token">Abrir painel → gerar token</button>
+  <button type="button" class="secondary" id="open-token">Não tenho token — abrir o site</button>
 
-  <div class="row">
-    <button type="button" class="secondary" id="save">Salvar token</button>
-    <button type="button" class="secondary" id="reload">Atualizar contas</button>
-  </div>
-
-  <label>Conta no Instablack</label>
-  <select id="account">
-    <option value="">+ Nova conta (do zero)</option>
-  </select>
-
-  <label>Proxy (obrigatória só na conta nova)</label>
+  <label>Proxy residencial desta conta</label>
   <input id="proxy" placeholder="ip:porta:usuario:senha" autocomplete="off" />
 
-  <button type="button" id="push">Conectar / enviar sessão</button>
-  <div id="status" class="status">Cole o token do painel pra começar.</div>
+  <button type="button" id="push">Conectar esta conta no Instablack</button>
+  <div class="hint">Tem que estar logado no Instagram neste Chrome.</div>
+
+  <div id="status" class="status">Cole o token + proxy e aperte Conectar.</div>
 
   <script src="popup.js"></script>
 </body>
