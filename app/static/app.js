@@ -22,19 +22,6 @@
     input.value = token;
   }
 
-  document.addEventListener(
-    "submit",
-    (ev) => {
-      const form = ev.target;
-      if (form && form.tagName === "FORM") ensureCsrfOnForm(form);
-    },
-    true
-  );
-
-  document.addEventListener("DOMContentLoaded", () => {
-    document.querySelectorAll("form").forEach(ensureCsrfOnForm);
-  });
-
   const _fetch = window.fetch.bind(window);
   window.fetch = function (input, init) {
     init = init ? { ...init } : {};
@@ -52,6 +39,62 @@
     }
     return _fetch(input, init);
   };
+
+  document.addEventListener(
+    "submit",
+    (ev) => {
+      const form = ev.target;
+      if (!form || form.tagName !== "FORM") return;
+      ensureCsrfOnForm(form);
+
+      // Multipart com arquivo: submit nativo NÃO manda X-CSRF-Token.
+      // Se o middleware tentar request.form() pra ler o token, o body
+      // some no endpoint. Converte pra fetch (header injetado no wrapper).
+      // #automation-form: Reels/Story/Foto tratam no initAutomationForm.
+      if (form.id === "automation-form") return;
+      if (form.dataset.nativeSubmit === "1") return;
+      if (ev.defaultPrevented) return;
+      const method = (form.getAttribute("method") || "get").toLowerCase();
+      if (method === "get" || method === "") return;
+      if (!form.querySelector('input[type="file"]')) return;
+
+      ev.preventDefault();
+      const action = form.getAttribute("action") || window.location.href;
+      const btn = form.querySelector('[type="submit"], button:not([type="button"])');
+      if (btn) btn.disabled = true;
+      fetch(action, {
+        method: method.toUpperCase(),
+        body: new FormData(form),
+        credentials: "same-origin",
+        redirect: "follow",
+        headers: { "X-Requested-With": "fetch" },
+      })
+        .then((res) => {
+          if (res.redirected || res.ok) {
+            window.location.href = res.url;
+            return null;
+          }
+          return res.text().then((html) => {
+            if (html && html.toLowerCase().indexOf("<html") !== -1) {
+              document.open();
+              document.write(html);
+              document.close();
+              return;
+            }
+            throw new Error("Falha no envio.");
+          });
+        })
+        .catch(() => {
+          alert("Falha no envio. Recarregue a página e tente de novo.");
+          if (btn) btn.disabled = false;
+        });
+    },
+    true
+  );
+
+  document.addEventListener("DOMContentLoaded", () => {
+    document.querySelectorAll("form").forEach(ensureCsrfOnForm);
+  });
 
   const appContent = document.getElementById("app-content");
   const drawer = document.getElementById("mobile-drawer");
@@ -2545,6 +2588,43 @@
           return;
         }
       }
+
+      // Story/Foto: NÃO usar submit nativo. O CSRF middleware não pode
+      // ler multipart via request.form() (esvazia o body). Fetch manda
+      // X-CSRF-Token e a mídia chega intacta no endpoint.
+      if (!isReel) {
+        e.preventDefault();
+        setSubmitState(true, "Criando automação…");
+        try {
+          const res = await fetch(form.getAttribute("action") || form.action || "/automations/new", {
+            method: "POST",
+            body: new FormData(form),
+            credentials: "same-origin",
+            redirect: "follow",
+            headers: { "X-Requested-With": "fetch" },
+          });
+          if (res.redirected || res.ok) {
+            window.location.href = res.url;
+            return;
+          }
+          const html = await res.text();
+          if (html && html.indexOf("<html") !== -1) {
+            document.open();
+            document.write(html);
+            document.close();
+            return;
+          }
+          throw new Error("Não deu para criar a automação. Tente de novo.");
+        } catch (err) {
+          alert(err?.message || "Falha ao enviar a mídia.");
+          setSubmitState(
+            false,
+            contentType?.value === "story" ? "Agendar Story" : "Criar automação"
+          );
+        }
+        return;
+      }
+
       if (submitBtn) {
         submitBtn.disabled = true;
         submitBtn.textContent = "Criando automação…";

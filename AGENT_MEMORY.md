@@ -144,5 +144,6 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 | 2026-08-05 | brand | Tema azul → **preto + dourado** (`#D4AF37`); logo fantasma `logo-ghost.png` / favicon. |
 | 2026-08-06 | hotfix | Starlette 1.x quebrou `TemplateResponse(name, ctx)` → 500 no `/login`. Compat em `app/templating.py`. |
 | 2026-08-06 | bug | Story: form postava em `/automations/new` → erro/re-render virava tela de Reels. Fix: POST `/new/story` + `content_type` forçado + action do form. |
+| 2026-08-06 | bug | Story “Envie o arquivo de mídia” com arquivo selecionado: CSRF middleware chamava `request.form()` no multipart (BaseHTTPMiddleware esvazia body). Reels ok (fetch+header). Fix: multipart CSRF só via header; Story/Foto postam via fetch. |
 
 <!-- Ao corrigir bugs de produção: acrescente uma linha acima e, se for armadilha nova, uma subseção em "O que já quebrou". -->

@@ -98,12 +98,13 @@ async def extract_csrf_token(request: Request) -> str | None:
 
     ctype = (request.headers.get("content-type") or "").lower()
     if "multipart/form-data" in ctype:
-        try:
-            form = await request.form()
-            raw = form.get(CSRF_FORM_FIELD)
-            return str(raw) if raw is not None else None
-        except Exception:
-            return None
+        # NUNCA chamar request.form() no middleware (@middleware http =
+        # BaseHTTPMiddleware): consome o stream e o endpoint recebe form
+        # vazio — sintoma clássico: Story com mídia selecionada →
+        # "Envie o arquivo de mídia." Reels ok porque o fetch manda
+        # X-CSRF-Token (retorna no if header acima). Multipart sem header
+        # = 403; o JS deve postar via fetch.
+        return None
 
     if "application/x-www-form-urlencoded" in ctype:
         try:
