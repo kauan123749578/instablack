@@ -33,7 +33,7 @@ def _stable_uuids(username: str) -> dict[str, str]:
     seed = hashlib.sha256(f"instablack:{username.lower()}".encode()).hexdigest()
 
     def _u(n: int) -> str:
-        h = hashlib.md5(f"{seed}:{n}".encode()).hexdigest()
+        h = hashlib.md5(f"{seed}:{n}".encode(), usedforsecurity=False).hexdigest()
         return str(uuid.UUID(h))
 
     phone = _u(1)
