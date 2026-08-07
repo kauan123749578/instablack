@@ -28,6 +28,9 @@
 {% if ok == 'instagrapi' %}
 <div class="alert alert-ok">Acesso Instagrapi (API não oficial) atualizado.</div>
 {% endif %}
+{% if ok == 'instagrapi_revoke' %}
+<div class="alert alert-ok">Instagrapi desligado em {{ request.query_params.get('n') or 0 }} conta(s) sem liberação.</div>
+{% endif %}
 {% if ok == 'broadcast' %}
 <div class="alert alert-ok">Notificação enviada para {{ request.query_params.get('n') or 'todos os' }} usuário(s).</div>
 {% endif %}
@@ -231,6 +234,17 @@
 {% endif %}
 
 <div class="og-glass-card og-table-panel">
+  {% if is_owner %}
+  <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:14px;padding:0 2px">
+    <p class="muted" style="margin:0;font-size:13px">
+      Instagrapi: quem não está liberado vê a opção, mas o login falha — e contas já conectadas são desligadas.
+    </p>
+    <form method="post" action="/admin/instagrapi/revoke-all"
+          onsubmit="return confirm('Desligar agora todas as sessões Instagrapi de quem NÃO está liberado? Publicações dessas contas param.');">
+      <button type="submit" class="btn btn-sm btn-danger">Desligar Instagrapi (não liberados)</button>
+    </form>
+  </div>
+  {% endif %}
   <div class="og-table-wrap">
     <table class="og-table">
       <thead>
@@ -242,7 +256,7 @@
           <th>Automações</th>
           <th>Status</th>
           <th>Cadastro</th>
-          <th></th>
+          <th>Ações</th>
         </tr>
       </thead>
       <tbody>
@@ -288,87 +302,68 @@
           <td class="og-muted">{{ u.created_at | localtime('%d/%m/%Y') }}</td>
           <td>
             <div class="admin-actions">
-              {% if u.id != user.id %}
-              <div class="admin-actions-group">
-                <a class="btn btn-sm" href="/admin/users/{{ u.id }}/accounts" data-nav="/admin/users/{{ u.id }}/accounts">
-                  <i data-lucide="instagram"></i> Ver contas
-                </a>
-                <form method="post" action="/admin/users/{{ u.id }}/impersonate">
-                  <button type="submit" class="btn btn-sm btn-primary" title="Ver painel deste usuário (somente leitura)">
-                    <i data-lucide="eye"></i> Ver como
-                  </button>
-                </form>
-              </div>
-              {% endif %}
-
               {% if u.id == user.id %}
               <span class="og-muted admin-actions-self">você</span>
               {% elif u.is_owner %}
               <span class="og-muted admin-actions-self">owner</span>
-              {% elif is_owner %}
-              <div class="admin-actions-group">
-                <form method="post" action="/admin/users/{{ u.id }}/toggle-private"
-                      onsubmit="return confirm('{% if u.owner_private %}Mostrar @{{ u.username }} para os outros admins?{% else %}Esconder @{{ u.username }} dos outros admins (ficar só na sua lista)?{% endif %}');">
-                  <button type="submit" class="btn btn-sm">
-                    {% if u.owner_private %}Mostrar aos admins{% else %}Meu usuário{% endif %}
-                  </button>
-                </form>
-                <form method="post" action="/admin/users/{{ u.id }}/toggle-admin"
-                      onsubmit="return confirm('{% if u.is_admin %}Remover admin de @{{ u.username }}?{% else %}Tornar @{{ u.username }} admin?{% endif %}');">
-                  <button type="submit" class="btn btn-sm {% if u.is_admin %}{% else %}btn-primary{% endif %}">
-                    {% if u.is_admin %}Remover admin{% else %}Tornar admin{% endif %}
-                  </button>
-                </form>
-                <form method="post" action="/admin/users/{{ u.id }}/toggle-instagrapi"
-                      onsubmit="return confirm('{% if u.allow_instagrapi %}Bloquear Instagrapi (senha/sessionid) para @{{ u.username }}?{% else %}Liberar Instagrapi (API não oficial) para @{{ u.username }}?{% endif %}');">
-                  <button type="submit" class="btn btn-sm {% if u.allow_instagrapi %}{% else %}btn-primary{% endif %}">
-                    {% if u.allow_instagrapi %}Bloquear Instagrapi{% else %}Liberar Instagrapi{% endif %}
-                  </button>
-                </form>
-              </div>
-              <div class="admin-actions-group admin-actions-group--danger">
-                {% if u.is_active %}
-                <form method="post" action="/admin/users/{{ u.id }}/toggle-ban"
-                      onsubmit="return confirm('Banir @{{ u.username }}? Ele não conseguirá mais entrar.');">
-                  <button type="submit" class="btn btn-sm btn-danger">
-                    <i data-lucide="ban"></i> Banir
-                  </button>
-                </form>
-                {% else %}
-                <form method="post" action="/admin/users/{{ u.id }}/toggle-ban"
-                      onsubmit="return confirm('Desbanir @{{ u.username }}?');">
-                  <button type="submit" class="btn btn-sm">Desbanir</button>
-                </form>
-                {% endif %}
-                <form method="post" action="/admin/users/{{ u.id }}/delete"
-                      onsubmit="return confirm('Excluir @{{ u.username }}? Todas as contas IG e automações serão apagadas.');">
-                  <button type="submit" class="btn btn-sm btn-danger">
-                    <i data-lucide="trash-2"></i> Excluir
-                  </button>
-                </form>
-              </div>
-              {% elif user.is_admin and not u.is_owner %}
-              <div class="admin-actions-group admin-actions-group--danger">
-                {% if u.is_active %}
-                <form method="post" action="/admin/users/{{ u.id }}/toggle-ban"
-                      onsubmit="return confirm('Banir @{{ u.username }}? Ele não conseguirá mais entrar.');">
-                  <button type="submit" class="btn btn-sm btn-danger">
-                    <i data-lucide="ban"></i> Banir
-                  </button>
-                </form>
-                {% else %}
-                <form method="post" action="/admin/users/{{ u.id }}/toggle-ban"
-                      onsubmit="return confirm('Desbanir @{{ u.username }}?');">
-                  <button type="submit" class="btn btn-sm">Desbanir</button>
-                </form>
-                {% endif %}
-                <form method="post" action="/admin/users/{{ u.id }}/delete"
-                      onsubmit="return confirm('Excluir @{{ u.username }}? Todas as contas IG e automações serão apagadas.');">
-                  <button type="submit" class="btn btn-sm btn-danger">
-                    <i data-lucide="trash-2"></i> Excluir
-                  </button>
-                </form>
-              </div>
+              {% else %}
+              <details class="admin-more">
+                <summary class="btn btn-sm admin-more-summary">
+                  <i data-lucide="more-horizontal"></i> Gerenciar
+                </summary>
+                <div class="admin-more-panel">
+                  <a class="admin-more-item" href="/admin/users/{{ u.id }}/accounts" data-nav="/admin/users/{{ u.id }}/accounts">
+                    <i data-lucide="instagram"></i> Ver contas
+                  </a>
+                  <form method="post" action="/admin/users/{{ u.id }}/impersonate" class="admin-more-form">
+                    <button type="submit" class="admin-more-item">
+                      <i data-lucide="eye"></i> Ver como
+                    </button>
+                  </form>
+                  {% if is_owner %}
+                  <form method="post" action="/admin/users/{{ u.id }}/toggle-private" class="admin-more-form"
+                        onsubmit="return confirm('{% if u.owner_private %}Mostrar @{{ u.username }} para os outros admins?{% else %}Esconder @{{ u.username }} dos outros admins?{% endif %}');">
+                    <button type="submit" class="admin-more-item">
+                      {% if u.owner_private %}Mostrar aos admins{% else %}Meu usuário{% endif %}
+                    </button>
+                  </form>
+                  <form method="post" action="/admin/users/{{ u.id }}/toggle-admin" class="admin-more-form"
+                        onsubmit="return confirm('{% if u.is_admin %}Remover admin de @{{ u.username }}?{% else %}Tornar @{{ u.username }} admin?{% endif %}');">
+                    <button type="submit" class="admin-more-item">
+                      {% if u.is_admin %}Remover admin{% else %}Tornar admin{% endif %}
+                    </button>
+                  </form>
+                  <form method="post" action="/admin/users/{{ u.id }}/toggle-instagrapi" class="admin-more-form"
+                        onsubmit="return confirm('{% if u.allow_instagrapi %}Bloquear Instagrapi para @{{ u.username }}?{% else %}Liberar Instagrapi para @{{ u.username }}?{% endif %}');">
+                    <button type="submit" class="admin-more-item {% if not u.allow_instagrapi %}admin-more-item--accent{% endif %}">
+                      {% if u.allow_instagrapi %}Bloquear Instagrapi{% else %}Liberar Instagrapi{% endif %}
+                    </button>
+                  </form>
+                  {% endif %}
+                  {% if is_owner or user.is_admin %}
+                  <div class="admin-more-sep"></div>
+                  {% if u.is_active %}
+                  <form method="post" action="/admin/users/{{ u.id }}/toggle-ban" class="admin-more-form"
+                        onsubmit="return confirm('Banir @{{ u.username }}?');">
+                    <button type="submit" class="admin-more-item admin-more-item--danger">
+                      <i data-lucide="ban"></i> Banir
+                    </button>
+                  </form>
+                  {% else %}
+                  <form method="post" action="/admin/users/{{ u.id }}/toggle-ban" class="admin-more-form"
+                        onsubmit="return confirm('Desbanir @{{ u.username }}?');">
+                    <button type="submit" class="admin-more-item">Desbanir</button>
+                  </form>
+                  {% endif %}
+                  <form method="post" action="/admin/users/{{ u.id }}/delete" class="admin-more-form"
+                        onsubmit="return confirm('Excluir @{{ u.username }}? Contas e automações serão apagadas.');">
+                    <button type="submit" class="admin-more-item admin-more-item--danger">
+                      <i data-lucide="trash-2"></i> Excluir
+                    </button>
+                  </form>
+                  {% endif %}
+                </div>
+              </details>
               {% endif %}
             </div>
           </td>

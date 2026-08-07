@@ -1360,6 +1360,30 @@ def _execute_publish(
             account.last_error = None
             account_status = "active"
 
+        # Instagrapi mobile sem liberação do dono: força sessão expirada e para o publish.
+        if provider != "meta":
+            from app.utils.instagrapi_access import (
+                INSTAGRAPI_EXPIRED_MSG,
+                can_use_instagrapi,
+            )
+            from models.models import User as _User
+
+            has_web_csrf = bool(web_cookies and web_cookies.get("csrftoken"))
+            if not has_web_csrf:
+                owner = db.get(_User, owner_user_id)
+                if not can_use_instagrapi(owner):
+                    account.status = "needs_login"
+                    account.last_error = INSTAGRAPI_EXPIRED_MSG
+                    if account.session_json:
+                        account.session_json = None
+                    account_status = "needs_login"
+                    log.info(
+                        "publish blocked instagrapi_revoked account=%s @%s user=%s",
+                        account_id,
+                        username,
+                        owner_user_id,
+                    )
+
         meta_min_gap_min = 0
         if provider == "meta" and account_status not in (
             "paused", "needs_login", "proxy_down", "banned", "deleted"

@@ -102,6 +102,8 @@ class CompatJinja2Templates(Jinja2Templates):
         if "request" not in context:
             context = {**context, "request": request}
 
+        _inject_instagrapi_down_notice(context)
+
         return super().TemplateResponse(
             request,
             name,
@@ -111,6 +113,44 @@ class CompatJinja2Templates(Jinja2Templates):
             media_type=media_type,
             background=background,
         )
+
+
+_NOTICE_UNSET = object()
+
+
+def _inject_instagrapi_down_notice(context: dict[str, Any]) -> None:
+    """Revoga sessões Instagrapi sem liberação e injeta aviso no painel."""
+    if "instagrapi_down_notice" in context:
+        return
+    user = context.get("user")
+    request = context.get("request")
+    if user is None or not isinstance(request, Request):
+        context["instagrapi_down_notice"] = None
+        return
+    path = (request.url.path or "").rstrip("/") or "/"
+    if path in ("/login", "/register") or path.startswith("/static"):
+        context["instagrapi_down_notice"] = None
+        return
+    cached = getattr(request.state, "instagrapi_down_notice", _NOTICE_UNSET)
+    if cached is not _NOTICE_UNSET:
+        context["instagrapi_down_notice"] = cached
+        return
+    try:
+        from core.database import SessionLocal
+        from app.utils.instagrapi_access import revoke_unauthorized_instagrapi_accounts
+
+        db = SessionLocal()
+        try:
+            notice = revoke_unauthorized_instagrapi_accounts(db, user)
+        finally:
+            db.close()
+    except Exception:
+        notice = None
+    try:
+        request.state.instagrapi_down_notice = notice
+    except Exception:
+        pass
+    context["instagrapi_down_notice"] = notice
 
 
 templates = CompatJinja2Templates(directory="app/templates")

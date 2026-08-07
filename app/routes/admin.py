@@ -514,9 +514,28 @@ def toggle_user_instagrapi(
     if not _admin_can_see(admin, target):
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
     target.allow_instagrapi = not bool(getattr(target, "allow_instagrapi", False))
+    if not target.allow_instagrapi:
+        from app.utils.instagrapi_access import revoke_unauthorized_instagrapi_accounts
+
+        revoke_unauthorized_instagrapi_accounts(db, target)
     db.commit()
     return RedirectResponse(
         "/admin?ok=instagrapi",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post("/instagrapi/revoke-all")
+def revoke_all_instagrapi(
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_owner_user),
+):
+    """Para todas as sessões Instagrapi de quem não está liberado."""
+    from app.utils.instagrapi_access import revoke_all_unauthorized_instagrapi
+
+    n = revoke_all_unauthorized_instagrapi(db)
+    return RedirectResponse(
+        f"/admin?ok=instagrapi_revoke&n={n}",
         status_code=status.HTTP_303_SEE_OTHER,
     )
 
