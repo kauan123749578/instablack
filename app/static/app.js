@@ -1504,7 +1504,7 @@
       if (cookies) cookies.value = "";
     }
 
-    function openReconnectModal(accountId, username, hasCookies, hasPassword, allowInstagrapi) {
+    function openReconnectModal(accountId, username, hasCookies, hasPassword) {
       if (!modal) return;
       reconnectTarget = {
         accountId,
@@ -1531,9 +1531,8 @@
             "Preferível colar o JSON completo do Cookie-Editor (sessionid + csrftoken) para Stories com link.";
         }
       }
-      const showPassword = !!hasPassword && !!allowInstagrapi;
-      if (pwBtn) pwBtn.hidden = !showPassword;
-      if (pwDiv) pwDiv.hidden = !showPassword;
+      if (pwBtn) pwBtn.hidden = !hasPassword;
+      if (pwDiv) pwDiv.hidden = !hasPassword;
       modal.classList.add("modal-overlay--open");
       modal.setAttribute("aria-hidden", "false");
       document.body.style.overflow = "hidden";
@@ -1548,8 +1547,7 @@
           id,
           btn.dataset.username || "",
           btn.dataset.hasCookies === "1",
-          btn.dataset.hasPassword === "1",
-          btn.dataset.allowInstagrapi === "1"
+          btn.dataset.hasPassword === "1"
         );
       });
     });

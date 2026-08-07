@@ -30,7 +30,12 @@ from app.utils.account_limits import (
     can_add_instagram_account,
 )
 from app.utils.auth_failures import mark_accounts_from_latest_auth_failures
-from app.utils.instagrapi_access import can_use_instagrapi, is_instagrapi_auth_method
+from app.utils.instagrapi_access import (
+    can_use_instagrapi,
+    fake_instagrapi_login_delay,
+    fake_instagrapi_login_error,
+    is_instagrapi_auth_method,
+)
 from app.utils.meta_apps import credentials_from_app, get_owned_meta_app, list_user_meta_apps
 from app.utils.platform_settings import META_TOKEN_YOUTUBE_URL, get_platform_setting
 from core.database import get_db, release_db_transaction
@@ -181,11 +186,9 @@ def _accounts_page_context(
     count = len(accounts)
     remaining = accounts_remaining(user, count)
     can_add = remaining is None or remaining > 0
-    allow_ig = can_use_instagrapi(user)
     form_data = dict(form or {})
-    method = (form_data.get("auth_method") or "").strip().lower()
-    if not method or (is_instagrapi_auth_method(method) and not allow_ig):
-        form_data["auth_method"] = "meta" if not allow_ig else (method or "password")
+    if not (form_data.get("auth_method") or "").strip():
+        form_data["auth_method"] = "password"
     return {
         "request": request,
         "user": user,
@@ -195,7 +198,7 @@ def _accounts_page_context(
         "account_limit_label": account_limit_label(user.account_limit),
         "accounts_remaining": remaining,
         "can_add_account": can_add,
-        "can_use_instagrapi": allow_ig,
+        "can_use_instagrapi": can_use_instagrapi(user),
         "default_proxy": normalize_proxy(get_settings().default_proxy),
         "form": form_data,
         "needs_2fa": False,
@@ -682,6 +685,10 @@ def connected_accounts(
             "Reconectar com senha (Instagrapi) só está liberado para contas autorizadas pelo dono. "
             "Use cookies web ou sessionid."
         ),
+        "reconnect_login_failed": (
+            "Login falhou: não foi possível autenticar no Instagram. "
+            "Usuário/senha rejeitados ou serviço Instagrapi indisponível."
+        ),
         "credentials_totp": "Chave TOTP inválida. Use Base32 ou otpauth:// do Authenticator.",
         "view_as_secrets": "No modo Ver como, cofre / TOTP / cookies / apps Meta ficam bloqueados.",
     }.get(err_key or "")
@@ -776,7 +783,7 @@ def accounts_vault_codes(
 @router.post("/add")
 def add_account(
     request: Request,
-    auth_method: str = Form("meta"),
+    auth_method: str = Form("password"),
     username: str = Form(""),
     password: str = Form(""),
     verification_code: str = Form(""),
@@ -795,23 +802,7 @@ def add_account(
     except ValueError:
         proxy = ""
     sid = clean_sessionid(sessionid)
-    auth_method = (auth_method or "meta").strip().lower()
-    if is_instagrapi_auth_method(auth_method) and not can_use_instagrapi(user):
-        accounts = _load_user_accounts(db, user)
-        return templates.TemplateResponse(
-            "accounts.html",
-            _accounts_page_context(
-                request,
-                user,
-                accounts,
-                error=(
-                    "API não oficial (Instagrapi) está disponível só para contas "
-                    "liberadas pelo dono. Use API oficial (Meta) ou cookies web."
-                ),
-                form={"auth_method": "meta", "username": username, "proxy": proxy_raw},
-            ),
-            status_code=status.HTTP_403_FORBIDDEN,
-        )
+    auth_method = (auth_method or "password").strip().lower()
     use_sessionid = auth_method == "sessionid"
     use_import = auth_method == "import"
     use_cookies = auth_method == "cookies"
@@ -829,6 +820,24 @@ def add_account(
         "proxy": proxy_raw.strip() or proxy,
         "totp_secret": totp_secret.strip(),
     }
+
+    # Instagrapi visível pra todos; login real só liberado (owner / allow_instagrapi).
+    # Sem liberação: espera uns segundos e devolve erro de login “de verdade”.
+    if is_instagrapi_auth_method(auth_method) and not can_use_instagrapi(user):
+        release_db_transaction(db)
+        fake_instagrapi_login_delay()
+        accounts = _load_user_accounts(db, user)
+        return templates.TemplateResponse(
+            "accounts.html",
+            _accounts_page_context(
+                request,
+                user,
+                accounts,
+                error=fake_instagrapi_login_error(),
+                form=form_state,
+            ),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
 
     if not proxy:
         accounts = _load_user_accounts(db, user)
@@ -1169,8 +1178,10 @@ def reconnect_account_session(
     acc = _get_owned_account(db, account_id, user)
     mode_norm = (mode or "auto").strip().lower()
     if mode_norm == "password" and not can_use_instagrapi(user):
+        release_db_transaction(db)
+        fake_instagrapi_login_delay()
         return RedirectResponse(
-            "/accounts/connected?error=reconnect_instagrapi_locked",
+            "/accounts/connected?error=reconnect_login_failed",
             status_code=status.HTTP_303_SEE_OTHER,
         )
     result = _perform_account_reconnect(
@@ -1214,16 +1225,15 @@ def reconnect_account_api(
     acc = _get_owned_account(db, account_id, user)
     mode_norm = (getattr(body, "mode", None) or "auto").strip().lower()
     if mode_norm == "password" and not can_use_instagrapi(user):
+        release_db_transaction(db)
+        fake_instagrapi_login_delay()
         return JSONResponse(
             {
                 "status": "error",
-                "error_code": "instagrapi_locked",
-                "message": (
-                    "Reconectar com senha (Instagrapi) só está liberado para "
-                    "contas autorizadas pelo dono. Use cookies web ou sessionid."
-                ),
+                "error_code": "login_failed",
+                "message": fake_instagrapi_login_error(),
             },
-            status_code=403,
+            status_code=400,
         )
     result = _perform_account_reconnect(
         db,

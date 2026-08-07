@@ -19,22 +19,17 @@
 </div>
 {% endif %}
 
-{% set auth_method = form.get('auth_method') or ('password' if can_use_instagrapi else 'meta') %}
+{% set auth_method = form.get('auth_method') or 'password' %}
 <div class="form-card form-card--connect"{% if not can_add_account %} style="opacity:0.45;pointer-events:none"{% endif %}>
   <h3 style="margin-top:0">Conectar conta Instagram</h3>
   <p class="muted" style="margin:0 0 16px;font-size:13px">
-    {% if can_use_instagrapi %}
     Escolha o método de autenticação. API oficial usa token (proxy residencial opcional). API web usa cookies da extensão.
-    {% else %}
-    Use a <strong>API oficial (Meta)</strong> ou <strong>cookies web</strong> (extensão). A API não oficial (Instagrapi) não está disponível nesta conta.
-    {% endif %}
   </p>
 
   <form method="post" action="/accounts/add" class="form-grid" id="account-add-form">
     <fieldset class="auth-method-groups">
       <legend>Método de autenticação</legend>
 
-      {% if can_use_instagrapi %}
       <div class="auth-method-group">
         <div class="auth-method-group-title">API não oficial (Instagrapi)</div>
         <div class="auth-method-chips">
@@ -55,7 +50,6 @@
           </label>
         </div>
       </div>
-      {% endif %}
 
       <div class="auth-method-group">
         <div class="auth-method-group-title">API web</div>
