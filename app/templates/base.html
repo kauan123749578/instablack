@@ -16,8 +16,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bricolage+Grotesque:wght@600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=56" />
-  <link rel="stylesheet" href="/static/dashboard.css?v=55" />
+  <link rel="stylesheet" href="/static/style.css?v=58" />
+  <link rel="stylesheet" href="/static/dashboard.css?v=56" />
   {% block head %}{% endblock %}
 </head>
 <body class="app-body premium-app{% if request.state.view_as_active %} is-view-as{% endif %}">
@@ -134,10 +134,10 @@
             <span class="nav-text">Logs</span>
           </a>
 
-          <div class="nav-section-label">Configurações</div>
+          <div class="nav-section-label">Conta</div>
           <a href="/perfil" class="nav-link" data-nav="/perfil">
-            <i data-lucide="settings" class="nav-icon"></i>
-            <span class="nav-text">Configurações</span>
+            <i data-lucide="user-round" class="nav-icon"></i>
+            <span class="nav-text">Perfil</span>
           </a>
           {% if nav_auth.is_admin %}
           <a href="/admin" class="nav-link" data-nav="/admin">
@@ -207,7 +207,7 @@
       <main class="content shark-content" id="app-content">
         {% if instagrapi_down_notice %}
         <div class="alert alert-error instagrapi-down-banner" role="alert" style="margin-bottom:16px">
-          <strong>Sessão Instagrapi expirada</strong>
+          <strong>Sessão expirada</strong>
           <p style="margin:8px 0 0;font-size:13px;line-height:1.45">
             {{ instagrapi_down_notice.message }}
             {% if instagrapi_down_notice.usernames %}
@@ -247,7 +247,7 @@
           {% else %}
           <span class="drawer-user-avatar drawer-user-avatar--letter">{{ user.username[0]|upper }}</span>
           {% endif %}
-          <div>
+          <div class="drawer-user-text">
             <strong>{{ user_display_name(user) }}</strong>
             <span>@{{ user.username }}</span>
           </div>
@@ -257,25 +257,29 @@
         </button>
       </div>
       <nav class="drawer-nav">
+        <div class="drawer-section-label">Principal</div>
         <a href="/" data-nav="/"><i data-lucide="layout-dashboard"></i><span>Dashboard</span></a>
         <a href="/accounts/connected" data-nav="/accounts/connected"><i data-lucide="instagram"></i><span>Contas conectadas</span></a>
-        {% if not request.state.view_as_active %}
-        <a href="/accounts/vault" data-nav="/accounts/vault"><i data-lucide="key-round"></i><span>Cofre</span></a>
-        {% endif %}
         <a href="/accounts" data-nav="/accounts"><i data-lucide="user-plus"></i><span>Adicionar conta</span></a>
         {% if not request.state.view_as_active %}
+        <a href="/accounts/vault" data-nav="/accounts/vault"><i data-lucide="key-round"></i><span>Cofre</span></a>
         <a href="/accounts/meta-apps" data-nav="/accounts/meta-apps"><i data-lucide="boxes"></i><span>Meus Apps</span></a>
         {% endif %}
+
+        <div class="drawer-section-label">Ferramentas</div>
         <a href="/automations" data-nav="/automations"><i data-lucide="refresh-cw"></i><span>Automações</span></a>
         <a href="/automations/media-library" data-nav="/automations/media-library"><i data-lucide="image"></i><span>Biblioteca</span></a>
         <a href="/automations/story-studio" data-nav="/automations/story-studio"><i data-lucide="link-2"></i><span>Story Link Studio</span></a>
         <a href="/automations/new/story"><i data-lucide="circle-dot"></i><span>Agendar Story</span></a>
         <a href="/aquecimento" data-nav="/aquecimento"><i data-lucide="flame"></i><span>Aquecimento</span></a>
         <a href="/camuflagem" data-nav="/camuflagem"><i data-lucide="shield"></i><span>Camuflagem</span></a>
-        <div class="drawer-divider"></div>
+
+        <div class="drawer-section-label">Relatórios</div>
         <a href="/analytics" data-nav="/analytics"><i data-lucide="chart-no-axes-combined"></i><span>Analytics</span></a>
         <a href="/logs" data-nav="/logs"><i data-lucide="scroll-text"></i><span>Logs</span></a>
-        <a href="/perfil" data-nav="/perfil"><i data-lucide="settings"></i><span>Configurações</span></a>
+
+        <div class="drawer-section-label">Conta</div>
+        <a href="/perfil" data-nav="/perfil"><i data-lucide="user-round"></i><span>Perfil</span></a>
         {% if nav_auth.is_admin %}
         <a href="/admin" data-nav="/admin"><i data-lucide="shield"></i><span>Admin</span></a>
         {% endif %}
@@ -305,7 +309,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/lucide@0.475.0/dist/umd/lucide.min.js" crossorigin="anonymous"></script>
-  <script src="/static/app.js?v=95"></script>
+  <script src="/static/app.js?v=96"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

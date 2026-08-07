@@ -70,7 +70,7 @@ Token inválido / checkpoint (“You cannot access the app till you log in”). 
 
 ### 6) Segurança — Fase 1 (`c280915`) e Fase 2
 
-**Fase 1 (auth):** `SECRET_KEY` fail-closed em produção; rate limit login/register (Redis); senha atual + `session_version` ao trocar senha; CSRF + headers HTTP; logout só POST; `session.clear()` no login.
+**Fase 1 (auth):** `SECRET_KEY` fail-closed em produção; rate limit login/register (Redis); senha atual + `session_version` ao trocar senha; **cada login novo incrementa `session_version`** (1 sessão ativa — quem compartilha senha derruba o outro); CSRF + headers HTTP; logout só POST; `session.clear()` no login. Redirect `/login?reason=session` quando a sessão foi invalidada.
 
 **Fase 2 (mídia / View As / Redis):**
 
@@ -151,5 +151,6 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 | 2026-08-06 | feat | Instagrapi UI visível pra todos; sem liberação o login “tenta” 2–4s e falha como erro de autenticação. Só owner/`allow_instagrapi` conecta de verdade. |
 | 2026-08-06 | feat | Limite **150 vídeos Reels por usuário** (soma das playlists). Gate em create/upload-batch/direct-upload; UI mostra usados/restantes. |
 | 2026-08-06 | feat | Revoga Instagrapi ativo sem liberação (`needs_login` + limpa session); publish bloqueia; admin “Desligar Instagrapi”; menu Gerenciar no admin; olho Top do Dia alinhado no mobile. |
+| 2026-08-06 | ux | Drawer mobile com seções + Perfil; esconde nome Instagrapi na UI pública; Top do Dia sem views; login exclusivo (1 sessão — novo login derruba as outras). |
 
 <!-- Ao corrigir bugs de produção: acrescente uma linha acima e, se for armadilha nova, uma subseção em "O que já quebrou". -->

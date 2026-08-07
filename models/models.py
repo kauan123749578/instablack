@@ -47,7 +47,7 @@ class User(Base):
     # Libera conectar via Instagrapi (senha / sessionid / session.json). Owner sempre pode.
     allow_instagrapi: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    # Incrementa na troca de senha — invalida cookies antigos (session_version).
+    # Incrementa no login e na troca de senha — 1 sessão ativa por conta.
     session_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     # Hash SHA-256 do token da extensão Chrome (pareamento).
     extension_token_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)

@@ -2073,15 +2073,12 @@
         ? `<img src="${escapeHtml(item.avatar_url)}" alt="" class="og-rank-avatar-img">`
         : escapeHtml(initial);
       const gold = index === 1 ? " og-rank-avatar--gold" : "";
-      const views = item.view_count
-        ? `<span class="og-rank-views">${formatCountShort(item.view_count)} views</span>`
-        : "";
       html +=
         `<li class="og-rank-row${rankRowClass(index)}">` +
         `<div class="og-rank-avatar${item.avatar_url ? " og-rank-avatar--photo" : ""}${gold}">${avatar}</div>` +
         `<div class="og-rank-info"><strong>${escapeHtml(item.display_name)} <span class="og-rank-badge">#${index}</span></strong>` +
         `<span class="og-rank-tier">${escapeHtml(item.tier || "")}</span></div>` +
-        `<div class="og-rank-score-stack"><span class="og-rank-score-pill">${item.posts_today}</span>${views}</div>` +
+        `<div class="og-rank-score-stack"><span class="og-rank-score-pill">${item.posts_today}</span></div>` +
         "</li>";
     });
     html += "</ol>";
@@ -2102,7 +2099,6 @@
       const av = player.avatar_url
         ? `<img src="${escapeHtml(player.avatar_url)}" alt="">`
         : escapeHtml((player.display_name || "?")[0].toUpperCase());
-      const views = player.view_count ? ` · ${formatCountShort(player.view_count)} views` : "";
       const crown = pos === 1 ? '<span class="rank-podium-crown" aria-hidden="true"><i data-lucide="crown"></i></span>' : "";
       const gold = pos === 1 ? " rank-podium-avatar--gold" : "";
       return (
@@ -2111,7 +2107,7 @@
         `<div class="rank-podium-avatar${gold}${player.avatar_url ? " has-photo" : ""}">${av}</div>` +
         `<strong>${escapeHtml(player.display_name)}</strong>` +
         `<span class="rank-podium-tier">${escapeHtml(player.tier || "")}</span>` +
-        `<span class="rank-podium-score">${player.posts_today} posts${views}</span>` +
+        `<span class="rank-podium-score">${player.posts_today} posts</span>` +
         `<div class="rank-podium-block"><span>${pos}</span></div></div>`
       );
     };
@@ -2124,14 +2120,11 @@
         const av = item.avatar_url
           ? `<img src="${escapeHtml(item.avatar_url)}" alt="" class="og-rank-avatar-img">`
           : escapeHtml(initial);
-        const views = item.view_count
-          ? `<span class="og-rank-views">${formatCountShort(item.view_count)} views</span>`
-          : "";
         html +=
           "<li><span class=\"rank-modal-pos\">" + pos + "</span>" +
           `<div class="og-rank-avatar${item.avatar_url ? " og-rank-avatar--photo" : ""}">${av}</div>` +
           `<div class="og-rank-info"><strong>${escapeHtml(item.display_name)}</strong><span class="og-rank-tier">${escapeHtml(item.tier || "")}</span></div>` +
-          `<div class="og-rank-score-stack"><span class="og-rank-score-pill">${item.posts_today}</span>${views}</div></li>`;
+          `<div class="og-rank-score-stack"><span class="og-rank-score-pill">${item.posts_today}</span></div></li>`;
       });
       html += "</ol>";
     }
@@ -2142,8 +2135,7 @@
   function renderRankYouHtml(myRank) {
     let body = "<strong>Sem publicações hoje</strong>";
     if (myRank && myRank.rank) {
-      const views = myRank.view_count ? ` · ${formatCountShort(myRank.view_count)} views` : "";
-      body = `<strong>#${myRank.rank} · ${myRank.post_count} posts${views}</strong>`;
+      body = `<strong>#${myRank.rank} · ${myRank.post_count} posts</strong>`;
     }
     return `<div class="rank-modal-you"><span>SUA POSIÇÃO HOJE</span>${body}</div>`;
   }

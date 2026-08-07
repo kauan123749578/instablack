@@ -78,7 +78,7 @@
           {% if acc.provider == 'meta' %}
           API oficial{% if meta_display.get(acc.id) and meta_display[acc.id].app_name %} · {{ meta_display[acc.id].app_name }}{% endif %}
           {% else %}
-          Instagrapi / sessão
+          Login clássico / sessão
           {% endif %}
           · {{ status_label(acc.status) }}
         </div>

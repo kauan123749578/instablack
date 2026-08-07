@@ -682,12 +682,12 @@ def connected_accounts(
         "reconnect_2fa": "2FA necessário. Salve a chave TOTP em Credenciais / 2FA ou digite o código.",
         "reconnect_proxy": "Proxy ausente ou inválida — atualize a proxy antes de reconectar.",
         "reconnect_instagrapi_locked": (
-            "Reconectar com senha (Instagrapi) só está liberado para contas autorizadas pelo dono. "
+            "Reconectar com senha só está liberado para contas autorizadas pelo dono. "
             "Use cookies web ou sessionid."
         ),
         "reconnect_login_failed": (
             "Login falhou: não foi possível autenticar no Instagram. "
-            "Usuário/senha rejeitados ou serviço Instagrapi indisponível."
+            "Usuário/senha rejeitados ou serviço de login indisponível."
         ),
         "credentials_totp": "Chave TOTP inválida. Use Base32 ou otpauth:// do Authenticator.",
         "view_as_secrets": "No modo Ver como, cofre / TOTP / cookies / apps Meta ficam bloqueados.",

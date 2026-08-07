@@ -32,6 +32,23 @@ def _auth_page_ctx(request: Request, **extra):
     return ctx
 
 
+def _issue_exclusive_session(request: Request, db: Session, user: User) -> None:
+    """Novo login invalida todas as sessões anteriores (anti-compartilhamento)."""
+    user.session_version = int(getattr(user, "session_version", 0) or 0) + 1
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    request.session.clear()
+    request.session["user_id"] = user.id
+    request.session["session_version"] = int(user.session_version or 0)
+    ensure_csrf_token(request)
+
+
+SESSION_KICKED_MSG = (
+    "Sua sessão foi encerrada porque alguém entrou nesta conta em outro dispositivo. "
+    "Se não foi você, troque a senha no perfil."
+)
+
 async def _form_str(request: Request, key: str, default: str = "") -> str:
     """Lê campo do form. Preferência: request.form(); fallback: body urlencoded."""
     try:
@@ -79,9 +96,12 @@ def login_page(request: Request, db: Session = Depends(get_db)):
             except Exception:
                 pass
         request.session.clear()
+    error = None
+    if (request.query_params.get("reason") or "").strip().lower() == "session":
+        error = SESSION_KICKED_MSG
     return templates.TemplateResponse(
         "login.html",
-        _auth_page_ctx(request, error=None),
+        _auth_page_ctx(request, error=error),
     )
 
 
@@ -133,10 +153,7 @@ async def login(
             status_code=status.HTTP_400_BAD_REQUEST,
         )
     clear_login_rate_limit(request, username_norm)
-    request.session.clear()
-    request.session["user_id"] = user.id
-    request.session["session_version"] = int(getattr(user, "session_version", 0) or 0)
-    ensure_csrf_token(request)
+    _issue_exclusive_session(request, db, user)
     return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -211,10 +228,7 @@ async def register(
     db.commit()
     db.refresh(user)
     consume_invite(db, invite_norm, user)
-    request.session.clear()
-    request.session["user_id"] = user.id
-    request.session["session_version"] = int(getattr(user, "session_version", 0) or 0)
-    ensure_csrf_token(request)
+    _issue_exclusive_session(request, db, user)
     return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
 
 

@@ -20,16 +20,16 @@ from models.models import InstagramAccount, User
 INSTAGRAPI_AUTH_METHODS = frozenset({"password", "sessionid", "import"})
 
 INSTAGRAPI_EXPIRED_MSG = (
-    "Sessão expirada — a API Instagrapi não está disponível. "
+    "Sessão expirada — o login clássico não está disponível. "
     "Reconecte pela API oficial (Meta) ou cookies web."
 )
 
-# Mensagens que parecem falha real do Instagram/Instagrapi (não revelam o gate).
+# Mensagens que parecem falha real do Instagram (não revelam o gate).
 FAKE_LOGIN_ERRORS = (
     "Login falhou: usuário ou senha incorretos, ou a sessão foi rejeitada pelo Instagram.",
     "Não foi possível autenticar no Instagram (login failed). Tente novamente mais tarde.",
-    "Falha no login Instagrapi: challenge/sessão expirada. O Instagram não aceitou a autenticação.",
-    "Erro ao conectar: a API Instagrapi não respondeu a tempo. Tente de novo ou use a API oficial (Meta).",
+    "Falha no login: challenge/sessão expirada. O Instagram não aceitou a autenticação.",
+    "Erro ao conectar: o serviço de login não respondeu a tempo. Tente de novo ou use a API oficial (Meta).",
 )
 
 

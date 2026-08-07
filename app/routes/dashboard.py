@@ -497,11 +497,17 @@ def api_dashboard_rank(
                 "avatar_url": p.get("avatar_url"),
                 "tier": p["tier"],
                 "posts_today": p["posts_today"],
-                "view_count": int(p.get("view_count") or 0),
             }
             for p in top_players
         ],
-        "my_rank": my_rank,
+        "my_rank": {
+            "rank": my_rank.get("rank") if my_rank else None,
+            "post_count": int((my_rank or {}).get("post_count") or 0),
+            "tier": (my_rank or {}).get("tier"),
+            "display_name": (my_rank or {}).get("display_name"),
+        }
+        if my_rank
+        else None,
     }
 
 
@@ -1034,7 +1040,7 @@ def analytics_page(
         elif getattr(acc, "encrypted_web_cookies", None):
             provider_label = "API web"
         else:
-            provider_label = "Instagrapi"
+            provider_label = "Login clássico"
         account_stats.append(
             {
                 "account": acc,

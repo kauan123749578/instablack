@@ -63,7 +63,7 @@ def get_auth_user(
         request.session.clear()
         raise HTTPException(
             status_code=status.HTTP_303_SEE_OTHER,
-            headers={"Location": "/login"},
+            headers={"Location": "/login?reason=session"},
         )
     return user
 
