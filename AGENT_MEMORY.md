@@ -147,5 +147,6 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 | 2026-08-06 | bug | Story “Envie o arquivo de mídia” com arquivo selecionado: CSRF middleware chamava `request.form()` no multipart (BaseHTTPMiddleware esvazia body). Reels ok (fetch+header). Fix: multipart CSRF só via header; Story/Foto postam via fetch. |
 | 2026-08-06 | bug | Reels `body.name: Field required` intermitente: `reel-draft` usava `Form()` bind. Reescrito com `request.form()`; erros de validação em fetch voltam JSON. |
 | 2026-08-06 | feat | Instagrapi (senha/sessionid/import) só para owner + `allow_instagrapi`. UI escondida; POST bloqueado; admin “Liberar Instagrapi”. Meta/cookies abertos. |
+| 2026-08-06 | feat | Aviso global + `needs_login` para contas Instagrapi legadas (sem cookies web): “sessão expirada / API caiu”. Owner/liberados não veem. |
 
 <!-- Ao corrigir bugs de produção: acrescente uma linha acima e, se for armadilha nova, uma subseção em "O que já quebrou". -->

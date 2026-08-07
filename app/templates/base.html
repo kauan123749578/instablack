@@ -205,6 +205,28 @@
       </header>
 
       <main class="content shark-content" id="app-content">
+        {% if instagrapi_down_notice %}
+        <div class="alert alert-error instagrapi-down-banner" role="alert" style="margin-bottom:16px">
+          <strong>Sessão Instagrapi expirada — API não oficial fora do ar.</strong>
+          <p style="margin:8px 0 0;font-size:13px;line-height:1.45">
+            {{ instagrapi_down_notice.message }}
+            {% if instagrapi_down_notice.usernames %}
+            Conta(s):
+            {% for u in instagrapi_down_notice.usernames %}
+              <span class="ig-handle">@{{ u }}</span>{% if not loop.last %}, {% endif %}
+            {% endfor %}
+            {% if instagrapi_down_notice.count > instagrapi_down_notice.usernames|length %}
+              e mais {{ instagrapi_down_notice.count - (instagrapi_down_notice.usernames|length) }}.
+            {% endif %}
+            {% endif %}
+          </p>
+          <p style="margin:10px 0 0;font-size:13px">
+            <a href="/accounts" data-nav="/accounts" style="color:#E8D48B;font-weight:600">Adicionar conta (Meta ou cookies web)</a>
+            ·
+            <a href="/accounts/connected" data-nav="/accounts/connected" style="color:#E8D48B">Ver contas</a>
+          </p>
+        </div>
+        {% endif %}
         {% block content %}{% endblock %}
       </main>
     </div>
