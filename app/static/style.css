@@ -1398,7 +1398,14 @@ input[type="checkbox"]:checked::after {
   background: rgba(201, 162, 39, 0.1);
 }
 .password-toggle[aria-pressed="true"] { color: #C9A227; }
-.password-toggle-icon { display: block; pointer-events: none; }
+.password-toggle-icon {
+  display: none;
+  pointer-events: none;
+}
+.password-toggle[aria-pressed="false"] .password-toggle-icon--show,
+.password-toggle[aria-pressed="true"] .password-toggle-icon--hide {
+  display: block;
+}
 .login-card input::placeholder { color: #5b6472; }
 .login-card input:focus {
   outline: none; border-color: rgba(201, 162, 39, 0.55);
