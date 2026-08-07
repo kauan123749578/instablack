@@ -149,5 +149,6 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 | 2026-08-06 | feat | Instagrapi (senha/sessionid/import) só para owner + `allow_instagrapi`. UI escondida; POST bloqueado; admin “Liberar Instagrapi”. Meta/cookies abertos. |
 | 2026-08-06 | feat | Aviso global + `needs_login` para contas Instagrapi legadas (sem cookies web): “sessão expirada / API caiu”. Owner/liberados não veem. |
 | 2026-08-06 | feat | Instagrapi UI visível pra todos; sem liberação o login “tenta” 2–4s e falha como erro de autenticação. Só owner/`allow_instagrapi` conecta de verdade. |
+| 2026-08-06 | feat | Limite **150 vídeos Reels por usuário** (soma das playlists). Gate em create/upload-batch/direct-upload; UI mostra usados/restantes. |
 
 <!-- Ao corrigir bugs de produção: acrescente uma linha acima e, se for armadilha nova, uma subseção em "O que já quebrou". -->

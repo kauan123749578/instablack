@@ -2376,7 +2376,15 @@
 
     const videoExt = /\.(mp4|mov|webm|m4v|mkv)$/i;
     const imageExt = /\.(jpe?g|png|webp)$/i;
-    const maxReelFiles = 300;
+    const reelVideosRemaining = Math.max(
+      0,
+      parseInt(form.dataset.reelVideosRemaining || "150", 10) || 150
+    );
+    const reelVideosLimit = Math.max(
+      1,
+      parseInt(form.dataset.reelVideosLimit || "150", 10) || 150
+    );
+    const maxReelFiles = Math.min(150, reelVideosRemaining || 0);
     // Fallback local: no R2, o navegador envia direto sem passar pela Railway.
     const reelUploadConcurrency = 4;
 
@@ -2500,8 +2508,11 @@
         if (bad.length) {
           videoName.textContent = "Arquivo inválido: " + bad.map((f) => f.name).join(", ") + " — use .mp4";
           videoName.style.color = "var(--red, #ef4444)";
+        } else if (maxReelFiles <= 0) {
+          videoName.textContent = "Limite de " + reelVideosLimit + " vídeos Reels atingido nesta conta. Apague vídeos antigos para liberar espaço.";
+          videoName.style.color = "var(--red, #ef4444)";
         } else if (files.length > maxReelFiles) {
-          videoName.textContent = "Muitos vídeos: envie no máximo " + maxReelFiles + " por criação para evitar timeout.";
+          videoName.textContent = "Limite: no máximo " + maxReelFiles + " vídeo(s) agora (" + reelVideosLimit + " no total por conta).";
           videoName.style.color = "var(--red, #ef4444)";
         } else {
           const mb = filesTotalMb(files);
@@ -2552,9 +2563,14 @@
         return;
       }
       if (isReel) {
+        if (maxReelFiles <= 0) {
+          e.preventDefault();
+          alert("Limite de " + reelVideosLimit + " vídeos Reels por conta atingido. Apague vídeos ou automações antigas para liberar espaço.");
+          return;
+        }
         if (files.length > maxReelFiles) {
           e.preventDefault();
-          alert("Selecione no máximo " + maxReelFiles + " vídeos por automação. Depois você pode criar outra ou duplicar.");
+          alert("Você só pode enviar mais " + maxReelFiles + " vídeo(s) (limite " + reelVideosLimit + " por conta). Selecione menos arquivos.");
           return;
         }
         const bad = files.filter((f) => !videoExt.test(f.name));
@@ -2662,6 +2678,22 @@
         const files = input?.files ? Array.from(input.files) : [];
         if (!files.length) {
           alert("Selecione um ou mais vídeos para adicionar.");
+          return;
+        }
+        const remaining = Math.max(
+          0,
+          parseInt(form.dataset.reelVideosRemaining || "150", 10) || 150
+        );
+        const limit = Math.max(
+          1,
+          parseInt(form.dataset.reelVideosLimit || "150", 10) || 150
+        );
+        if (remaining <= 0) {
+          alert("Limite de " + limit + " vídeos Reels por conta atingido. Apague vídeos antigos para liberar espaço.");
+          return;
+        }
+        if (files.length > remaining) {
+          alert("Só cabem mais " + remaining + " vídeo(s) no limite de " + limit + " por conta. Selecione menos arquivos.");
           return;
         }
         const bad = files.filter((f) => !videoExt.test(f.name));

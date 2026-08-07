@@ -29,7 +29,10 @@
   <a href="/aquecimento" data-nav="/aquecimento" class="btn btn-sm">Abrir Aquecimento (ligar/desligar + explicação)</a>
 </div>
 
-<form method="post" action="{% if default_content_type == 'story' %}/automations/new/story{% else %}/automations/new{% endif %}" enctype="multipart/form-data" class="form-card form-card--premium form-grid" id="automation-form">
+<form method="post" action="{% if default_content_type == 'story' %}/automations/new/story{% else %}/automations/new{% endif %}" enctype="multipart/form-data" class="form-card form-card--premium form-grid" id="automation-form"
+      data-reel-videos-used="{{ reel_videos_used|default(0) }}"
+      data-reel-videos-limit="{{ reel_videos_limit|default(150) }}"
+      data-reel-videos-remaining="{{ reel_videos_remaining|default(150) }}">
   <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
   <input type="hidden" name="video_count" id="video-count-input" value="0">
   {% if default_content_type == 'story' %}
@@ -103,7 +106,7 @@
         <input type="file" id="video-input" name="videos" accept="video/mp4,video/quicktime,video/webm" multiple>
       </div>
       <span id="video-file-name" class="muted" style="display:block;margin-top:4px;font-size:12px">Nenhum vídeo selecionado</span>
-      <span id="reel-upload-help" class="muted" style="display:block;margin-top:4px;font-size:12px">O rascunho é criado primeiro e os arquivos sobem em paralelo.</span>
+      <span id="reel-upload-help" class="muted" style="display:block;margin-top:4px;font-size:12px">O rascunho é criado primeiro e os arquivos sobem em paralelo. Limite: {{ reel_videos_used|default(0) }}/{{ reel_videos_limit|default(150) }} vídeos Reels nesta conta ({{ reel_videos_remaining|default(150) }} restantes).</span>
       <ul id="video-file-list" class="video-file-list muted" style="display:none;margin:6px 0 0;padding-left:18px;font-size:12px"></ul>
     </label>
 

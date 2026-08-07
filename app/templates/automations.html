@@ -197,7 +197,9 @@
               enctype="multipart/form-data"
               class="form-grid"
               data-playlist-upload-form
-              data-automation-id="{{ a.id }}">
+              data-automation-id="{{ a.id }}"
+              data-reel-videos-remaining="{{ reel_videos_remaining|default(150) }}"
+              data-reel-videos-limit="{{ reel_videos_limit|default(150) }}">
           <label>Novos vídeos Reels (.mp4)
             <input type="file"
                    name="videos"
@@ -205,7 +207,8 @@
                    multiple
                    data-playlist-upload-input>
             <span class="muted" style="display:block;margin-top:4px;font-size:12px">
-              Pode selecionar 50 de uma vez. Os arquivos sobem direto ao R2 em paralelo.
+              Limite da conta: {{ reel_videos_used|default(0) }}/{{ reel_videos_limit|default(150) }} vídeos
+              ({{ reel_videos_remaining|default(150) }} restantes). Envio em paralelo ao R2.
             </span>
             <span class="muted" style="display:block;margin-top:4px;font-size:12px" data-playlist-upload-status></span>
           </label>

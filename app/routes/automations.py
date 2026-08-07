@@ -50,6 +50,11 @@ from app.utils.automation_videos import (
     parse_videos_json,
     videos_to_json,
 )
+from app.utils.reel_video_limits import (
+    MAX_REEL_VIDEOS_PER_USER,
+    reel_video_quota,
+    reel_video_quota_error,
+)
 from app.utils.intervals import (
     ALLOWED_INTERVALS,
     META_MIN_INTERVAL,
@@ -70,7 +75,8 @@ log = logging.getLogger(__name__)
 
 CONTENT_TYPES = ["reel", "story", "photo"]
 VISIBLE_ACCOUNT_STATUSES = ("active", "paused", "needs_login", "proxy_down", "banned")
-MAX_REEL_UPLOAD_FILES = 300
+# Por criação/seleção — não passa do teto por usuário.
+MAX_REEL_UPLOAD_FILES = MAX_REEL_VIDEOS_PER_USER
 DIRECT_UPLOAD_CONTENT_TYPES = {
     ".mp4": "video/mp4",
     ".mov": "video/quicktime",
@@ -285,6 +291,7 @@ def list_automations(
             InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
         )
     ).all()
+    quota = reel_video_quota(db, user)
     return templates.TemplateResponse(
         "automations.html",
         {
@@ -298,6 +305,9 @@ def list_automations(
             "meta_warmup_min_interval": META_WARMUP_MIN_INTERVAL,
             "captions_textarea_value": captions_textarea_value,
             "anti_farm_prefs": get_anti_farm_prefs(user),
+            "reel_videos_used": quota["used"],
+            "reel_videos_limit": quota["limit"],
+            "reel_videos_remaining": quota["remaining"],
         },
     )
 
@@ -327,6 +337,7 @@ def new_automation_page(
             "Recarregue com Ctrl+F5 e tente de novo."
         ),
     }.get(err_key or "")
+    quota = reel_video_quota(db, user)
     return templates.TemplateResponse(
         "new_automation.html",
         {
@@ -341,6 +352,9 @@ def new_automation_page(
             "content_types": CONTENT_TYPES,
             "default_content_type": default_type,
             "error": err_msg,
+            "reel_videos_used": quota["used"],
+            "reel_videos_limit": quota["limit"],
+            "reel_videos_remaining": quota["remaining"],
         },
     )
 
@@ -1058,6 +1072,10 @@ async def create_automation(
                         f"Só chegaram {len(upload_files)} de {video_count} vídeos no servidor. "
                         "Tente de novo (arquivos menores) ou envie em lotes."
                     )
+                else:
+                    quota = reel_video_quota(db, user, adding=len(upload_files))
+                    if not quota["ok"]:
+                        error = reel_video_quota_error(quota)
         else:
             upload_files = _collect_upload_files(form, field_names=("video", "videos"))
             if not upload_files:
@@ -1479,6 +1497,9 @@ async def create_reel_upload_draft(
 
     if content_type != "reel":
         return JSONResponse({"error": "Upload em lotes disponível apenas para Reels."}, status_code=400)
+    quota = reel_video_quota(db, user, adding=0)
+    if quota["remaining"] <= 0:
+        return JSONResponse({"error": reel_video_quota_error(quota)}, status_code=400)
     if schedule_mode not in ("now", "recurring", "calendar"):
         return JSONResponse({"error": "Modo de publicação inválido."}, status_code=400)
     if schedule_mode == "recurring" and interval_minutes not in ALLOWED_INTERVALS:
@@ -1577,7 +1598,14 @@ async def create_reel_upload_draft(
     automation.accounts = accounts
     db.add(automation)
     db.commit()
-    return {"ok": True, "automation_id": automation.id}
+    quota_after = reel_video_quota(db, user)
+    return {
+        "ok": True,
+        "automation_id": automation.id,
+        "reel_videos_used": quota_after["used"],
+        "reel_videos_limit": quota_after["limit"],
+        "reel_videos_remaining": quota_after["remaining"],
+    }
 
 
 @router.post("/{automation_id}/upload-batch")
@@ -1592,6 +1620,10 @@ async def upload_reel_batch(
         return JSONResponse({"error": "Esta automação não é de Reels."}, status_code=400)
     if not videos:
         return JSONResponse({"error": "Nenhum vídeo recebido neste lote."}, status_code=400)
+
+    quota = reel_video_quota(db, user, adding=len(videos))
+    if not quota["ok"]:
+        return JSONResponse({"error": reel_video_quota_error(quota)}, status_code=400)
 
     bad = [f.filename for f in videos if not is_video_filename(f.filename)]
     if any((acc.provider or "instagrapi") == "meta" for acc in a.accounts):
@@ -1663,6 +1695,9 @@ async def create_direct_upload_urls(
             {"error": f"Envie no máximo {MAX_REEL_UPLOAD_FILES} vídeos por seleção."},
             status_code=400,
         )
+    quota = reel_video_quota(db, user, adding=len(files))
+    if not quota["ok"]:
+        return JSONResponse({"error": reel_video_quota_error(quota)}, status_code=400)
 
     storage = get_storage()
     prefix = f"videos/direct/{user.id}/{a.id}/"
@@ -1727,6 +1762,9 @@ async def register_direct_uploads(
         return JSONResponse({"error": "Nenhum vídeo enviado para registrar."}, status_code=400)
     if len(items) > MAX_REEL_UPLOAD_FILES:
         return JSONResponse({"error": "Quantidade de vídeos inválida."}, status_code=400)
+    quota = reel_video_quota(db, user, adding=len(items))
+    if not quota["ok"]:
+        return JSONResponse({"error": reel_video_quota_error(quota)}, status_code=400)
 
     prefix = f"videos/direct/{user.id}/{a.id}/"
     allowed_prefixes = (prefix, f"b2/{prefix}")
