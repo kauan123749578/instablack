@@ -1195,6 +1195,47 @@
       });
     }
 
+    // Prévia do spintax: resolve o bloco {a|b} mais interno até acabar.
+    function spinOnce(text) {
+      const match = /\{([^{}]*)\}/.exec(text);
+      if (!match) return text;
+      const options = match[1].split("|");
+      const pick = options[Math.floor(Math.random() * options.length)] || "";
+      return text.slice(0, match.index) + pick + text.slice(match.index + match[0].length);
+    }
+    function spin(text) {
+      let out = text;
+      for (let i = 0; i < 200; i += 1) {
+        const next = spinOnce(out);
+        if (next === out) break;
+        out = next;
+      }
+      return out;
+    }
+
+    const previewBtn = document.getElementById("profile-bio-preview-btn");
+    const previewList = document.getElementById("profile-bio-preview");
+    const bioInput = document.getElementById("profile-bio-input");
+    if (previewBtn && previewList && bioInput) {
+      previewBtn.addEventListener("click", () => {
+        const text = (bioInput.value || "").trim();
+        previewList.innerHTML = "";
+        if (!text) {
+          previewList.hidden = true;
+          alert("Escreva a bio primeiro.");
+          return;
+        }
+        const seen = new Set();
+        for (let i = 0; i < 12 && seen.size < 3; i += 1) seen.add(spin(text));
+        seen.forEach((variant) => {
+          const li = document.createElement("li");
+          li.textContent = variant;
+          previewList.appendChild(li);
+        });
+        previewList.hidden = false;
+      });
+    }
+
     form.addEventListener("submit", (ev) => {
       ev.preventDefault();
       ensureCsrfOnForm(form);
@@ -1205,10 +1246,12 @@
         return;
       }
       const bio = (form.querySelector('textarea[name="biography"]')?.value || "").trim();
+      const link = (form.querySelector("#profile-link-input")?.value || "").trim();
+      const removeLink = !!form.querySelector('input[name="remove_link"]:checked');
       const fileInput = form.querySelector("#profile-pic-input");
       const hasFile = !!(fileInput && fileInput.files && fileInput.files.length > 0);
-      if (!bio && !hasFile) {
-        alert("Informe a bio e/ou escolha uma foto de perfil.");
+      if (!bio && !link && !removeLink && !hasFile) {
+        alert("Informe a bio, o link e/ou escolha uma foto de perfil.");
         return;
       }
 

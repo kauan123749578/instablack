@@ -314,8 +314,38 @@ async def _change_picture_async(
     return cl.get_settings()
 
 
+async def _edit_profile_async(
+    settings_dict: dict,
+    proxy: str,
+    biography: str | None,
+    external_url: str | None,
+) -> dict:
+    cl = await _build_client(proxy, settings_dict)
+    data: dict = {}
+    if biography is not None:
+        data["biography"] = biography
+    if external_url is not None:
+        data["external_url"] = external_url
+    if data:
+        await cl.account_edit(**data)
+    return cl.get_settings()
+
+
 def set_biography(settings_dict: dict, proxy: str, biography: str) -> dict:
     return _run(_set_biography_async(settings_dict, proxy, biography))
+
+
+def edit_profile(
+    settings_dict: dict,
+    proxy: str,
+    *,
+    biography: str | None = None,
+    external_url: str | None = None,
+) -> dict:
+    """Edita bio e/ou link. Campos omitidos são preservados pelo account_edit."""
+    return _run(
+        _edit_profile_async(settings_dict, proxy, biography, external_url)
+    )
 
 
 def change_profile_picture(

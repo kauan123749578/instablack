@@ -4,7 +4,7 @@
 <div class="page-header" data-page-profile-edit="1">
   <h2><i data-lucide="user-pen" class="inline-icon"></i> Editar perfil</h2>
   <p class="muted page-header-sub">
-    Um texto de bio e/ou uma foto para várias contas (login clássico e API async). Contas Meta não entram.
+    Bio, link e foto para várias contas de uma vez (login clássico e API async). Contas Meta não entram.
   </p>
 </div>
 
@@ -19,6 +19,7 @@
     <li class="{% if r.ok %}ok{% else %}fail{% endif %}">
       <strong class="ig-handle">@{{ r.username }}</strong>
       — {% if r.ok %}OK ({{ r.detail }}){% else %}{{ r.detail }}{% endif %}
+      {% if r.bio %}<div class="profile-edit-result-bio muted">bio: {{ r.bio }}</div>{% endif %}
     </li>
     {% endfor %}
   </ul>
@@ -35,15 +36,37 @@
         id="profile-edit-form" class="profile-edit-form" data-native-submit="1">
     <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
 
-    <label>Bio (mesmo texto em todas)
-      <textarea name="biography" rows="4" maxlength="220" placeholder="Texto da bio…">{{ bio_value }}</textarea>
+    <label>Bio
+      <textarea name="biography" id="profile-bio-input" rows="4" maxlength="220"
+                placeholder="Ex.: {Moda|Estilo|Lifestyle} e {dicas|conteúdo} todo dia 💫">{{ bio_value }}</textarea>
     </label>
-    <p class="muted" style="margin:4px 0 12px;font-size:12px">Até ~150 caracteres no Instagram. Deixe vazio se for só trocar a foto.</p>
+    <p class="muted profile-edit-hint-text">
+      Até ~150 caracteres no Instagram. Deixe vazio para não mexer na bio.
+      <br>
+      <strong>Variação automática:</strong> escreva opções entre chaves separadas por <code>|</code> e cada conta
+      recebe uma combinação sorteada — assim a bio não fica idêntica em todas.
+      Ex.: <code>{Moda|Estilo} e {dicas|conteúdo} todo dia</code>
+    </p>
+    <div class="profile-edit-preview-row">
+      <button type="button" class="btn btn-sm" id="profile-bio-preview-btn">Ver exemplos</button>
+      <ul class="profile-edit-preview" id="profile-bio-preview" hidden></ul>
+    </div>
+
+    <label>Link do perfil (opcional)
+      <input type="text" name="external_url" id="profile-link-input"
+             value="{{ link_value }}" placeholder="seusite.com/promo">
+    </label>
+    <p class="muted profile-edit-hint-text">
+      É o link clicável que aparece no perfil. Vazio = não mexe no link atual.
+      <label class="profile-edit-remove-link">
+        <input type="checkbox" name="remove_link" value="1"> Remover o link atual das contas selecionadas
+      </label>
+    </p>
 
     <label>Foto de perfil (opcional)
       <input type="file" name="profile_pic" id="profile-pic-input" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp">
     </label>
-    <p class="muted" style="margin:4px 0 16px;font-size:12px">JPG / PNG / WEBP. A mesma imagem vai para todas as contas selecionadas. Pode enviar só a foto, sem bio.</p>
+    <p class="muted profile-edit-hint-text">JPG / PNG / WEBP. A mesma imagem vai para todas as contas selecionadas.</p>
 
     <div class="profile-edit-accounts">
       <div class="profile-edit-accounts-head">
@@ -72,7 +95,7 @@
   <div class="profile-edit-busy-card">
     <div class="profile-edit-spinner" aria-hidden="true"></div>
     <strong>Aplicando nas contas…</strong>
-    <p class="muted">Não feche esta página. Bio e/ou foto estão sendo enviadas ao Instagram.</p>
+    <p class="muted">Não feche esta página. Bio, link e/ou foto estão sendo enviados ao Instagram.</p>
   </div>
 </div>
 {% endif %}

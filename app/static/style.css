@@ -2024,6 +2024,32 @@ body.is-view-as .app {
 .profile-edit-result-list { margin: 0; padding-left: 18px; }
 .profile-edit-result-list .ok { color: #86efac; }
 .profile-edit-result-list .fail { color: #fca5a5; }
+.profile-edit-result-bio { font-size: 12px; margin: 2px 0 8px; }
+.profile-edit-hint-text { margin: 4px 0 14px; font-size: 12px; line-height: 1.5; }
+.profile-edit-hint-text code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: rgba(201, 162, 39, 0.14);
+  font-size: 11px;
+}
+.profile-edit-remove-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  cursor: pointer;
+}
+.profile-edit-preview-row { margin: 0 0 14px; }
+.profile-edit-preview {
+  margin: 10px 0 0;
+  padding: 10px 12px 10px 28px;
+  border-radius: 10px;
+  border: 1px solid rgba(201, 162, 39, 0.2);
+  background: rgba(201, 162, 39, 0.07);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.profile-edit-preview[hidden] { display: none; }
 .profile-edit-results { margin-bottom: 16px; padding: 16px; }
 .profile-edit-results h3 { margin: 0 0 10px; font-size: 16px; }
 .profile-edit-busy {
