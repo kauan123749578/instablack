@@ -1195,47 +1195,6 @@
       });
     }
 
-    // Prévia do spintax: resolve o bloco {a|b} mais interno até acabar.
-    function spinOnce(text) {
-      const match = /\{([^{}]*)\}/.exec(text);
-      if (!match) return text;
-      const options = match[1].split("|");
-      const pick = options[Math.floor(Math.random() * options.length)] || "";
-      return text.slice(0, match.index) + pick + text.slice(match.index + match[0].length);
-    }
-    function spin(text) {
-      let out = text;
-      for (let i = 0; i < 200; i += 1) {
-        const next = spinOnce(out);
-        if (next === out) break;
-        out = next;
-      }
-      return out;
-    }
-
-    const previewBtn = document.getElementById("profile-bio-preview-btn");
-    const previewList = document.getElementById("profile-bio-preview");
-    const bioInput = document.getElementById("profile-bio-input");
-    if (previewBtn && previewList && bioInput) {
-      previewBtn.addEventListener("click", () => {
-        const text = (bioInput.value || "").trim();
-        previewList.innerHTML = "";
-        if (!text) {
-          previewList.hidden = true;
-          alert("Escreva a bio primeiro.");
-          return;
-        }
-        const seen = new Set();
-        for (let i = 0; i < 12 && seen.size < 3; i += 1) seen.add(spin(text));
-        seen.forEach((variant) => {
-          const li = document.createElement("li");
-          li.textContent = variant;
-          previewList.appendChild(li);
-        });
-        previewList.hidden = false;
-      });
-    }
-
     form.addEventListener("submit", (ev) => {
       ev.preventDefault();
       ensureCsrfOnForm(form);

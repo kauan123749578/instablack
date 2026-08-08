@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-import random
 import shutil
 import tempfile
 from pathlib import Path
@@ -16,7 +15,6 @@ from app.deps import get_current_user, get_effective_user, reject_view_as_secret
 from app.security import decrypt_secret
 from app.templating import templates
 from app.utils.instagrapi_access import can_use_instagrapi
-from app.utils.spintax import SpintaxError, has_spintax, spin, validate as validate_spintax
 from core import aiograpi_client as aio_ig
 from core.database import get_db, release_db_transaction
 from core.instagram import (
@@ -240,20 +238,8 @@ async def profile_edit_apply(
             status_code=403,
         )
 
-    bio_template = (biography or "").strip() or None
-    if bio_template:
-        try:
-            validate_spintax(bio_template)
-        except SpintaxError as exc:
-            return _render(
-                request,
-                user,
-                accounts_all,
-                error=f"Spintax inválido na bio: {exc}",
-                bio_value=biography,
-                link_value=link_raw,
-                status_code=400,
-            )
+    bio_raw = (biography or "").strip()
+    bio = bio_raw[:BIO_MAX] if bio_raw else None
 
     # Link vazio = não mexe. Marcar "remover" limpa o link atual.
     if remove_link:
@@ -297,7 +283,7 @@ async def profile_edit_apply(
             status_code=400,
         )
 
-    if bio_template is None and external_url is None and not has_file:
+    if bio is None and external_url is None and not has_file:
         return _render(
             request,
             user,
@@ -345,8 +331,6 @@ async def profile_edit_apply(
         jobs = [(a.id, a.username) for a in selected]
         release_db_transaction(db)
 
-        rng = random.Random()
-        spun_bio = has_spintax(bio_template)
         results: list[dict] = []
         for account_id, username in jobs:
             acc = db.get(InstagramAccount, account_id)
@@ -359,7 +343,6 @@ async def profile_edit_apply(
                     }
                 )
                 continue
-            bio = spin(bio_template, rng)[:BIO_MAX] if bio_template else None
             ok, detail = _apply_one(
                 acc,
                 biography=bio,
@@ -367,14 +350,7 @@ async def profile_edit_apply(
                 pic_path=pic_path,
             )
             db.commit()
-            results.append(
-                {
-                    "username": username,
-                    "ok": ok,
-                    "detail": detail,
-                    "bio": bio if (ok and spun_bio) else None,
-                }
-            )
+            results.append({"username": username, "ok": ok, "detail": detail})
 
         accounts_all = _eligible_accounts(db, user)
         release_db_transaction(db)
