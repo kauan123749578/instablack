@@ -22,6 +22,7 @@ from sqlalchemy.exc import OperationalError, TimeoutError as SATimeoutError
 
 from app.config import settings
 from app.routes import (
+    account_notes,
     accounts,
     admin,
     aquecimento,
@@ -289,6 +290,7 @@ def create_app() -> FastAPI:
     app.include_router(dashboard.router)
     app.include_router(logs.router)
     app.include_router(accounts.router)
+    app.include_router(account_notes.router)
     app.include_router(extension_api.router)
     app.include_router(extension_api.panel_router)
     app.include_router(meta_apps.router)

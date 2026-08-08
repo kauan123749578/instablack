@@ -173,6 +173,7 @@
     if (
       url.startsWith("/automations/new") ||
       url.startsWith("/automations/story-studio") ||
+      url.startsWith("/accounts/notes") ||
       url.startsWith("/camuflagem")
     ) {
       window.location.href = url;
@@ -221,6 +222,9 @@
         }
         if (html.includes('data-page-vault="1"') || html.includes('data-page-vault')) {
           document.body.dataset.pageVault = "1";
+        }
+        if (html.includes('data-page-notes="1"')) {
+          document.body.dataset.pageNotes = "1";
         }
         if (push) history.pushState({ url }, "", url);
         setActiveNav(new URL(url, window.location.origin).pathname);

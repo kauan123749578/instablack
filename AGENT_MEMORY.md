@@ -152,5 +152,7 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 | 2026-08-06 | feat | Limite **150 vídeos Reels por usuário** (soma das playlists). Gate em create/upload-batch/direct-upload; UI mostra usados/restantes. |
 | 2026-08-06 | feat | Revoga Instagrapi ativo sem liberação (`needs_login` + limpa session); publish bloqueia; admin “Desligar Instagrapi”; menu Gerenciar no admin; olho Top do Dia alinhado no mobile. |
 | 2026-08-06 | ux | Drawer mobile com seções + Perfil; esconde nome Instagrapi na UI pública; Top do Dia sem views; login exclusivo (1 sessão — novo login derruba as outras). |
+| 2026-08-07 | feat | Story Link Studio aceita login clássico (instagrapi) + cookies web; posição do sticker (x/y) vai no upload mobile. Meta continua sem link. |
+| 2026-08-07 | feat | Bloco de notas (`/accounts/notes`): cola lote `user | senha` + URL 2FA (browserscan/#secret), guarda cifrado, mostra código TOTP e senha sob demanda. |
 
 <!-- Ao corrigir bugs de produção: acrescente uma linha acima e, se for armadilha nova, uma subseção em "O que já quebrou". -->

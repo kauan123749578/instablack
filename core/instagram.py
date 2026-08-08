@@ -168,19 +168,19 @@ def _apply_story_sticker_ids_fix() -> None:
                 if data.get("story_countdowns"):
                     _ensure("countdown_sticker")
 
-                link_payload = _extract_link_from_tap_models(data.get("tap_models"))
+                # Prefere StoryLink do upload (posição do Studio) ao tap_models default.
+                link_payload = _extract_link_from_kwargs(kwargs.get("links"))
                 if not link_payload:
-                    link_payload = _extract_link_from_kwargs(kwargs.get("links"))
+                    link_payload = _extract_link_from_tap_models(data.get("tap_models"))
 
                 if link_payload:
-                    # Mantém tap_models do instagrapi + reforça story_link_stickers
-                    # (sem ir para API web — isso quebrava a publicação)
-                    if not data.get("story_link_stickers"):
-                        data["story_link_stickers"] = json.dumps([link_payload])
+                    data["story_link_stickers"] = json.dumps([link_payload])
                     _ensure("link_sticker_default")
                     log.info(
-                        "story configure mobile+link: url=%s",
+                        "story configure mobile+link: url=%s x=%.3f y=%.3f",
                         link_payload.get("url"),
+                        float(link_payload.get("x") or 0),
+                        float(link_payload.get("y") or 0),
                     )
 
                 if ids:
@@ -624,22 +624,66 @@ def _normalize_url(url: str) -> str:
     return u
 
 
-def _story_links(link_url: str | None) -> list[StoryLink]:
+def _story_links(link_url: str | None, layout: dict | None = None) -> list[StoryLink]:
     url = _normalize_url(link_url or "")
     if not url:
         return []
-    # Hitbox padrão do instagrapi (sticker nativo do Instagram)
+    layout = layout or {}
+    from core.story_web import DEFAULT_STICKER
+
+    x = float(layout.get("x", DEFAULT_STICKER["x"]) or DEFAULT_STICKER["x"])
+    y = float(layout.get("y", DEFAULT_STICKER["y"]) or DEFAULT_STICKER["y"])
+    width = float(layout.get("width", DEFAULT_STICKER["width"]) or DEFAULT_STICKER["width"])
+    height = float(layout.get("height", DEFAULT_STICKER["height"]) or DEFAULT_STICKER["height"])
+    rotation = float(layout.get("rotation", DEFAULT_STICKER["rotation"]) or 0.0)
     return [
         StoryLink(
             webUri=url,
-            x=0.5,
-            y=0.5,
+            x=x,
+            y=y,
             z=0,
-            width=0.5,
-            height=0.5,
-            rotation=0.0,
+            width=width,
+            height=height,
+            rotation=rotation,
         )
     ]
+
+
+def _prepare_instagrapi_story_image(
+    media_path: Path,
+    *,
+    link_url: str,
+    sticker_text: str | None,
+    layout: dict,
+) -> Path:
+    """Desenha o botão do Studio na foto e devolve JPEG 9:16 para upload mobile."""
+    import os
+    import tempfile
+
+    from core.story_web import DEFAULT_STICKER, prepare_story_image_with_link
+
+    draw_sticker = (
+        bool(layout["draw_sticker"])
+        if "draw_sticker" in layout
+        else bool((sticker_text or "").strip())
+    )
+    fd, tmp_name = tempfile.mkstemp(prefix="ib-story-ig-", suffix=".jpg")
+    os.close(fd)
+    prepared = Path(tmp_name)
+    prepare_story_image_with_link(
+        media_path,
+        prepared,
+        url=link_url,
+        sticker_text=sticker_text,
+        x=float(layout.get("x", DEFAULT_STICKER["x"])),
+        y=float(layout.get("y", DEFAULT_STICKER["y"])),
+        width=float(layout.get("width", DEFAULT_STICKER["width"])),
+        height=float(layout.get("height", DEFAULT_STICKER["height"])),
+        cover=bool(layout.get("cover", False)),
+        variant=str(layout.get("variant") or "default"),
+        draw_sticker=draw_sticker,
+    )
+    return prepared
 
 
 def publish_story(
@@ -654,7 +698,8 @@ def publish_story(
 ) -> dict:
     if not media_path.exists():
         raise FileNotFoundError(f"Mídia não encontrada: {media_path}")
-    links = _story_links(link_url)
+    layout = story_layout or {}
+    links = _story_links(link_url, layout)
     if links:
         log.info("Publicando story COM link: %s", links[0].webUri)
     elif link_url:
@@ -664,9 +709,8 @@ def publish_story(
 
     ext = media_path.suffix.lower()
     is_video = ext in (".mp4", ".mov", ".webm")
-    layout = story_layout or {}
 
-    # Story + link: API web quando há cookies com csrftoken; senão fallback instagrapi.
+    # Story + link: API web quando há cookies com csrftoken; senão instagrapi mobile.
     if links:
         has_web = bool(
             web_cookies
@@ -693,8 +737,6 @@ def publish_story(
                 rotation=float(layout.get("rotation", DEFAULT_STICKER["rotation"])),
                 cover=bool(layout.get("cover", False)),
                 variant=str(layout.get("variant") or "default"),
-                # Explicit layout wins; otherwise draw custom button when text was given
-                # (visual de corrente). Sem texto = sticker nativo do Instagram.
                 draw_sticker=(
                     bool(layout["draw_sticker"])
                     if "draw_sticker" in layout
@@ -703,22 +745,43 @@ def publish_story(
                 web_cookies=web_cookies,
                 browser=browser,
             )
-        log.warning(
-            "Story com link sem cookies web (csrftoken); usando instagrapi mobile"
+        log.info("Story com link via instagrapi mobile (posição do Studio)")
+
+    upload_path = media_path
+    prepared_tmp: Path | None = None
+    if links and not is_video:
+        prepared_tmp = _prepare_instagrapi_story_image(
+            media_path,
+            link_url=str(links[0].webUri),
+            sticker_text=sticker_text,
+            layout=layout,
         )
+        upload_path = prepared_tmp
 
-    def _upload() -> object:
-        kwargs: dict = {}
-        if links:
-            kwargs["links"] = links
-        if is_video:
-            if thumbnail_path is not None:
-                kwargs["thumbnail"] = thumbnail_path
-            return cl.video_upload_to_story(media_path, **kwargs)
-        return cl.photo_upload_to_story(media_path, **kwargs)
+    try:
+        def _upload() -> object:
+            kwargs: dict = {}
+            if links:
+                kwargs["links"] = links
+            if is_video:
+                if thumbnail_path is not None:
+                    kwargs["thumbnail"] = thumbnail_path
+                return cl.video_upload_to_story(media_path, **kwargs)
+            return cl.photo_upload_to_story(upload_path, **kwargs)
 
-    media = _upload()
-    return {"id": str(media.pk), "code": getattr(media, "code", None), "url": None}
+        media = _upload()
+        return {
+            "id": str(media.pk),
+            "code": getattr(media, "code", None),
+            "url": None,
+            "provider": "instagrapi_story_link" if links else "instagrapi",
+        }
+    finally:
+        if prepared_tmp is not None:
+            try:
+                prepared_tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 def publish_photo_feed(cl: Client, image_path: Path, caption: str) -> dict:

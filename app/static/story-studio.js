@@ -497,9 +497,11 @@
     }
   });
 
-  // Prefere cookies web; marca a primeira conta web
-  const webBox = [...document.querySelectorAll('#accountsList input[data-web="1"]')][0];
-  if (webBox && !webBox.disabled) webBox.checked = true;
+  // Prefere cookies web; senão a primeira conta (login clássico).
+  const firstBox =
+    [...document.querySelectorAll('#accountsList input[data-web="1"]')][0]
+    || [...document.querySelectorAll('#accountsList input[type="checkbox"]')][0];
+  if (firstBox && !firstBox.disabled) firstBox.checked = true;
 
   initCalendar();
 

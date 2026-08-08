@@ -44,6 +44,11 @@ def normalize_totp_secret(raw: str | None) -> str:
         if not secret:
             raise TotpError("URI otpauth sem parâmetro secret.")
         text = unquote(secret).strip()
+    elif "://" in text and "#" in text:
+        # browserscan.net/2fa#SECRET (e similares)
+        fragment = unquote(text.rsplit("#", 1)[-1]).strip()
+        if fragment:
+            text = fragment
 
     text = text.upper().replace(" ", "").replace("-", "").replace("\n", "").replace("\r", "")
     text = re.sub(r"[^A-Z2-7=]", "", text)

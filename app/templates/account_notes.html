@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Bloco de notas — instablack{% endblock %}
+{% block content %}
+<div class="page-header" data-page-notes="1">
+  <h2><i data-lucide="notebook-text" class="inline-icon"></i> Bloco de notas</h2>
+  <p class="muted page-header-sub">
+    Guarde user, senha e 2FA. Cole o lote no formato que você recebe — não conecta a conta no painel.
+  </p>
+</div>
+
+{% if ok == 'import' %}
+<div class="alert alert-ok">
+  Importado: {{ imported or 0 }} nova(s){% if updated and updated|int > 0 %} · {{ updated }} atualizada(s){% endif %}.
+</div>
+{% elif ok == 'deleted' %}
+<div class="alert alert-ok">Conta removida do bloco.</div>
+{% endif %}
+{% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
+{% if warnings %}
+<div class="alert alert-error">
+  {% for w in warnings %}<div>{{ w }}</div>{% endfor %}
+</div>
+{% endif %}
+
+<section class="notes-import og-glass-card">
+  <h3>Colar lote</h3>
+  <p class="muted notes-hint">
+    Um bloco por conta: <code>usuario | senha |</code> e na linha de baixo a URL do 2FA
+    (<code>https://www.browserscan.net/2fa#CHAVE</code>). Também aceita chave Base32 ou otpauth://.
+  </p>
+  <form method="post" action="/accounts/notes/import" class="notes-import-form">
+    <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
+    <textarea name="blob" id="notes-blob" rows="12" placeholder="1 karoline.vidal556 | Blue!bella5441 |&#10;https://www.browserscan.net/2fa#E36DRDQKVVMA5WM6XRWVT7E26H4DAEO4&#10;2 moniquecorreia871 | Sofia679! |&#10;https://www.browserscan.net/2fa#JIR5LOS4EDHL6KPQCZ34XAELOWYT5463"></textarea>
+    <div class="notes-import-actions">
+      <button type="submit" class="btn btn-primary">Salvar no bloco</button>
+      <span class="muted" id="notes-count-hint">{{ notes|length }} conta(s) guardada(s)</span>
+    </div>
+  </form>
+</section>
+
+<div class="notes-toolbar">
+  <input type="search" id="notes-search" placeholder="Buscar @usuario…" autocomplete="off">
+</div>
+
+{% if notes %}
+<div class="notes-grid" id="notes-grid">
+  {% for n in notes %}
+  <article class="notes-card og-glass-card" data-note-id="{{ n.id }}" data-username="{{ n.username|lower }}">
+    <header class="notes-card-head">
+      <strong class="ig-handle">@{{ n.username }}</strong>
+      <span class="og-badge {% if n.has_totp %}badge-green{% endif %}">
+        {% if n.has_totp %}2FA{% else %}Sem 2FA{% endif %}
+      </span>
+    </header>
+    <div class="notes-fields">
+      <label>Usuário
+        <div class="notes-copy-row">
+          <input type="text" readonly value="{{ n.username }}" class="notes-user">
+          <button type="button" class="btn btn-sm notes-copy" data-copy="{{ n.username }}">Copiar</button>
+        </div>
+      </label>
+      <label>Senha
+        <div class="notes-copy-row">
+          <input type="password" readonly class="notes-pass" value="{% if n.has_password %}••••••••{% endif %}" placeholder="—">
+          <button type="button" class="btn btn-sm notes-reveal">Mostrar</button>
+          <button type="button" class="btn btn-sm notes-copy-pass" disabled>Copiar</button>
+        </div>
+      </label>
+      {% if n.has_totp %}
+      <div class="notes-totp">
+        <span class="muted">Authenticator</span>
+        <button type="button" class="notes-code-btn" title="Clique para copiar">
+          <strong class="notes-code">------</strong>
+          <span class="notes-remain muted"></span>
+        </button>
+      </div>
+      {% endif %}
+    </div>
+    <form method="post" action="/accounts/notes/{{ n.id }}/delete" class="notes-delete-form"
+          onsubmit="return confirm('Remover @{{ n.username }} do bloco?');">
+      <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
+      <button type="submit" class="btn btn-sm notes-delete">Remover</button>
+    </form>
+  </article>
+  {% endfor %}
+</div>
+{% else %}
+<div class="og-glass-card" style="padding:20px">
+  <p class="muted" style="margin:0">Nenhuma conta no bloco ainda. Cole o lote acima.</p>
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script src="/static/account-notes.js?v=1"></script>
+{% endblock %}

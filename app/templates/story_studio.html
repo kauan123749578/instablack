@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Story Link Studio{% endblock %}
 {% block head %}
-<link rel="stylesheet" href="/static/story-studio.css?v=6" />
+<link rel="stylesheet" href="/static/story-studio.css?v=7" />
 {% endblock %}
 {% block content %}
 <div class="studio-app mode-custom" id="studioShell">
@@ -31,24 +31,24 @@
 
     <div class="studio-tab-panel active" id="tab-general" role="tabpanel">
       <div class="field">
-        <label>Contas API web <span class="muted" id="accountCountHint"></span></label>
+        <label>Contas <span class="muted" id="accountCountHint"></span></label>
         <div class="studio-accounts" id="accountsList">
-          {% if accounts %}
-          {% for acc in accounts %}
+          {% if studio_accounts %}
+          {% for item in studio_accounts %}
           <label class="studio-account-chip">
-            <input type="checkbox" name="studio_account" value="{{ acc.id }}" data-web="1">
-            <span>@{{ acc.username }} · Cookies web</span>
+            <input type="checkbox" name="studio_account" value="{{ item.account.id }}" data-kind="{{ item.kind }}"{% if item.kind == 'web' %} data-web="1"{% endif %}>
+            <span>@{{ item.account.username }} · {% if item.kind == 'web' %}Cookies web{% else %}Login clássico{% endif %}</span>
           </label>
           {% endfor %}
           {% else %}
           <div class="studio-empty-accounts">
-            <strong>Nenhuma conta com API web</strong>
-            <p>Este editor só funciona com contas conectadas via <em>cookies JSON</em> (Cookie-Editor).</p>
-            <a href="/accounts" data-nav="/accounts" class="btn btn-sm btn-primary">Conectar conta web</a>
+            <strong>Nenhuma conta pronta para Story com link</strong>
+            <p>Conecte via cookies JSON (Cookie-Editor){% if can_use_instagrapi %} ou login clássico (usuário e senha){% endif %}.</p>
+            <a href="/accounts" data-nav="/accounts" class="btn btn-sm btn-primary">Conectar conta</a>
           </div>
           {% endif %}
         </div>
-        <p class="muted studio-hint">Login clássico e Meta oficial não aparecem aqui — só cookies web publicam Story com link nativo.</p>
+        <p class="muted studio-hint">Arraste o botão no preview para centralizar o link. Meta oficial não publica Story com link.</p>
       </div>
       <div class="field">
         <label for="imageInput">Fotos <span class="muted" id="mediaCountHint"></span></label>
@@ -162,5 +162,5 @@
 </dialog>
 {% endblock %}
 {% block scripts %}
-<script src="/static/story-studio.js?v=6"></script>
+<script src="/static/story-studio.js?v=7"></script>
 {% endblock %}

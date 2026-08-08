@@ -74,6 +74,9 @@ class User(Base):
     meta_apps: Mapped[List["UserMetaApp"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    account_notes: Mapped[List["AccountNote"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class UserMetaApp(Base):
@@ -452,3 +455,27 @@ class WarmupLog(Base):
     )
 
     job: Mapped["WarmupJob"] = relationship()
+
+
+class AccountNote(Base):
+    """Bloco de notas: user/senha/2FA guardados (não conecta a conta no painel)."""
+
+    __tablename__ = "account_notes"
+    __table_args__ = (
+        UniqueConstraint("user_id", "username", name="uq_account_notes_user_username"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    username: Mapped[str] = mapped_column(String(255))
+    encrypted_password: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    encrypted_totp_secret: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    note: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    user: Mapped["User"] = relationship(back_populates="account_notes")

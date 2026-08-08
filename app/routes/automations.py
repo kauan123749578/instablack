@@ -64,6 +64,7 @@ from app.utils.intervals import (
     validate_interval_for_accounts,
 )
 from celery_app.tasks.publish import publish_once, publish_to_account
+from app.utils.instagrapi_access import can_use_instagrapi
 from core.anti_farm_prefs import get_anti_farm_prefs
 from core.database import get_db
 from core.storage import get_storage
@@ -84,6 +85,47 @@ DIRECT_UPLOAD_CONTENT_TYPES = {
     ".m4v": "video/x-m4v",
     ".mkv": "video/x-matroska",
 }
+
+
+def _studio_account_kind(acc: InstagramAccount) -> str | None:
+    """'web' | 'instagrapi' | None (Meta / sem sessão)."""
+    if (acc.provider or "instagrapi") == "meta":
+        return None
+    flags = web_cookies_status(acc.encrypted_web_cookies)
+    if flags.get("has_csrftoken"):
+        return "web"
+    if acc.session_json and acc.status in ("active", "paused"):
+        return "instagrapi"
+    return None
+
+
+def _assert_studio_account(account: InstagramAccount, *, user: User) -> str:
+    """Valida conta do Story Studio. Retorna 'web' ou 'instagrapi'."""
+    kind = _studio_account_kind(account)
+    if kind == "web":
+        return "web"
+    if kind == "instagrapi":
+        if not can_use_instagrapi(user):
+            raise HTTPException(
+                400,
+                detail=(
+                    f"@{account.username}: login clássico não está liberado nesta conta. "
+                    "Use cookies web ou peça liberação."
+                ),
+            )
+        return "instagrapi"
+    if (account.provider or "instagrapi") == "meta":
+        raise HTTPException(
+            400,
+            detail=f"@{account.username}: Story com link não funciona na API oficial (Meta).",
+        )
+    raise HTTPException(
+        400,
+        detail=(
+            f"@{account.username}: reconecte com login clássico ou cookies web "
+            "(sessionid + csrftoken)."
+        ),
+    )
 
 
 def _story_link_value(content_type: str, story_link: str) -> str | None:
@@ -442,7 +484,7 @@ def story_studio_page(
     db: Session = Depends(get_db),
     user: User = Depends(get_effective_user),
 ):
-    """Editor visual de Story com link (somente contas com cookies web)."""
+    """Editor visual de Story com link (cookies web + login clássico liberado)."""
     all_accounts = db.scalars(
         select(InstagramAccount)
         .where(
@@ -454,19 +496,22 @@ def story_studio_page(
     cookie_flags = {
         acc.id: web_cookies_status(acc.encrypted_web_cookies) for acc in all_accounts
     }
-    accounts = [
-        acc
-        for acc in all_accounts
-        if (acc.provider or "instagrapi") != "meta"
-        and cookie_flags.get(acc.id, {}).get("has_csrftoken")
-    ]
+    allow_ig = can_use_instagrapi(user)
+    studio_accounts: list[dict] = []
+    for acc in all_accounts:
+        kind = _studio_account_kind(acc)
+        if kind == "web":
+            studio_accounts.append({"account": acc, "kind": "web"})
+        elif kind == "instagrapi" and allow_ig:
+            studio_accounts.append({"account": acc, "kind": "instagrapi"})
     return templates.TemplateResponse(
         "story_studio.html",
         {
             "request": request,
             "user": user,
-            "accounts": accounts,
+            "studio_accounts": studio_accounts,
             "cookie_flags": cookie_flags,
+            "can_use_instagrapi": allow_ig,
         },
     )
 
@@ -576,16 +621,7 @@ async def story_studio_publish(
     )
     if account is None:
         raise HTTPException(400, detail="Conta inválida ou indisponível")
-    if (account.provider or "instagrapi") == "meta":
-        raise HTTPException(
-            400,
-            detail="Story com link visual exige conta com cookies web (não API oficial Meta).",
-        )
-    if not web_cookies_status(account.encrypted_web_cookies).get("has_csrftoken"):
-        raise HTTPException(
-            400,
-            detail="Importe cookies JSON (Cookie-Editor) com sessionid + csrftoken nesta conta.",
-        )
+    _assert_studio_account(account, user=user)
 
     raw = await image.read()
     if not raw:
@@ -639,7 +675,7 @@ async def story_studio_schedule(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Agenda Stories com link (API web): multi-contas, multi-dias e multi-mídias."""
+    """Agenda Stories com link (web ou instagrapi): multi-contas, multi-dias e multi-mídias."""
     import json
 
     from core.story_web import normalize_story_url
@@ -680,16 +716,7 @@ async def story_studio_schedule(
     if len(accounts) != len(account_ids):
         raise HTTPException(400, detail="Uma ou mais contas são inválidas")
     for account in accounts:
-        if (account.provider or "instagrapi") == "meta":
-            raise HTTPException(
-                400,
-                detail=f"@{account.username}: Story com link exige cookies web (não Meta).",
-            )
-        if not web_cookies_status(account.encrypted_web_cookies).get("has_csrftoken"):
-            raise HTTPException(
-                400,
-                detail=f"@{account.username}: importe cookies JSON com csrftoken (API web).",
-            )
+        _assert_studio_account(account, user=user)
 
     days = parse_calendar_days(calendar_days)
     if not days:

@@ -700,6 +700,14 @@ def _postgres_migrate(bind=None) -> None:
                 ("ends_at", "TIMESTAMPTZ"),
             ],
         )
+        if _table_exists(conn, "account_notes"):
+            _create_indexes_safe(
+                conn,
+                [
+                    "CREATE INDEX IF NOT EXISTS ix_account_notes_user_id "
+                    "ON account_notes (user_id)",
+                ],
+            )
 
 def init_db() -> None:
     """Cria todas as tabelas (uso simples, sem Alembic).
