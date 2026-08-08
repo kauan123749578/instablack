@@ -24,6 +24,7 @@ from app.config import settings
 from app.routes import (
     account_notes,
     accounts,
+    accounts_profile,
     admin,
     aquecimento,
     auth,
@@ -290,6 +291,7 @@ def create_app() -> FastAPI:
     app.include_router(dashboard.router)
     app.include_router(logs.router)
     app.include_router(accounts.router)
+    app.include_router(accounts_profile.router)
     app.include_router(account_notes.router)
     app.include_router(extension_api.router)
     app.include_router(extension_api.panel_router)

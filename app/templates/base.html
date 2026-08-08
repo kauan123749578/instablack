@@ -100,6 +100,10 @@
             <i data-lucide="notebook-text" class="nav-icon"></i>
             <span class="nav-text">Bloco de notas</span>
           </a>
+          <a href="/accounts/profile-edit" class="nav-link" data-nav="/accounts/profile-edit">
+            <i data-lucide="user-pen" class="nav-icon"></i>
+            <span class="nav-text">Editar perfil</span>
+          </a>
           {% endif %}
           {% if not request.state.view_as_active %}
           <a href="/accounts/meta-apps" class="nav-link" data-nav="/accounts/meta-apps">
@@ -268,6 +272,7 @@
         {% if not request.state.view_as_active or (request.state.auth_user and request.state.auth_user.is_owner) %}
         <a href="/accounts/vault" data-nav="/accounts/vault"><i data-lucide="key-round"></i><span>Cofre</span></a>
         <a href="/accounts/notes" data-nav="/accounts/notes"><i data-lucide="notebook-text"></i><span>Bloco de notas</span></a>
+        <a href="/accounts/profile-edit" data-nav="/accounts/profile-edit"><i data-lucide="user-pen"></i><span>Editar perfil</span></a>
         {% endif %}
         {% if not request.state.view_as_active %}
         <a href="/accounts/meta-apps" data-nav="/accounts/meta-apps"><i data-lucide="boxes"></i><span>Meus Apps</span></a>

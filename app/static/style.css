@@ -1993,6 +1993,40 @@ body.is-view-as .app {
   text-transform: uppercase;
   color: #9ca3af;
 }
+.profile-edit-accounts {
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 12px;
+  padding: 12px;
+  background: rgba(0,0,0,0.22);
+}
+.profile-edit-accounts-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.profile-edit-account-list {
+  display: grid;
+  gap: 6px;
+  max-height: 320px;
+  overflow: auto;
+}
+.profile-edit-account {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.profile-edit-account:hover { background: rgba(255,255,255,0.04); }
+.profile-edit-result-list { margin: 0; padding-left: 18px; }
+.profile-edit-result-list .ok { color: #86efac; }
+.profile-edit-result-list .fail { color: #fca5a5; }
+.profile-edit-results { margin-bottom: 16px; padding: 16px; }
+.profile-edit-results h3 { margin: 0 0 10px; font-size: 16px; }
+
 .notes-copy-row { display: flex; gap: 6px; align-items: center; }
 .notes-copy-row input {
   flex: 1;

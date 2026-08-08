@@ -792,6 +792,16 @@ def publish_photo_feed(cl: Client, image_path: Path, caption: str) -> dict:
     return {"id": str(media.pk), "code": media.code, "url": url}
 
 
+def set_biography(cl: Client, biography: str) -> bool:
+    return bool(cl.account_set_biography(biography or ""))
+
+
+def change_profile_picture(cl: Client, image_path: Path):
+    if not image_path.exists():
+        raise FileNotFoundError(f"Imagem não encontrada: {image_path}")
+    return cl.account_change_picture(image_path)
+
+
 def serialize_settings(settings_dict: dict) -> str:
     return json.dumps(settings_dict, ensure_ascii=False)
 

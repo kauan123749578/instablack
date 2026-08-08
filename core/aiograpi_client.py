@@ -298,3 +298,29 @@ def publish_story(
             thumbnail_path=thumbnail_path,
         )
     )
+
+
+async def _set_biography_async(settings_dict: dict, proxy: str, biography: str) -> dict:
+    cl = await _build_client(proxy, settings_dict)
+    await cl.account_set_biography(biography or "")
+    return cl.get_settings()
+
+
+async def _change_picture_async(
+    settings_dict: dict, proxy: str, image_path: Path
+) -> dict:
+    cl = await _build_client(proxy, settings_dict)
+    await cl.account_change_picture(image_path)
+    return cl.get_settings()
+
+
+def set_biography(settings_dict: dict, proxy: str, biography: str) -> dict:
+    return _run(_set_biography_async(settings_dict, proxy, biography))
+
+
+def change_profile_picture(
+    settings_dict: dict, proxy: str, image_path: Path
+) -> dict:
+    if not image_path.exists():
+        raise FileNotFoundError(f"Imagem não encontrada: {image_path}")
+    return _run(_change_picture_async(settings_dict, proxy, image_path))

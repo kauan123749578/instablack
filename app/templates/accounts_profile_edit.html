@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Editar perfil IG — instablack{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2><i data-lucide="user-pen" class="inline-icon"></i> Editar perfil</h2>
+  <p class="muted page-header-sub">
+    Um texto de bio e/ou uma foto para várias contas (login clássico e API async). Contas Meta não entram.
+  </p>
+</div>
+
+{% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
+{% if summary %}<div class="alert alert-ok">{{ summary }}</div>{% endif %}
+
+{% if results %}
+<section class="og-glass-card profile-edit-results">
+  <h3>Resultado</h3>
+  <ul class="profile-edit-result-list">
+    {% for r in results %}
+    <li class="{% if r.ok %}ok{% else %}fail{% endif %}">
+      <strong class="ig-handle">@{{ r.username }}</strong>
+      — {% if r.ok %}OK ({{ r.detail }}){% else %}{{ r.detail }}{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{% if not can_edit %}
+<div class="alert alert-error">Seu usuário não está liberado para API privada (Instagrapi / async).</div>
+{% elif not accounts %}
+<div class="alert alert-error">Nenhuma conta elegível (precisa de sessão clássica/async com proxy — sem Meta).</div>
+{% else %}
+<section class="notes-import og-glass-card">
+  <form method="post" action="/accounts/profile-edit" enctype="multipart/form-data" class="profile-edit-form">
+    <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
+
+    <label>Bio (mesmo texto em todas)
+      <textarea name="biography" rows="4" maxlength="220" placeholder="Texto da bio…">{{ bio_value }}</textarea>
+    </label>
+    <p class="muted" style="margin:4px 0 12px;font-size:12px">Até ~150 caracteres no Instagram. Deixe vazio se for só trocar a foto.</p>
+
+    <label>Foto de perfil (opcional)
+      <input type="file" name="profile_pic" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp">
+    </label>
+    <p class="muted" style="margin:4px 0 16px;font-size:12px">JPG / PNG / WEBP. A mesma imagem vai para todas as contas selecionadas.</p>
+
+    <div class="profile-edit-accounts">
+      <div class="profile-edit-accounts-head">
+        <strong>Contas</strong>
+        <label class="muted"><input type="checkbox" id="profile-edit-select-all"> Selecionar todas</label>
+      </div>
+      <div class="profile-edit-account-list">
+        {% for acc in accounts %}
+        <label class="profile-edit-account">
+          <input type="checkbox" name="account_ids" value="{{ acc.id }}" class="profile-edit-acc-cb">
+          <span class="ig-handle">@{{ acc.username }}</span>
+          <span class="og-badge">{% if acc.provider == 'aiograpi' %}API async{% else %}Login clássico{% endif %}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="notes-import-actions" style="margin-top:16px">
+      <button type="submit" class="btn btn-primary">Aplicar nas selecionadas</button>
+      <span class="muted">Máx. 40 contas por vez · pode demorar</span>
+    </div>
+  </form>
+</section>
+{% endif %}
+
+<script>
+(function () {
+  const all = document.getElementById("profile-edit-select-all");
+  if (!all) return;
+  all.addEventListener("change", function () {
+    document.querySelectorAll(".profile-edit-acc-cb").forEach(function (cb) {
+      cb.checked = all.checked;
+    });
+  });
+})();
+</script>
+{% endblock %}
