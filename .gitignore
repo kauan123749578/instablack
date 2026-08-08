@@ -35,4 +35,7 @@ Thumbs.db
 !app/static/favicon-32.png
 !app/static/apple-touch-icon.png
 !app/static/favicon.svg
+!app/static/pwa-icon-192.png
+!app/static/pwa-icon-512.png
+!app/static/pwa-icon-512-maskable.png
 !extension/icons/*.png
