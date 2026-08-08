@@ -11,6 +11,11 @@
 {% if error %}<div class="alert alert-error">{{ error }}</div>{% endif %}
 {% if summary %}<div class="alert alert-ok">{{ summary }}</div>{% endif %}
 
+<section class="og-glass-card profile-edit-results" id="profile-edit-live" hidden>
+  <h3 id="profile-edit-live-title">Resultado</h3>
+  <ul class="profile-edit-result-list" id="profile-edit-live-list"></ul>
+</section>
+
 {% if results %}
 <section class="og-glass-card profile-edit-results">
   <h3>Resultado</h3>
@@ -86,7 +91,8 @@
   <div class="profile-edit-busy-card">
     <div class="profile-edit-spinner" aria-hidden="true"></div>
     <strong>Aplicando nas contas…</strong>
-    <p class="muted">Não feche esta página. Bio, link e/ou foto estão sendo enviados ao Instagram.</p>
+    <p class="muted" id="profile-edit-busy-status">Preparando…</p>
+    <p class="muted">Não feche esta página. Cada conta é enviada por vez.</p>
   </div>
 </div>
 {% endif %}

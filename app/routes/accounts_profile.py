@@ -7,6 +7,8 @@ import tempfile
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -52,6 +54,25 @@ def _normalize_url(raw: str) -> str:
 def _url_looks_valid(url: str) -> bool:
     rest = url.split("://", 1)[-1]
     return bool(rest) and " " not in rest and "." in rest
+
+
+def _save_upload(upload: UploadFile, tmp_dir: Path) -> tuple[Path | None, str | None]:
+    """Grava o upload em disco. Devolve (caminho, erro)."""
+    suffix = Path(upload.filename or "pic.jpg").suffix.lower() or ".jpg"
+    if suffix not in IMAGE_EXT:
+        return None, "Foto: use JPG, PNG ou WEBP."
+    pic_path = tmp_dir / f"avatar{suffix}"
+    fileobj = getattr(upload, "file", None) or upload
+    with pic_path.open("wb") as fh:
+        if hasattr(fileobj, "seek"):
+            try:
+                fileobj.seek(0)
+            except Exception:
+                pass
+        shutil.copyfileobj(fileobj, fh)
+    if pic_path.stat().st_size <= 0:
+        return None, "Arquivo de foto vazio. Escolha a imagem de novo."
+    return pic_path, None
 
 
 def _upload_from_form(form, field: str) -> UploadFile | None:
@@ -166,6 +187,26 @@ def _apply_one(
         return False, str(exc)[:240]
 
 
+def _parse_bio_and_link(
+    biography: str,
+    link_raw: str,
+    remove_link: bool,
+) -> tuple[str | None, str | None, str | None]:
+    """Devolve (bio, external_url, erro). None = campo não deve ser tocado."""
+    bio_raw = (biography or "").strip()
+    bio = bio_raw[:BIO_MAX] if bio_raw else None
+
+    # Link vazio = não mexe. Marcar "remover" limpa o link atual.
+    if remove_link:
+        return bio, "", None
+    if link_raw.strip():
+        url = _normalize_url(link_raw)
+        if not _url_looks_valid(url):
+            return bio, None, "Link inválido. Use algo como instagram.com/seuperfil."
+        return bio, url, None
+    return bio, None, None
+
+
 def _render(
     request: Request,
     user: User,
@@ -238,26 +279,17 @@ async def profile_edit_apply(
             status_code=403,
         )
 
-    bio_raw = (biography or "").strip()
-    bio = bio_raw[:BIO_MAX] if bio_raw else None
-
-    # Link vazio = não mexe. Marcar "remover" limpa o link atual.
-    if remove_link:
-        external_url: str | None = ""
-    elif link_raw.strip():
-        external_url = _normalize_url(link_raw)
-        if not _url_looks_valid(external_url):
-            return _render(
-                request,
-                user,
-                accounts_all,
-                error="Link inválido. Use algo como instagram.com/seuperfil.",
-                bio_value=biography,
-                link_value=link_raw,
-                status_code=400,
-            )
-    else:
-        external_url = None
+    bio, external_url, parse_error = _parse_bio_and_link(biography, link_raw, remove_link)
+    if parse_error:
+        return _render(
+            request,
+            user,
+            accounts_all,
+            error=parse_error,
+            bio_value=biography,
+            link_value=link_raw,
+            status_code=400,
+        )
 
     ids: list[int] = []
     for raw in account_ids_raw:
@@ -296,33 +328,14 @@ async def profile_edit_apply(
 
     try:
         if has_file and profile_pic is not None:
-            suffix = Path(profile_pic.filename or "pic.jpg").suffix.lower() or ".jpg"
-            if suffix not in IMAGE_EXT:
-                return _render(
-                    request,
-                    user,
-                    accounts_all,
-                    error="Foto: use JPG, PNG ou WEBP.",
-                    bio_value=biography,
-                    link_value=link_raw,
-                    status_code=400,
-                )
             tmp_dir = Path(tempfile.mkdtemp(prefix="ig_profile_"))
-            pic_path = tmp_dir / f"avatar{suffix}"
-            fileobj = getattr(profile_pic, "file", None) or profile_pic
-            with pic_path.open("wb") as fh:
-                if hasattr(fileobj, "seek"):
-                    try:
-                        fileobj.seek(0)
-                    except Exception:
-                        pass
-                shutil.copyfileobj(fileobj, fh)
-            if pic_path.stat().st_size <= 0:
+            pic_path, pic_error = _save_upload(profile_pic, tmp_dir)
+            if pic_error:
                 return _render(
                     request,
                     user,
                     accounts_all,
-                    error="Arquivo de foto vazio. Escolha a imagem de novo.",
+                    error=pic_error,
                     bio_value=biography,
                     link_value=link_raw,
                     status_code=400,
@@ -343,7 +356,10 @@ async def profile_edit_apply(
                     }
                 )
                 continue
-            ok, detail = _apply_one(
+            # instagrapi/aiograpi são bloqueantes: fora do event loop, senão
+            # o worker do gunicorn trava e é morto por --timeout.
+            ok, detail = await run_in_threadpool(
+                _apply_one,
                 acc,
                 biography=bio,
                 external_url=external_url,
@@ -364,6 +380,88 @@ async def profile_edit_apply(
             bio_value=biography,
             link_value=link_raw,
         )
+    finally:
+        if tmp_dir is not None:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+@router.post("/one")
+async def profile_edit_apply_one(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Aplica em UMA conta e responde JSON.
+
+    A página chama isto em sequência: cada requisição fica curta (evita o
+    timeout do gunicorn) e dá pra mostrar o progresso conta a conta.
+    """
+    reject_view_as_secrets(request)
+    form = await request.form()
+    biography = str(form.get("biography") or "")
+    link_raw = str(form.get("external_url") or "")
+    remove_link = str(form.get("remove_link") or "") in ("1", "on", "true")
+    profile_pic = _upload_from_form(form, "profile_pic")
+
+    if not can_use_instagrapi(user):
+        release_db_transaction(db)
+        return JSONResponse(
+            {"ok": False, "detail": "Edição de perfil não liberada para este usuário."},
+            status_code=403,
+        )
+
+    try:
+        account_id = int(str(form.get("account_id") or "0"))
+    except (TypeError, ValueError):
+        account_id = 0
+
+    acc = db.get(InstagramAccount, account_id)
+    if not acc or acc.user_id != user.id or acc.status == "deleted":
+        release_db_transaction(db)
+        return JSONResponse(
+            {"ok": False, "detail": "Conta não encontrada."}, status_code=404
+        )
+    username = acc.username
+
+    bio, external_url, parse_error = _parse_bio_and_link(biography, link_raw, remove_link)
+    if parse_error:
+        release_db_transaction(db)
+        return JSONResponse(
+            {"ok": False, "username": username, "detail": parse_error},
+            status_code=400,
+        )
+
+    pic_path: Path | None = None
+    tmp_dir: Path | None = None
+    try:
+        if profile_pic is not None:
+            tmp_dir = Path(tempfile.mkdtemp(prefix="ig_profile_"))
+            pic_path, pic_error = _save_upload(profile_pic, tmp_dir)
+            if pic_error:
+                return JSONResponse(
+                    {"ok": False, "username": username, "detail": pic_error},
+                    status_code=400,
+                )
+
+        if bio is None and external_url is None and pic_path is None:
+            return JSONResponse(
+                {
+                    "ok": False,
+                    "username": username,
+                    "detail": "Nada para aplicar.",
+                },
+                status_code=400,
+            )
+
+        ok, detail = await run_in_threadpool(
+            _apply_one,
+            acc,
+            biography=bio,
+            external_url=external_url,
+            pic_path=pic_path,
+        )
+        db.commit()
+        return JSONResponse({"ok": ok, "username": username, "detail": detail})
     finally:
         if tmp_dir is not None:
             shutil.rmtree(tmp_dir, ignore_errors=True)

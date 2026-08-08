@@ -52,6 +52,18 @@ Fix atual (`app/routes/dashboard.py`):
 - Activity card: preferir HTML server-render de `PublishLog`; poll `since_id` quebrou a UI.
 - Avatars: cache `/media/avatars/ig/...`; enqueue com cooldown.
 
+### 3.1) instagrapi/aiograpi bloqueante dentro de `async def` (web)
+
+Rota `async def` chamando instagrapi (ou o `asyncio.run` do wrapper aiograpi) **trava o event loop** do UvicornWorker. O gunicorn roda com `--timeout 120` (`Procfile` / `scripts/railway-web.sh`) e **mata o worker**: a conexão cai e o navegador só mostra erro genérico de rede, com a tela presa em "carregando".
+
+Sintoma real: `/accounts/profile-edit` com link (mais round-trips que a bio) ficava carregando e caía no `catch` do fetch.
+
+Regras:
+
+- Trabalho de rede bloqueante em rota async → `await run_in_threadpool(...)` (ou rota `def` normal).
+- Lote longo → **uma requisição por conta** (`POST /accounts/profile-edit/one`), com progresso no front. Um POST único com N contas estoura qualquer timeout.
+- No front, nunca engolir o erro: mostrar status/mensagem do servidor.
+
 ### 4) Contas Meta `code=190`
 
 Token inválido / checkpoint (“You cannot access the app till you log in”). Afeta publish e Insights (0 views). **Não** é o mesmo bug de KPI/timezone. Conta fica `needs_login`; skip silencioso sem log ainda pode confundir — preferir `PublishLog` skipped/failed ao pular.
@@ -158,5 +170,6 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 | 2026-08-08 | feat | 4ª API: **aiograpi** (`provider=aiograpi`) — chip “Login async”, wrapper `core/aiograpi_client.py`, publish no worker. Mesmo gate `allow_instagrapi`. Dep `aiograpi==1.12.8`. Redeploy **web + worker-publish**. |
 | 2026-08-08 | feat | `/accounts/profile-edit`: bio + foto em lote (instagrapi/aiograpi). Meta fora. Gate `allow_instagrapi`. Redeploy **web**. |
 | 2026-08-08 | feat | Editar perfil: campo de **link** (`account_edit(external_url=…)`, preserva os outros campos) + checkbox de remover link. Bio é o mesmo texto em todas (spintax foi testado e removido a pedido). |
+| 2026-08-08 | fix | Editar perfil travava com link: chamada bloqueante em rota `async` matava o worker (`--timeout 120`). Agora `run_in_threadpool` + `POST /accounts/profile-edit/one` (1 conta por requisição, progresso ao vivo). Ver §3.1. |
 
 <!-- Ao corrigir bugs de produção: acrescente uma linha acima e, se for armadilha nova, uma subseção em "O que já quebrou". -->

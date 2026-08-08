@@ -1195,11 +1195,64 @@
       });
     }
 
-    form.addEventListener("submit", (ev) => {
-      ev.preventDefault();
-      ensureCsrfOnForm(form);
+    const busy = document.getElementById("profile-edit-busy");
+    const busyStatus = document.getElementById("profile-edit-busy-status");
+    const btn = document.getElementById("profile-edit-submit");
+    const hint = document.getElementById("profile-edit-hint");
+    const liveBox = document.getElementById("profile-edit-live");
+    const liveList = document.getElementById("profile-edit-live-list");
+    const liveTitle = document.getElementById("profile-edit-live-title");
 
-      const checked = form.querySelectorAll(".profile-edit-acc-cb:checked");
+    function addResult(username, ok, detail) {
+      if (!liveList) return;
+      const li = document.createElement("li");
+      li.className = ok ? "ok" : "fail";
+      li.textContent = `@${username} — ${ok ? `OK (${detail})` : detail}`;
+      liveList.appendChild(li);
+      if (liveBox) liveBox.hidden = false;
+    }
+
+    // Uma requisição por conta: cada chamada ao Instagram é lenta, e um POST
+    // único com muitas contas estoura o timeout do servidor.
+    async function applyToAccount(accountId, username) {
+      const data = new FormData();
+      data.append("account_id", accountId);
+      data.append("biography", form.querySelector('textarea[name="biography"]')?.value || "");
+      data.append("external_url", form.querySelector("#profile-link-input")?.value || "");
+      if (form.querySelector('input[name="remove_link"]:checked')) {
+        data.append("remove_link", "1");
+      }
+      const fileInput = form.querySelector("#profile-pic-input");
+      if (fileInput && fileInput.files && fileInput.files[0]) {
+        data.append("profile_pic", fileInput.files[0]);
+      }
+
+      try {
+        const res = await fetch("/accounts/profile-edit/one", {
+          method: "POST",
+          body: data,
+          credentials: "same-origin",
+          headers: { "X-Requested-With": "fetch" },
+        });
+        let payload = null;
+        try {
+          payload = await res.json();
+        } catch (_) {
+          payload = null;
+        }
+        if (!payload) {
+          return { ok: false, detail: `Servidor respondeu ${res.status}.` };
+        }
+        return { ok: !!payload.ok, detail: payload.detail || String(res.status) };
+      } catch (err) {
+        return { ok: false, detail: "Conexão interrompida (tente de novo)." };
+      }
+    }
+
+    form.addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+
+      const checked = Array.from(form.querySelectorAll(".profile-edit-acc-cb:checked"));
       if (!checked.length) {
         alert("Selecione ao menos uma conta.");
         return;
@@ -1214,47 +1267,40 @@
         return;
       }
 
-      const busy = document.getElementById("profile-edit-busy");
-      const btn = document.getElementById("profile-edit-submit");
-      const hint = document.getElementById("profile-edit-hint");
+      if (liveList) liveList.innerHTML = "";
+      if (liveBox) liveBox.hidden = true;
       if (busy) busy.hidden = false;
       if (btn) {
         btn.disabled = true;
         btn.textContent = "Enviando…";
       }
-      if (hint) hint.textContent = "Aguarde — aplicando no Instagram…";
 
-      const action = form.getAttribute("action") || "/accounts/profile-edit";
-      fetch(action, {
-        method: "POST",
-        body: new FormData(form),
-        credentials: "same-origin",
-        redirect: "follow",
-        headers: { "X-Requested-With": "fetch" },
-      })
-        .then(async (res) => {
-          const html = await res.text();
-          if (html && html.toLowerCase().indexOf("<html") !== -1) {
-            document.open();
-            document.write(html);
-            document.close();
-            return;
-          }
-          if (res.redirected || res.ok) {
-            window.location.href = res.url || action;
-            return;
-          }
-          throw new Error("Falha no envio.");
-        })
-        .catch(() => {
-          if (busy) busy.hidden = true;
-          if (btn) {
-            btn.disabled = false;
-            btn.textContent = "Aplicar nas selecionadas";
-          }
-          if (hint) hint.textContent = "Máx. 40 contas por vez · pode demorar";
-          alert("Falha no envio. Recarregue a página e tente de novo.");
-        });
+      const total = checked.length;
+      let done = 0;
+      let okCount = 0;
+      for (const cb of checked) {
+        const username =
+          cb.closest(".profile-edit-account")?.querySelector(".ig-handle")?.textContent?.replace("@", "") ||
+          cb.value;
+        if (busyStatus) {
+          busyStatus.textContent = `Conta ${done + 1} de ${total} · @${username}`;
+        }
+        // eslint-disable-next-line no-await-in-loop
+        const result = await applyToAccount(cb.value, username);
+        done += 1;
+        if (result.ok) okCount += 1;
+        addResult(username, result.ok, result.detail);
+        if (liveTitle) liveTitle.textContent = `Resultado (${okCount}/${done})`;
+      }
+
+      if (busy) busy.hidden = true;
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "Aplicar nas selecionadas";
+      }
+      if (hint) {
+        hint.textContent = `${okCount}/${total} conta(s) atualizada(s).`;
+      }
     });
   }
 
