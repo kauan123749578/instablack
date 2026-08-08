@@ -51,7 +51,9 @@
       // Se o middleware tentar request.form() pra ler o token, o body
       // some no endpoint. Converte pra fetch (header injetado no wrapper).
       // #automation-form: Reels/Story/Foto tratam no initAutomationForm.
+      // #profile-edit-form: tratado em initProfileEditForm (loading + HTML).
       if (form.id === "automation-form") return;
+      if (form.id === "profile-edit-form") return;
       if (form.dataset.nativeSubmit === "1") return;
       if (ev.defaultPrevented) return;
       const method = (form.getAttribute("method") || "get").toLowerCase();
@@ -69,20 +71,20 @@
         redirect: "follow",
         headers: { "X-Requested-With": "fetch" },
       })
-        .then((res) => {
+        .then(async (res) => {
+          const ctype = (res.headers.get("content-type") || "").toLowerCase();
+          if (ctype.includes("text/html")) {
+            const html = await res.text();
+            document.open();
+            document.write(html);
+            document.close();
+            return;
+          }
           if (res.redirected || res.ok) {
             window.location.href = res.url;
-            return null;
+            return;
           }
-          return res.text().then((html) => {
-            if (html && html.toLowerCase().indexOf("<html") !== -1) {
-              document.open();
-              document.write(html);
-              document.close();
-              return;
-            }
-            throw new Error("Falha no envio.");
-          });
+          throw new Error("Falha no envio.");
         })
         .catch(() => {
           alert("Falha no envio. Recarregue a página e tente de novo.");
@@ -1176,6 +1178,81 @@
       form.addEventListener("submit", (e) => {
         if (input) input.value = normalizeProxyValue(input.value.trim());
       });
+    });
+  }
+
+  function initProfileEditForm() {
+    const form = document.getElementById("profile-edit-form");
+    if (!form || form.dataset.bound === "1") return;
+    form.dataset.bound = "1";
+
+    const all = document.getElementById("profile-edit-select-all");
+    if (all) {
+      all.addEventListener("change", () => {
+        document.querySelectorAll(".profile-edit-acc-cb").forEach((cb) => {
+          cb.checked = all.checked;
+        });
+      });
+    }
+
+    form.addEventListener("submit", (ev) => {
+      ev.preventDefault();
+      ensureCsrfOnForm(form);
+
+      const checked = form.querySelectorAll(".profile-edit-acc-cb:checked");
+      if (!checked.length) {
+        alert("Selecione ao menos uma conta.");
+        return;
+      }
+      const bio = (form.querySelector('textarea[name="biography"]')?.value || "").trim();
+      const fileInput = form.querySelector("#profile-pic-input");
+      const hasFile = !!(fileInput && fileInput.files && fileInput.files.length > 0);
+      if (!bio && !hasFile) {
+        alert("Informe a bio e/ou escolha uma foto de perfil.");
+        return;
+      }
+
+      const busy = document.getElementById("profile-edit-busy");
+      const btn = document.getElementById("profile-edit-submit");
+      const hint = document.getElementById("profile-edit-hint");
+      if (busy) busy.hidden = false;
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = "Enviando…";
+      }
+      if (hint) hint.textContent = "Aguarde — aplicando no Instagram…";
+
+      const action = form.getAttribute("action") || "/accounts/profile-edit";
+      fetch(action, {
+        method: "POST",
+        body: new FormData(form),
+        credentials: "same-origin",
+        redirect: "follow",
+        headers: { "X-Requested-With": "fetch" },
+      })
+        .then(async (res) => {
+          const html = await res.text();
+          if (html && html.toLowerCase().indexOf("<html") !== -1) {
+            document.open();
+            document.write(html);
+            document.close();
+            return;
+          }
+          if (res.redirected || res.ok) {
+            window.location.href = res.url || action;
+            return;
+          }
+          throw new Error("Falha no envio.");
+        })
+        .catch(() => {
+          if (busy) busy.hidden = true;
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = "Aplicar nas selecionadas";
+          }
+          if (hint) hint.textContent = "Máx. 40 contas por vez · pode demorar";
+          alert("Falha no envio. Recarregue a página e tente de novo.");
+        });
     });
   }
 
@@ -3017,6 +3094,7 @@
     initAccountsReconnect();
     initVaultPage();
     initAuthMethodForm();
+    initProfileEditForm();
     initProxyInput();
     initAccountProxyUpdate();
     initWebPush();

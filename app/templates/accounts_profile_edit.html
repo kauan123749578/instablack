@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Editar perfil IG — instablack{% endblock %}
 {% block content %}
-<div class="page-header">
+<div class="page-header" data-page-profile-edit="1">
   <h2><i data-lucide="user-pen" class="inline-icon"></i> Editar perfil</h2>
   <p class="muted page-header-sub">
     Um texto de bio e/ou uma foto para várias contas (login clássico e API async). Contas Meta não entram.
@@ -31,7 +31,8 @@
 <div class="alert alert-error">Nenhuma conta elegível (precisa de sessão clássica/async com proxy — sem Meta).</div>
 {% else %}
 <section class="notes-import og-glass-card">
-  <form method="post" action="/accounts/profile-edit" enctype="multipart/form-data" class="profile-edit-form">
+  <form method="post" action="/accounts/profile-edit" enctype="multipart/form-data"
+        id="profile-edit-form" class="profile-edit-form" data-native-submit="1">
     <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
 
     <label>Bio (mesmo texto em todas)
@@ -40,9 +41,9 @@
     <p class="muted" style="margin:4px 0 12px;font-size:12px">Até ~150 caracteres no Instagram. Deixe vazio se for só trocar a foto.</p>
 
     <label>Foto de perfil (opcional)
-      <input type="file" name="profile_pic" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp">
+      <input type="file" name="profile_pic" id="profile-pic-input" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp">
     </label>
-    <p class="muted" style="margin:4px 0 16px;font-size:12px">JPG / PNG / WEBP. A mesma imagem vai para todas as contas selecionadas.</p>
+    <p class="muted" style="margin:4px 0 16px;font-size:12px">JPG / PNG / WEBP. A mesma imagem vai para todas as contas selecionadas. Pode enviar só a foto, sem bio.</p>
 
     <div class="profile-edit-accounts">
       <div class="profile-edit-accounts-head">
@@ -61,22 +62,18 @@
     </div>
 
     <div class="notes-import-actions" style="margin-top:16px">
-      <button type="submit" class="btn btn-primary">Aplicar nas selecionadas</button>
-      <span class="muted">Máx. 40 contas por vez · pode demorar</span>
+      <button type="submit" class="btn btn-primary" id="profile-edit-submit">Aplicar nas selecionadas</button>
+      <span class="muted" id="profile-edit-hint">Máx. 40 contas por vez · pode demorar</span>
     </div>
   </form>
 </section>
-{% endif %}
 
-<script>
-(function () {
-  const all = document.getElementById("profile-edit-select-all");
-  if (!all) return;
-  all.addEventListener("change", function () {
-    document.querySelectorAll(".profile-edit-acc-cb").forEach(function (cb) {
-      cb.checked = all.checked;
-    });
-  });
-})();
-</script>
+<div id="profile-edit-busy" class="profile-edit-busy" hidden aria-live="polite">
+  <div class="profile-edit-busy-card">
+    <div class="profile-edit-spinner" aria-hidden="true"></div>
+    <strong>Aplicando nas contas…</strong>
+    <p class="muted">Não feche esta página. Bio e/ou foto estão sendo enviadas ao Instagram.</p>
+  </div>
+</div>
+{% endif %}
 {% endblock %}

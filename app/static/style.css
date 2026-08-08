@@ -2026,6 +2026,46 @@ body.is-view-as .app {
 .profile-edit-result-list .fail { color: #fca5a5; }
 .profile-edit-results { margin-bottom: 16px; padding: 16px; }
 .profile-edit-results h3 { margin: 0 0 10px; font-size: 16px; }
+.profile-edit-busy {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(4px);
+}
+.profile-edit-busy[hidden] { display: none !important; }
+.profile-edit-busy-card {
+  width: min(420px, 100%);
+  padding: 28px 24px;
+  border-radius: 16px;
+  border: 1px solid rgba(201, 162, 39, 0.35);
+  background: linear-gradient(160deg, rgba(28, 24, 16, 0.98), rgba(10, 10, 12, 0.98));
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+}
+.profile-edit-busy-card strong {
+  display: block;
+  margin: 14px 0 8px;
+  font-size: 17px;
+  color: #fff3c4;
+}
+.profile-edit-busy-card p { margin: 0; font-size: 13px; line-height: 1.45; }
+.profile-edit-spinner {
+  width: 42px;
+  height: 42px;
+  margin: 0 auto;
+  border-radius: 50%;
+  border: 3px solid rgba(201, 162, 39, 0.22);
+  border-top-color: #c9a227;
+  animation: profile-edit-spin 0.8s linear infinite;
+}
+@keyframes profile-edit-spin {
+  to { transform: rotate(360deg); }
+}
 
 .notes-copy-row { display: flex; gap: 6px; align-items: center; }
 .notes-copy-row input {

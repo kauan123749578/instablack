@@ -6,7 +6,8 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Request, UploadFile
+from fastapi import APIRouter, Depends, Request
+from starlette.datastructures import UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -35,6 +36,21 @@ router = APIRouter(prefix="/accounts/profile-edit", tags=["accounts-profile"])
 VISIBLE = ("active", "paused", "needs_login", "proxy_down")
 IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp"}
 MAX_ACCOUNTS = 40
+
+
+def _upload_from_form(form, field: str) -> UploadFile | None:
+    """Pega o primeiro arquivo real do multipart (ignora part vazia)."""
+    values = form.getlist(field) if hasattr(form, "getlist") else [form.get(field)]
+    for value in values:
+        if value is None:
+            continue
+        filename = (getattr(value, "filename", None) or "").strip()
+        if not filename:
+            continue
+        # UploadFile / SpooledTemporaryFile do Starlette
+        if hasattr(value, "file") or hasattr(value, "read"):
+            return value  # type: ignore[return-value]
+    return None
 
 
 def _eligible_accounts(db: Session, user: User) -> list[InstagramAccount]:
@@ -155,9 +171,7 @@ async def profile_edit_apply(
     form = await request.form()
     biography = str(form.get("biography") or "")
     account_ids_raw = form.getlist("account_ids")
-    profile_pic = form.get("profile_pic")
-    if not isinstance(profile_pic, UploadFile):
-        profile_pic = None
+    profile_pic = _upload_from_form(form, "profile_pic")
 
     accounts_all = _eligible_accounts(db, user)
     by_id = {a.id: a for a in accounts_all}
@@ -193,7 +207,7 @@ async def profile_edit_apply(
 
     pic_path: Path | None = None
     tmp_dir: Path | None = None
-    has_file = bool(profile_pic and profile_pic.filename)
+    has_file = profile_pic is not None
 
     if not selected:
         return templates.TemplateResponse(
@@ -228,8 +242,7 @@ async def profile_edit_apply(
         )
 
     try:
-        if has_file:
-            assert profile_pic is not None
+        if has_file and profile_pic is not None:
             suffix = Path(profile_pic.filename or "pic.jpg").suffix.lower() or ".jpg"
             if suffix not in IMAGE_EXT:
                 return templates.TemplateResponse(
@@ -248,8 +261,29 @@ async def profile_edit_apply(
                 )
             tmp_dir = Path(tempfile.mkdtemp(prefix="ig_profile_"))
             pic_path = tmp_dir / f"avatar{suffix}"
+            fileobj = getattr(profile_pic, "file", None) or profile_pic
             with pic_path.open("wb") as fh:
-                shutil.copyfileobj(profile_pic.file, fh)
+                if hasattr(fileobj, "seek"):
+                    try:
+                        fileobj.seek(0)
+                    except Exception:
+                        pass
+                shutil.copyfileobj(fileobj, fh)
+            if pic_path.stat().st_size <= 0:
+                return templates.TemplateResponse(
+                    "accounts_profile_edit.html",
+                    {
+                        "request": request,
+                        "user": user,
+                        "accounts": accounts_all,
+                        "can_edit": True,
+                        "results": None,
+                        "error": "Arquivo de foto vazio. Escolha a imagem de novo.",
+                        "bio_value": biography,
+                        "summary": None,
+                    },
+                    status_code=400,
+                )
 
         jobs = [(a.id, a.username) for a in selected]
         release_db_transaction(db)
