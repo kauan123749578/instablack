@@ -1191,7 +1191,7 @@
       const method = form.querySelector('input[name="auth_method"]:checked')?.value || "meta";
       const isMeta = method === "meta";
       if (passwordInput) {
-        passwordInput.required = method === "password";
+        passwordInput.required = method === "password" || method === "aiograpi";
       }
       if (proxyInput) {
         proxyInput.required = !isMeta;

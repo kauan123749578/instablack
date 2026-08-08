@@ -45,6 +45,7 @@ from core.capacity_metrics import (
     record_publish_sample,
 )
 from core.database import session_scope
+from core import aiograpi_client as aio_ig
 from core.instagram import (
     InstagramAuthError,
     InstagramTwoFactorRequired,
@@ -1900,11 +1901,14 @@ def _execute_publish(
         }
 
     log.info(
-        "PUBLISH provider=instagrapi (sessão mobile/web) account=%s @%s automation=%s",
+        "PUBLISH provider=%s account=%s @%s automation=%s",
+        "aiograpi" if provider == "aiograpi" else "instagrapi",
         account_id,
         username,
         automation_id,
     )
+
+    use_aiograpi = provider == "aiograpi"
 
     if not proxy or not proxy.strip():
         _log_failure(
@@ -1933,23 +1937,32 @@ def _execute_publish(
     if not settings_dict:
         if password and username:
             try:
-                settings_dict = try_refresh_session(
-                    settings_dict=None,
-                    proxy=proxy,
-                    username=username,
-                    password=password,
-                )
+                if use_aiograpi:
+                    settings_dict = aio_ig.try_refresh_session(
+                        settings_dict=None,
+                        proxy=proxy,
+                        username=username,
+                        password=password,
+                    )
+                else:
+                    settings_dict = try_refresh_session(
+                        settings_dict=None,
+                        proxy=proxy,
+                        username=username,
+                        password=password,
+                    )
                 with session_scope() as db:
                     acc = db.get(InstagramAccount, account_id)
                     if acc:
                         acc.session_json = serialize_settings(settings_dict)
-                        new_sid = extract_sessionid_from_settings(settings_dict)
-                        merged = merge_sessionid_into_web_cookies(
-                            acc.encrypted_web_cookies, new_sid
-                        )
-                        if merged:
-                            acc.encrypted_web_cookies = merged
-                            web_cookies = decrypt_web_cookies(merged) or web_cookies
+                        if not use_aiograpi:
+                            new_sid = extract_sessionid_from_settings(settings_dict)
+                            merged = merge_sessionid_into_web_cookies(
+                                acc.encrypted_web_cookies, new_sid
+                            )
+                            if merged:
+                                acc.encrypted_web_cookies = merged
+                                web_cookies = decrypt_web_cookies(merged) or web_cookies
                         acc.status = "active"
                         acc.last_error = None
                         acc.last_login_at = dt.datetime.utcnow()
@@ -2120,29 +2133,41 @@ def _execute_publish(
                 )
 
         try:
-            settings_dict = try_refresh_session(
-                settings_dict=settings_dict,
-                proxy=proxy,
-                username=username,
-                password=password,
-            )
-            cl = get_ready_client(
-                settings_dict=settings_dict,
-                proxy=proxy,
-                username=username,
-                password=password,
-            )
-            with session_scope() as db:
-                acc = db.get(InstagramAccount, account_id)
-                if acc:
-                    acc.session_json = serialize_settings(settings_dict)
-                    new_sid = extract_sessionid_from_settings(settings_dict)
-                    merged = merge_sessionid_into_web_cookies(
-                        acc.encrypted_web_cookies, new_sid
-                    )
-                    if merged:
-                        acc.encrypted_web_cookies = merged
-                        web_cookies = decrypt_web_cookies(merged) or web_cookies
+            if use_aiograpi:
+                settings_dict = aio_ig.try_refresh_session(
+                    settings_dict=settings_dict,
+                    proxy=proxy,
+                    username=username,
+                    password=password,
+                )
+                with session_scope() as db:
+                    acc = db.get(InstagramAccount, account_id)
+                    if acc:
+                        acc.session_json = serialize_settings(settings_dict)
+            else:
+                settings_dict = try_refresh_session(
+                    settings_dict=settings_dict,
+                    proxy=proxy,
+                    username=username,
+                    password=password,
+                )
+                cl = get_ready_client(
+                    settings_dict=settings_dict,
+                    proxy=proxy,
+                    username=username,
+                    password=password,
+                )
+                with session_scope() as db:
+                    acc = db.get(InstagramAccount, account_id)
+                    if acc:
+                        acc.session_json = serialize_settings(settings_dict)
+                        new_sid = extract_sessionid_from_settings(settings_dict)
+                        merged = merge_sessionid_into_web_cookies(
+                            acc.encrypted_web_cookies, new_sid
+                        )
+                        if merged:
+                            acc.encrypted_web_cookies = merged
+                            web_cookies = decrypt_web_cookies(merged) or web_cookies
         except (InstagramAuthError, InstagramTwoFactorRequired) as exc:
             _mark_account_needs_login(account_id, str(exc))
             _log_failure(
@@ -2156,7 +2181,28 @@ def _execute_publish(
             return {"error": "auth"}
 
         try:
-            if content_type == "story":
+            if use_aiograpi:
+                if content_type == "story":
+                    result = aio_ig.publish_story(
+                        settings_dict,
+                        proxy,
+                        publish_path,
+                        link_url=story_link,
+                        thumbnail_path=thumb_path,
+                    )
+                elif content_type == "photo":
+                    result = aio_ig.publish_photo(
+                        settings_dict, proxy, clean_path, caption
+                    )
+                else:
+                    result = aio_ig.publish_reel(
+                        settings_dict,
+                        proxy,
+                        clean_path,
+                        caption,
+                        thumbnail_path=thumb_path,
+                    )
+            elif content_type == "story":
                 result = publish_story(
                     cl,
                     publish_path,
@@ -2208,7 +2254,10 @@ def _execute_publish(
         with session_scope() as db:
             acc = db.get(InstagramAccount, account_id)
             if acc:
-                acc.session_json = serialize_settings(cl.get_settings())
+                if use_aiograpi:
+                    acc.session_json = serialize_settings(settings_dict)
+                else:
+                    acc.session_json = serialize_settings(cl.get_settings())
                 acc.last_login_at = dt.datetime.utcnow()
                 acc.status = "active"
                 acc.last_error = None

@@ -52,6 +52,17 @@
       </div>
 
       <div class="auth-method-group">
+        <div class="auth-method-group-title">API async (teste)</div>
+        <div class="auth-method-chips">
+          <label class="auth-method-chip">
+            <input type="radio" name="auth_method" value="aiograpi" {% if auth_method == 'aiograpi' %}checked{% endif %}>
+            <span class="auth-method-chip-title">Login async</span>
+            <span class="auth-method-chip-desc">Mesmo login clássico · biblioteca async (teste)</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="auth-method-group">
         <div class="auth-method-group-title">API web</div>
         <div class="auth-method-chips">
           <label class="auth-method-chip">

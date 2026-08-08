@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from models.models import InstagramAccount, User
 
-INSTAGRAPI_AUTH_METHODS = frozenset({"password", "sessionid", "import"})
+INSTAGRAPI_AUTH_METHODS = frozenset({"password", "sessionid", "import", "aiograpi"})
 
 INSTAGRAPI_EXPIRED_MSG = (
     "Sessão expirada — o login clássico não está disponível. "

@@ -155,5 +155,6 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 | 2026-08-07 | feat | Story Link Studio aceita login clássico (instagrapi) + cookies web; posição do sticker (x/y) vai no upload mobile. Meta continua sem link. |
 | 2026-08-07 | feat | Bloco de notas (`/accounts/notes`): cola lote `user | senha` + URL 2FA (browserscan/#secret), guarda cifrado, mostra código TOTP e senha sob demanda. |
 | 2026-08-08 | feat | Ver como: dono lê cofre/bloco do usuário (somente leitura). Ícone PWA Android usa PNG 192/512 do fantasma 3D (não SVG maskable). |
+| 2026-08-08 | feat | 4ª API: **aiograpi** (`provider=aiograpi`) — chip “Login async”, wrapper `core/aiograpi_client.py`, publish no worker. Mesmo gate `allow_instagrapi`. Dep `aiograpi==1.12.8`. Redeploy **web + worker-publish**. |
 
 <!-- Ao corrigir bugs de produção: acrescente uma linha acima e, se for armadilha nova, uma subseção em "O que já quebrou". -->

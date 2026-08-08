@@ -1037,6 +1037,8 @@ def analytics_page(
         provider = (acc.provider or "instagrapi").lower()
         if provider == "meta":
             provider_label = "API oficial"
+        elif provider == "aiograpi":
+            provider_label = "API async"
         elif getattr(acc, "encrypted_web_cookies", None):
             provider_label = "API web"
         else:

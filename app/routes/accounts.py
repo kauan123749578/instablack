@@ -47,6 +47,7 @@ from core.meta_instagram import (
     parse_signed_request,
     public_origin,
 )
+from core import aiograpi_client as aio_ig
 from core.instagram import (
     InstagramAuthError,
     InstagramTwoFactorRequired,
@@ -119,8 +120,14 @@ def _login_credentials_with_totp_retry(
     verification_code: str | None = None,
     totp_encrypted: str | None = None,
     totp_raw: str | None = None,
+    backend: str = "instagrapi",
 ):
     """Login user/senha; se pedir 2FA e houver TOTP, gera código e tenta 1 vez."""
+    login_fn = (
+        aio_ig.login_with_credentials
+        if (backend or "").strip().lower() == "aiograpi"
+        else login_with_credentials
+    )
     code = (verification_code or "").strip() or None
     if not code:
         if totp_raw and totp_raw.strip():
@@ -133,7 +140,7 @@ def _login_credentials_with_totp_retry(
             code = _totp_code_from_encrypted(totp_encrypted)
 
     try:
-        return login_with_credentials(
+        return login_fn(
             username=username,
             password=password,
             verification_code=code,
@@ -154,7 +161,7 @@ def _login_credentials_with_totp_retry(
             auto = _totp_code_from_encrypted(totp_encrypted)
         if not auto:
             raise
-        return login_with_credentials(
+        return login_fn(
             username=username,
             password=password,
             verification_code=auto,
@@ -806,6 +813,7 @@ def add_account(
     use_sessionid = auth_method == "sessionid"
     use_import = auth_method == "import"
     use_cookies = auth_method == "cookies"
+    use_aiograpi = auth_method == "aiograpi"
     sessionid_only = bool(sid) and not password.strip() and not use_cookies
     form_state = {
         "auth_method": (
@@ -956,6 +964,7 @@ def add_account(
                 verification_code=verification_code.strip() or None,
                 totp_encrypted=encrypted_totp or stored_totp,
                 totp_raw=totp_secret.strip() or None,
+                backend="aiograpi" if use_aiograpi else "instagrapi",
             )
             encrypted_pw = encrypt_secret(password)
 
@@ -1017,7 +1026,7 @@ def add_account(
             )
 
     if existing:
-        existing.provider = "instagrapi"
+        existing.provider = "aiograpi" if use_aiograpi else "instagrapi"
         existing.session_json = serialize_settings(settings_dict)
         if encrypted_pw:
             existing.encrypted_password = encrypted_pw
@@ -1036,7 +1045,7 @@ def add_account(
         new_acc = InstagramAccount(
             user_id=user.id,
             username=username,
-            provider="instagrapi",
+            provider="aiograpi" if use_aiograpi else "instagrapi",
             encrypted_password=encrypted_pw,
             encrypted_totp_secret=encrypted_totp,
             proxy=proxy,
@@ -1283,6 +1292,7 @@ def _perform_account_reconnect(
     encrypted_web_cookies = acc.encrypted_web_cookies
     encrypted_password = acc.encrypted_password
     encrypted_totp_secret = getattr(acc, "encrypted_totp_secret", None)
+    account_provider = (acc.provider or "instagrapi").strip().lower()
     release_db_transaction(db)
 
     mode_norm = (mode or "auto").strip().lower()
@@ -1291,6 +1301,12 @@ def _perform_account_reconnect(
     new_encrypted_web: str | None = None
     try:
         if mode_norm == "cookies":
+            if account_provider == "aiograpi":
+                return {
+                    "status": "error",
+                    "error_code": "mode",
+                    "message": "Conta API async: reconecte com senha (ou auto).",
+                }
             parsed = parse_web_cookies_blob(web_cookies)
             sid = clean_sessionid(parsed["sessionid"])
             settings_dict, resolved_user = login_with_sessionid(
@@ -1300,6 +1316,12 @@ def _perform_account_reconnect(
             )
             new_encrypted_web = encrypt_web_cookies(parsed)
         elif mode_norm == "sessionid":
+            if account_provider == "aiograpi":
+                return {
+                    "status": "error",
+                    "error_code": "mode",
+                    "message": "Conta API async: reconecte com senha (ou auto).",
+                }
             sid = clean_sessionid(sessionid)
             if not sid:
                 return {
@@ -1317,12 +1339,20 @@ def _perform_account_reconnect(
                 new_encrypted_web = merged
         elif mode_norm in ("auto", "session"):
             try:
-                settings_dict = try_refresh_session(
-                    settings_dict=deserialize_settings(session_json),
-                    proxy=proxy,
-                    username=username,
-                    password=None,
-                )
+                if account_provider == "aiograpi":
+                    settings_dict = aio_ig.try_refresh_session(
+                        settings_dict=deserialize_settings(session_json),
+                        proxy=proxy,
+                        username=username,
+                        password=None,
+                    )
+                else:
+                    settings_dict = try_refresh_session(
+                        settings_dict=deserialize_settings(session_json),
+                        proxy=proxy,
+                        username=username,
+                        password=None,
+                    )
             except InstagramAuthError:
                 # Sessão morta: tenta senha+TOTP do cofre antes de exigir sessionid.
                 stored_pw = decrypt_secret(encrypted_password)
@@ -1334,6 +1364,7 @@ def _perform_account_reconnect(
                             proxy=proxy,
                             verification_code=(verification_code or "").strip() or None,
                             totp_encrypted=encrypted_totp_secret,
+                            backend=account_provider,
                         )
                     except InstagramTwoFactorRequired as exc:
                         return {
@@ -1342,6 +1373,15 @@ def _perform_account_reconnect(
                             "username": username,
                             "has_totp": bool(encrypted_totp_secret),
                         }
+                elif account_provider == "aiograpi":
+                    return {
+                        "status": "error",
+                        "error_code": "password",
+                        "message": (
+                            "Sessão async expirada. Salve senha+TOTP em Credenciais / 2FA "
+                            "ou informe a senha no reconectar."
+                        ),
+                    }
                 else:
                     cookies = decrypt_web_cookies(encrypted_web_cookies)
                     sid = clean_sessionid((cookies or {}).get("sessionid") or "")
@@ -1359,12 +1399,13 @@ def _perform_account_reconnect(
                         proxy=proxy,
                         username_hint=username,
                     )
-            new_sid = extract_sessionid_from_settings(settings_dict)
-            merged = merge_sessionid_into_web_cookies(
-                new_encrypted_web or encrypted_web_cookies, new_sid
-            )
-            if merged:
-                new_encrypted_web = merged
+            if account_provider != "aiograpi":
+                new_sid = extract_sessionid_from_settings(settings_dict)
+                merged = merge_sessionid_into_web_cookies(
+                    new_encrypted_web or encrypted_web_cookies, new_sid
+                )
+                if merged:
+                    new_encrypted_web = merged
         elif mode_norm == "password":
             pw = (password or "").strip() or decrypt_secret(encrypted_password)
             if not pw:
@@ -1379,6 +1420,7 @@ def _perform_account_reconnect(
                 proxy=proxy,
                 verification_code=(verification_code or "").strip() or None,
                 totp_encrypted=encrypted_totp_secret,
+                backend=account_provider if account_provider == "aiograpi" else "instagrapi",
             )
         else:
             return {
