@@ -796,23 +796,6 @@ def set_biography(cl: Client, biography: str) -> bool:
     return bool(cl.account_set_biography(biography or ""))
 
 
-def edit_profile(
-    cl: Client,
-    *,
-    biography: str | None = None,
-    external_url: str | None = None,
-):
-    """Edita bio e/ou link. Campos omitidos são preservados pelo account_edit."""
-    data: dict = {}
-    if biography is not None:
-        data["biography"] = biography
-    if external_url is not None:
-        data["external_url"] = external_url
-    if not data:
-        return None
-    return cl.account_edit(**data)
-
-
 def change_profile_picture(cl: Client, image_path: Path):
     if not image_path.exists():
         raise FileNotFoundError(f"Imagem não encontrada: {image_path}")

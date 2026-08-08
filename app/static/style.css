@@ -2025,13 +2025,6 @@ body.is-view-as .app {
 .profile-edit-result-list .ok { color: #86efac; }
 .profile-edit-result-list .fail { color: #fca5a5; }
 .profile-edit-hint-text { margin: 4px 0 14px; font-size: 12px; line-height: 1.5; }
-.profile-edit-remove-link {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 8px;
-  cursor: pointer;
-}
 .profile-edit-results { margin-bottom: 16px; padding: 16px; }
 .profile-edit-results h3 { margin: 0 0 10px; font-size: 16px; }
 .profile-edit-busy {

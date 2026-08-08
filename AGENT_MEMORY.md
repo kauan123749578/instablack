@@ -58,6 +58,8 @@ Rota `async def` chamando instagrapi (ou o `asyncio.run` do wrapper aiograpi) **
 
 Sintoma real: `/accounts/profile-edit` com link (mais round-trips que a bio) ficava carregando e caía no `catch` do fetch.
 
+Obs.: `account_edit(external_url=…)` responde sucesso mas o link **não** entra no perfil — não reintroduzir sem testar de verdade no app do Instagram.
+
 Regras:
 
 - Trabalho de rede bloqueante em rota async → `await run_in_threadpool(...)` (ou rota `def` normal).
@@ -169,7 +171,7 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 | 2026-08-08 | feat | Ver como: dono lê cofre/bloco do usuário (somente leitura). Ícone PWA Android usa PNG 192/512 do fantasma 3D (não SVG maskable). |
 | 2026-08-08 | feat | 4ª API: **aiograpi** (`provider=aiograpi`) — chip “Login async”, wrapper `core/aiograpi_client.py`, publish no worker. Mesmo gate `allow_instagrapi`. Dep `aiograpi==1.12.8`. Redeploy **web + worker-publish**. |
 | 2026-08-08 | feat | `/accounts/profile-edit`: bio + foto em lote (instagrapi/aiograpi). Meta fora. Gate `allow_instagrapi`. Redeploy **web**. |
-| 2026-08-08 | feat | Editar perfil: campo de **link** (`account_edit(external_url=…)`, preserva os outros campos) + checkbox de remover link. Bio é o mesmo texto em todas (spintax foi testado e removido a pedido). |
+| 2026-08-08 | nota | Editar perfil: **link no perfil removido**. `account_edit(external_url=…)` respondia OK mas o Instagram **não aplicava** o link (silencioso, sem erro). Spintax na bio também foi removido a pedido. Ficou bio + foto. |
 | 2026-08-08 | fix | Editar perfil travava com link: chamada bloqueante em rota `async` matava o worker (`--timeout 120`). Agora `run_in_threadpool` + `POST /accounts/profile-edit/one` (1 conta por requisição, progresso ao vivo). Ver §3.1. |
 
 <!-- Ao corrigir bugs de produção: acrescente uma linha acima e, se for armadilha nova, uma subseção em "O que já quebrou". -->

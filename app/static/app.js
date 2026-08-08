@@ -1218,10 +1218,6 @@
       const data = new FormData();
       data.append("account_id", accountId);
       data.append("biography", form.querySelector('textarea[name="biography"]')?.value || "");
-      data.append("external_url", form.querySelector("#profile-link-input")?.value || "");
-      if (form.querySelector('input[name="remove_link"]:checked')) {
-        data.append("remove_link", "1");
-      }
       const fileInput = form.querySelector("#profile-pic-input");
       if (fileInput && fileInput.files && fileInput.files[0]) {
         data.append("profile_pic", fileInput.files[0]);
@@ -1258,12 +1254,10 @@
         return;
       }
       const bio = (form.querySelector('textarea[name="biography"]')?.value || "").trim();
-      const link = (form.querySelector("#profile-link-input")?.value || "").trim();
-      const removeLink = !!form.querySelector('input[name="remove_link"]:checked');
       const fileInput = form.querySelector("#profile-pic-input");
       const hasFile = !!(fileInput && fileInput.files && fileInput.files.length > 0);
-      if (!bio && !link && !removeLink && !hasFile) {
-        alert("Informe a bio, o link e/ou escolha uma foto de perfil.");
+      if (!bio && !hasFile) {
+        alert("Informe a bio e/ou escolha uma foto de perfil.");
         return;
       }
 

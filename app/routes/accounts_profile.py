@@ -24,7 +24,6 @@ from core.instagram import (
     InstagramTwoFactorRequired,
     change_profile_picture,
     deserialize_settings,
-    edit_profile,
     get_ready_client,
     serialize_settings,
     set_biography,
@@ -40,20 +39,6 @@ VISIBLE = ("active", "paused", "needs_login", "proxy_down")
 IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp"}
 MAX_ACCOUNTS = 40
 BIO_MAX = 220
-
-
-def _normalize_url(raw: str) -> str:
-    url = (raw or "").strip()
-    if not url:
-        return ""
-    if not url.startswith(("http://", "https://")):
-        url = f"https://{url}"
-    return url
-
-
-def _url_looks_valid(url: str) -> bool:
-    rest = url.split("://", 1)[-1]
-    return bool(rest) and " " not in rest and "." in rest
 
 
 def _save_upload(upload: UploadFile, tmp_dir: Path) -> tuple[Path | None, str | None]:
@@ -114,7 +99,6 @@ def _apply_one(
     acc: InstagramAccount,
     *,
     biography: str | None,
-    external_url: str | None,
     pic_path: Path | None,
 ) -> tuple[bool, str]:
     proxy = (acc.proxy or "").strip()
@@ -127,8 +111,6 @@ def _apply_one(
     did: list[str] = []
     if biography is not None:
         did.append("bio")
-    if external_url is not None:
-        did.append("link")
     if pic_path is not None:
         did.append("foto")
 
@@ -140,15 +122,7 @@ def _apply_one(
                 username=username,
                 password=password,
             )
-            if external_url is not None:
-                # account_edit cobre bio + link numa requisição só.
-                settings_dict = aio_ig.edit_profile(
-                    settings_dict,
-                    proxy,
-                    biography=biography,
-                    external_url=external_url,
-                )
-            elif biography is not None:
+            if biography is not None:
                 settings_dict = aio_ig.set_biography(settings_dict, proxy, biography)
             if pic_path is not None:
                 settings_dict = aio_ig.change_profile_picture(
@@ -168,9 +142,7 @@ def _apply_one(
                 username=username,
                 password=password,
             )
-            if external_url is not None:
-                edit_profile(cl, biography=biography, external_url=external_url)
-            elif biography is not None:
+            if biography is not None:
                 set_biography(cl, biography)
             if pic_path is not None:
                 change_profile_picture(cl, pic_path)
@@ -187,26 +159,6 @@ def _apply_one(
         return False, str(exc)[:240]
 
 
-def _parse_bio_and_link(
-    biography: str,
-    link_raw: str,
-    remove_link: bool,
-) -> tuple[str | None, str | None, str | None]:
-    """Devolve (bio, external_url, erro). None = campo não deve ser tocado."""
-    bio_raw = (biography or "").strip()
-    bio = bio_raw[:BIO_MAX] if bio_raw else None
-
-    # Link vazio = não mexe. Marcar "remover" limpa o link atual.
-    if remove_link:
-        return bio, "", None
-    if link_raw.strip():
-        url = _normalize_url(link_raw)
-        if not _url_looks_valid(url):
-            return bio, None, "Link inválido. Use algo como instagram.com/seuperfil."
-        return bio, url, None
-    return bio, None, None
-
-
 def _render(
     request: Request,
     user: User,
@@ -217,7 +169,6 @@ def _render(
     error: str | None = None,
     summary: str | None = None,
     bio_value: str = "",
-    link_value: str = "",
     status_code: int = 200,
 ):
     return templates.TemplateResponse(
@@ -231,7 +182,6 @@ def _render(
             "error": error,
             "summary": summary,
             "bio_value": bio_value,
-            "link_value": link_value,
         },
         status_code=status_code,
     )
@@ -258,8 +208,6 @@ async def profile_edit_apply(
     reject_view_as_secrets(request)
     form = await request.form()
     biography = str(form.get("biography") or "")
-    link_raw = str(form.get("external_url") or "")
-    remove_link = str(form.get("remove_link") or "") in ("1", "on", "true")
     account_ids_raw = form.getlist("account_ids")
     profile_pic = _upload_from_form(form, "profile_pic")
 
@@ -275,21 +223,11 @@ async def profile_edit_apply(
             can_edit=False,
             error="Edição de perfil (API privada) só para contas liberadas.",
             bio_value=biography,
-            link_value=link_raw,
             status_code=403,
         )
 
-    bio, external_url, parse_error = _parse_bio_and_link(biography, link_raw, remove_link)
-    if parse_error:
-        return _render(
-            request,
-            user,
-            accounts_all,
-            error=parse_error,
-            bio_value=biography,
-            link_value=link_raw,
-            status_code=400,
-        )
+    bio_raw = (biography or "").strip()
+    bio = bio_raw[:BIO_MAX] if bio_raw else None
 
     ids: list[int] = []
     for raw in account_ids_raw:
@@ -311,18 +249,16 @@ async def profile_edit_apply(
             accounts_all,
             error="Selecione ao menos uma conta.",
             bio_value=biography,
-            link_value=link_raw,
             status_code=400,
         )
 
-    if bio is None and external_url is None and not has_file:
+    if bio is None and not has_file:
         return _render(
             request,
             user,
             accounts_all,
-            error="Informe a bio, o link e/ou envie uma foto de perfil.",
+            error="Informe a bio e/ou envie uma foto de perfil.",
             bio_value=biography,
-            link_value=link_raw,
             status_code=400,
         )
 
@@ -337,7 +273,6 @@ async def profile_edit_apply(
                     accounts_all,
                     error=pic_error,
                     bio_value=biography,
-                    link_value=link_raw,
                     status_code=400,
                 )
 
@@ -362,7 +297,6 @@ async def profile_edit_apply(
                 _apply_one,
                 acc,
                 biography=bio,
-                external_url=external_url,
                 pic_path=pic_path,
             )
             db.commit()
@@ -378,7 +312,6 @@ async def profile_edit_apply(
             results=results,
             summary=f"{ok_n}/{len(results)} conta(s) atualizada(s).",
             bio_value=biography,
-            link_value=link_raw,
         )
     finally:
         if tmp_dir is not None:
@@ -399,8 +332,6 @@ async def profile_edit_apply_one(
     reject_view_as_secrets(request)
     form = await request.form()
     biography = str(form.get("biography") or "")
-    link_raw = str(form.get("external_url") or "")
-    remove_link = str(form.get("remove_link") or "") in ("1", "on", "true")
     profile_pic = _upload_from_form(form, "profile_pic")
 
     if not can_use_instagrapi(user):
@@ -423,13 +354,8 @@ async def profile_edit_apply_one(
         )
     username = acc.username
 
-    bio, external_url, parse_error = _parse_bio_and_link(biography, link_raw, remove_link)
-    if parse_error:
-        release_db_transaction(db)
-        return JSONResponse(
-            {"ok": False, "username": username, "detail": parse_error},
-            status_code=400,
-        )
+    bio_raw = (biography or "").strip()
+    bio = bio_raw[:BIO_MAX] if bio_raw else None
 
     pic_path: Path | None = None
     tmp_dir: Path | None = None
@@ -443,7 +369,7 @@ async def profile_edit_apply_one(
                     status_code=400,
                 )
 
-        if bio is None and external_url is None and pic_path is None:
+        if bio is None and pic_path is None:
             return JSONResponse(
                 {
                     "ok": False,
@@ -457,7 +383,6 @@ async def profile_edit_apply_one(
             _apply_one,
             acc,
             biography=bio,
-            external_url=external_url,
             pic_path=pic_path,
         )
         db.commit()

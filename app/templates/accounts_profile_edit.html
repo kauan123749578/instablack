@@ -4,7 +4,7 @@
 <div class="page-header" data-page-profile-edit="1">
   <h2><i data-lucide="user-pen" class="inline-icon"></i> Editar perfil</h2>
   <p class="muted page-header-sub">
-    Bio, link e foto para várias contas de uma vez (login clássico e API async). Contas Meta não entram.
+    Um texto de bio e/ou uma foto para várias contas (login clássico e API async). Contas Meta não entram.
   </p>
 </div>
 
@@ -48,17 +48,6 @@
       Até ~150 caracteres no Instagram. Deixe vazio para não mexer na bio.
     </p>
 
-    <label>Link do perfil (opcional)
-      <input type="text" name="external_url" id="profile-link-input"
-             value="{{ link_value }}" placeholder="seusite.com/promo">
-    </label>
-    <p class="muted profile-edit-hint-text">
-      É o link clicável que aparece no perfil. Vazio = não mexe no link atual.
-      <label class="profile-edit-remove-link">
-        <input type="checkbox" name="remove_link" value="1"> Remover o link atual das contas selecionadas
-      </label>
-    </p>
-
     <label>Foto de perfil (opcional)
       <input type="file" name="profile_pic" id="profile-pic-input" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp">
     </label>
@@ -92,7 +81,7 @@
     <div class="profile-edit-spinner" aria-hidden="true"></div>
     <strong>Aplicando nas contas…</strong>
     <p class="muted" id="profile-edit-busy-status">Preparando…</p>
-    <p class="muted">Não feche esta página. Cada conta é enviada por vez.</p>
+    <p class="muted">Não feche esta página. Bio e/ou foto estão sendo enviadas ao Instagram, uma conta por vez.</p>
   </div>
 </div>
 {% endif %}
