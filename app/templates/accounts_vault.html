@@ -5,6 +5,9 @@
   <h2><i data-lucide="key-round" class="inline-icon"></i> Cofre</h2>
   <p class="muted page-header-sub">
     Authenticator ao vivo (sem recarregar a página) + email/senha por conta.
+    {% if request.state.view_as_active and request.state.auth_user and request.state.auth_user.is_owner %}
+    <strong>Ver como (dono):</strong> consulta somente leitura.
+    {% endif %}
   </p>
 </div>
 
@@ -18,6 +21,7 @@
   </p>
 </div>
 {% else %}
+{% set owner_view_as = request.state.view_as_active and request.state.auth_user and request.state.auth_user.is_owner %}
 
 <section class="auth-panel" aria-label="Authenticator">
   <header class="auth-panel-bar">
@@ -101,11 +105,13 @@
              placeholder="Ex.: JBSW Y3DP EHPK 3PXP  (não cole o código 123456)">
     </label>
 
+    {% if not owner_view_as %}
     <div class="vault-card-actions">
       <button type="button" class="btn btn-primary btn-sm vault-save">Salvar</button>
       <button type="button" class="btn btn-sm vault-clear-totp">Remover Authenticator</button>
       <button type="button" class="btn btn-sm vault-clear-password">Remover senha</button>
     </div>
+    {% endif %}
     <p class="vault-msg" aria-live="polite"></p>
   </article>
   {% endfor %}

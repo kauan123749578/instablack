@@ -690,7 +690,7 @@ def connected_accounts(
             "Usuário/senha rejeitados ou serviço de login indisponível."
         ),
         "credentials_totp": "Chave TOTP inválida. Use Base32 ou otpauth:// do Authenticator.",
-        "view_as_secrets": "No modo Ver como, cofre / TOTP / cookies / apps Meta ficam bloqueados.",
+        "view_as_secrets": "No modo Ver como, cofre / TOTP / cookies / apps Meta ficam bloqueados (exceto o dono, que pode consultar).",
     }.get(err_key or "")
     offline = offline_accounts(db, user.id)
     cookie_flags = {

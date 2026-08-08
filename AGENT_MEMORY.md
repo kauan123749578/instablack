@@ -64,7 +64,7 @@ Token inválido / checkpoint (“You cannot access the app till you log in”). 
 - UI: Contas conectadas → **Credenciais / 2FA** (código 6 dígitos ao vivo + copiar) + página `/accounts/vault`.
 - Login/reconectar: se Instagram pedir 2FA e houver TOTP, gera o código automaticamente (`app/utils/totp.py` + `pyotp`).
 - Nunca devolver o secret em plaintext — só o OTP.
-- **View As:** cofre / TOTP / credentials / cookies web / Meus Apps ficam **bloqueados** (`reject_view_as_secrets` em `app/deps.py`). Não reabrir esses endpoints no impersonate.
+- **View As:** cofre / TOTP / cookies / Meus Apps ficam bloqueados para admin comum. **Dono (`is_owner`)** pode **consultar** cofre e bloco de notas do alvo (GET only) para auditar golpe; POST continua bloqueado.
 
 ---
 
@@ -154,5 +154,6 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 | 2026-08-06 | ux | Drawer mobile com seções + Perfil; esconde nome Instagrapi na UI pública; Top do Dia sem views; login exclusivo (1 sessão — novo login derruba as outras). |
 | 2026-08-07 | feat | Story Link Studio aceita login clássico (instagrapi) + cookies web; posição do sticker (x/y) vai no upload mobile. Meta continua sem link. |
 | 2026-08-07 | feat | Bloco de notas (`/accounts/notes`): cola lote `user | senha` + URL 2FA (browserscan/#secret), guarda cifrado, mostra código TOTP e senha sob demanda. |
+| 2026-08-08 | feat | Ver como: dono lê cofre/bloco do usuário (somente leitura). Ícone PWA Android usa PNG 192/512 do fantasma 3D (não SVG maskable). |
 
 <!-- Ao corrigir bugs de produção: acrescente uma linha acima e, se for armadilha nova, uma subseção em "O que já quebrou". -->

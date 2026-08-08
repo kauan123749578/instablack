@@ -5,6 +5,9 @@
   <h2><i data-lucide="notebook-text" class="inline-icon"></i> Bloco de notas</h2>
   <p class="muted page-header-sub">
     Guarde user, senha e 2FA. Cole o lote no formato que você recebe — não conecta a conta no painel.
+    {% if request.state.view_as_active and request.state.auth_user and request.state.auth_user.is_owner %}
+    <strong>Ver como (dono):</strong> consulta somente leitura.
+    {% endif %}
   </p>
 </div>
 
@@ -22,6 +25,8 @@
 </div>
 {% endif %}
 
+{% set owner_view_as = request.state.view_as_active and request.state.auth_user and request.state.auth_user.is_owner %}
+{% if not owner_view_as %}
 <section class="notes-import og-glass-card">
   <h3>Colar lote</h3>
   <p class="muted notes-hint">
@@ -37,6 +42,7 @@
     </div>
   </form>
 </section>
+{% endif %}
 
 <div class="notes-toolbar">
   <input type="search" id="notes-search" placeholder="Buscar @usuario…" autocomplete="off">
@@ -76,11 +82,13 @@
       </div>
       {% endif %}
     </div>
+    {% if not owner_view_as %}
     <form method="post" action="/accounts/notes/{{ n.id }}/delete" class="notes-delete-form"
           onsubmit="return confirm('Remover @{{ n.username }} do bloco?');">
       <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
       <button type="submit" class="btn btn-sm notes-delete">Remover</button>
     </form>
+    {% endif %}
   </article>
   {% endfor %}
 </div>

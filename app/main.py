@@ -344,23 +344,23 @@ def create_app() -> FastAPI:
                 "orientation": "portrait-primary",
                 "icons": [
                     {
-                        "src": "/static/favicon.png?v=4",
-                        "sizes": "64x64",
+                        "src": "/static/pwa-icon-192.png?v=5",
+                        "sizes": "192x192",
                         "type": "image/png",
                         "purpose": "any",
                     },
                     {
-                        "src": "/static/apple-touch-icon.png?v=4",
-                        "sizes": "180x180",
+                        "src": "/static/pwa-icon-512.png?v=5",
+                        "sizes": "512x512",
                         "type": "image/png",
                         "purpose": "any",
                     },
                     {
-                        "src": "/static/favicon.svg?v=4",
-                        "sizes": "any",
-                        "type": "image/svg+xml",
-                        "purpose": "any maskable",
-                    }
+                        "src": "/static/pwa-icon-512-maskable.png?v=5",
+                        "sizes": "512x512",
+                        "type": "image/png",
+                        "purpose": "maskable",
+                    },
                 ],
             }
         )

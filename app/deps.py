@@ -168,14 +168,35 @@ def view_as_active(request: Request) -> bool:
     return bool(request.session.get("view_as_user_id"))
 
 
-def reject_view_as_secrets(request: Request) -> None:
-    """Bloqueia TOTP / vault / cookies / tokens Meta no modo Ver como."""
+def view_as_auth_user(request: Request) -> Optional[User]:
+    """Usuário real logado durante o Ver como (owner/admin), se já estiver no state."""
+    return getattr(request.state, "auth_user", None)
+
+
+def owner_viewing_as(request: Request) -> bool:
+    """Dono inspecionando outro usuário (Ver como)."""
     if not view_as_active(request):
+        return False
+    auth = view_as_auth_user(request)
+    return bool(auth and getattr(auth, "is_owner", False))
+
+
+def reject_view_as_secrets(request: Request) -> None:
+    """Bloqueia TOTP / vault / cookies / tokens Meta no modo Ver como.
+
+    Exceção: o dono (`is_owner`) pode LER cofre e bloco de notas do alvo
+    para auditar golpe. POST/mutação continua bloqueada no middleware.
+    """
+    if not view_as_active(request):
+        return
+    if owner_viewing_as(request) and request.method in ("GET", "HEAD", "OPTIONS"):
         return
     accept = request.headers.get("accept", "")
     msg = (
         "Segredos (cofre, TOTP, cookies, apps Meta) ficam bloqueados "
         "no modo Ver como."
+        if not owner_viewing_as(request)
+        else "No Ver como o dono só consulta cofre/bloco — alteração bloqueada."
     )
     if "application/json" in accept or "fetch" in (
         request.headers.get("x-requested-with") or ""
