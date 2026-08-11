@@ -66,6 +66,10 @@ Regras:
 - Lote longo → **uma requisição por conta** (`POST /accounts/profile-edit/one`), com progresso no front. Um POST único com N contas estoura qualquer timeout.
 - No front, nunca engolir o erro: mostrar status/mensagem do servidor.
 
+### 3.2) Botão Reconectar sem feedback (SPA)
+
+Modal `#reconnect-session-modal` fora de `#app-content` → navegação SPA não trazia o HTML → JS fazia `if (!modal) return` **sem alert**. Challenge nativo (“Manual verification… challenge_code_handler”) **não** se resolve só com senha do cofre — liberar no app/site do IG e colar sessionid/cookies novos.
+
 ### 4) Contas Meta `code=190`
 
 Token inválido / checkpoint (“You cannot access the app till you log in”). Afeta publish e Insights (0 views). **Não** é o mesmo bug de KPI/timezone. Conta fica `needs_login`; skip silencioso sem log ainda pode confundir — preferir `PublishLog` skipped/failed ao pular.
@@ -172,6 +176,9 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 | 2026-08-08 | feat | 4ª API: **aiograpi** (`provider=aiograpi`) — chip “Login async”, wrapper `core/aiograpi_client.py`, publish no worker. Mesmo gate `allow_instagrapi`. Dep `aiograpi==1.12.8`. Redeploy **web + worker-publish**. |
 | 2026-08-08 | feat | `/accounts/profile-edit`: bio + foto em lote (instagrapi/aiograpi). Meta fora. Gate `allow_instagrapi`. Redeploy **web**. |
 | 2026-08-08 | nota | Editar perfil: **link no perfil removido**. `account_edit(external_url=…)` respondia OK mas o Instagram **não aplicava** o link (silencioso, sem erro). Spintax na bio também foi removido a pedido. Ficou bio + foto. |
-| 2026-08-08 | fix | Editar perfil travava com link: chamada bloqueante em rota `async` matava o worker (`--timeout 120`). Agora `run_in_threadpool` + `POST /accounts/profile-edit/one` (1 conta por requisição, progresso ao vivo). Ver §3.1. |
+| 2026-08-10 | fix | **Reconectar** não abria: modal estava fora de `#app-content` (SPA) e/ou clipado pelo overflow. Modal no content + move p/ `body` ao abrir; mensagem de challenge nativo; fallback alert. Redeploy **web**. |
+| 2026-08-10 | feat | Health revive com senha+TOTP do cofre (cooldown Redis 6h); pula se `last_error` for challenge/checkpoint. Redeploy **worker** (fila health/misc). |
+| 2026-08-10 | feat | aiograpi: `_stable_uuids(username)` no login sem settings (mesmo fingerprint do instagrapi). |
+| 2026-08-10 | feat | Warmup: também curte/comenta posts dos **influenciadores** (`like_influencer` / `comment_influencer`), não só seguidores. |
 
 <!-- Ao corrigir bugs de produção: acrescente uma linha acima e, se for armadilha nova, uma subseção em "O que já quebrou". -->

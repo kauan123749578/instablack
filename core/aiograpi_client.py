@@ -37,8 +37,11 @@ def _run(coro):
 async def _build_client(
     proxy: Optional[str],
     settings_dict: Optional[dict] = None,
+    username: Optional[str] = None,
 ):
     from aiograpi import Client
+
+    from core.instagram import _stable_uuids
 
     if not proxy:
         raise InstagramAuthError("Proxy é obrigatório para a API async.")
@@ -54,6 +57,19 @@ async def _build_client(
             cl.set_settings(settings_dict)
         except Exception as exc:
             log.warning("aiograpi set_settings falhou: %s", exc)
+    elif username:
+        # Mesmo fingerprint estável do instagrapi — evita “aparelho novo” a cada login.
+        try:
+            uuids = _stable_uuids(username.lstrip("@").strip())
+            if hasattr(cl, "set_uuids"):
+                cl.set_uuids(uuids)
+            else:
+                settings = cl.get_settings() if hasattr(cl, "get_settings") else {}
+                settings = dict(settings or {})
+                settings["uuids"] = uuids
+                cl.set_settings(settings)
+        except Exception as exc:
+            log.warning("aiograpi set_uuids estável falhou @%s: %s", username, exc)
     return cl
 
 
@@ -78,7 +94,7 @@ async def _login_async(
     verification_code: str | None = None,
     settings_dict: dict | None = None,
 ) -> dict:
-    cl = await _build_client(proxy, settings_dict)
+    cl = await _build_client(proxy, settings_dict, username=username)
     try:
         if verification_code:
             await cl.login(username, password, verification_code=verification_code.strip())
@@ -125,7 +141,7 @@ async def _ready_async(
     username: str | None = None,
     password: str | None = None,
 ) -> dict:
-    cl = await _build_client(proxy, settings_dict)
+    cl = await _build_client(proxy, settings_dict, username=username)
     try:
         await cl.account_info()
         return cl.get_settings()

@@ -182,7 +182,7 @@ def run_warmup_job(self, job_id: int) -> dict:
             if job.status == "failed":
                 return {"failed": True}
 
-        action, target_user, result = run_random_action(cl, targets)
+        action, target_user, result = run_random_action(cl, targets, influencers)
         ok = bool(result.get("ok"))
         detail = str(result.get("detail") or "")[:500]
         done += 1

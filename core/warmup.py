@@ -1,4 +1,4 @@
-"""Ações de aquecimento — interage com SEGUIDORES dos influenciadores (não com eles).
+"""Ações de aquecimento — seguidores dos influenciadores + posts dos próprios influenciadores.
 
 Tudo randomizado, com pausas longas. Sem ações em massa.
 """
@@ -30,6 +30,8 @@ ACTIONS = (
     "follow",
     "like_post",
     "comment",
+    "like_influencer",
+    "comment_influencer",
     "scroll_feed",
     "view_story",
     "like_story",
@@ -168,37 +170,68 @@ ACTION_FNS = {
     "follow": action_follow,
     "like_post": action_like_post,
     "comment": action_comment,
+    "like_influencer": action_like_post,
+    "comment_influencer": action_comment,
     "scroll_feed": action_scroll_feed,
     "view_story": action_view_story,
     "like_story": action_like_story,
 }
 
-# Pesos: comentário raro; scroll e like mais comuns
+# Pesos: comentário raro; like em influenciador um pouco mais comum que comentário
 ACTION_WEIGHTS = {
     "follow": 2,
     "like_post": 4,
     "comment": 1,
+    "like_influencer": 3,
+    "comment_influencer": 1,
     "scroll_feed": 3,
     "view_story": 3,
     "like_story": 2,
 }
 
+_FOLLOWER_ACTIONS = frozenset(
+    {"follow", "like_post", "comment", "view_story", "like_story"}
+)
+_INFLUENCER_ACTIONS = frozenset({"like_influencer", "comment_influencer"})
 
-def _pick_action() -> str:
+
+def _pick_action(*, has_followers: bool, has_influencers: bool) -> str:
     names = list(ACTION_WEIGHTS.keys())
-    weights = [ACTION_WEIGHTS[n] for n in names]
+    weights = []
+    for n in names:
+        w = ACTION_WEIGHTS[n]
+        if n in _FOLLOWER_ACTIONS and not has_followers:
+            w = 0
+        if n in _INFLUENCER_ACTIONS and not has_influencers:
+            w = 0
+        weights.append(w)
+    if sum(weights) <= 0:
+        return "scroll_feed"
     return random.choices(names, weights=weights, k=1)[0]
 
 
-def run_random_action(cl: Client, targets: list[str]) -> tuple[str, str | None, dict]:
-    """Escolhe ação + alvo (seguidor) aleatórios com pausas longas."""
-    action = _pick_action()
+def run_random_action(
+    cl: Client,
+    targets: list[str],
+    influencers: list[str] | None = None,
+) -> tuple[str, str | None, dict]:
+    """Escolhe ação + alvo (seguidor ou influenciador) com pausas longas."""
+    influencers = [
+        u.lstrip("@").strip() for u in (influencers or []) if str(u).strip()
+    ]
+    action = _pick_action(
+        has_followers=bool(targets),
+        has_influencers=bool(influencers),
+    )
     target = None
-    if action != "scroll_feed":
-        if not targets:
-            action = "scroll_feed"
-        else:
-            target = random.choice(targets).lstrip("@").strip()
+    if action == "scroll_feed":
+        target = None
+    elif action in _INFLUENCER_ACTIONS:
+        target = random.choice(influencers).lstrip("@").strip()
+    elif targets:
+        target = random.choice(targets).lstrip("@").strip()
+    else:
+        action = "scroll_feed"
 
     fn = ACTION_FNS[action]
     _pause(12, 40)  # antes

@@ -1627,14 +1627,33 @@
       if (cookies) cookies.value = "";
     }
 
-    function openReconnectModal(accountId, username, hasCookies, hasPassword) {
-      if (!modal) return;
+    function openReconnectModal(accountId, username, hasCookies, hasPassword, opts) {
+      opts = opts || {};
+      if (!modal) {
+        // Fallback: modal sumiu (SPA antiga) — tenta senha do cofre direto.
+        if (hasPassword && !opts.nativeChallenge) {
+          runReconnect(accountId, username, { mode: "password" }, null);
+          return;
+        }
+        alert(
+          opts.nativeChallenge
+            ? "Esta conta pediu verificação manual no Instagram (challenge). Abra o app/site do Instagram, resolva o checkpoint, depois cole um sessionid/cookies novos aqui. Se o modal não abrir, recarregue com F5."
+            : "Não foi possível abrir o modal de reconectar. Recarregue a página (F5) e tente de novo, ou cole sessionid/cookies."
+        );
+        return;
+      }
+      // Evita clip do overflow do #app-content (position:fixed dentro de scroll).
+      if (modal.parentElement !== document.body) {
+        document.body.appendChild(modal);
+      }
       reconnectTarget = {
         accountId,
         username: username || "",
         hasPassword: !!hasPassword,
+        nativeChallenge: !!opts.nativeChallenge,
       };
       const title = document.getElementById("reconnect-session-title");
+      const msg = document.getElementById("reconnect-session-message");
       const hint = document.getElementById("reconnect-cookies-hint");
       const pwBtn = document.getElementById("reconnect-modal-password-btn");
       const pwDiv = document.getElementById("reconnect-password-divider");
@@ -1643,8 +1662,17 @@
           ? `Reconectar @${username}`
           : "Reconectar sessão";
       }
+      if (msg) {
+        msg.textContent = opts.nativeChallenge
+          ? "O Instagram pediu verificação manual (challenge/checkpoint). Senha automática costuma falhar. Abra o app/site do Instagram nessa conta, complete a verificação, depois cole sessionid ou cookies novos abaixo."
+          : "Cole o sessionid do navegador ou o JSON do Cookie-Editor. Ou use senha+TOTP salvos no cofre.";
+      }
       if (hint) {
-        if (hasCookies) {
+        if (opts.nativeChallenge) {
+          hint.hidden = false;
+          hint.textContent =
+            "Dica: após liberar no Instagram, exporte cookies com Cookie-Editor (ou cole só o sessionid) e reconecte aqui.";
+        } else if (hasCookies) {
           hint.hidden = false;
           hint.textContent =
             "Esta conta já tem cookies web salvos. Se o sessionid antigo ainda valer, o health check tenta reaproveitar sozinho — se falhou, cole um sessionid/cookies novos.";
@@ -1663,14 +1691,26 @@
     }
 
     document.querySelectorAll(".account-reconnect-open-btn").forEach((btn) => {
-      btn.addEventListener("click", () => {
+      if (btn.dataset.reconnectBound === "1") return;
+      btn.dataset.reconnectBound = "1";
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
         const id = parseInt(btn.dataset.accountId, 10);
         if (!id) return;
+        const err = (btn.dataset.lastError || "").toLowerCase();
+        const nativeChallenge = [
+          "challenge",
+          "checkpoint",
+          "manual verification",
+          "challenge_code_handler",
+        ].some((x) => err.includes(x));
         openReconnectModal(
           id,
           btn.dataset.username || "",
           btn.dataset.hasCookies === "1",
-          btn.dataset.hasPassword === "1"
+          btn.dataset.hasPassword === "1",
+          { nativeChallenge }
         );
       });
     });

@@ -4,7 +4,7 @@
 <div class="page-header">
   <div>
     <h2>Aquecer contas</h2>
-    <p class="muted page-header-sub">Extrai seguidores dos influenciadores e interage com eles (seguir, curtir, stories…) com pausas longas e aleatórias. Tudo aparece em Logs.</p>
+    <p class="muted page-header-sub">Extrai seguidores dos influenciadores e interage com eles — e também curte/comenta posts dos próprios influenciadores — com pausas longas. Tudo aparece em Logs.</p>
   </div>
 </div>
 
@@ -28,7 +28,7 @@
       <textarea name="influencers" rows="6" required placeholder="neymarjr&#10;cristiano&#10;larissamanoela"></textarea>
     </label>
     <p class="muted" style="margin:0;font-size:12px">
-      A conta <strong>não</strong> interage com esses @ — ela extrai os <strong>seguidores</strong> deles e interage com esses perfis, um a um, com pausas longas.
+      A conta interage com os <strong>seguidores</strong> desses @ e também curte/comenta posts dos <strong>próprios influenciadores</strong>, um a um, com pausas longas.
     </p>
     <label>Tempo de aquecimento
       <select name="duration_minutes" required>
@@ -47,7 +47,7 @@
       <input type="number" name="actions_target" value="80" min="10" max="500">
     </label>
     <p class="muted" style="margin:0;font-size:12px">
-      Para quando o tempo acabar <em>ou</em> atingir o limite. Ações: seguir · curtir · comentar (raro) · feed · ver/curtir story — sempre randomizado.
+      Para quando o tempo acabar <em>ou</em> atingir o limite. Ações: seguir · curtir · comentar (raro) · curtir/comentar influenciador · feed · ver/curtir story — sempre randomizado.
     </p>
     <button type="submit" class="btn btn-primary" {% if not accounts %}disabled{% endif %}>Iniciar aquecimento</button>
   </form>

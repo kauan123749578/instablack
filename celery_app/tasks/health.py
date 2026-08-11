@@ -9,7 +9,9 @@ from sqlalchemy import select
 from app.security import decrypt_secret, encrypt_secret
 from app.utils.auth_failures import auth_status_reason, latest_auth_failure_reason
 from app.utils.proxy import clean_sessionid
+from app.utils.totp import TotpError, current_totp_code, normalize_totp_secret
 from celery_app.config import celery_app
+from core import aiograpi_client as aio_ig
 from core.database import session_scope
 from core.instagram import (
     InstagramAuthError,
@@ -18,6 +20,7 @@ from core.instagram import (
     deserialize_settings,
     extract_sessionid_from_settings,
     get_ready_client,
+    login_with_credentials,
     login_with_sessionid,
     serialize_settings,
     try_refresh_session,
@@ -34,6 +37,113 @@ from models.models import InstagramAccount, PublishLog
 log = logging.getLogger(__name__)
 
 OFFLINE_STATUSES = frozenset({"needs_login", "proxy_down", "banned"})
+
+# Senha do cofre no máximo 1× a cada 6h por conta (Redis). Evita martelar login.
+VAULT_REVIVE_COOLDOWN_SEC = 6 * 60 * 60
+
+
+def _looks_like_native_challenge(msg: str | None) -> bool:
+    low = (msg or "").lower()
+    return any(
+        x in low
+        for x in (
+            "challenge",
+            "checkpoint",
+            "manual verification",
+            "challenge_code_handler",
+            "select_contact",
+            "submit_phone",
+        )
+    )
+
+
+def _totp_from_encrypted(encrypted: str | None) -> str | None:
+    plain = decrypt_secret(encrypted)
+    if not plain:
+        return None
+    try:
+        secret = normalize_totp_secret(plain)
+        code, _ = current_totp_code(secret)
+        return code
+    except TotpError:
+        return None
+
+
+def _vault_revive_allowed(account_id: int) -> bool:
+    """True se ainda não tentamos senha do cofre recentemente."""
+    try:
+        from redis import Redis
+
+        from app.config import settings
+
+        r = Redis.from_url(
+            settings.redis_url, socket_connect_timeout=2, socket_timeout=2
+        )
+        key = f"health:vault_revive:{account_id}"
+        # SET NX: só permite se a chave ainda não existir
+        return bool(r.set(key, "1", nx=True, ex=VAULT_REVIVE_COOLDOWN_SEC))
+    except Exception as exc:
+        log.warning("vault revive cooldown Redis falhou account=%s: %s", account_id, exc)
+        # Sem Redis: tenta mesmo assim (melhor que nunca reviver)
+        return True
+
+
+def _try_vault_password_revive(
+    *,
+    account_id: int,
+    username: str,
+    proxy: str,
+    provider: str,
+    encrypted_password: str | None,
+    encrypted_totp: str | None,
+    last_error: str | None,
+) -> dict | None:
+    """Tenta login com senha+TOTP do cofre. None = não tentou / sem credencial."""
+    if not encrypted_password:
+        return None
+    if _looks_like_native_challenge(last_error):
+        log.info(
+            "health skip vault revive account=%s — challenge nativo (só reconectar manual)",
+            account_id,
+        )
+        return None
+    if not _vault_revive_allowed(account_id):
+        log.info("health skip vault revive account=%s — cooldown 6h", account_id)
+        return None
+
+    password = decrypt_secret(encrypted_password)
+    if not password:
+        return None
+
+    code = _totp_from_encrypted(encrypted_totp)
+    backend = (provider or "instagrapi").lower()
+    login_fn = (
+        aio_ig.login_with_credentials
+        if backend == "aiograpi"
+        else login_with_credentials
+    )
+    try:
+        settings = login_fn(
+            username=username,
+            password=password,
+            verification_code=code,
+            proxy=proxy,
+        )
+        log.info("health vault revive OK account=%s @%s via=%s", account_id, username, backend)
+        return {"settings": settings, "via": "vault_password"}
+    except InstagramTwoFactorRequired as exc:
+        if code:
+            log.warning("health vault revive 2FA falhou account=%s: %s", account_id, exc)
+            return {"error": f"2FA inválido: {exc}"}
+        # Sem TOTP no cofre — precisa código no painel
+        log.info("health vault revive precisa 2FA account=%s", account_id)
+        return {"error": "2FA necessário — salve o Authenticator no Cofre ou reconecte no painel"}
+    except InstagramAuthError as exc:
+        log.warning("health vault revive auth falhou account=%s: %s", account_id, exc)
+        return {"error": str(exc)}
+    except Exception as exc:
+        log.exception("health vault revive erro account=%s", account_id)
+        return {"error": str(exc)[:300]}
 
 
 def _settings_from_web_cookies(
@@ -114,6 +224,9 @@ def check_account_health(account_id: int) -> dict:
         meta_token = decrypt_secret(account.encrypted_meta_access_token)
         meta_token_expires_at = account.meta_token_expires_at
         username = account.username
+        encrypted_password = account.encrypted_password
+        encrypted_totp = getattr(account, "encrypted_totp_secret", None)
+        last_error = account.last_error
 
     now = dt.datetime.utcnow()
 
@@ -254,18 +367,56 @@ def check_account_health(account_id: int) -> dict:
             log.warning(
                 "health revive cookies falhou account=%s: %s", account_id, exc
             )
+
+        # Sem sessão e cookies falharam → senha+TOTP do cofre (com cooldown).
+        vault = _try_vault_password_revive(
+            account_id=account_id,
+            username=username,
+            proxy=proxy,
+            provider=provider,
+            encrypted_password=encrypted_password,
+            encrypted_totp=encrypted_totp,
+            last_error=last_error,
+        )
+        if vault and vault.get("settings"):
+            new_settings = vault["settings"]
+            with session_scope() as db:
+                acc = db.get(InstagramAccount, account_id)
+                if acc and acc.status not in ("paused", "deleted"):
+                    acc.session_json = serialize_settings(new_settings)
+                    new_sid = extract_sessionid_from_settings(new_settings)
+                    merged = merge_sessionid_into_web_cookies(
+                        acc.encrypted_web_cookies, new_sid
+                    )
+                    if merged:
+                        acc.encrypted_web_cookies = merged
+                    acc.status = "active"
+                    acc.last_error = None
+                    acc.last_login_at = now
+                    acc.last_health_check_at = now
+            return {
+                "account_id": account_id,
+                "status": "active",
+                "reconnected": True,
+                "via": vault.get("via") or "vault_password",
+            }
+
+        offline_reason = (
+            (vault or {}).get("error")
+            or "Sessão expirada — reconecte com sessionid, cookies web ou senha no Cofre"
+        )
         with session_scope() as db:
             acc = db.get(InstagramAccount, account_id)
             if not acc or acc.status in ("paused", "deleted"):
                 return {"account_id": account_id, "status": "needs_login"}
             prev = acc.status
             acc.status = "needs_login"
-            acc.last_error = "Sessão expirada — reconecte com sessionid ou cookies web"
+            acc.last_error = offline_reason[:1000]
             acc.last_health_check_at = now
             uid, uname = acc.user_id, acc.username
         _notify_offline_if_changed(
             new_status="needs_login",
-            reason="Sessão expirada — reconecte com sessionid ou cookies web",
+            reason=offline_reason[:200],
             prev_status=prev,
             user_id=uid,
             username=uname,
@@ -289,15 +440,37 @@ def check_account_health(account_id: int) -> dict:
             )
             cl.account_info()
         except InstagramAuthError:
-            # Sessão instagrapi morta — tenta cookies web salvos antes de marcar offline.
+            # Sessão morta — cookies web, depois senha+TOTP do cofre.
             revived = _settings_from_web_cookies(
                 encrypted_web_cookies,
                 proxy=proxy,
                 username=username,
             )
-            if not revived:
-                raise
-            new_settings, resolved_user = revived
+            vault = None
+            if revived:
+                new_settings, resolved_user = revived
+                log.info("health revive via cookies web OK account=%s", account_id)
+            else:
+                vault = _try_vault_password_revive(
+                    account_id=account_id,
+                    username=username,
+                    proxy=proxy,
+                    provider=provider,
+                    encrypted_password=encrypted_password,
+                    encrypted_totp=encrypted_totp,
+                    last_error=last_error,
+                )
+                if not vault or not vault.get("settings"):
+                    if vault and vault.get("error"):
+                        raise InstagramAuthError(vault["error"])
+                    raise
+                new_settings = vault["settings"]
+                resolved_user = None
+                log.info(
+                    "health revive via vault OK account=%s via=%s",
+                    account_id,
+                    vault.get("via"),
+                )
             cl = get_ready_client(
                 settings_dict=new_settings,
                 proxy=proxy,
@@ -305,8 +478,8 @@ def check_account_health(account_id: int) -> dict:
                 password=None,
             )
             cl.account_info()
-            new_settings = cl.get_settings()
-            log.info("health revive via cookies web OK account=%s", account_id)
+            if hasattr(cl, "get_settings"):
+                new_settings = cl.get_settings()
         needs_login_from_log: tuple[str, str | None, int | None, str | None] | None = None
         with session_scope() as db:
             acc = db.get(InstagramAccount, account_id)
