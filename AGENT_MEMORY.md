@@ -180,5 +180,6 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 | 2026-08-10 | feat | Health revive com senha+TOTP do cofre (cooldown Redis 6h); pula se `last_error` for challenge/checkpoint. Redeploy **worker** (fila health/misc). |
 | 2026-08-10 | feat | aiograpi: `_stable_uuids(username)` no login sem settings (mesmo fingerprint do instagrapi). |
 | 2026-08-10 | feat | Warmup: também curte/comenta posts dos **influenciadores** (`like_influencer` / `comment_influencer`), não só seguidores. |
+| 2026-08-11 | feat | **Phantom** integrado (`phantom/`): EnhancedClient no login clássico — headers stealth, `x-ig-nav-chain`, TLS via `curl_cffi` (chrome131_android), login Bloks CAA. Flag `PHANTOM_ENABLED` (default true). Locale headers em **pt_BR**. Redeploy **web + todos workers** que usam instagrapi. |
 
 <!-- Ao corrigir bugs de produção: acrescente uma linha acima e, se for armadilha nova, uma subseção em "O que já quebrou". -->

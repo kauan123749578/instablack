@@ -256,6 +256,29 @@ def _friendly_auth_error(raw: str, proxy: str | None = None) -> str:
     return msg
 
 
+def _new_instagrapi_client() -> Client:
+    """Client do instagrapi — Phantom (TLS+headers+Bloks) quando habilitado."""
+    try:
+        from app.config import settings
+
+        if not settings.phantom_enabled:
+            return Client()
+    except Exception:
+        pass
+    try:
+        from phantom import EnhancedClient
+
+        cl = EnhancedClient(debug=False, auto_track_nav=True)
+        log.info("instagrapi client=Phantom EnhancedClient")
+        return cl
+    except Exception as exc:
+        log.warning(
+            "Phantom indisponível (%s) — usando instagrapi.Client padrão",
+            exc,
+        )
+        return Client()
+
+
 def _build_client(
     proxy: Optional[str],
     settings_dict: Optional[dict],
@@ -264,7 +287,7 @@ def _build_client(
 ) -> Client:
     if not proxy:
         raise InstagramAuthError("Proxy é obrigatório. Nenhuma requisição será feita sem proxy.")
-    cl = Client()
+    cl = _new_instagrapi_client()
     cl.delay_range = [1, 3]
     normalized = normalize_proxy(proxy)
     try:
@@ -294,6 +317,12 @@ def _build_client(
             cl.set_country_code(55)
     except Exception:
         pass
+    # Phantom: reconstrói HeaderBuilder após locale/UUIDs da sessão.
+    if hasattr(cl, "_header_builder"):
+        try:
+            cl._header_builder = None
+        except Exception:
+            pass
     return cl
 
 

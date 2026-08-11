@@ -93,6 +93,10 @@ class Settings(BaseSettings):
     default_account_limit: int = 0
     default_proxy: str = ""
 
+    # Phantom (headers stealth + curl_cffi TLS + login Bloks CAA) no caminho instagrapi.
+    # false → Client padrão do instagrapi (útil se curl_cffi falhar no deploy).
+    phantom_enabled: bool = True
+
     # Web Push (VAPID) — gere em https://vapidkeys.com/
     vapid_public_key: str = ""
     vapid_private_key: str = ""
