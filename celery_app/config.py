@@ -119,11 +119,31 @@ def _enqueue_recover_on_misc_worker_ready(sender=None, **_kwargs) -> None:
             queues = {q.name for q in consumer.queues}
         if queues and not queues.intersection({"health", "beat", "default"}):
             return
+
+        log = logging.getLogger(__name__)
+
+        # Limpa ticks antigos (expirados) que ficaram na fila durante deploy.
+        try:
+            from kombu import Connection
+
+            with Connection(settings.redis_url) as conn:
+                channel = conn.channel()
+                purged = channel.queue_purge("beat")
+                log.info("worker_ready: purged %s stale beat queue message(s)", purged)
+        except Exception as exc:
+            log.warning("worker_ready: beat queue purge falhou: %s", exc)
+
         from celery_app.tasks.health import recover_publish_after_phantom
 
         recover_publish_after_phantom.apply_async(countdown=8)
-        logging.getLogger(__name__).info(
-            "worker_ready: enqueued recover_publish_after_phantom (role=%s queues=%s)",
+        # Dispara 1 tick fresco — automações active voltam a publicar sem esperar o beat.
+        celery_app.send_task(
+            "celery_app.beat.tick",
+            queue="beat",
+            expires=300,
+        )
+        log.info(
+            "worker_ready: enqueued recover + fresh tick (role=%s queues=%s)",
             role or "default",
             sorted(queues) or "?",
         )

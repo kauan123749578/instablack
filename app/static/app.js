@@ -1501,13 +1501,28 @@
         });
         if (resp.status === 303 || resp.status === 302) {
           closeTwofaModal();
-          window.location.href = resp.headers.get("Location") || "/accounts";
+          try {
+            sessionStorage.setItem("ib_flash_ok", "Conta conectada com sucesso!");
+          } catch (_) {
+            /* ignore */
+          }
+          window.location.href = resp.headers.get("Location") || "/accounts/connected?ok=account_added";
           return;
         }
         const ct = resp.headers.get("content-type") || "";
-        if (resp.status === 403 && ct.includes("application/json")) {
+        if (ct.includes("application/json")) {
           const data = await resp.json();
-          if (data.needs_2fa) {
+          if (data.ok && data.redirect) {
+            closeTwofaModal();
+            try {
+              sessionStorage.setItem("ib_flash_ok", data.message || "Conta conectada com sucesso!");
+            } catch (_) {
+              /* ignore */
+            }
+            window.location.href = data.redirect;
+            return;
+          }
+          if (resp.status === 403 && data.needs_2fa) {
             const formTotp = !!(form.querySelector('[name="totp_secret"]')?.value || "").trim();
             openTwofaModal(data.message, {
               hasTotp: !!(data.has_totp || formTotp),
@@ -3154,7 +3169,28 @@
     sync();
   }
 
+  function showFlashOkFromStorage() {
+    try {
+      const msg = sessionStorage.getItem("ib_flash_ok");
+      if (!msg) return;
+      sessionStorage.removeItem("ib_flash_ok");
+      const host =
+        document.getElementById("app-content") ||
+        document.querySelector(".container") ||
+        document.body;
+      const el = document.createElement("div");
+      el.className = "alert alert-ok";
+      el.setAttribute("role", "status");
+      el.textContent = msg;
+      host.insertBefore(el, host.firstChild);
+      el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    } catch (_) {
+      /* ignore */
+    }
+  }
+
   function initPage() {
+    showFlashOkFromStorage();
     initLucide();
     initPrivacyBlur();
     initMetaAppsPage();

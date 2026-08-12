@@ -1057,6 +1057,14 @@ def add_account(
         _set_account_proxy(new_acc, proxy, proxy_meta)
         db.add(new_acc)
     db.commit()
+    if request.headers.get("X-Requested-With") == "fetch":
+        return JSONResponse(
+            {
+                "ok": True,
+                "message": f"Conta @{username} conectada com sucesso!",
+                "redirect": "/accounts/connected?ok=account_added",
+            }
+        )
     return RedirectResponse("/accounts/connected?ok=account_added", status_code=status.HTTP_303_SEE_OTHER)
 
 
