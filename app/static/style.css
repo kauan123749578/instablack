@@ -1574,6 +1574,10 @@ input[type="checkbox"]:checked::after {
   color: #fff3c4;
 }
 .twofa-connecting-hint { margin: 0; font-size: 13px; }
+.modal-card.twofa-modal--connecting #twofa-form-body { display: none !important; }
+.modal-card.twofa-modal--connecting #twofa-connecting {
+  display: flex !important;
+}
 .reconnect-modal-divider {
   display: flex; align-items: center; gap: 10px;
   color: var(--muted, #888); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;

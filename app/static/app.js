@@ -1,6 +1,24 @@
 (function () {
   "use strict";
 
+  (function syncAppVersion() {
+    try {
+      const meta = document.querySelector('meta[name="ib-app-v"]');
+      const v = meta?.content || "";
+      if (!v) return;
+      const key = "ib_app_v";
+      const prev = sessionStorage.getItem(key);
+      if (prev && prev !== v) {
+        sessionStorage.setItem(key, v);
+        window.location.reload();
+        return;
+      }
+      sessionStorage.setItem(key, v);
+    } catch (_) {
+      /* ignore */
+    }
+  })();
+
   function csrfToken() {
     const meta = document.querySelector('meta[name="csrf-token"]');
     if (meta && meta.content) return meta.content;
@@ -208,6 +226,12 @@
         if (!resp.ok) throw new Error(String(resp.status));
         const html = await resp.text();
         const doc = new DOMParser().parseFromString(html, "text/html");
+        const remoteVer = doc.querySelector('meta[name="ib-app-v"]')?.content;
+        const localVer = document.querySelector('meta[name="ib-app-v"]')?.content;
+        if (remoteVer && localVer && remoteVer !== localVer) {
+          window.location.href = url;
+          return;
+        }
         const newContent = doc.getElementById("app-content");
         if (!newContent) throw new Error("missing-app-content");
         // Só aplica se esta ainda for a navegação vigente.
@@ -1330,13 +1354,74 @@
   let twofaHasTotp = false;
   let twofaAccountId = null;
 
+  function ensureTwofaModalUi() {
+    const modal = document.getElementById("twofa-modal");
+    if (!modal) return;
+    const card = modal.querySelector(".modal-card");
+    if (!card) return;
+
+    if (!document.getElementById("twofa-connecting")) {
+      const connecting = document.createElement("div");
+      connecting.id = "twofa-connecting";
+      connecting.className = "twofa-connecting";
+      connecting.hidden = true;
+      connecting.innerHTML =
+        '<div class="twofa-connecting-spinner" aria-hidden="true"></div>' +
+        '<p class="twofa-connecting-title">Sua conta está sendo conectada…</p>' +
+        '<p class="muted twofa-connecting-hint">Aguarde um momento.</p>';
+      const title = card.querySelector("#twofa-title");
+      if (title) title.insertAdjacentElement("afterend", connecting);
+      else card.prepend(connecting);
+    }
+
+    if (!document.getElementById("twofa-form-body")) {
+      const formBody = document.createElement("div");
+      formBody.id = "twofa-form-body";
+      ["#twofa-message", "label", "#twofa-use-saved", ".modal-actions"].forEach((sel) => {
+        card.querySelectorAll(sel).forEach((el) => {
+          if (el.closest("#twofa-form-body")) return;
+          formBody.appendChild(el);
+        });
+      });
+      if (formBody.childNodes.length) card.appendChild(formBody);
+    }
+  }
+
+  function submitTwofaCode() {
+    if (pendingReconnect) {
+      submitReconnect2fa();
+      return;
+    }
+    let form = document.getElementById("account-add-form");
+    if (!form || typeof form._submitWith2fa !== "function") {
+      initAccountsConnect();
+      form = document.getElementById("account-add-form");
+    }
+    if (form && typeof form._submitWith2fa === "function") {
+      form._submitWith2fa(true);
+      return;
+    }
+    const codeInput = document.getElementById("twofa-code-input");
+    const hiddenCode = document.getElementById("verification-code-hidden");
+    const code = (codeInput?.value || "").trim();
+    if (form && hiddenCode && code) {
+      hiddenCode.value = code;
+      setTwofaConnecting(true);
+      form.submit();
+    }
+  }
+
   function setTwofaConnecting(active) {
+    ensureTwofaModalUi();
+    const modal = document.getElementById("twofa-modal");
+    const card = modal?.querySelector(".modal-card");
     const formBody = document.getElementById("twofa-form-body");
     const connecting = document.getElementById("twofa-connecting");
     const submitBtn = document.getElementById("twofa-submit");
     const cancelBtn = document.getElementById("twofa-cancel");
     const codeInput = document.getElementById("twofa-code-input");
     const useSaved = document.getElementById("twofa-use-saved");
+    if (card) card.classList.toggle("twofa-modal--connecting", active);
     if (connecting) connecting.hidden = !active;
     if (formBody) formBody.hidden = active;
     if (submitBtn) {
@@ -1426,27 +1511,11 @@
     modal.addEventListener("click", (e) => {
       if (e.target === modal) closeTwofaModal();
     });
-    submitBtn?.addEventListener("click", () => {
-      if (pendingReconnect) {
-        submitReconnect2fa();
-        return;
-      }
-      const form = document.getElementById("account-add-form");
-      if (form && typeof form._submitWith2fa === "function") {
-        form._submitWith2fa(true);
-      }
-    });
+    submitBtn?.addEventListener("click", submitTwofaCode);
     codeInput?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
-        if (pendingReconnect) {
-          submitReconnect2fa();
-          return;
-        }
-        const form = document.getElementById("account-add-form");
-        if (form && typeof form._submitWith2fa === "function") {
-          form._submitWith2fa(true);
-        }
+        submitTwofaCode();
       }
     });
   }
