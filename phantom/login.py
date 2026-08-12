@@ -195,7 +195,9 @@ class LoginFlow:
                     **self._exception_context(login_json),
                 )
 
-            raise TwoFactorRequired(
+            # NÃO usar TwoFactorRequired aqui: a UI do painel interpreta como
+            # “código 2FA inválido, digite de novo” e entra em loop eterno.
+            raise UnknownError(
                 "Bloks login response did not contain embedded auth payload. "
                 "The account may require a different verification flow.",
                 response=getattr(result, "response", None),

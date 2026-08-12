@@ -246,9 +246,16 @@ def _friendly_auth_error(raw: str, proxy: str | None = None) -> str:
     return msg
 
 
-def _new_instagrapi_client() -> Client:
-    """Client do instagrapi — Phantom (TLS+headers+Bloks) quando habilitado."""
+def _new_instagrapi_client(*, allow_phantom: bool = True) -> Client:
+    """Client do instagrapi — Phantom (TLS+headers+Bloks) quando habilitado.
+
+    Login user/senha passa ``allow_phantom=False``: o Bloks CAA do Phantom
+    costuma falhar no 2FA (pede código em loop). Sessões já gravadas e
+    publish continuam podendo usar Phantom.
+    """
     _ensure_story_sticker_patch()
+    if not allow_phantom:
+        return Client()
     try:
         from app.config import settings
 
@@ -275,10 +282,11 @@ def _build_client(
     settings_dict: Optional[dict],
     *,
     username_for_device: str | None = None,
+    allow_phantom: bool = True,
 ) -> Client:
     if not proxy:
         raise InstagramAuthError("Proxy é obrigatório. Nenhuma requisição será feita sem proxy.")
-    cl = _new_instagrapi_client()
+    cl = _new_instagrapi_client(allow_phantom=allow_phantom)
     cl.delay_range = [1, 3]
     normalized = normalize_proxy(proxy)
     try:
@@ -382,7 +390,14 @@ def login_with_credentials(
             "Teste o proxy antes — formato: ip:porta:usuario:senha"
         )
 
-    cl = _build_client(proxy=proxy, settings_dict=None, username_for_device=username)
+    # Sem Phantom no login por senha: Bloks 2FA não aplica auth e a UI pede
+    # código de novo (só contas “quentes” do dono às vezes passam).
+    cl = _build_client(
+        proxy=proxy,
+        settings_dict=None,
+        username_for_device=username,
+        allow_phantom=False,
+    )
     try:
         if verification_code:
             cl.login(username, password, verification_code=verification_code.strip())

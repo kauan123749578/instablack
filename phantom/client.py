@@ -490,8 +490,8 @@ class EnhancedClient(instagrapi.Client):
 
         Overrides instagrapi's legacy ``accounts/login/`` login with the
         current Bloks-based CAA login used by the Instagram Android app.
-        Falls back to the parent implementation when the Bloks flow is
-        not applicable.
+        Falls back to the parent implementation when Bloks fails after a
+        2FA code was already provided (avoids endless “enter code again”).
 
         Parameters
         ----------
@@ -509,12 +509,51 @@ class EnhancedClient(instagrapi.Client):
         bool
             True on success.
         """
-        flow = LoginFlow(self)
-        return flow.login(
+        from instagrapi.exceptions import (
+            BadPassword,
+            ChallengeRequired,
+            FeedbackRequired,
+            PleaseWaitFewMinutes,
+            TwoFactorRequired,
+            UnknownError,
+        )
+
+        code = (verification_code or "").strip()
+        try:
+            flow = LoginFlow(self)
+            return flow.login(
+                username=username,
+                password=password,
+                verification_code=verification_code,
+                relogin=relogin,
+            )
+        except TwoFactorRequired:
+            # Sem código: Instagram pediu 2FA de verdade — sobe pra UI.
+            if not code:
+                raise
+            logger.warning(
+                "Phantom Bloks 2FA falhou com código presente — fallback login clássico"
+            )
+        except (BadPassword, ChallengeRequired, FeedbackRequired, PleaseWaitFewMinutes):
+            raise
+        except UnknownError as exc:
+            if not code:
+                raise
+            logger.warning(
+                "Phantom Bloks login falhou após 2FA (%s) — fallback login clássico",
+                exc,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Phantom Bloks login falhou (%s) — fallback login clássico",
+                exc,
+            )
+
+        return super().login(
             username=username,
             password=password,
-            verification_code=verification_code,
             relogin=relogin,
+            verification_code=verification_code,
         )
 
     # ── Convenience methods ────────────────────────────────────────────
