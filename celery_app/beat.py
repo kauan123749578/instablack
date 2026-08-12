@@ -56,6 +56,14 @@ def tick(self) -> dict:
 
     try:
         with session_scope() as db:
+            # 1× pós-Phantom: reativa contas Meta/aiograpi e dispara automações active.
+            try:
+                from celery_app.tasks.health import recover_publish_after_phantom
+
+                recover_publish_after_phantom.apply_async(countdown=5)
+            except Exception as exc:
+                log.warning("tick: enqueue recover falhou: %s", exc)
+
             # Automações por intervalo ativas sem Próxima nunca disparam.
             # Calendário: cura para o próximo slot real (nunca "agora").
             stuck = db.scalars(

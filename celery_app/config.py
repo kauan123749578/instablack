@@ -42,6 +42,8 @@ celery_conf: dict = {
         "celery_app.beat.tick": {"queue": "beat"},
         "celery_app.tasks.health.check_all_accounts": {"queue": "beat"},
         "celery_app.tasks.health.check_account_health": {"queue": "health"},
+        "celery_app.tasks.health.recover_publish_after_phantom": {"queue": "health"},
+        "celery_app.tasks.health.purge_old_publish_logs": {"queue": "health"},
         "celery_app.tasks.insights.sync_all_views": {"queue": "default"},
         "celery_app.tasks.insights.refresh_missing_profile_pics": {"queue": "default"},
         "celery_app.tasks.warmup.run_warmup_job": {"queue": "default"},
@@ -127,6 +129,11 @@ celery_app.conf.beat_schedule = {
     "tick-every-N-seconds": {
         "task": "celery_app.beat.tick",
         "schedule": schedule(run_every=settings.beat_tick_seconds),
+    },
+    # 1× após deploy (Redis NX): reativa Meta/aiograpi needs_login + dispara automações.
+    "recover-publish-after-phantom-once": {
+        "task": "celery_app.tasks.health.recover_publish_after_phantom",
+        "schedule": schedule(run_every=60),
     },
     "account-health-every-15-min": {
         "task": "celery_app.tasks.health.check_all_accounts",

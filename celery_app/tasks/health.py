@@ -4,7 +4,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 from app.security import decrypt_secret, encrypt_secret
 from app.utils.auth_failures import auth_status_reason, latest_auth_failure_reason
@@ -32,11 +32,15 @@ from core.meta_instagram import (
 )
 from core.notifications import create_notification
 from core.web_cookies import decrypt_web_cookies, merge_sessionid_into_web_cookies
-from models.models import InstagramAccount, PublishLog
+from models.models import Automation, InstagramAccount, PublishLog
 
 log = logging.getLogger(__name__)
 
 OFFLINE_STATUSES = frozenset({"needs_login", "proxy_down", "banned"})
+
+# Recovery one-shot após bug health+Phantom (Meta/aiograpi marcadas needs_login à toa).
+RECOVER_REDIS_KEY = "recover:post_phantom_publish_v1"
+RECOVER_REDIS_TTL = 30 * 24 * 3600
 
 # Senha do cofre no máximo 1× a cada 6h por conta (Redis). Evita martelar login.
 VAULT_REVIVE_COOLDOWN_SEC = 6 * 60 * 60
@@ -278,16 +282,215 @@ def _notify_offline_if_changed(
     )
 
 
+def _clear_meta_publish_locks(account_id: int) -> None:
+    """Libera cooldown/inflight Meta que possa ter ficado preso sem publish."""
+    try:
+        from redis import Redis
+
+        from app.config import settings
+
+        r = Redis.from_url(
+            settings.redis_url, socket_connect_timeout=2, socket_timeout=2
+        )
+        for prefix in (
+            "meta:cooldown:",
+            "meta:inflight:",
+            "meta:defer_sched:",
+        ):
+            try:
+                r.delete(f"{prefix}{account_id}")
+            except Exception:
+                pass
+    except Exception as exc:
+        log.warning("clear meta locks account=%s: %s", account_id, exc)
+
+
+@celery_app.task(name="celery_app.tasks.health.recover_publish_after_phantom")
+def recover_publish_after_phantom(*, force: bool = False) -> dict:
+    """Reativa Meta/aiograpi em needs_login (token/sessão ainda válidos) e dispara automações.
+
+    Roda 1× após deploy (Redis NX). Sem isso o rank fica vazio: automações active
+    mas contas needs_login → execute_automation pula tudo.
+    """
+    from app.config import settings
+
+    try:
+        from redis import Redis
+
+        r = Redis.from_url(
+            settings.redis_url, socket_connect_timeout=2, socket_timeout=2
+        )
+        if not force and not r.set(RECOVER_REDIS_KEY, "1", nx=True, ex=RECOVER_REDIS_TTL):
+            return {"skipped": True, "reason": "already_ran"}
+    except Exception as exc:
+        log.warning("recover Redis gate falhou — seguindo: %s", exc)
+
+    now = dt.datetime.utcnow()
+    revived_meta: list[int] = []
+    revived_aio: list[int] = []
+    failed: list[dict] = []
+    nudged_autos: list[int] = []
+
+    with session_scope() as db:
+        stuck = db.scalars(
+            select(InstagramAccount).where(
+                InstagramAccount.status == "needs_login",
+                InstagramAccount.provider.in_(("meta", "aiograpi")),
+            )
+        ).all()
+        candidates = [
+            {
+                "id": a.id,
+                "provider": (a.provider or "").lower(),
+                "proxy": a.proxy,
+                "username": a.username,
+                "meta_token": decrypt_secret(a.encrypted_meta_access_token),
+                "meta_app": a.user_meta_app_id,
+                "session": deserialize_settings(a.session_json),
+                "password": decrypt_secret(a.encrypted_password),
+                "last_error": a.last_error,
+            }
+            for a in stuck
+        ]
+
+    for row in candidates:
+        aid = row["id"]
+        provider = row["provider"]
+        try:
+            if provider == "meta":
+                if not row["meta_token"] or not row["meta_app"]:
+                    failed.append({"id": aid, "reason": "meta_token_or_app_missing"})
+                    continue
+                if _looks_like_native_challenge(row["last_error"]):
+                    # Meta OAuth inválido de verdade — não forçar.
+                    failed.append({"id": aid, "reason": "challenge_or_oauth"})
+                    continue
+                meta_proxy = (row["proxy"] or "").strip() or None
+                if meta_proxy and not check_proxy(meta_proxy):
+                    meta_proxy = None
+                validate_meta_token(row["meta_token"], proxy=meta_proxy)
+                with session_scope() as db:
+                    acc = db.get(InstagramAccount, aid)
+                    if acc and acc.status == "needs_login":
+                        acc.status = "active"
+                        acc.last_error = None
+                        acc.last_health_check_at = now
+                _clear_meta_publish_locks(aid)
+                revived_meta.append(aid)
+                log.info("recover Meta OK account=%s @%s", aid, row["username"])
+            elif provider == "aiograpi":
+                if not row["session"] and not row["password"]:
+                    failed.append({"id": aid, "reason": "aiograpi_no_session"})
+                    continue
+                if not row["proxy"] or not str(row["proxy"]).strip():
+                    failed.append({"id": aid, "reason": "proxy_missing"})
+                    continue
+                if not check_proxy(row["proxy"]):
+                    failed.append({"id": aid, "reason": "proxy_down"})
+                    continue
+                if _looks_like_native_challenge(row["last_error"]):
+                    failed.append({"id": aid, "reason": "challenge"})
+                    continue
+                new_settings = aio_ig.try_refresh_session(
+                    settings_dict=row["session"],
+                    proxy=row["proxy"],
+                    username=row["username"],
+                    password=row["password"],
+                )
+                with session_scope() as db:
+                    acc = db.get(InstagramAccount, aid)
+                    if acc and acc.status == "needs_login":
+                        acc.session_json = serialize_settings(new_settings)
+                        acc.status = "active"
+                        acc.last_error = None
+                        acc.last_login_at = now
+                        acc.last_health_check_at = now
+                revived_aio.append(aid)
+                log.info("recover aiograpi OK account=%s @%s", aid, row["username"])
+        except Exception as exc:
+            failed.append({"id": aid, "reason": str(exc)[:200]})
+            log.warning("recover falhou account=%s: %s", aid, exc)
+
+    # Automações active → next_run_at agora (intervalo/recurring; calendário: só se null).
+    with session_scope() as db:
+        autos = db.scalars(
+            select(Automation).where(Automation.status == "active")
+        ).all()
+        for auto in autos:
+            mode = (auto.schedule_type or "").strip().lower()
+            if mode == "calendar":
+                if auto.next_run_at is None and auto.calendar_days and auto.calendar_time:
+                    from app.utils.calendar_schedule import next_calendar_run, parse_calendar_days
+
+                    nxt = next_calendar_run(
+                        parse_calendar_days(auto.calendar_days),
+                        auto.calendar_time,
+                        now,
+                    ) or (now + dt.timedelta(minutes=5))
+                    db.execute(
+                        text("UPDATE automations SET next_run_at = :nxt WHERE id = :id"),
+                        {"nxt": nxt, "id": auto.id},
+                    )
+                    nudged_autos.append(auto.id)
+                continue
+            # Intervalo / postar agora: dispara no próximo tick
+            db.execute(
+                text("UPDATE automations SET next_run_at = :nxt WHERE id = :id"),
+                {"nxt": now, "id": auto.id},
+            )
+            nudged_autos.append(auto.id)
+
+    # Prioriza health nas contas ainda needs_login (instagrapi etc.)
+    with session_scope() as db:
+        leftover = list(
+            db.scalars(
+                select(InstagramAccount.id)
+                .where(InstagramAccount.status == "needs_login")
+                .order_by(InstagramAccount.id.asc())
+                .limit(80)
+            ).all()
+        )
+    for idx, account_id in enumerate(leftover):
+        check_account_health.apply_async(args=[account_id], countdown=idx * 5)
+
+    result = {
+        "ok": True,
+        "revived_meta": revived_meta,
+        "revived_aiograpi": revived_aio,
+        "nudged_automations": len(nudged_autos),
+        "failed": len(failed),
+        "health_queued": len(leftover),
+    }
+    log.warning(
+        "recover_publish_after_phantom: meta=%s aio=%s autos=%s failed=%s health_q=%s",
+        len(revived_meta),
+        len(revived_aio),
+        len(nudged_autos),
+        len(failed),
+        len(leftover),
+    )
+    return result
+
+
 @celery_app.task(name="celery_app.tasks.health.check_all_accounts")
 def check_all_accounts() -> dict:
     """Enfileira verificação de um lote de contas (round-robin), sem engolir publish."""
+    # 1× pós-deploy: reativa Meta/aiograpi e dispara automações active.
+    try:
+        recover_publish_after_phantom.delay()
+    except Exception as exc:
+        log.warning("enqueue recover_publish_after_phantom: %s", exc)
+
     limit = 50
     with session_scope() as db:
+        # Prioriza needs_login (voltar ao ar) antes de contas já active.
         account_ids = list(
             db.scalars(
                 select(InstagramAccount.id)
                 .where(InstagramAccount.status.notin_(("paused", "deleted")))
                 .order_by(
+                    # needs_login primeiro
+                    InstagramAccount.status.desc(),
                     InstagramAccount.last_health_check_at.asc().nullsfirst(),
                     InstagramAccount.id.asc(),
                 )
