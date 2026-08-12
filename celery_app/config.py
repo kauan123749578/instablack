@@ -5,7 +5,7 @@ import ssl
 
 from celery import Celery
 from celery.schedules import schedule
-from celery.signals import task_postrun, task_prerun, worker_process_init
+from celery.signals import task_postrun, task_prerun, worker_process_init, worker_ready
 
 from app.config import settings
 
@@ -100,6 +100,35 @@ def _dispose_db_pool_on_prefork(**_kwargs) -> None:
         import logging
 
         logging.getLogger(__name__).exception("dispose engine no fork falhou")
+
+
+@worker_ready.connect
+def _enqueue_recover_on_misc_worker_ready(sender=None, **_kwargs) -> None:
+    """Garante recovery após deploy mesmo se tick antigo expirou na fila beat."""
+    import logging
+    import os
+
+    role = (os.getenv("APP_ROLE") or "").strip().lower()
+    if role not in ("worker-misc", "worker", ""):
+        return
+    # worker legado (todas filas) também roda recover
+    try:
+        queues = set()
+        consumer = getattr(sender, "consumer", None)
+        if consumer and getattr(consumer, "queues", None):
+            queues = {q.name for q in consumer.queues}
+        if queues and not queues.intersection({"health", "beat", "default"}):
+            return
+        from celery_app.tasks.health import recover_publish_after_phantom
+
+        recover_publish_after_phantom.apply_async(countdown=8)
+        logging.getLogger(__name__).info(
+            "worker_ready: enqueued recover_publish_after_phantom (role=%s queues=%s)",
+            role or "default",
+            sorted(queues) or "?",
+        )
+    except Exception:
+        logging.getLogger(__name__).exception("worker_ready recover enqueue falhou")
 
 
 @task_prerun.connect

@@ -282,6 +282,38 @@ def _notify_offline_if_changed(
     )
 
 
+def _validate_meta_token_resilient(
+    access_token: str, proxy: str | None, *, account_id: int | None = None
+) -> None:
+    """Valida token Meta — se a proxy estiver fora, tenta pelo IP do servidor."""
+    meta_proxy = (proxy or "").strip() or None
+    if meta_proxy and not check_proxy(meta_proxy):
+        log.warning(
+            "META validate skip proxy account=%s — proxy ipify falhou, tenta direto",
+            account_id,
+        )
+        meta_proxy = None
+    try:
+        validate_meta_token(access_token, proxy=meta_proxy)
+        return
+    except MetaInstagramError as exc:
+        if not meta_proxy:
+            raise
+        low = str(exc).lower()
+        if any(
+            x in low
+            for x in ("proxy", "timeout", "connect", "connection", "timed out")
+        ):
+            log.warning(
+                "META validate proxy falhou account=%s — retry sem proxy: %s",
+                account_id,
+                exc,
+            )
+            validate_meta_token(access_token, proxy=None)
+            return
+        raise
+
+
 def _clear_meta_publish_locks(account_id: int) -> None:
     """Libera cooldown/inflight Meta que possa ter ficado preso sem publish."""
     try:
@@ -321,6 +353,7 @@ def recover_publish_after_phantom(*, force: bool = False) -> dict:
             settings.redis_url, socket_connect_timeout=2, socket_timeout=2
         )
         if not force and not r.set(RECOVER_REDIS_KEY, "1", nx=True, ex=RECOVER_REDIS_TTL):
+            log.info("recover_publish_after_phantom skipped (already_ran)")
             return {"skipped": True, "reason": "already_ran"}
     except Exception as exc:
         log.warning("recover Redis gate falhou — seguindo: %s", exc)
@@ -366,9 +399,9 @@ def recover_publish_after_phantom(*, force: bool = False) -> dict:
                     failed.append({"id": aid, "reason": "challenge_or_oauth"})
                     continue
                 meta_proxy = (row["proxy"] or "").strip() or None
-                if meta_proxy and not check_proxy(meta_proxy):
-                    meta_proxy = None
-                validate_meta_token(row["meta_token"], proxy=meta_proxy)
+                _validate_meta_token_resilient(
+                    row["meta_token"], meta_proxy, account_id=aid
+                )
                 with session_scope() as db:
                     acc = db.get(InstagramAccount, aid)
                     if acc and acc.status == "needs_login":
@@ -534,13 +567,9 @@ def check_account_health(account_id: int) -> dict:
                         "Conta sem app Meta. Cadastre em Meus Apps e reconecte."
                     )
             meta_proxy = (proxy or "").strip() or None
-            if meta_proxy and not check_proxy(meta_proxy):
-                log.warning(
-                    "META health proxy inválida account=%s — validando sem proxy",
-                    account_id,
-                )
-                meta_proxy = None
-            validate_meta_token(meta_token, proxy=meta_proxy)
+            _validate_meta_token_resilient(
+                meta_token, meta_proxy, account_id=account_id
+            )
             refreshed_token = None
             refreshed_expires_at = meta_token_expires_at
             expires_cmp = meta_token_expires_at

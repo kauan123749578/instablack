@@ -27,7 +27,7 @@ def _as_naive_utc(value: dt.datetime | None) -> dt.datetime | None:
     return value
 
 
-@celery_app.task(name="celery_app.beat.tick", bind=True, expires=55)
+@celery_app.task(name="celery_app.beat.tick", bind=True, expires=120)
 def tick(self) -> dict:
     """Encontra automações ativas vencidas e despacha execute_automation.
 
