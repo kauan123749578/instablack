@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from app.utils.proxy import normalize_proxy
+from core.device_fingerprint import stable_uuids
 from core.instagram import (
     InstagramAuthError,
     InstagramTwoFactorRequired,
@@ -41,8 +42,6 @@ async def _build_client(
 ):
     from aiograpi import Client
 
-    from core.instagram import _stable_uuids
-
     if not proxy:
         raise InstagramAuthError("Proxy é obrigatório para a API async.")
     cl = Client()
@@ -60,7 +59,7 @@ async def _build_client(
     elif username:
         # Mesmo fingerprint estável do instagrapi — evita “aparelho novo” a cada login.
         try:
-            uuids = _stable_uuids(username.lstrip("@").strip())
+            uuids = stable_uuids(username.lstrip("@").strip())
             if hasattr(cl, "set_uuids"):
                 cl.set_uuids(uuids)
             else:
@@ -226,8 +225,9 @@ async def _publish_reel_async(
     video_path: Path,
     caption: str,
     thumbnail_path: Path | None = None,
+    username: str | None = None,
 ) -> dict:
-    cl = await _build_client(proxy, settings_dict)
+    cl = await _build_client(proxy, settings_dict, username=username)
     kwargs: dict = {}
     if thumbnail_path is not None:
         kwargs["thumbnail"] = thumbnail_path
@@ -240,8 +240,9 @@ async def _publish_photo_async(
     proxy: str,
     image_path: Path,
     caption: str,
+    username: str | None = None,
 ) -> dict:
-    cl = await _build_client(proxy, settings_dict)
+    cl = await _build_client(proxy, settings_dict, username=username)
     media = await cl.photo_upload(image_path, caption or "")
     return _media_result(media)
 
@@ -252,10 +253,11 @@ async def _publish_story_async(
     media_path: Path,
     link_url: str | None = None,
     thumbnail_path: Path | None = None,
+    username: str | None = None,
 ) -> dict:
     from aiograpi.types import StoryLink
 
-    cl = await _build_client(proxy, settings_dict)
+    cl = await _build_client(proxy, settings_dict, username=username)
     ext = media_path.suffix.lower()
     is_video = ext in (".mp4", ".mov", ".webm")
     kwargs: dict = {}
@@ -281,10 +283,16 @@ def publish_reel(
     video_path: Path,
     caption: str,
     thumbnail_path: Path | None = None,
+    username: str | None = None,
 ) -> dict:
     return _run(
         _publish_reel_async(
-            settings_dict, proxy, video_path, caption, thumbnail_path=thumbnail_path
+            settings_dict,
+            proxy,
+            video_path,
+            caption,
+            thumbnail_path=thumbnail_path,
+            username=username,
         )
     )
 
@@ -294,8 +302,13 @@ def publish_photo(
     proxy: str,
     image_path: Path,
     caption: str,
+    username: str | None = None,
 ) -> dict:
-    return _run(_publish_photo_async(settings_dict, proxy, image_path, caption))
+    return _run(
+        _publish_photo_async(
+            settings_dict, proxy, image_path, caption, username=username
+        )
+    )
 
 
 def publish_story(
@@ -304,6 +317,7 @@ def publish_story(
     media_path: Path,
     link_url: str | None = None,
     thumbnail_path: Path | None = None,
+    username: str | None = None,
 ) -> dict:
     return _run(
         _publish_story_async(
@@ -312,6 +326,7 @@ def publish_story(
             media_path,
             link_url=link_url,
             thumbnail_path=thumbnail_path,
+            username=username,
         )
     )
 

@@ -1,10 +1,8 @@
 """Wrapper do instagrapi com sessão persistida no banco e proxy obrigatório."""
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
-import uuid
 from functools import lru_cache
 from pathlib import Path
 from typing import Optional
@@ -21,31 +19,17 @@ from instagrapi.exceptions import (
 from instagrapi.types import StoryLink
 
 from app.utils.proxy import normalize_proxy
+from core.device_fingerprint import stable_uuids
 
 log = logging.getLogger(__name__)
 
 IPIFY_URL = "https://api.ipify.org"
 IP_CHECK_TIMEOUT = 8
 
+# Compat — aiograpi/health importavam daqui antes de core/device_fingerprint.py
+_stable_uuids = stable_uuids
 
-def _stable_uuids(username: str) -> dict[str, str]:
-    """Mesmo @ → mesmo device fingerprint (evita 'aparelho novo' a cada tentativa)."""
-    seed = hashlib.sha256(f"instablack:{username.lower()}".encode()).hexdigest()
-
-    def _u(n: int) -> str:
-        h = hashlib.md5(f"{seed}:{n}".encode(), usedforsecurity=False).hexdigest()
-        return str(uuid.UUID(h))
-
-    phone = _u(1)
-    return {
-        "phone_id": phone,
-        "uuid": _u(2),
-        "client_session_id": _u(3),
-        "advertising_id": _u(4),
-        "android_device_id": f"android-{seed[:16]}",
-        "request_id": _u(5),
-        "tray_session_id": _u(6),
-    }
+_story_patch_applied = False
 
 
 def _extract_link_from_tap_models(tap_models_raw) -> dict | None:
@@ -206,7 +190,13 @@ def _apply_story_sticker_ids_fix() -> None:
         log.info("Patch story link estável (mobile): %s.%s", cls.__name__, method_name)
 
 
-_apply_story_sticker_ids_fix()
+def _ensure_story_sticker_patch() -> None:
+    """Aplica patch de story link só quando instagrapi for usado (não no import do worker)."""
+    global _story_patch_applied
+    if _story_patch_applied:
+        return
+    _apply_story_sticker_ids_fix()
+    _story_patch_applied = True
 
 
 class InstagramAuthError(RuntimeError):
@@ -258,6 +248,7 @@ def _friendly_auth_error(raw: str, proxy: str | None = None) -> str:
 
 def _new_instagrapi_client() -> Client:
     """Client do instagrapi — Phantom (TLS+headers+Bloks) quando habilitado."""
+    _ensure_story_sticker_patch()
     try:
         from app.config import settings
 
@@ -298,7 +289,7 @@ def _build_client(
         cl.set_settings(settings_dict)
     elif username_for_device:
         try:
-            cl.set_uuids(_stable_uuids(username_for_device))
+            cl.set_uuids(stable_uuids(username_for_device))
         except Exception:
             log.debug("Não foi possível fixar UUIDs do device", exc_info=True)
     # Não sobrescrever country/locale/timezone do dump: misturar Pixel US + BR

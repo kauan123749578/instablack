@@ -1,4 +1,4 @@
-# Pacotes nativos exigidos pelo projeto (ffmpeg para limpeza de metadados).
-# Usado tanto pelos services web/worker/beat no Railway.
+# Pacotes nativos exigidos pelo projeto (ffmpeg para limpeza de metadados;
+# libcurl para curl_cffi / Phantom TLS no worker).
 [phases.setup]
-aptPkgs = ["ffmpeg"]
+aptPkgs = ["ffmpeg", "curl", "libcurl4"]

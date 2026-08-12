@@ -2189,10 +2189,11 @@ def _execute_publish(
                         publish_path,
                         link_url=story_link,
                         thumbnail_path=thumb_path,
+                        username=username,
                     )
                 elif content_type == "photo":
                     result = aio_ig.publish_photo(
-                        settings_dict, proxy, clean_path, caption
+                        settings_dict, proxy, clean_path, caption, username=username
                     )
                 else:
                     result = aio_ig.publish_reel(
@@ -2201,6 +2202,7 @@ def _execute_publish(
                         clean_path,
                         caption,
                         thumbnail_path=thumb_path,
+                        username=username,
                     )
             elif content_type == "story":
                 result = publish_story(

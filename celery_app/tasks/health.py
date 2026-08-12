@@ -165,6 +165,96 @@ def _settings_from_web_cookies(
     return settings_dict, resolved_user
 
 
+def _check_aiograpi_health(
+    *,
+    account_id: int,
+    username: str,
+    proxy: str,
+    settings_dict: dict | None,
+    encrypted_password: str | None,
+    encrypted_totp: str | None,
+    last_error: str | None,
+    now: dt.datetime,
+) -> dict:
+    """Health da aiograpi — NÃO usar instagrapi/Phantom (sessão e client são outros)."""
+    password = decrypt_secret(encrypted_password) if encrypted_password else None
+
+    def _persist_active(new_settings: dict) -> dict:
+        needs_login_from_log: tuple[str, str | None, int | None, str | None] | None = None
+        with session_scope() as db:
+            acc = db.get(InstagramAccount, account_id)
+            if acc and acc.status not in ("paused", "deleted"):
+                auth_reason = latest_auth_failure_reason(db, account_id)
+                if auth_reason:
+                    prev = acc.status
+                    acc.status = "needs_login"
+                    acc.last_error = auth_status_reason(auth_reason)
+                    needs_login_from_log = (acc.last_error, acc.username, acc.user_id, prev)
+                else:
+                    acc.session_json = serialize_settings(new_settings)
+                    if acc.status in OFFLINE_STATUSES:
+                        acc.status = "active"
+                    acc.last_error = None
+                    acc.last_login_at = now
+                acc.last_health_check_at = now
+        if needs_login_from_log:
+            reason, uname, uid, prev = needs_login_from_log
+            _notify_offline_if_changed(
+                new_status="needs_login",
+                reason=reason,
+                prev_status=prev,
+                user_id=uid,
+                username=uname,
+            )
+            return {"account_id": account_id, "status": "needs_login", "error": reason}
+        return {"account_id": account_id, "status": "active", "provider": "aiograpi"}
+
+    try:
+        new_settings = aio_ig.try_refresh_session(
+            settings_dict=settings_dict,
+            proxy=proxy,
+            username=username,
+            password=password,
+        )
+        return _persist_active(new_settings)
+    except InstagramTwoFactorRequired as exc:
+        err = f"2FA necessário: {exc}"
+    except InstagramAuthError as exc:
+        vault = _try_vault_password_revive(
+            account_id=account_id,
+            username=username,
+            proxy=proxy,
+            provider="aiograpi",
+            encrypted_password=encrypted_password,
+            encrypted_totp=encrypted_totp,
+            last_error=last_error,
+        )
+        if vault and vault.get("settings"):
+            return _persist_active(vault["settings"])
+        err = (vault or {}).get("error") or str(exc)
+    except Exception as exc:
+        log.warning("health aiograpi account=%s: %s", account_id, exc)
+        err = str(exc)[:1000]
+
+    with session_scope() as db:
+        acc = db.get(InstagramAccount, account_id)
+        if not acc or acc.status in ("paused", "deleted"):
+            return {"account_id": account_id, "status": "needs_login", "provider": "aiograpi"}
+        prev = acc.status
+        acc.status = "needs_login"
+        acc.last_error = err[:1000]
+        acc.last_health_check_at = now
+        uid, uname = acc.user_id, acc.username
+    _notify_offline_if_changed(
+        new_status="needs_login",
+        reason=err[:200],
+        prev_status=prev,
+        user_id=uid,
+        username=uname,
+    )
+    return {"account_id": account_id, "status": "needs_login", "provider": "aiograpi", "error": err}
+
+
 def _notify_offline_if_changed(
     *,
     new_status: str,
@@ -326,6 +416,18 @@ def check_account_health(account_id: int) -> dict:
             username=uname,
         )
         return {"account_id": account_id, "status": "proxy_down"}
+
+    if provider == "aiograpi":
+        return _check_aiograpi_health(
+            account_id=account_id,
+            username=username,
+            proxy=proxy,
+            settings_dict=settings_dict,
+            encrypted_password=encrypted_password,
+            encrypted_totp=encrypted_totp,
+            last_error=last_error,
+            now=now,
+        )
 
     if not settings_dict:
         # Sem session_json: tenta sessionid dos cookies web salvos (sem senha).
