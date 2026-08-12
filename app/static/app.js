@@ -1330,12 +1330,31 @@
   let twofaHasTotp = false;
   let twofaAccountId = null;
 
+  function setTwofaConnecting(active) {
+    const formBody = document.getElementById("twofa-form-body");
+    const connecting = document.getElementById("twofa-connecting");
+    const submitBtn = document.getElementById("twofa-submit");
+    const cancelBtn = document.getElementById("twofa-cancel");
+    const codeInput = document.getElementById("twofa-code-input");
+    const useSaved = document.getElementById("twofa-use-saved");
+    if (connecting) connecting.hidden = !active;
+    if (formBody) formBody.hidden = active;
+    if (submitBtn) {
+      submitBtn.disabled = active;
+      submitBtn.textContent = active ? "Conectando…" : "Confirmar";
+    }
+    if (cancelBtn) cancelBtn.disabled = active;
+    if (codeInput) codeInput.disabled = active;
+    if (useSaved) useSaved.disabled = active;
+  }
+
   function openTwofaModal(message, opts) {
     const modal = document.getElementById("twofa-modal");
     const codeInput = document.getElementById("twofa-code-input");
     const msgEl = document.getElementById("twofa-message");
     const useSaved = document.getElementById("twofa-use-saved");
     if (!modal) return;
+    setTwofaConnecting(false);
     twofaHasTotp = !!(opts && opts.hasTotp);
     twofaAccountId = opts && opts.accountId ? opts.accountId : null;
     if (msgEl && message) msgEl.textContent = message;
@@ -1356,6 +1375,7 @@
     const hiddenCode = document.getElementById("verification-code-hidden");
     const useSaved = document.getElementById("twofa-use-saved");
     if (!modal) return;
+    setTwofaConnecting(false);
     modal.classList.remove("modal-overlay--open");
     modal.setAttribute("aria-hidden", "true");
     document.body.style.overflow = "";
@@ -1434,14 +1454,13 @@
   async function submitReconnect2fa() {
     if (!pendingReconnect) return;
     const codeInput = document.getElementById("twofa-code-input");
-    const submitBtn = document.getElementById("twofa-submit");
     const code = (codeInput?.value || "").trim();
     if (!code) {
       alert("Digite o código 2FA.");
       return;
     }
     const { accountId, payload } = pendingReconnect;
-    if (submitBtn) submitBtn.disabled = true;
+    setTwofaConnecting(true);
     try {
       const data = await reconnectAccountApi(accountId, {
         ...payload,
@@ -1449,9 +1468,11 @@
       });
       if (data.status === "connected") {
         pendingReconnect = null;
-        closeTwofaModal();
         window.location.href = "/accounts/connected?ok=session_reconnected";
-      } else if (data.status === "needs_2fa") {
+        return;
+      }
+      setTwofaConnecting(false);
+      if (data.status === "needs_2fa") {
         alert("Código incorreto. Tente novamente.");
       } else {
         pendingReconnect = null;
@@ -1459,9 +1480,8 @@
         alert(data.message || "Falha ao reconectar");
       }
     } catch (err) {
+      setTwofaConnecting(false);
       alert(err.message || "Erro ao reconectar");
-    } finally {
-      if (submitBtn) submitBtn.disabled = false;
     }
   }
 
@@ -1491,7 +1511,12 @@
         }
         fd.set("verification_code", code);
       }
-      if (connectBtn) { connectBtn.disabled = true; connectBtn.textContent = "Conectando…"; }
+      if (with2fa) {
+        setTwofaConnecting(true);
+      } else if (connectBtn) {
+        connectBtn.disabled = true;
+        connectBtn.textContent = "Conectando…";
+      }
       try {
         const resp = await fetch(form.action, {
           method: "POST",
@@ -1523,6 +1548,7 @@
             return;
           }
           if (resp.status === 403 && data.needs_2fa) {
+            setTwofaConnecting(false);
             const formTotp = !!(form.querySelector('[name="totp_secret"]')?.value || "").trim();
             openTwofaModal(data.message, {
               hasTotp: !!(data.has_totp || formTotp),
@@ -1535,6 +1561,7 @@
           const doc = new DOMParser().parseFromString(html, "text/html");
           const newContent = doc.getElementById("app-content");
           if (newContent && appContent) {
+            setTwofaConnecting(false);
             appContent.innerHTML = newContent.innerHTML;
             history.pushState({ url: "/accounts" }, "", "/accounts");
             initPage();
@@ -1544,11 +1571,16 @@
             return;
           }
         }
+        setTwofaConnecting(false);
         window.location.href = "/accounts";
       } catch {
+        setTwofaConnecting(false);
         form.submit();
       } finally {
-        if (connectBtn) { connectBtn.disabled = false; connectBtn.textContent = "Conectar conta"; }
+        if (!with2fa && connectBtn) {
+          connectBtn.disabled = false;
+          connectBtn.textContent = "Conectar conta";
+        }
       }
     }
 

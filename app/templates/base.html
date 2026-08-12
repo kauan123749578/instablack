@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bricolage+Grotesque:wght@600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=60" />
+  <link rel="stylesheet" href="/static/style.css?v=61" />
   <link rel="stylesheet" href="/static/dashboard.css?v=56" />
   {% block head %}{% endblock %}
 </head>
@@ -311,22 +311,29 @@
   <div class="modal-overlay" id="twofa-modal" aria-hidden="true">
     <div class="modal-card" role="dialog" aria-labelledby="twofa-title" onclick="event.stopPropagation()">
       <h3 id="twofa-title">Autenticação de dois fatores</h3>
-      <p class="muted" id="twofa-message">Esta conta exige o código do autenticador. Digite abaixo para concluir o login.</p>
-      <label>Código 2FA
-        <input type="text" id="twofa-code-input" inputmode="numeric" autocomplete="one-time-code" placeholder="000000" maxlength="8">
-      </label>
-      <button type="button" class="btn btn-sm" id="twofa-use-saved" hidden style="margin-top:8px">
-        Usar código do cofre
-      </button>
-      <div class="modal-actions">
-        <button type="button" class="btn" id="twofa-cancel">Cancelar</button>
-        <button type="button" class="btn btn-primary" id="twofa-submit">Confirmar</button>
+      <div id="twofa-connecting" class="twofa-connecting" hidden>
+        <div class="twofa-connecting-spinner" aria-hidden="true"></div>
+        <p class="twofa-connecting-title">Sua conta está sendo conectada…</p>
+        <p class="muted twofa-connecting-hint">Aguarde um momento.</p>
+      </div>
+      <div id="twofa-form-body">
+        <p class="muted" id="twofa-message">Esta conta exige o código do autenticador. Digite abaixo para concluir o login.</p>
+        <label>Código 2FA
+          <input type="text" id="twofa-code-input" inputmode="numeric" autocomplete="one-time-code" placeholder="000000" maxlength="8">
+        </label>
+        <button type="button" class="btn btn-sm" id="twofa-use-saved" hidden style="margin-top:8px">
+          Usar código do cofre
+        </button>
+        <div class="modal-actions">
+          <button type="button" class="btn" id="twofa-cancel">Cancelar</button>
+          <button type="button" class="btn btn-primary" id="twofa-submit">Confirmar</button>
+        </div>
       </div>
     </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/lucide@0.475.0/dist/umd/lucide.min.js" crossorigin="anonymous"></script>
-  <script src="/static/app.js?v=98"></script>
+  <script src="/static/app.js?v=99"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>
