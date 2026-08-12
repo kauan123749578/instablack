@@ -12,6 +12,14 @@
 <div class="form-card" style="margin-bottom:16px">
   <p style="margin:0 0 8px"><strong>Influenciadores:</strong></p>
   <p class="muted" style="margin:0">{% for u in influencers %}@{{ u }}{% if not loop.last %}, {% endif %}{% endfor %}</p>
+  {% if comment_pool %}
+  <p style="margin:12px 0 8px"><strong>Comentários configurados:</strong></p>
+  <ul class="muted" style="margin:0;padding-left:18px;font-size:13px">
+    {% for c in comment_pool %}<li>{{ c }}</li>{% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted" style="margin:12px 0 0;font-size:12px">Comentários: padrão do sistema (lista interna).</p>
+  {% endif %}
   {% if job.last_error %}<p class="alert alert-error" style="margin-top:12px">{{ job.last_error }}</p>{% endif %}
 </div>
 

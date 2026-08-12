@@ -451,6 +451,8 @@ def _sqlite_migrate(bind=None) -> None:
                 conn.execute(text("ALTER TABLE warmup_jobs ADD COLUMN duration_minutes INTEGER DEFAULT 60"))
             if "ends_at" not in wcols:
                 conn.execute(text("ALTER TABLE warmup_jobs ADD COLUMN ends_at DATETIME"))
+            if "comments_json" not in wcols:
+                conn.execute(text("ALTER TABLE warmup_jobs ADD COLUMN comments_json TEXT DEFAULT '[]'"))
 
 
 def _postgres_migrate(bind=None) -> None:
@@ -698,6 +700,7 @@ def _postgres_migrate(bind=None) -> None:
             [
                 ("duration_minutes", "INTEGER DEFAULT 60"),
                 ("ends_at", "TIMESTAMPTZ"),
+                ("comments_json", "TEXT DEFAULT '[]'"),
             ],
         )
         if _table_exists(conn, "account_notes"):

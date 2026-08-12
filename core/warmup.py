@@ -106,16 +106,21 @@ def action_like_post(cl: Client, username: str) -> dict[str, Any]:
     return {"ok": True, "detail": f"curtiu post de @{username}"}
 
 
-def action_comment(cl: Client, username: str) -> dict[str, Any]:
+def action_comment(
+    cl: Client,
+    username: str,
+    *,
+    comment_pool: list[str] | None = None,
+) -> dict[str, Any]:
     uid = _resolve_user_id(cl, username)
     if not uid:
         return {"ok": False, "detail": "usuário não encontrado"}
     medias = cl.user_medias(uid, amount=3)
     if not medias:
         return {"ok": False, "detail": "sem posts"}
-    # comentário é mais arriscado — só ~30% das vezes chega aqui via pesos
+    pool = [c.strip() for c in (comment_pool or []) if str(c).strip()] or COMMENT_POOL
     media = random.choice(medias)
-    text = random.choice(COMMENT_POOL)
+    text = random.choice(pool)
     cl.media_comment(media.id, text)
     return {"ok": True, "detail": f"comentou em @{username}: {text}"}
 
@@ -214,6 +219,7 @@ def run_random_action(
     cl: Client,
     targets: list[str],
     influencers: list[str] | None = None,
+    comment_pool: list[str] | None = None,
 ) -> tuple[str, str | None, dict]:
     """Escolhe ação + alvo (seguidor ou influenciador) com pausas longas."""
     influencers = [
@@ -238,6 +244,8 @@ def run_random_action(
     try:
         if action == "scroll_feed":
             result = fn(cl, None)
+        elif action in ("comment", "comment_influencer"):
+            result = action_comment(cl, target or "", comment_pool=comment_pool)
         else:
             result = fn(cl, target or "")
     except Exception as exc:

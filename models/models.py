@@ -420,6 +420,7 @@ class WarmupJob(Base):
         ForeignKey("instagram_accounts.id", ondelete="CASCADE"), index=True
     )
     influencers_json: Mapped[str] = mapped_column(Text, default="[]")  # ["user1","user2"]
+    comments_json: Mapped[str] = mapped_column(Text, default="[]")  # ["comentário1", ...]
     status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
     # pending | running | paused | done | failed
     actions_done: Mapped[int] = mapped_column(Integer, default=0)

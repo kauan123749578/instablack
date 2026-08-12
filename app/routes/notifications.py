@@ -445,6 +445,7 @@ def warmup_start(
     request: Request,
     account_id: int = Form(...),
     influencers: str = Form(""),
+    comments: str = Form(""),
     actions_target: int = Form(80),
     duration_minutes: int = Form(60),
     db: Session = Depends(get_db),
@@ -469,6 +470,12 @@ def warmup_start(
     if len(names) < 1:
         return RedirectResponse("/warmup?error=lista", status_code=303)
 
+    comment_lines: list[str] = []
+    for line in comments.replace(",", "\n").splitlines():
+        c = line.strip()
+        if c and c not in comment_lines:
+            comment_lines.append(c[:500])
+
     allowed_durations = {5, 10, 15, 20, 30, 60, 120, 240, 480}
     duration = int(duration_minutes or 60)
     if duration not in allowed_durations:
@@ -480,6 +487,7 @@ def warmup_start(
         user_id=user.id,
         account_id=acc.id,
         influencers_json=json.dumps(names, ensure_ascii=False),
+        comments_json=json.dumps(comment_lines, ensure_ascii=False),
         status="pending",
         actions_target=target,
         actions_done=0,
@@ -551,6 +559,10 @@ def warmup_detail(
         influencers = json.loads(job.influencers_json or "[]")
     except json.JSONDecodeError:
         influencers = []
+    try:
+        comment_pool = json.loads(getattr(job, "comments_json", None) or "[]")
+    except json.JSONDecodeError:
+        comment_pool = []
     return templates.TemplateResponse(
         "warmup_detail.html",
         {
@@ -559,5 +571,6 @@ def warmup_detail(
             "job": job,
             "logs": logs,
             "influencers": influencers,
+            "comment_pool": comment_pool,
         },
     )

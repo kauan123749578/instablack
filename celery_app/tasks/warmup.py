@@ -73,6 +73,11 @@ def run_warmup_job(self, job_id: int) -> dict:
         except json.JSONDecodeError:
             influencers = []
         influencers = [str(u).lstrip("@").strip() for u in influencers if str(u).strip()]
+        try:
+            comments = json.loads(getattr(job, "comments_json", None) or "[]")
+        except json.JSONDecodeError:
+            comments = []
+        comments = [str(c).strip() for c in comments if str(c).strip()]
         target_cap = int(job.actions_target or 9999)
         done = int(job.actions_done or 0)
 
@@ -182,7 +187,9 @@ def run_warmup_job(self, job_id: int) -> dict:
             if job.status == "failed":
                 return {"failed": True}
 
-        action, target_user, result = run_random_action(cl, targets, influencers)
+        action, target_user, result = run_random_action(
+            cl, targets, influencers, comment_pool=comments or None
+        )
         ok = bool(result.get("ok"))
         detail = str(result.get("detail") or "")[:500]
         done += 1
