@@ -11,9 +11,7 @@ import requests
 from instagrapi import Client
 from instagrapi.exceptions import (
     BadPassword,
-    ChallengeError,
     ChallengeRequired,
-    ClientError,
     ClientThrottledError,
     LoginRequired,
     PleaseWaitFewMinutes,
