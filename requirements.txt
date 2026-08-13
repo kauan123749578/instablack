@@ -17,7 +17,7 @@ bcrypt==4.2.1
 celery==5.4.0
 redis==5.2.0
 
-instagrapi==2.18.12
+instagrapi==2.18.14
 aiograpi==1.12.8
 curl_cffi>=0.7.0,<1
 Pillow>=11.0.0

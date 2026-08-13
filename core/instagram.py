@@ -255,10 +255,9 @@ def _friendly_auth_error(raw: str, proxy: str | None = None) -> str:
 
 
 def _new_instagrapi_client() -> Client:
-    """Client do instagrapi — Phantom (TLS+headers+Bloks CAA) quando habilitado.
+    """Client do instagrapi — Phantom EnhancedClient (headers + TLS + Bloks CAA).
 
-    O endpoint legado ``accounts/login/`` está morto/rate-limitado (429 /
-    “conta não encontrada”). Login user/senha precisa do fluxo Bloks do Phantom.
+    Login user/senha segue a API SteeL: ``phantom.login(client, user, pass, code)``.
     """
     _ensure_story_sticker_patch()
     try:
@@ -395,8 +394,8 @@ def login_with_credentials(
             "Teste o proxy antes — formato: ip:porta:usuario:senha"
         )
 
-    # Igual postagemIG: Client + login stock (com Phantom só no transport).
-    # Reusa settings da 1ª tentativa quando estiver enviando o 2FA.
+    # Igual doc Phantom/SteeL: EnhancedClient + LoginFlow Bloks CAA (+ 2FA).
+    # Reusa settings da 1ª tentativa quando estiver enviando o código 2FA.
     cl = _build_client(
         proxy=proxy,
         settings_dict=settings_dict,
@@ -404,7 +403,17 @@ def login_with_credentials(
     )
     code_sent = bool((verification_code or "").strip())
     try:
-        if verification_code:
+        # Prefer API documentada: phantom.login(client, user, pass, code)
+        if type(cl).__name__ == "EnhancedClient":
+            from phantom import login as phantom_login
+
+            phantom_login(
+                cl,
+                username,
+                password,
+                verification_code=(verification_code or "").strip(),
+            )
+        elif verification_code:
             cl.login(username, password, verification_code=verification_code.strip())
         else:
             cl.login(username, password)

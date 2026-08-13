@@ -31,6 +31,7 @@ from instagrapi.exceptions import ClientError, ClientJSONDecodeError
 
 from .endpoints import get_endpoint_meta
 from .headers import HeaderBuilder
+from .login import login as phantom_login
 from .navigation import NavigationTracker
 from .transport import PhantomSession, create_session, IMPERSONATE_BROWSER
 
@@ -485,17 +486,19 @@ class EnhancedClient(instagrapi.Client):
         verification_code="",
     ):
         """
-        Login igual ao postagemIG / instagrapi stock.
+        Login Bloks CAA do Phantom (doc SteeL).
 
-        NÃO usa o LoginFlow Bloks CAA custom (quebrava apply → “no embedded
-        auth payload”). Mantém Phantom só no transport/headers; o login em si
-        é ``Client.login`` do instagrapi (accounts/login + fallback Bloks 2FA).
+        ``from phantom import EnhancedClient, login``
+        ``login(client, user, pass, verification_code=...)``
+
+        Usa LoginFlow — não o ``accounts/login`` legado do instagrapi.
         """
-        return super().login(
+        return phantom_login(
+            self,
             username=username,
             password=password,
+            verification_code=verification_code or "",
             relogin=relogin,
-            verification_code=verification_code,
         )
 
     # ── Convenience methods ────────────────────────────────────────────
