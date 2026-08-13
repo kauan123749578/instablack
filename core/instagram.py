@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeout
 from functools import lru_cache
 from pathlib import Path
 from typing import Optional
@@ -216,15 +218,23 @@ class InstagramTwoFactorRequired(InstagramAuthError):
         self.settings = settings
 
 
-def _friendly_auth_error(raw: str, proxy: str | None = None) -> str:
+def _friendly_auth_error(
+    raw: str,
+    proxy: str | None = None,
+    *,
+    proxy_ip: str | None = None,
+) -> str:
     low = raw.lower()
     if "429" in raw or "too many 429" in low or "clientthrottled" in low.replace(" ", ""):
         msg = (
             "Instagram rate-limitou este IP (429). Troque a proxy (IP limpo) e tente de novo. "
             "Não force várias tentativas no mesmo IP."
         )
-    elif "please wait" in low or "few minutes" in low:
-        msg = "Instagram pediu para aguardar alguns minutos (muitas tentativas). Espere e tente de novo."
+    elif "please wait" in low or "few minutes" in low or "aguarde" in low:
+        msg = (
+            "Instagram pediu para aguardar (muitas tentativas neste IP). "
+            "Troque a proxy e espere alguns minutos."
+        )
     elif "blacklist" in low or ("ip" in low and "block" in low):
         msg = (
             "Instagram bloqueou este IP para login por senha. "
@@ -253,10 +263,11 @@ def _friendly_auth_error(raw: str, proxy: str | None = None) -> str:
     else:
         msg = raw
 
-    if proxy:
-        proxy_ip = get_public_ip(proxy)
-        if proxy_ip:
-            msg = f"{msg} (IP da proxy: {proxy_ip})"
+    ip = (proxy_ip or "").strip() or None
+    if not ip and proxy:
+        ip = get_public_ip(proxy)
+    if ip:
+        msg = f"{msg} (IP da proxy: {ip})"
     return msg
 
 
@@ -392,12 +403,14 @@ def _pending_settings(cl: Client, fallback: dict | None) -> dict | None:
         return fallback
 
 
-def _finish_login_session(cl: Client, proxy: str | None) -> dict:
+def _finish_login_session(cl: Client, proxy: str | None, *, proxy_ip: str | None = None) -> dict:
     _after_login(cl)
     try:
         cl.account_info()
     except Exception as exc:
-        raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
+        raise InstagramAuthError(
+            _friendly_auth_error(str(exc), proxy=proxy, proxy_ip=proxy_ip)
+        ) from exc
     return cl.get_settings()
 
 
@@ -460,72 +473,79 @@ def _build_postagemig_login_client(
     return cl
 
 
-def _try_caa_after_legacy_block(
-    cl: Client,
+LOGIN_HARD_TIMEOUT_SEC = 85
+
+
+def _login_credentials_body(
     *,
     username: str,
     password: str,
-    verification_code: str,
-    code_sent: bool,
-    proxy: str | None,
+    verification_code: str | None,
+    proxy: str,
     settings_dict: dict | None,
-    legacy_exc: Exception,
-) -> dict | None:
-    """Se accounts/login/ tomou 429, tenta o CAA oficial do instagrapi (como BadPassword faz)."""
-    if not hasattr(cl, "_try_caa_login") and not hasattr(cl, "bloks_caa_login"):
-        return None
-    cl.username = username
-    cl.password = password
-    log.warning(
-        "Login legado bloqueado @%s (%s) — tentando CAA",
-        username,
-        type(legacy_exc).__name__,
-    )
+    proxy_ip: str | None,
+) -> dict:
+    """Corpo do login (roda sob teto de tempo)."""
+    cl = _build_postagemig_login_client(proxy, settings_dict)
+    code = (verification_code or "").strip()
+    code_sent = bool(code)
+    log.info("Login instagrapi @%s (2fa=%s proxy_ip=%s)", username, code_sent, proxy_ip or "?")
+
+    def _raise(msg: str, exc: BaseException | None = None) -> None:
+        text = _friendly_auth_error(msg, proxy=proxy, proxy_ip=proxy_ip)
+        if exc is not None:
+            raise InstagramAuthError(text) from exc
+        raise InstagramAuthError(text)
+
     try:
-        if hasattr(cl, "_try_caa_login"):
-            ok = cl._try_caa_login(legacy_exc, verification_code=verification_code)
-            if ok:
-                return _finish_login_session(cl, proxy)
-            return None
-        outcome = cl.bloks_caa_login(
-            username=username,
-            password=password,
-            prepare=True,
-            verification_code=verification_code,
-        )
-        if isinstance(outcome, dict) and outcome.get("logged_in"):
-            return _finish_login_session(cl, proxy)
-        context = str((outcome or {}).get("two_step_verification_context") or "").strip()
-        if context and not code_sent:
-            raise InstagramTwoFactorRequired(
-                "Autenticação de dois fatores necessária. Informe o código do autenticador.",
-                settings=_pending_settings(cl, settings_dict),
-            )
-        if context and code_sent and hasattr(cl, "_login_with_bloks_two_factor"):
-            ok = cl._login_with_bloks_two_factor(
-                verification_code,
-                {"two_step_verification_context": context},
-                legacy_exc,
-            )
-            if ok:
-                return _finish_login_session(cl, proxy)
+        # Docs instagrapi: cl.login(user, senha[, verification_code=])
+        if code:
+            cl.login(username, password, verification_code=code)
+        else:
+            cl.login(username, password)
     except TwoFactorRequired as exc:
         if code_sent:
-            raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
+            _raise(str(exc), exc)
         raise InstagramTwoFactorRequired(
             "Autenticação de dois fatores necessária. Informe o código do autenticador.",
             settings=_pending_settings(cl, settings_dict),
         ) from exc
-    except InstagramTwoFactorRequired:
-        raise
-    except Exception as exc:
+    except ChallengeRequired as exc:
+        _raise(str(exc), exc)
+    except PleaseWaitFewMinutes as exc:
+        # NÃO encadear CAA aqui: dobra o tempo e o edge/Railway corta → "Failed to fetch".
+        _raise(
+            "Instagram pediu para aguardar (rate limit neste IP). "
+            "Troque a proxy por um IP limpo e espere alguns minutos.",
+            exc,
+        )
+    except BadPassword as exc:
+        # 2.18.14 já tenta CAA dentro do login(); se chegou aqui, falhou de verdade.
         hint = _ig_last_error_hint(cl)
-        msg = str(exc)
-        if hint:
-            msg = f"{msg} [{hint}]"
-        log.warning("CAA após bloqueio legado falhou @%s: %s", username, msg)
-        raise InstagramAuthError(_friendly_auth_error(msg, proxy=proxy)) from exc
-    return None
+        msg = str(exc) if not hint else f"{exc} [{hint}]"
+        log.warning("BadPassword no login @%s (raw=%s)", username, msg)
+        _raise(msg, exc)
+    except Exception as exc:
+        low = str(exc).lower()
+        log.warning("Falha login @%s: %s", username, exc)
+        if not code_sent and ("two_factor" in low or "two-factor" in low):
+            raise InstagramTwoFactorRequired(
+                "Autenticação de dois fatores necessária. Informe o código do autenticador.",
+                settings=_pending_settings(cl, settings_dict),
+            ) from exc
+        if "429" in low or "throttl" in low or "too many" in low or isinstance(
+            exc, ClientThrottledError
+        ):
+            _raise(
+                "Instagram rate-limitou este IP no login (429). "
+                "Troque a proxy (IP limpo) e não force várias tentativas.",
+                exc,
+            )
+        hint = _ig_last_error_hint(cl)
+        msg = str(exc) if not hint else f"{exc} [{hint}]"
+        _raise(msg, exc)
+
+    return _finish_login_session(cl, proxy, proxy_ip=proxy_ip)
 
 
 def login_with_credentials(
@@ -535,11 +555,11 @@ def login_with_credentials(
     proxy: str | None = None,
     settings_dict: dict | None = None,
 ) -> dict:
-    """Login user/senha — mesmo método do PostagemIG-Entrega.
+    """Login user/senha — API oficial instagrapi 2.18.x.
 
     ``Client().login(user, senha, verification_code=...)`` + settings no 2FA.
-    Se o endpoint legado ``accounts/login/`` tomar 429 no Railway, tenta CAA
-    uma vez (instagrapi 2.18+). Sem Phantom LoginFlow no connect.
+    Teto de tempo evita o navegador mostrar só "Failed to fetch" quando o
+    edge/Railway corta a conexão no meio do login.
     """
     username = (username or "").strip().lstrip("@")
     password = (password or "").strip()
@@ -548,99 +568,41 @@ def login_with_credentials(
     if not proxy or not str(proxy).strip():
         raise InstagramAuthError("Proxy é obrigatório. Nenhuma requisição será feita sem proxy.")
 
-    if not check_proxy(proxy):
+    normalized = normalize_proxy(proxy)
+    if not check_proxy(normalized):
         raise InstagramAuthError(
             "Proxy vazando IP do servidor. "
             "Teste o proxy antes — formato: ip:porta:usuario:senha"
         )
+    proxy_ip = get_public_ip(normalized)
 
-    cl = _build_postagemig_login_client(proxy, settings_dict)
-    code = (verification_code or "").strip()
-    code_sent = bool(code)
-
-    try:
-        # Espelho de postagemIG/instagramm/core/instagram.py::login
-        if code:
-            cl.login(username, password, verification_code=code)
-        else:
-            cl.login(username, password)
-    except TwoFactorRequired as exc:
-        if code_sent:
-            raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
-        raise InstagramTwoFactorRequired(
-            "Autenticação de dois fatores necessária. Informe o código do autenticador.",
-            settings=_pending_settings(cl, settings_dict),
-        ) from exc
-    except ChallengeRequired as exc:
-        raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
-    except PleaseWaitFewMinutes as exc:
-        # pre_login ignora wait; accounts/login/ ainda pode levantar.
-        # 2.18.14: tenta CAA oficial (_try_caa_login) como no BadPassword (#2766).
-        caa = _try_caa_after_legacy_block(
-            cl,
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        fut = pool.submit(
+            _login_credentials_body,
             username=username,
             password=password,
-            verification_code=code,
-            code_sent=code_sent,
-            proxy=proxy,
+            verification_code=verification_code,
+            proxy=normalized,
             settings_dict=settings_dict,
-            legacy_exc=exc,
+            proxy_ip=proxy_ip,
         )
-        if caa is not None:
-            return caa
-        raise InstagramAuthError(
-            _friendly_auth_error(
-                "Instagram pediu para aguardar (rate limit neste IP). "
-                "Troque a proxy por um IP limpo e espere alguns minutos — "
-                "insistir no mesmo IP piora o bloqueio.",
-                proxy=proxy,
+        try:
+            return fut.result(timeout=LOGIN_HARD_TIMEOUT_SEC)
+        except FuturesTimeout as exc:
+            log.error(
+                "Login @%s estourou %ss (proxy_ip=%s) — evitando Failed to fetch",
+                username,
+                LOGIN_HARD_TIMEOUT_SEC,
+                proxy_ip or "?",
             )
-        ) from exc
-    except BadPassword as exc:
-        # Em 2.18.14 o próprio login() já tenta CAA; se chegou aqui, CAA também falhou.
-        hint = _ig_last_error_hint(cl)
-        msg = str(exc) if not hint else f"{exc} [{hint}]"
-        log.warning("BadPassword no login @%s via proxy (raw=%s)", username, msg)
-        raise InstagramAuthError(_friendly_auth_error(msg, proxy=proxy)) from exc
-    except Exception as exc:
-        low = str(exc).lower()
-        log.warning("Falha login @%s: %s", username, exc)
-        if not code_sent and ("two_factor" in low or "two-factor" in low):
-            raise InstagramTwoFactorRequired(
-                "Autenticação de dois fatores necessária. Informe o código do autenticador.",
-                settings=_pending_settings(cl, settings_dict),
+            raise InstagramAuthError(
+                _friendly_auth_error(
+                    "Login excedeu o tempo limite (proxy lenta ou Instagram travado). "
+                    "Teste a proxy no botão de teste e tente de novo.",
+                    proxy=normalized,
+                    proxy_ip=proxy_ip,
+                )
             ) from exc
-        if (
-            "429" in low
-            or "throttl" in low
-            or "too many" in low
-            or isinstance(exc, ClientThrottledError)
-        ):
-            caa = _try_caa_after_legacy_block(
-                cl,
-                username=username,
-                password=password,
-                verification_code=code,
-                code_sent=code_sent,
-                proxy=proxy,
-                settings_dict=settings_dict,
-                legacy_exc=exc,
-            )
-            if caa is not None:
-                return caa
-            hint = _ig_last_error_hint(cl)
-            msg = (
-                "Instagram rate-limitou este IP no login (429). "
-                "Troque a proxy (IP limpo) — o mesmo IP queimado não passa no PostagemIG nem aqui."
-            )
-            if hint:
-                msg = f"{msg} [{hint}]"
-            raise InstagramAuthError(_friendly_auth_error(msg, proxy=proxy)) from exc
-        hint = _ig_last_error_hint(cl)
-        msg = str(exc) if not hint else f"{exc} [{hint}]"
-        raise InstagramAuthError(_friendly_auth_error(msg, proxy=proxy)) from exc
-
-    return _finish_login_session(cl, proxy)
 
 
 def login_with_sessionid(

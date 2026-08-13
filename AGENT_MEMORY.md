@@ -192,5 +192,6 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 | 2026-08-12 | fix | Login user/senha **sem Phantom**: Bloks 2FA não aplicava auth → UI pedia código em loop (só dono “passava”). `allow_phantom=False` em `login_with_credentials`; Phantom não levanta mais `TwoFactorRequired` falso no apply; fallback stock se Bloks falhar com código. Redeploy **web**. |
 | 2026-08-13 | fix | Connect senha = **PostagemIG** (`Client().login`, delay [2,5], sem locale BR forçado). CAA só se legado der 429. Redeploy **web**. |
 | 2026-08-13 | dep | **instagrapi==2.18.14** (latest PyPI/GitHub; > 2.18.9). Não pinar 2.16.25 do PostagemIG. Redeploy **web + workers**. |
+| 2026-08-13 | fix | Connect: teto 85s no login + fail-fast em PleaseWait/429 (sem CAA extra) + msg clara no "Failed to fetch". gunicorn `--timeout 180`. app-v **102**. Redeploy **web**. |
 
 <!-- Ao corrigir bugs de produção: acrescente uma linha acima e, se for armadilha nova, uma subseção em "O que já quebrou". -->

@@ -1665,11 +1665,19 @@
         window.location.href = "/accounts";
       } catch (err) {
         setTwofaConnecting(false);
-        // NÃO form.submit() nativo: FormData/multipart sem header = CSRF HTML.
-        alert(
-          (err && err.message) ||
-            "Falha de rede ao conectar. Recarregue a página (F5) e tente de novo."
-        );
+        const raw = String((err && err.message) || "");
+        if (/failed to fetch|networkerror|load failed|network request failed/i.test(raw)) {
+          alert(
+            "A conexão caiu antes da resposta (timeout). " +
+              "Proxy lenta ou Instagram demorou demais — o servidor não chegou a devolver o erro. " +
+              "Teste a proxy, espere 1–2 min e tente de novo (não force várias vezes)."
+          );
+        } else {
+          alert(
+            raw ||
+              "Falha de rede ao conectar. Recarregue a página (F5) e tente de novo."
+          );
+        }
       } finally {
         if (!with2fa && connectBtn) {
           connectBtn.disabled = false;
