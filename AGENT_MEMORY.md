@@ -70,6 +70,14 @@ Regras:
 
 Modal `#reconnect-session-modal` fora de `#app-content` → navegação SPA não trazia o HTML → JS fazia `if (!modal) return` **sem alert**. Challenge nativo (“Manual verification… challenge_code_handler”) **não** se resolve só com senha do cofre — liberar no app/site do IG e colar sessionid/cookies novos.
 
+### 3.3) Login senha: `/accounts/login/` → 429 vs CAA
+
+Forçar `Client.login()` (endpoint legado) no Railway → proxy toma **429** (`too many 429` / Max retries). Local às vezes passa com IP limpo.
+
+- Connect: **`bloks_caa_login`** (prepare + send) em `login_with_credentials`; 2FA via `_login_with_bloks_two_factor` / profile-code.
+- Sem retry urllib3 em status 429 no client de login.
+- Phantom LoginFlow **não** no connect (AAC/attestation fake).
+
 ### 4) Contas Meta `code=190`
 
 Token inválido / checkpoint (“You cannot access the app till you log in”). Afeta publish e Insights (0 views). **Não** é o mesmo bug de KPI/timezone. Conta fica `needs_login`; skip silencioso sem log ainda pode confundir — preferir `PublishLog` skipped/failed ao pular.
@@ -183,5 +191,7 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 | 2026-08-11 | feat | **Phantom** integrado (`phantom/`): EnhancedClient no login clássico — headers stealth, `x-ig-nav-chain`, TLS via `curl_cffi` (chrome131_android), login Bloks CAA. Flag `PHANTOM_ENABLED` (default true). Locale headers em **pt_BR**. Redeploy **web + todos workers** que usam instagrapi. |
 | 2026-08-11 | fix | Pós-Phantom: health **aiograpi** não pode usar instagrapi/Phantom (marcava `needs_login` e pulava publish). `core/device_fingerprint.py` isola UUID estável; patch story só no 1º client instagrapi. Redeploy **worker-publish + worker-misc**. |
 | 2026-08-11 | fix | Recovery one-shot `recover_publish_after_phantom`: reativa Meta/aiograpi `needs_login` (token/sessão OK), limpa locks Meta, `next_run_at=now` em automações **active**. Dispara via beat (60s, Redis NX). Redeploy **beat + worker-misc + worker-publish**. |
+| 2026-08-12 | fix | Login user/senha **sem Phantom**: Bloks 2FA não aplicava auth → UI pedia código em loop (só dono “passava”). `allow_phantom=False` em `login_with_credentials`; Phantom não levanta mais `TwoFactorRequired` falso no apply; fallback stock se Bloks falhar com código. Redeploy **web**. |
+| 2026-08-13 | fix | Connect senha via **CAA** (`bloks_caa_login` prepare→send→2FA), sem `accounts/login/` (429 Max retries). Sem retry HTTP 429 no client. Redeploy **web**. |
 
 <!-- Ao corrigir bugs de produção: acrescente uma linha acima e, se for armadilha nova, uma subseção em "O que já quebrou". -->

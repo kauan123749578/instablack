@@ -11,7 +11,10 @@ import requests
 from instagrapi import Client
 from instagrapi.exceptions import (
     BadPassword,
+    ChallengeError,
     ChallengeRequired,
+    ClientError,
+    ClientThrottledError,
     LoginRequired,
     PleaseWaitFewMinutes,
     TwoFactorRequired,
@@ -217,7 +220,12 @@ class InstagramTwoFactorRequired(InstagramAuthError):
 
 def _friendly_auth_error(raw: str, proxy: str | None = None) -> str:
     low = raw.lower()
-    if "please wait" in low or "few minutes" in low:
+    if "429" in raw or "too many 429" in low or "clientthrottled" in low.replace(" ", ""):
+        msg = (
+            "Instagram rate-limitou este IP (429). Troque a proxy (IP limpo) e tente de novo. "
+            "Não force várias tentativas no mesmo IP."
+        )
+    elif "please wait" in low or "few minutes" in low:
         msg = "Instagram pediu para aguardar alguns minutos (muitas tentativas). Espere e tente de novo."
     elif "blacklist" in low or ("ip" in low and "block" in low):
         msg = (
@@ -379,6 +387,115 @@ def check_proxy(proxy: str) -> bool:
     return True
 
 
+def _pending_settings(cl: Client, fallback: dict | None) -> dict | None:
+    try:
+        return cl.get_settings()
+    except Exception:
+        return fallback
+
+
+def _finish_login_session(cl: Client, proxy: str | None) -> dict:
+    _after_login(cl)
+    try:
+        cl.account_info()
+    except Exception as exc:
+        raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
+    return cl.get_settings()
+
+
+def _login_via_caa(
+    cl: Client,
+    *,
+    username: str,
+    password: str,
+    verification_code: str,
+    code_sent: bool,
+    proxy: str | None,
+    settings_dict: dict | None,
+) -> dict:
+    """CAA Android (instagrapi 2.18.14): prepare → send → 2FA. Sem ``accounts/login/``."""
+    cl.username = username
+    cl.password = password
+    if hasattr(cl, "pre_login_flow"):
+        try:
+            cl.pre_login_flow()
+        except (PleaseWaitFewMinutes, ClientThrottledError):
+            log.warning("Ignore 429 no pre-login CAA @%s", username)
+
+    try:
+        outcome = cl.bloks_caa_login(
+            username=username,
+            password=password,
+            prepare=True,
+            verification_code=verification_code,
+        )
+    except TwoFactorRequired as exc:
+        if code_sent:
+            raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
+        raise InstagramTwoFactorRequired(
+            "Autenticação de dois fatores necessária. Informe o código do autenticador.",
+            settings=_pending_settings(cl, settings_dict),
+        ) from exc
+    except (PleaseWaitFewMinutes, ClientThrottledError) as exc:
+        raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
+    except ChallengeRequired as exc:
+        raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
+    except ChallengeError as exc:
+        raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
+    except BadPassword as exc:
+        log.warning("BadPassword no CAA @%s (raw=%s)", username, exc)
+        raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
+    except ClientError as exc:
+        log.warning("ClientError CAA @%s: %s", username, exc)
+        raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
+    except Exception as exc:
+        low = str(exc).lower()
+        log.warning("Falha CAA @%s: %s", username, exc)
+        if not code_sent and ("two_factor" in low or "two-factor" in low):
+            raise InstagramTwoFactorRequired(
+                "Autenticação de dois fatores necessária. Informe o código do autenticador.",
+                settings=_pending_settings(cl, settings_dict),
+            ) from exc
+        raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
+
+    if not isinstance(outcome, dict):
+        raise InstagramAuthError("Resposta inválida do login CAA.")
+
+    if outcome.get("logged_in"):
+        log.info("CAA login ok @%s", username)
+        return _finish_login_session(cl, proxy)
+
+    context = str(outcome.get("two_step_verification_context") or "").strip()
+    if context:
+        if not code_sent:
+            raise InstagramTwoFactorRequired(
+                "Autenticação de dois fatores necessária. Informe o código do autenticador.",
+                settings=_pending_settings(cl, settings_dict),
+            )
+        try:
+            ok = cl._login_with_bloks_two_factor(
+                verification_code,
+                {"two_step_verification_context": context},
+                ClientError(str(outcome.get("reason") or "CAA two-factor")),
+            )
+        except TwoFactorRequired as exc:
+            # Código já enviado: não reabrir o modal de OTP.
+            raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
+        except Exception as exc:
+            raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
+        if ok:
+            log.info("CAA Bloks 2FA ok @%s", username)
+            return _finish_login_session(cl, proxy)
+
+    two_step = outcome.get("two_step") if isinstance(outcome.get("two_step"), dict) else {}
+    reason = (
+        str(outcome.get("reason") or "").strip()
+        or str(two_step.get("reason") or "").strip()
+        or "CAA login não retornou sessão"
+    )
+    raise InstagramAuthError(_friendly_auth_error(reason, proxy=proxy))
+
+
 def login_with_credentials(
     username: str,
     password: str,
@@ -386,11 +503,11 @@ def login_with_credentials(
     proxy: str | None = None,
     settings_dict: dict | None = None,
 ) -> dict:
-    """Login user/senha — mesmo caminho do postagemIG.
+    """Login user/senha via CAA (instagrapi 2.18.14).
 
-    ``Client().login(user, senha, verification_code=...)`` + reuso do
-    ``settings`` da 1ª tentativa no 2FA. Phantom fica para sessões/publish;
-    o LoginFlow Bloks custom quebrou com instagrapi 2.18.14 (AAC/prepare).
+    Não chama ``accounts/login/`` primeiro — esse endpoint queima proxy com 429.
+    Reusa ``settings`` da 1ª tentativa no 2FA (pending Redis). Phantom fica
+    para sessões/publish; LoginFlow custom não é usado no connect.
     """
     username = (username or "").strip().lstrip("@")
     password = (password or "").strip()
@@ -404,30 +521,47 @@ def login_with_credentials(
             "Teste o proxy antes — formato: ip:porta:usuario:senha"
         )
 
-    # postagemIG: Client stock + settings da tentativa anterior no 2FA
     cl = _build_client(
         proxy=proxy,
         settings_dict=settings_dict,
         username_for_device=None if settings_dict else username,
         allow_phantom=False,
     )
-    code_sent = bool((verification_code or "").strip())
+    # urllib3 retry em 429 vira "Max retries exceeded" e queima a proxy
     try:
-        if verification_code:
-            cl.login(username, password, verification_code=verification_code.strip())
+        cl.set_retry_config(
+            session_retry_statuses=[500, 502, 503, 504],
+            session_retry_total=2,
+        )
+    except Exception:
+        pass
+
+    code = (verification_code or "").strip()
+    code_sent = bool(code)
+
+    if hasattr(cl, "bloks_caa_login"):
+        return _login_via_caa(
+            cl,
+            username=username,
+            password=password,
+            verification_code=code,
+            code_sent=code_sent,
+            proxy=proxy,
+            settings_dict=settings_dict,
+        )
+
+    # Fallback raro: instagrapi antigo sem CAA
+    try:
+        if code:
+            cl.login(username, password, verification_code=code)
         else:
             cl.login(username, password)
     except TwoFactorRequired as exc:
-        pending = None
-        try:
-            pending = cl.get_settings()
-        except Exception:
-            pending = settings_dict
         if code_sent:
             raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
         raise InstagramTwoFactorRequired(
             "Autenticação de dois fatores necessária. Informe o código do autenticador.",
-            settings=pending,
+            settings=_pending_settings(cl, settings_dict),
         ) from exc
     except PleaseWaitFewMinutes as exc:
         raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
@@ -440,23 +574,13 @@ def login_with_credentials(
         low = str(exc).lower()
         log.warning("Falha login @%s: %s", username, exc)
         if not code_sent and ("two_factor" in low or "two-factor" in low):
-            pending = None
-            try:
-                pending = cl.get_settings()
-            except Exception:
-                pending = settings_dict
             raise InstagramTwoFactorRequired(
                 "Autenticação de dois fatores necessária. Informe o código do autenticador.",
-                settings=pending,
+                settings=_pending_settings(cl, settings_dict),
             ) from exc
         raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
 
-    _after_login(cl)
-    try:
-        cl.account_info()
-    except Exception as exc:
-        raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
-    return cl.get_settings()
+    return _finish_login_session(cl, proxy)
 
 
 def login_with_sessionid(
