@@ -191,5 +191,6 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 | 2026-08-11 | fix | Recovery one-shot `recover_publish_after_phantom`: reativa Meta/aiograpi `needs_login` (token/sessão OK), limpa locks Meta, `next_run_at=now` em automações **active**. Dispara via beat (60s, Redis NX). Redeploy **beat + worker-misc + worker-publish**. |
 | 2026-08-12 | fix | Login user/senha **sem Phantom**: Bloks 2FA não aplicava auth → UI pedia código em loop (só dono “passava”). `allow_phantom=False` em `login_with_credentials`; Phantom não levanta mais `TwoFactorRequired` falso no apply; fallback stock se Bloks falhar com código. Redeploy **web**. |
 | 2026-08-13 | fix | Connect senha = **PostagemIG** (`Client().login`, delay [2,5], sem locale BR forçado). CAA só se legado der 429. Redeploy **web**. |
+| 2026-08-13 | dep | **instagrapi==2.18.14** (latest PyPI/GitHub; > 2.18.9). Não pinar 2.16.25 do PostagemIG. Redeploy **web + workers**. |
 
 <!-- Ao corrigir bugs de produção: acrescente uma linha acima e, se for armadilha nova, uma subseção em "O que já quebrou". -->

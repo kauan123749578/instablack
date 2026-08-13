@@ -574,6 +574,8 @@ def login_with_credentials(
     except ChallengeRequired as exc:
         raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
     except PleaseWaitFewMinutes as exc:
+        # pre_login ignora wait; accounts/login/ ainda pode levantar.
+        # 2.18.14: tenta CAA oficial (_try_caa_login) como no BadPassword (#2766).
         caa = _try_caa_after_legacy_block(
             cl,
             username=username,
@@ -586,7 +588,14 @@ def login_with_credentials(
         )
         if caa is not None:
             return caa
-        raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
+        raise InstagramAuthError(
+            _friendly_auth_error(
+                "Instagram pediu para aguardar (rate limit neste IP). "
+                "Troque a proxy por um IP limpo e espere alguns minutos — "
+                "insistir no mesmo IP piora o bloqueio.",
+                proxy=proxy,
+            )
+        ) from exc
     except BadPassword as exc:
         # Em 2.18.14 o próprio login() já tenta CAA; se chegou aqui, CAA também falhou.
         hint = _ig_last_error_hint(cl)
