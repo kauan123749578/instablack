@@ -31,7 +31,7 @@ from instagrapi.exceptions import ClientError, ClientJSONDecodeError
 
 from .endpoints import get_endpoint_meta
 from .headers import HeaderBuilder
-from .login import login as phantom_login
+from .login import LoginFlow
 from .navigation import NavigationTracker
 from .transport import PhantomSession, create_session, IMPERSONATE_BROWSER
 
@@ -145,11 +145,6 @@ class EnhancedClient(instagrapi.Client):
 
     def _init_header_builder(self) -> None:
         """Initialize the HeaderBuilder with current session state."""
-        locale = getattr(self, "locale", None) or "pt_BR"
-        language_tag = str(locale).replace("_", "-")
-        tz = getattr(self, "timezone_offset", None)
-        if tz is None:
-            tz = -10800
         self._header_builder = HeaderBuilder(
             user_id=self.user_id,
             device_id=self.uuid,
@@ -158,9 +153,6 @@ class EnhancedClient(instagrapi.Client):
             mid=self.mid,
             session_id=self.client_session_id,
             username=getattr(self, "username", None),
-            locale=str(locale),
-            language_tag=language_tag,
-            timezone_offset=int(tz),
         )
 
     def _ensure_header_builder(self) -> HeaderBuilder:
@@ -486,18 +478,34 @@ class EnhancedClient(instagrapi.Client):
         verification_code="",
     ):
         """
-        Login Bloks CAA do Phantom (doc SteeL).
+        Login using the latest Bloks CAA flow.
 
-        ``from phantom import EnhancedClient, login``
-        ``login(client, user, pass, verification_code=...)``
+        Overrides instagrapi's legacy ``accounts/login/`` login with the
+        current Bloks-based CAA login used by the Instagram Android app.
+        Falls back to the parent implementation when the Bloks flow is
+        not applicable.
 
-        Usa LoginFlow — não o ``accounts/login`` legado do instagrapi.
+        Parameters
+        ----------
+        username : str, optional
+            Instagram username.
+        password : str, optional
+            Instagram password.
+        relogin : bool
+            Force re-login even if session exists.
+        verification_code : str
+            TFA / OTP verification code.
+
+        Returns
+        -------
+        bool
+            True on success.
         """
-        return phantom_login(
-            self,
+        flow = LoginFlow(self)
+        return flow.login(
             username=username,
             password=password,
-            verification_code=verification_code or "",
+            verification_code=verification_code,
             relogin=relogin,
         )
 

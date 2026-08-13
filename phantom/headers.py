@@ -45,10 +45,6 @@ class HeaderBuilder:
         mid: Optional[str] = None,
         session_id: Optional[str] = None,
         username: Optional[str] = None,
-        *,
-        locale: str = "pt_BR",
-        language_tag: str = "pt-BR",
-        timezone_offset: int = -10800,
     ) -> None:
         self.user_id = user_id
         self.device_id = device_id or str(uuid.uuid4())
@@ -57,10 +53,6 @@ class HeaderBuilder:
         self.mid = mid or ""
         self.session_id = session_id or str(uuid.uuid4())
         self.username = username
-        # Instablack padrão: BR (evita fingerprint Índia + proxy BR).
-        self.locale = (locale or "pt_BR").replace("-", "_")
-        self.language_tag = language_tag or "pt-BR"
-        self.timezone_offset = int(timezone_offset if timezone_offset is not None else -10800)
 
         # Generate stable identifiers once
         self._appnetsession_nid = uuid.uuid4().hex
@@ -134,10 +126,7 @@ class HeaderBuilder:
 
         # ── Device languages ───────────────────────────────────────────
         headers["x-ig-device-languages"] = json.dumps(
-            {
-                "system_languages": self.language_tag,
-                "keyboard_language": self.language_tag,
-            },
+            {"system_languages": "en-IN", "keyboard_language": "en-IN"},
             separators=(",", ":"),
         )
 
@@ -217,7 +206,7 @@ class HeaderBuilder:
         """
         now = time.time()
         headers = {
-            "accept-language": f"{self.language_tag}, en-US",
+            "accept-language": "en-IN, en-US",
             "content-type": "application/x-www-form-urlencoded",
             "ig-intended-user-id": str(self.user_id) if self.user_id else "",
             "ig-u-ds-user-id": str(self.user_id) if self.user_id else "",
@@ -232,13 +221,13 @@ class HeaderBuilder:
             "x-fb-server-cluster": "True",
             "x-ig-android-id": self.android_id,
             "x-ig-app-id": product_id,
-            "x-ig-app-locale": self.locale,
+            "x-ig-app-locale": "en_IN",
             "x-ig-capabilities": "3brTv10=",
             "x-ig-device-id": self.device_id,
-            "x-ig-device-locale": self.locale,
+            "x-ig-device-locale": "en_IN",
             "x-ig-is-foldable": "false",
-            "x-ig-mapped-locale": self.locale,
-            "x-ig-timezone-offset": str(self.timezone_offset),
+            "x-ig-mapped-locale": "en_US",
+            "x-ig-timezone-offset": "19800",
             "x-ig-validate-null-in-legacy-dict": "true",
             "x-mid": self.mid,
             "x-pigeon-rawclienttime": f"{now:.3f}",
@@ -256,11 +245,17 @@ class HeaderBuilder:
             "priority": "u=1",
         }
 
-        # UA alinhado ao locale da sessão (Instablack usa pt_BR por padrão).
-        headers["user-agent"] = (
-            f"Instagram 434.0.0.44.74 Android (33/13; 300dpi; 720x1600; "
-            f"samsung; SM-E045F; m04; mt6765; {self.locale}; 996255552)"
-        )
+        # Add the user agent if available
+        if self.username:
+            headers["user-agent"] = (
+                f"Instagram 434.0.0.44.74 Android (33/13; 300dpi; 720x1600; "
+                f"samsung; SM-E045F; m04; mt6765; en_IN; 996255552)"
+            )
+        else:
+            headers["user-agent"] = (
+                "Instagram 434.0.0.44.74 Android (33/13; 300dpi; 720x1600; "
+                "samsung; SM-E045F; m04; mt6765; en_IN; 996255552)"
+            )
 
         # Add ig-u-rur from session if available
         headers["x-meta-usdid"] = f"{uuid.uuid4()}.{int(now)}.MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJRyhCnIBN1_CbNEmmUfCpTZURV89q-zq5Hq3qyBkvFq2Ly5nXHFnkeXDNJugbwuC41..."

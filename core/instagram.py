@@ -254,12 +254,15 @@ def _friendly_auth_error(raw: str, proxy: str | None = None) -> str:
     return msg
 
 
-def _new_instagrapi_client() -> Client:
-    """Client do instagrapi — Phantom EnhancedClient (headers + TLS + Bloks CAA).
+def _new_instagrapi_client(*, allow_phantom: bool = True) -> Client:
+    """Client do instagrapi.
 
-    Login user/senha segue a API SteeL: ``phantom.login(client, user, pass, code)``.
+    - Login user/senha (postagemIG): ``allow_phantom=False`` → Client stock.
+    - Sessões / publish: Phantom EnhancedClient (headers SteeL de ``melhorias/``).
     """
     _ensure_story_sticker_patch()
+    if not allow_phantom:
+        return Client()
     try:
         from app.config import settings
 
@@ -286,10 +289,11 @@ def _build_client(
     settings_dict: Optional[dict],
     *,
     username_for_device: str | None = None,
+    allow_phantom: bool = True,
 ) -> Client:
     if not proxy:
         raise InstagramAuthError("Proxy é obrigatório. Nenhuma requisição será feita sem proxy.")
-    cl = _new_instagrapi_client()
+    cl = _new_instagrapi_client(allow_phantom=allow_phantom)
     cl.delay_range = [1, 3]
     normalized = normalize_proxy(proxy)
     try:
@@ -382,6 +386,12 @@ def login_with_credentials(
     proxy: str | None = None,
     settings_dict: dict | None = None,
 ) -> dict:
+    """Login user/senha — mesmo caminho do postagemIG.
+
+    ``Client().login(user, senha, verification_code=...)`` + reuso do
+    ``settings`` da 1ª tentativa no 2FA. Phantom fica para sessões/publish;
+    o LoginFlow Bloks custom quebrou com instagrapi 2.18.14 (AAC/prepare).
+    """
     username = (username or "").strip().lstrip("@")
     password = (password or "").strip()
     if not username or not password:
@@ -394,26 +404,16 @@ def login_with_credentials(
             "Teste o proxy antes — formato: ip:porta:usuario:senha"
         )
 
-    # Igual doc Phantom/SteeL: EnhancedClient + LoginFlow Bloks CAA (+ 2FA).
-    # Reusa settings da 1ª tentativa quando estiver enviando o código 2FA.
+    # postagemIG: Client stock + settings da tentativa anterior no 2FA
     cl = _build_client(
         proxy=proxy,
         settings_dict=settings_dict,
         username_for_device=None if settings_dict else username,
+        allow_phantom=False,
     )
     code_sent = bool((verification_code or "").strip())
     try:
-        # Prefer API documentada: phantom.login(client, user, pass, code)
-        if type(cl).__name__ == "EnhancedClient":
-            from phantom import login as phantom_login
-
-            phantom_login(
-                cl,
-                username,
-                password,
-                verification_code=(verification_code or "").strip(),
-            )
-        elif verification_code:
+        if verification_code:
             cl.login(username, password, verification_code=verification_code.strip())
         else:
             cl.login(username, password)

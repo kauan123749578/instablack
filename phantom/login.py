@@ -130,238 +130,84 @@ class LoginFlow:
         if self.client.user_id and not relogin:
             return True
 
-        code = (verification_code or "").strip()
-
-        # instagrapi 2.18.14+: CAA exige AAC emitido pelo servidor
-        # (bloks_caa_login_prepare) antes do send_login_request.
-        if hasattr(self.client, "bloks_caa_login_prepare") and hasattr(
-            self.client, "bloks_caa_login_send_request"
-        ):
-            return self._login_caa_prepared(code)
-
-        # Fallback (instagrapi antigo): fluxo Phantom legado
+        # Phase 1 — Pre-login device init
         try:
             self._pre_login_flow()
         except (PleaseWaitFewMinutes, ClientThrottledError):
             logger.warning("Ignore 429 during pre-login: continue")
 
+        # Phase 2 — OAuth token fetch (submit username)
         self._fetch_oauth_token()
+
+        # Phase 3 — Send login request (encrypted password)
         result = self._send_login()
-        return self._finish_after_send_login(result, code)
 
-    def _login_caa_prepared(self, verification_code: str = "") -> bool:
-        """Login CAA do instagrapi ≥2.18.14: prepare → send → 2FA/apply."""
-        domain = getattr(self.client, "CAA_API_DOMAIN", None) or BLOKS_DOMAIN
-        # Alguns builds expõem a constante no módulo bloks
-        try:
-            from instagrapi.mixins.bloks import CAA_API_DOMAIN as _CAA
-
-            domain = _CAA or domain
-        except Exception:
-            pass
-
-        try:
-            self._pre_login_flow()
-        except (PleaseWaitFewMinutes, ClientThrottledError):
-            logger.warning("Ignore 429 during CAA pre-login: continue")
-        except Exception:
-            logger.debug("pre_login_flow soft-fail before CAA prepare", exc_info=True)
-
-        prepared = False
-        try:
-            prepared = bool(
-                self.client.bloks_caa_login_prepare(
-                    username=self.client.username or "",
-                    domain=domain,
-                )
-            )
-        except TypeError:
-            # assinatura sem domain
-            prepared = bool(
-                self.client.bloks_caa_login_prepare(username=self.client.username or "")
-            )
-        except Exception as exc:
-            logger.warning("bloks_caa_login_prepare falhou: %s", exc)
-            raise UnknownError(
-                f"CAA preflight (prepare) falhou: {exc}"
-            ) from exc
-
-        if not prepared or not getattr(self.client, "caa_aac", None):
-            raise UnknownError(
-                "CAA preflight não retornou AAC/attestation do servidor. "
-                "Troque a proxy ou tente de novo."
-            )
-
-        try:
-            result = self.client.bloks_caa_login_send_request(
-                self.client.password,
-                username=self.client.username or "",
-                login_attempt_count=1,
-                try_num=1,
-                waterfall_id=self.waterfall_id or getattr(self.client, "caa_waterfall_id", "") or "",
-                domain=domain,
-            )
-        except TypeError:
-            result = self.client.bloks_caa_login_send_request(
-                self.client.password,
-                username=self.client.username or "",
-                login_attempt_count=1,
-                try_num=1,
-                waterfall_id=self.waterfall_id or "",
-            )
-        except Exception as exc:
-            low = str(exc).lower()
-            if "aac" in low and "prepare" in low:
-                raise UnknownError(str(exc)) from exc
-            raise
-
-        return self._finish_after_send_login(result, verification_code, domain=domain)
-
-    def _finish_after_send_login(
-        self,
-        result: Dict,
-        verification_code: str = "",
-        *,
-        domain: Optional[str] = None,
-    ) -> bool:
-        """Apply session or drive 2FA after send_login_request."""
+        # Check for specific errors from the Bloks response
         last_json = deepcopy(self.client.last_json) if isinstance(self.client.last_json, dict) else {}
-        try:
-            self._raise_if_bloks_error(last_json)
-        except Exception:
-            # Nem todo erro Bloks vem no last_json clássico
-            pass
+        self._raise_if_bloks_error(last_json)
 
-        if self._apply_login(result):
-            self._dual_tokens()
-            self._post_login_flow()
-            self.client.last_login = time.time()
-            self.client.relogin_attempt = 0
-            return True
-
-        code = (verification_code or "").strip()
-        needs_profile_2sv = False
-        if hasattr(self.client, "bloks_caa_login_needs_two_step"):
-            try:
-                needs_profile_2sv = bool(self.client.bloks_caa_login_needs_two_step(result))
-            except Exception:
-                needs_profile_2sv = False
-
-        needs_totp = self._needs_two_factor(result)
-        if not code and (needs_profile_2sv or needs_totp):
-            raise TwoFactorRequired(
-                "Instagram returned a Bloks two-factor context; "
-                "provide verification_code for login",
-                response=getattr(result, "response", None),
-            )
-
-        # Profile-code / email-SMS CAA (2.18.14+)
-        if code and needs_profile_2sv and hasattr(
-            self.client, "bloks_caa_resolve_two_step_verification"
-        ):
-            try:
-                two_step = self.client.bloks_caa_resolve_two_step_verification(
-                    result,
-                    verification_code=code,
-                    domain=domain,
-                )
-            except TypeError:
-                two_step = self.client.bloks_caa_resolve_two_step_verification(
-                    result,
-                    verification_code=code,
-                )
-            if two_step.get("logged_in") or self._apply_login(two_step.get("result") or {}):
-                self._dual_tokens()
-                self._post_login_flow()
-                self.client.last_login = time.time()
-                self.client.relogin_attempt = 0
-                return True
-            raise UnknownError(
-                two_step.get("reason")
-                or "CAA 2FA (profile-code) não retornou sessão. Código inválido ou expirado?"
-            )
-
-        # TOTP / authenticator (fluxo Bloks clássico)
-        if code and needs_totp:
+        # Phase 4 — Handle TFA if needed
+        if self._needs_two_factor(result):
             context = self._extract_context(result)
-            if not context:
-                raise UnknownError(
-                    "2FA necessário mas two_step_verification_context ausente na resposta."
+            if context and not verification_code.strip():
+                raise TwoFactorRequired(
+                    "Instagram returned a Bloks two-factor context; "
+                    "provide verification_code for login",
+                    response=getattr(result, "response", None),
                 )
-            login_json = (
-                deepcopy(self.client.last_json)
-                if isinstance(self.client.last_json, dict)
-                else {}
-            )
-            login_json["two_step_verification_context"] = context
-            challenge = self.client._infer_bloks_two_factor_challenge(login_json, code)
-            self.client.bloks_two_step_verification_entrypoint(context)
-            self.client.bloks_two_step_verification_method_picker(context)
-            self.client.bloks_two_step_verification_select_method(
-                context, selected_method=challenge
-            )
-            if challenge == "backup_codes":
-                self.client.bloks_two_step_verification_enter_backup_code(context)
-                code = self.client._normalize_backup_code(code)
-            elif challenge == "totp":
-                try:
-                    self.client.bloks_two_step_verification_enter_totp_code(context)
-                except Exception:
-                    logger.debug("enter_totp_code skipped", exc_info=True)
-            tfa_result = self.client.bloks_two_step_verification_verify_code(
-                context,
-                code,
-                challenge=challenge,
-            )
-            last_after = (
-                deepcopy(self.client.last_json)
-                if isinstance(self.client.last_json, dict)
-                else {}
-            )
-            if self._apply_login(tfa_result) or self._apply_login(last_after):
-                self._dual_tokens()
-                self._post_login_flow()
-                self.client.last_login = time.time()
-                self.client.relogin_attempt = 0
-                return True
-            raise UnknownError(
-                "2FA TOTP enviado mas a sessão Bloks não veio no response. "
-                "Use um código fresco ou troque a proxy."
+            if context:
+                result = self._handle_two_factor(context, verification_code)
+            elif verification_code.strip():
+                result = self._legacy_two_factor(verification_code)
+            else:
+                raise TwoFactorRequired(
+                    "Two-factor required but no verification code provided"
+                )
+
+            # Check for errors after TFA verification
+            last_json = deepcopy(self.client.last_json) if isinstance(self.client.last_json, dict) else {}
+            self._raise_if_bloks_error(last_json)
+
+        # Phase 5 — Apply login response and establish session
+        applied = self._apply_login(result)
+        if not applied:
+            login_json = deepcopy(self.client.last_json) if isinstance(self.client.last_json, dict) else {}
+            error_message = login_json.get("message", "")
+            error_type = login_json.get("error_type", "")
+
+            if error_message == "challenge_required":
+                raise ChallengeRequired(
+                    "Instagram requires a login challenge for this account. "
+                    "Complete verification in the Instagram app and retry.",
+                    response=getattr(result, "response", None),
+                    **self._exception_context(login_json),
+                )
+            if "feedback_required" in error_message or error_type == "feedback_required":
+                raise FeedbackRequired(
+                    error_message or "Instagram requires feedback action before login",
+                    response=getattr(result, "response", None),
+                    **self._exception_context(login_json),
+                )
+            if error_message:
+                raise UnknownError(
+                    f"Login failed. Instagram response: {error_message}",
+                    response=getattr(result, "response", None),
+                    **self._exception_context(login_json),
+                )
+
+            raise TwoFactorRequired(
+                "Bloks login response did not contain embedded auth payload. "
+                "The account may require a different verification flow.",
+                response=getattr(result, "response", None),
+                **self._exception_context(login_json),
             )
 
-        login_json = deepcopy(self.client.last_json) if isinstance(self.client.last_json, dict) else {}
-        error_message = (login_json.get("message") or "").strip()
-        error_type = (login_json.get("error_type") or "").strip()
-        if error_message == "challenge_required":
-            raise ChallengeRequired(
-                "Instagram requires a login challenge for this account. "
-                "Complete verification in the Instagram app and retry.",
-                response=getattr(result, "response", None),
-                **self._exception_context(login_json),
-            )
-        if "feedback_required" in error_message or error_type == "feedback_required":
-            raise FeedbackRequired(
-                error_message or "Instagram requires feedback action before login",
-                response=getattr(result, "response", None),
-                **self._exception_context(login_json),
-            )
-        if error_message:
-            raise UnknownError(
-                f"Login failed. Instagram response: {error_message}",
-                response=getattr(result, "response", None),
-                **self._exception_context(login_json),
-            )
-        logger.warning(
-            "Bloks login sem auth payload (user=%s keys=%s)",
-            getattr(self.client, "username", ""),
-            list(login_json.keys())[:25] if isinstance(login_json, dict) else [],
-        )
-        raise UnknownError(
-            "Bloks login response did not contain embedded auth payload. "
-            "The account may require a different verification flow.",
-            response=getattr(result, "response", None),
-            **self._exception_context(login_json),
-        )
+        # Phase 6 — Post-login flow
+        self._post_login_flow()
+
+        self.client.last_login = time.time()
+        self.client.relogin_attempt = 0
+        return True
 
     # ── Phase 1: Pre-login ─────────────────────────────────────────────
 
@@ -503,20 +349,113 @@ class LoginFlow:
         })
 
     def _send_login(self, try_num: int = 1) -> Dict:
-        """Send encrypted password via Bloks CAA login request.
-
-        Delega ao ``bloks_caa_login_send_request`` do instagrapi. A versão
-        antiga inventava ``x-ig-attest-params`` (keystore fake) e o Instagram
-        respondia **sem** auth payload → erro “did not contain embedded auth”.
-        O helper oficial deixa attestation vazio de propósito.
-        """
+        """Send encrypted password via Bloks CAA login request."""
         self._login_attempt_count += 1
-        return self.client.bloks_caa_login_send_request(
-            self.client.password,
-            username=self.client.username or "",
-            login_attempt_count=self._login_attempt_count,
-            try_num=try_num,
-            waterfall_id=self.waterfall_id or "",
+        password = self.client.password
+        encrypted_password = password if password.startswith("#PWD_") else self.client.password_encrypt(password)
+        contact_point = self.client.username
+        flow_id = self.waterfall_id or str(uuid4())
+        text_input_id = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
+        params = {
+            "client_input_params": {
+                "blocked_uids": [],
+                "aac": dumps(self._aac_data),
+                "sim_phones": [],
+                "aymh_accounts": [],
+                "network_bssid": None,
+                "secure_family_device_id": "",
+                "has_granted_read_contacts_permissions": 0,
+                "auth_secure_device_id": "",
+                "has_whatsapp_installed": 0,
+                "password": encrypted_password,
+                "sso_token_map_json_string": "",
+                "block_store_machine_id": "",
+                "ig_vetted_device_nonces": None,
+                "cloud_trust_token": None,
+                "event_flow": "login_manual",
+                "password_contains_non_ascii": str(not password.isascii()).lower(),
+                "client_known_key_hash": "",
+                "sso_accounts_auth_data": [],
+                "encrypted_msisdn": "",
+                "has_granted_read_phone_permissions": 0,
+                "app_manager_id": "",
+                "should_show_nested_nta_from_aymh": 0,
+                "device_id": self.client.android_device_id,
+                "zero_balance_state": "",
+                "login_attempt_count": self._login_attempt_count,
+                "machine_id": self.client.mid,
+                "flash_call_permission_status": {
+                    "READ_PHONE_STATE": "DENIED",
+                    "READ_CALL_LOG": "DENIED",
+                    "ANSWER_PHONE_CALLS": "DENIED",
+                },
+                "accounts_list": [],
+                "gms_incoming_call_retriever_eligibility": "eligible",
+                "family_device_id": self.client.phone_id,
+                "fb_ig_device_id": [],
+                "device_emails": [],
+                "try_num": try_num,
+                "lois_settings": {"lois_token": ""},
+                "event_step": "home_page",
+                "headers_infra_flow_id": "",
+                "openid_tokens": {},
+                "contact_point": contact_point,
+            },
+            "server_params": {
+                "should_trigger_override_login_2fa_action": 0,
+                "is_from_logged_out": 0,
+                "should_trigger_override_login_success_action": 0,
+                "login_credential_type": "none",
+                "server_login_source": "login",
+                "waterfall_id": flow_id,
+                "two_step_login_type": "one_step_login",
+                "login_source": "Login",
+                "is_platform_login": 0,
+                "login_entry_point": "logged_out",
+                "INTERNAL__latency_qpl_marker_id": 36707139,
+                "is_from_aymh": 0,
+                "offline_experiment_group": "caa_iteration_v3_perf_ig_4",
+                "is_from_landing_page": 0,
+                "left_nav_button_action": "NONE",
+                "password_text_input_id": f"{text_input_id}:105",
+                "is_from_empty_password": 0,
+                "is_from_msplit_fallback": 0,
+                "ar_event_source": "login_home_page",
+                "qe_device_id": self.client.uuid,
+                "username_text_input_id": f"{text_input_id}:104",
+                "layered_homepage_experiment_group": "Deploy: Not in Experiment",
+                "device_id": self.client.android_device_id,
+                "login_surface": "login_home",
+                "INTERNAL__latency_qpl_instance_id": int(time.time() * 1000),
+                "reg_flow_source": "login_home_native_integration_point",
+                "is_caa_perf_enabled": 1,
+                "credential_type": "password",
+                "is_from_password_entry_page": 0,
+                "caller": "gslr",
+                "family_device_id": self.client.phone_id,
+                "is_from_assistive_id": 0,
+                "access_flow_version": "pre_mt_behavior",
+                "is_from_logged_in_switcher": 0,
+            },
+        }
+        attest_header = self._build_attestation_header()
+        from urllib.parse import urlencode
+        logger.debug("send_login waterfall_id=%s _aac_data=%s", flow_id, self._aac_data)
+        payload = urlencode({
+            "params": dumps(params),
+            "_uuid": self.client.uuid,
+            "bk_client_context": dumps({"bloks_version": self.client.bloks_versioning_id, "styles_id": "instagram"}),
+            "bloks_versioning_id": self.client.bloks_versioning_id,
+        })
+        return self.client.private_request(
+            "bloks/async_action/com.bloks.www.bloks.caa.login.async.send_login_request/",
+            data=payload,
+            with_signature=False,
+            domain=BLOKS_DOMAIN,
+            headers={
+                "X-FB-Friendly-Name": "IgApi: bloks/async_action/com.bloks.www.bloks.caa.login.async.send_login_request/",
+                "x-ig-attest-params": attest_header,
+            },
         )
 
     # ── Phase 4: Two-factor authentication ─────────────────────────────
@@ -541,75 +480,78 @@ class LoginFlow:
         last_json = deepcopy(self.client.last_json) if isinstance(self.client.last_json, dict) else {}
         return self.client._extract_two_step_verification_context(last_json)
 
+    def _handle_two_factor(self, context: str, verification_code: str) -> Dict:
+        """
+        Handle Bloks two-factor verification.
+
+        Follows the same sequence as the Instagram Android app:
+        entrypoint -> method_picker -> select_method -> verify_code
+        """
+        challenge = self._infer_challenge(context, verification_code)
+        self.client.bloks_two_step_verification_entrypoint(context)
+        self.client.bloks_two_step_verification_method_picker(context)
+        self.client.bloks_two_step_verification_select_method(context, selected_method=challenge)
+        if challenge == "backup_codes":
+            self.client.bloks_two_step_verification_enter_backup_code(context)
+        code = self.client._normalize_backup_code(verification_code) if challenge == "backup_codes" else verification_code
+        result = self.client.bloks_two_step_verification_verify_code(
+            context,
+            code,
+            challenge=challenge,
+        )
+        return result
+
+    def _infer_challenge(self, context: str, verification_code: str) -> str:
+        """Infer the TFA challenge type from context."""
+        if self._looks_like_backup_code(verification_code):
+            return "backup_codes"
+        last_json = deepcopy(self.client.last_json) if isinstance(self.client.last_json, dict) else {}
+        if last_json.get("two_factor_info"):
+            sms = self.client._login_response_bool(last_json, "sms_two_factor_on")
+            totp = self.client._login_response_bool(last_json, "totp_two_factor_on")
+            if sms and not totp:
+                return "sms"
+        return "totp"
+
+    def _looks_like_backup_code(self, code: str) -> bool:
+        """Check if a code looks like an 8-digit backup code."""
+        import re
+        return bool(re.fullmatch(r"\d{8}", re.sub(r"[\s-]+", "", str(code).strip())))
+
+    def _legacy_two_factor(self, verification_code: str) -> Dict:
+        """Fallback to legacy two-factor login flow."""
+        last_json = deepcopy(self.client.last_json) if isinstance(self.client.last_json, dict) else {}
+        two_factor_identifier = last_json.get("two_factor_info", {}).get("two_factor_identifier")
+        data = {
+            "verification_code": verification_code,
+            "phone_id": self.client.phone_id,
+            "_csrftoken": self.client.token,
+            "two_factor_identifier": two_factor_identifier,
+            "username": self.client.username,
+            "trust_this_device": "0",
+            "guid": self.client.uuid,
+            "device_id": self.client.android_device_id,
+            "waterfall_id": str(uuid4()),
+            "verification_method": "3",
+        }
+        return self.client.private_request("accounts/two_factor_login/", data, login=True)
+
     # ── Phase 5: Apply login response ──────────────────────────────────
 
-    @staticmethod
-    def _header_get(headers: Any, *names: str) -> Optional[str]:
-        """Case-insensitive header lookup (curl_cffi / PhantomResponse)."""
-        if not headers:
-            return None
-        try:
-            items = dict(headers).items()
-        except Exception:
-            return None
-        lower_map = {str(k).lower(): v for k, v in items}
-        for name in names:
-            value = lower_map.get(name.lower())
-            if value:
-                return value
-        return None
-
     def _apply_login(self, result: Dict) -> bool:
-        """Apply the Bloks login response to the client session.
-
-        Mirrors instagrapi ``bloks_apply_login_response`` + header/cookie
-        fallbacks (PhantomResponse headers are case-sensitive dicts).
-        """
-        candidates: list = []
-        if isinstance(result, dict):
-            candidates.append(result)
-        last_json = getattr(self.client, "last_json", None)
-        if isinstance(last_json, dict) and last_json not in candidates:
-            candidates.append(last_json)
-
-        for candidate in candidates:
-            try:
-                if self.client.bloks_apply_login_response(candidate):
-                    self._dual_tokens()
-                    return True
-            except Exception:
-                logger.debug("bloks_apply_login_response failed", exc_info=True)
-            try:
-                parsed = self.client.bloks_extract_login_response(candidate)
-                if parsed and self.client.bloks_apply_login_response(parsed):
-                    self._dual_tokens()
-                    return True
-            except Exception:
-                logger.debug("bloks_extract_login_response failed", exc_info=True)
-
-        last_resp = getattr(self.client, "last_response", None)
-        headers = getattr(last_resp, "headers", None) if last_resp is not None else None
-        ig_auth = self._header_get(headers, "ig-set-authorization", "IG-Set-Authorization")
+        """Apply the Bloks login response to the client session."""
+        # First try the standard bloks apply
+        if self.client.bloks_apply_login_response(result):
+            self._dual_tokens()
+            return True
+        # Try extracting from last response headers
+        ig_auth = self.client.last_response.headers.get("ig-set-authorization") if hasattr(self.client, "last_response") else None
         if ig_auth:
             self.client.authorization_data = self.client.parse_authorization(ig_auth)
-            auth_header = (
-                f"Bearer IGT:2:{ig_auth}" if ":" not in str(ig_auth) else ig_auth
-            )
+            auth_header = f"Bearer IGT:2:{ig_auth}" if ":" not in ig_auth else ig_auth
             self.client.private.headers["Authorization"] = auth_header
             self._dual_tokens()
             return True
-
-        # Sessão já pode ter sido aplicada via Set-Cookie no transport.
-        try:
-            cookies = getattr(self.client, "cookie_dict", {}) or {}
-            auth_data = getattr(self.client, "authorization_data", None) or {}
-            if cookies.get("sessionid") or auth_data.get("sessionid") or auth_data.get(
-                "ds_user_id"
-            ):
-                self._dual_tokens()
-                return True
-        except Exception:
-            pass
         return False
 
     # ── Phase 6: Post-login flow ───────────────────────────────────────
@@ -760,16 +702,18 @@ class LoginFlow:
             )
 
     def _generate_aac(self) -> Dict[str, Any]:
-        """Generate AAC data — empty aaccs like instagrapi (não inventar secret)."""
+        """Generate AAC (App Attestation Context) data."""
         return {
             "aac_init_timestamp": int(time.time()),
-            "aaccs": "",
+            "aaccs": self._generate_aac_challenge_secret(),
             "aacjid": str(uuid4()),
         }
 
     def _generate_aac_challenge_secret(self) -> str:
-        """Deprecated helper — kept for callers; returns empty (sem fake)."""
-        return ""
+        """Generate a plausible AAC challenge secret."""
+        import base64, hashlib
+        raw = hashlib.sha256(f"{uuid4()}{time.time()}".encode()).digest()
+        return base64.b64encode(raw).decode()[:43]
 
     def _clear_session(self) -> None:
         """Clear client session state for relogin."""
