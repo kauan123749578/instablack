@@ -476,6 +476,79 @@ def _build_postagemig_login_client(
 LOGIN_HARD_TIMEOUT_SEC = 85
 
 
+def _caa_after_legacy_throttle(
+    cl: Client,
+    *,
+    username: str,
+    password: str,
+    verification_code: str,
+    code_sent: bool,
+    settings_dict: dict | None,
+    proxy: str,
+    proxy_ip: str | None,
+    legacy_exc: Exception,
+) -> dict:
+    """Fallback CAA após PleaseWait/429 no legado — como AGENT_MEMORY §3.3.
+
+    No 2.18.14 o ``login()`` só tenta CAA em BadPassword. Conta com 2FA no
+    Railway muitas vezes recebe PleaseWait no ``accounts/login/``; o CAA é o
+    que devolve ``two_step_verification_context`` e abre o modal de OTP.
+    """
+    cl.username = username
+    cl.password = password
+    log.warning(
+        "Legado throttled @%s (%s) — CAA fallback (proxy_ip=%s)",
+        username,
+        type(legacy_exc).__name__,
+        proxy_ip or "?",
+    )
+    if not hasattr(cl, "_try_caa_login"):
+        raise InstagramAuthError(
+            _friendly_auth_error(
+                "Instagram rate-limitou o login legado e este instagrapi não tem CAA.",
+                proxy=proxy,
+                proxy_ip=proxy_ip,
+            )
+        ) from legacy_exc
+
+    try:
+        ok = cl._try_caa_login(legacy_exc, verification_code=verification_code)
+    except TwoFactorRequired as exc:
+        if code_sent:
+            raise InstagramAuthError(
+                _friendly_auth_error(str(exc), proxy=proxy, proxy_ip=proxy_ip)
+            ) from exc
+        raise InstagramTwoFactorRequired(
+            "Autenticação de dois fatores necessária. Informe o código do autenticador.",
+            settings=_pending_settings(cl, settings_dict),
+        ) from exc
+    except ChallengeRequired as exc:
+        raise InstagramAuthError(
+            _friendly_auth_error(str(exc), proxy=proxy, proxy_ip=proxy_ip)
+        ) from exc
+    except Exception as exc:
+        hint = _ig_last_error_hint(cl)
+        msg = str(exc) if not hint else f"{exc} [{hint}]"
+        log.warning("CAA fallback falhou @%s: %s", username, msg)
+        raise InstagramAuthError(
+            _friendly_auth_error(msg, proxy=proxy, proxy_ip=proxy_ip)
+        ) from exc
+
+    if ok:
+        log.info("CAA fallback ok @%s", username)
+        return _finish_login_session(cl, proxy, proxy_ip=proxy_ip)
+
+    # Sem sessão e sem TwoFactorRequired: legado + CAA vazios
+    raise InstagramAuthError(
+        _friendly_auth_error(
+            "Instagram rate-limitou este IP e o login CAA não retornou sessão/2FA. "
+            "Troque a proxy (IP limpo) ou use Session ID.",
+            proxy=proxy,
+            proxy_ip=proxy_ip,
+        )
+    ) from legacy_exc
+
+
 def _login_credentials_body(
     *,
     username: str,
@@ -513,11 +586,17 @@ def _login_credentials_body(
     except ChallengeRequired as exc:
         _raise(str(exc), exc)
     except PleaseWaitFewMinutes as exc:
-        # NÃO encadear CAA aqui: dobra o tempo e o edge/Railway corta → "Failed to fetch".
-        _raise(
-            "Instagram pediu para aguardar (rate limit neste IP). "
-            "Troque a proxy por um IP limpo e espere alguns minutos.",
-            exc,
+        # AGENT_MEMORY 3.3: legado rate-limit → CAA (é o que pede 2FA no web).
+        return _caa_after_legacy_throttle(
+            cl,
+            username=username,
+            password=password,
+            verification_code=code,
+            code_sent=code_sent,
+            settings_dict=settings_dict,
+            proxy=proxy,
+            proxy_ip=proxy_ip,
+            legacy_exc=exc,
         )
     except BadPassword as exc:
         # 2.18.14 já tenta CAA dentro do login(); se chegou aqui, falhou de verdade.
@@ -536,10 +615,16 @@ def _login_credentials_body(
         if "429" in low or "throttl" in low or "too many" in low or isinstance(
             exc, ClientThrottledError
         ):
-            _raise(
-                "Instagram rate-limitou este IP no login (429). "
-                "Troque a proxy (IP limpo) e não force várias tentativas.",
-                exc,
+            return _caa_after_legacy_throttle(
+                cl,
+                username=username,
+                password=password,
+                verification_code=code,
+                code_sent=code_sent,
+                settings_dict=settings_dict,
+                proxy=proxy,
+                proxy_ip=proxy_ip,
+                legacy_exc=exc,
             )
         hint = _ig_last_error_hint(cl)
         msg = str(exc) if not hint else f"{exc} [{hint}]"

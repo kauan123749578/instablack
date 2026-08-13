@@ -1,4 +1,4 @@
-# Login user/senha = instagrapi LATEST (2.18.14)
-# Docs: cl.login(user, senha) / verification_code= no 2FA
-# 2.18.14: BadPassword → _try_caa_login (CAA). PleaseWait/429 → mesmo fallback.
-# NÃO pinar 2.16.25 do PostagemIG — Instablack fica na última release.
+# Login user/senha = instagrapi 2.18.14 (latest)
+# cl.login(user, senha) — se PleaseWait/429 no legado → _try_caa_login
+# CAA com two_step context SEM código = pedir 2FA (não só "troque proxy")
+# Ver AGENT_MEMORY.md §3.3
