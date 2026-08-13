@@ -1,0 +1,66 @@
+[10/08/2026 23:22] SteeL: # Phantom — Stealth Header Layer for instagrapi
+
+Phantom is a drop-in wrapper around [instagrapi](https://github.com/subzeroid/instagrapi).
+It does not reimplement Instagram's API — it subclasses instagrapi.Client and layers
+realistic request headers, navigation breadcrumbs, and endpoint metadata on top so the traffic
+looks like the official Android app. All of instagrapi's methods (media_info, user_info_by_username,
+media_like, media_comment, ...) work unchanged.
+
+> Requires instagrapi. from phantom import EnhancedClient will fail without it installed.
+
+---
+
+## Installation
+
+pip install instagrapi
+# phantom lives in the `phantom/` directory of this repo — add the repo root to your path,
+# or copy the `phantom/` folder into your project.
+
+---
+
+## Quick start
+
+from phantom import EnhancedClient
+
+client = EnhancedClient(debug=True)          # debug=True logs every added header
+client.load_settings("session.json")          # path to a saved Instagram session
+
+media = client.media_info(3921072280461367322)          # works exactly like instagrapi
+user  = client.user_info_by_username("instagram")
+client.media_like(media.id)
+client.media_comment(media.id, "Great post!")
+
+Every request automatically includes:
+
+- Realistic app headers (User-Agent, X-IG-*, device metadata) via HeaderBuilder
+- Navigation breadcrumbs (x-ig-nav-chain) via NavigationTracker
+
+---
+
+## Sessions & login
+
+### 1. Load a saved session (recommended)
+
+client = EnhancedClient()
+client.load_settings("session.json")          # dump with client.dump_settings("session.json")
+
+### 2. Login with username/password (Bloks CAA flow, with TFA support)
+
+from phantom import EnhancedClient, login
+
+client = EnhancedClient()
+ok = login(client, "my_username", "my_password")            # returns True on success
+# 2FA / OTP:
+ok = login(client, "my_username", "my_password", verification_code="123456")
+# Force re-login even when a session exists:
+ok = login(client, "my_username", "my_password", relogin=True)
+
+client.dump_settings("session.json")          # persist for next time
+
+The raw flow is also available as phantom.login.LoginFlow(client).
+[10/08/2026 23:22] SteeL: download all these file and keep it in a folder inside the same folder where instagrapi is
+[10/08/2026 23:23] SteeL: so both of these folders are in same folder
+
+Phantom
+instagrapi
+[10/08/2026 23:23] SteeL: it depends on instagrapi

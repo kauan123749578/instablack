@@ -1,0 +1,14 @@
+{
+  "register": {
+    "friendly_name": "COLE_DO_HTTP_TOOLKIT",
+    "doc_id": "NUMERO_LONGO_DO_BODY",
+    "variables": {},
+    "form": {}
+  },
+  "confirm": {
+    "friendly_name": "useCAAFBConfirmationFormSubmitMutation",
+    "doc_id": "NUMERO_LONGO_DO_BODY",
+    "variables": {},
+    "form": {}
+  }
+}

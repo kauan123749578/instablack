@@ -10,6 +10,12 @@ venv/
 *.db
 *.sqlite*
 session.json
+scripts/web_signup_capture.json
+scripts/web_signup_state.json
+scripts/web_signup_cookies.json
+scripts/web_signup_pending/
+scripts/web_signup_accounts/
+scripts/*_body.txt
 storage/
 tmp/
 
