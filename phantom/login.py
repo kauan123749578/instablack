@@ -239,6 +239,21 @@ class LoginFlow:
                     response=getattr(result, "response", None),
                     **self._exception_context(login_json),
                 )
+
+            # 2FA às vezes só aparece no action string — não cair no erro genérico.
+            code = (verification_code or "").strip()
+            if not code and (
+                self._needs_two_factor(result)
+                or self._needs_two_factor(login_json)
+                or "two_step" in str(result).lower()
+                or "two_factor" in str(login_json).lower()
+            ):
+                raise TwoFactorRequired(
+                    "Instagram returned a Bloks two-factor context; "
+                    "provide verification_code for login",
+                    response=getattr(result, "response", None),
+                )
+
             if error_message:
                 raise UnknownError(
                     f"Login failed. Instagram response: {error_message}",
@@ -246,6 +261,19 @@ class LoginFlow:
                     **self._exception_context(login_json),
                 )
 
+            action_prefix = ""
+            try:
+                action_prefix = str(
+                    (result or {}).get("layout", {}).get("bloks_payload", {}).get("action", "")
+                )[:240]
+            except Exception:
+                pass
+            logger.warning(
+                "Bloks login sem auth payload (user=%s action_prefix=%r keys=%s)",
+                getattr(self.client, "username", ""),
+                action_prefix,
+                list(login_json.keys())[:25] if isinstance(login_json, dict) else [],
+            )
             raise UnknownError(
                 "Bloks login response did not contain embedded auth payload. "
                 "The account may require a different verification flow.",
@@ -400,113 +428,20 @@ class LoginFlow:
         })
 
     def _send_login(self, try_num: int = 1) -> Dict:
-        """Send encrypted password via Bloks CAA login request."""
+        """Send encrypted password via Bloks CAA login request.
+
+        Delega ao ``bloks_caa_login_send_request`` do instagrapi. A versão
+        antiga inventava ``x-ig-attest-params`` (keystore fake) e o Instagram
+        respondia **sem** auth payload → erro “did not contain embedded auth”.
+        O helper oficial deixa attestation vazio de propósito.
+        """
         self._login_attempt_count += 1
-        password = self.client.password
-        encrypted_password = password if password.startswith("#PWD_") else self.client.password_encrypt(password)
-        contact_point = self.client.username
-        flow_id = self.waterfall_id or str(uuid4())
-        text_input_id = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
-        params = {
-            "client_input_params": {
-                "blocked_uids": [],
-                "aac": dumps(self._aac_data),
-                "sim_phones": [],
-                "aymh_accounts": [],
-                "network_bssid": None,
-                "secure_family_device_id": "",
-                "has_granted_read_contacts_permissions": 0,
-                "auth_secure_device_id": "",
-                "has_whatsapp_installed": 0,
-                "password": encrypted_password,
-                "sso_token_map_json_string": "",
-                "block_store_machine_id": "",
-                "ig_vetted_device_nonces": None,
-                "cloud_trust_token": None,
-                "event_flow": "login_manual",
-                "password_contains_non_ascii": str(not password.isascii()).lower(),
-                "client_known_key_hash": "",
-                "sso_accounts_auth_data": [],
-                "encrypted_msisdn": "",
-                "has_granted_read_phone_permissions": 0,
-                "app_manager_id": "",
-                "should_show_nested_nta_from_aymh": 0,
-                "device_id": self.client.android_device_id,
-                "zero_balance_state": "",
-                "login_attempt_count": self._login_attempt_count,
-                "machine_id": self.client.mid,
-                "flash_call_permission_status": {
-                    "READ_PHONE_STATE": "DENIED",
-                    "READ_CALL_LOG": "DENIED",
-                    "ANSWER_PHONE_CALLS": "DENIED",
-                },
-                "accounts_list": [],
-                "gms_incoming_call_retriever_eligibility": "eligible",
-                "family_device_id": self.client.phone_id,
-                "fb_ig_device_id": [],
-                "device_emails": [],
-                "try_num": try_num,
-                "lois_settings": {"lois_token": ""},
-                "event_step": "home_page",
-                "headers_infra_flow_id": "",
-                "openid_tokens": {},
-                "contact_point": contact_point,
-            },
-            "server_params": {
-                "should_trigger_override_login_2fa_action": 0,
-                "is_from_logged_out": 0,
-                "should_trigger_override_login_success_action": 0,
-                "login_credential_type": "none",
-                "server_login_source": "login",
-                "waterfall_id": flow_id,
-                "two_step_login_type": "one_step_login",
-                "login_source": "Login",
-                "is_platform_login": 0,
-                "login_entry_point": "logged_out",
-                "INTERNAL__latency_qpl_marker_id": 36707139,
-                "is_from_aymh": 0,
-                "offline_experiment_group": "caa_iteration_v3_perf_ig_4",
-                "is_from_landing_page": 0,
-                "left_nav_button_action": "NONE",
-                "password_text_input_id": f"{text_input_id}:105",
-                "is_from_empty_password": 0,
-                "is_from_msplit_fallback": 0,
-                "ar_event_source": "login_home_page",
-                "qe_device_id": self.client.uuid,
-                "username_text_input_id": f"{text_input_id}:104",
-                "layered_homepage_experiment_group": "Deploy: Not in Experiment",
-                "device_id": self.client.android_device_id,
-                "login_surface": "login_home",
-                "INTERNAL__latency_qpl_instance_id": int(time.time() * 1000),
-                "reg_flow_source": "login_home_native_integration_point",
-                "is_caa_perf_enabled": 1,
-                "credential_type": "password",
-                "is_from_password_entry_page": 0,
-                "caller": "gslr",
-                "family_device_id": self.client.phone_id,
-                "is_from_assistive_id": 0,
-                "access_flow_version": "pre_mt_behavior",
-                "is_from_logged_in_switcher": 0,
-            },
-        }
-        attest_header = self._build_attestation_header()
-        from urllib.parse import urlencode
-        logger.debug("send_login waterfall_id=%s _aac_data=%s", flow_id, self._aac_data)
-        payload = urlencode({
-            "params": dumps(params),
-            "_uuid": self.client.uuid,
-            "bk_client_context": dumps({"bloks_version": self.client.bloks_versioning_id, "styles_id": "instagram"}),
-            "bloks_versioning_id": self.client.bloks_versioning_id,
-        })
-        return self.client.private_request(
-            "bloks/async_action/com.bloks.www.bloks.caa.login.async.send_login_request/",
-            data=payload,
-            with_signature=False,
-            domain=BLOKS_DOMAIN,
-            headers={
-                "X-FB-Friendly-Name": "IgApi: bloks/async_action/com.bloks.www.bloks.caa.login.async.send_login_request/",
-                "x-ig-attest-params": attest_header,
-            },
+        return self.client.bloks_caa_login_send_request(
+            self.client.password,
+            username=self.client.username or "",
+            login_attempt_count=self._login_attempt_count,
+            try_num=try_num,
+            waterfall_id=self.waterfall_id or "",
         )
 
     # ── Phase 4: Two-factor authentication ─────────────────────────────
@@ -750,18 +685,16 @@ class LoginFlow:
             )
 
     def _generate_aac(self) -> Dict[str, Any]:
-        """Generate AAC (App Attestation Context) data."""
+        """Generate AAC data — empty aaccs like instagrapi (não inventar secret)."""
         return {
             "aac_init_timestamp": int(time.time()),
-            "aaccs": self._generate_aac_challenge_secret(),
+            "aaccs": "",
             "aacjid": str(uuid4()),
         }
 
     def _generate_aac_challenge_secret(self) -> str:
-        """Generate a plausible AAC challenge secret."""
-        import base64, hashlib
-        raw = hashlib.sha256(f"{uuid4()}{time.time()}".encode()).digest()
-        return base64.b64encode(raw).decode()[:43]
+        """Deprecated helper — kept for callers; returns empty (sem fake)."""
+        return ""
 
     def _clear_session(self) -> None:
         """Clear client session state for relogin."""
