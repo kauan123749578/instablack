@@ -204,7 +204,15 @@ class InstagramAuthError(RuntimeError):
 
 
 class InstagramTwoFactorRequired(InstagramAuthError):
-    """Conta exige código 2FA — o cliente deve solicitar ao usuário."""
+    """Conta exige código 2FA — o cliente deve solicitar ao usuário.
+
+    ``settings`` = dump do client após a 1ª tentativa (device/uuids), para
+    reaproveitar no envio do código — igual ao postagemIG.
+    """
+
+    def __init__(self, message: str = "", settings: dict | None = None):
+        super().__init__(message)
+        self.settings = settings
 
 
 def _friendly_auth_error(raw: str, proxy: str | None = None) -> str:
@@ -373,6 +381,7 @@ def login_with_credentials(
     password: str,
     verification_code: str | None = None,
     proxy: str | None = None,
+    settings_dict: dict | None = None,
 ) -> dict:
     username = (username or "").strip().lstrip("@")
     password = (password or "").strip()
@@ -386,7 +395,13 @@ def login_with_credentials(
             "Teste o proxy antes — formato: ip:porta:usuario:senha"
         )
 
-    cl = _build_client(proxy=proxy, settings_dict=None, username_for_device=username)
+    # Igual postagemIG: Client + login stock (com Phantom só no transport).
+    # Reusa settings da 1ª tentativa quando estiver enviando o 2FA.
+    cl = _build_client(
+        proxy=proxy,
+        settings_dict=settings_dict,
+        username_for_device=None if settings_dict else username,
+    )
     code_sent = bool((verification_code or "").strip())
     try:
         if verification_code:
@@ -394,11 +409,16 @@ def login_with_credentials(
         else:
             cl.login(username, password)
     except TwoFactorRequired as exc:
-        # Já mandou OTP: não reabrir modal (vira loop). Erro real de apply/código.
+        pending = None
+        try:
+            pending = cl.get_settings()
+        except Exception:
+            pending = settings_dict
         if code_sent:
             raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
         raise InstagramTwoFactorRequired(
-            "Autenticação de dois fatores necessária. Informe o código do autenticador."
+            "Autenticação de dois fatores necessária. Informe o código do autenticador.",
+            settings=pending,
         ) from exc
     except PleaseWaitFewMinutes as exc:
         raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
@@ -411,8 +431,14 @@ def login_with_credentials(
         low = str(exc).lower()
         log.warning("Falha login @%s: %s", username, exc)
         if not code_sent and ("two_factor" in low or "two-factor" in low):
+            pending = None
+            try:
+                pending = cl.get_settings()
+            except Exception:
+                pending = settings_dict
             raise InstagramTwoFactorRequired(
-                "Autenticação de dois fatores necessária. Informe o código do autenticador."
+                "Autenticação de dois fatores necessária. Informe o código do autenticador.",
+                settings=pending,
             ) from exc
         raise InstagramAuthError(_friendly_auth_error(str(exc), proxy=proxy)) from exc
 

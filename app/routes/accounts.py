@@ -36,6 +36,7 @@ from app.utils.instagrapi_access import (
     fake_instagrapi_login_error,
     is_instagrapi_auth_method,
 )
+from app.utils.pending_2fa import clear_pending_2fa, load_pending_2fa, save_pending_2fa
 from app.utils.meta_apps import credentials_from_app, get_owned_meta_app, list_user_meta_apps
 from app.utils.platform_settings import META_TOKEN_YOUTUBE_URL, get_platform_setting
 from core.database import get_db, release_db_transaction
@@ -121,6 +122,7 @@ def _login_credentials_with_totp_retry(
     totp_encrypted: str | None = None,
     totp_raw: str | None = None,
     backend: str = "instagrapi",
+    settings_dict: dict | None = None,
 ):
     """Login user/senha; se pedir 2FA e houver TOTP, gera código e tenta 1 vez."""
     login_fn = (
@@ -139,13 +141,18 @@ def _login_credentials_with_totp_retry(
         if not code:
             code = _totp_code_from_encrypted(totp_encrypted)
 
+    kwargs = dict(
+        username=username,
+        password=password,
+        verification_code=code,
+        proxy=proxy,
+    )
+    # postagemIG: reusa device da 1ª tentativa no 2FA (só no path instagrapi)
+    if (backend or "").strip().lower() != "aiograpi":
+        kwargs["settings_dict"] = settings_dict
+
     try:
-        return login_fn(
-            username=username,
-            password=password,
-            verification_code=code,
-            proxy=proxy,
-        )
+        return login_fn(**kwargs)
     except InstagramTwoFactorRequired:
         if code:
             raise
@@ -161,12 +168,8 @@ def _login_credentials_with_totp_retry(
             auto = _totp_code_from_encrypted(totp_encrypted)
         if not auto:
             raise
-        return login_fn(
-            username=username,
-            password=password,
-            verification_code=auto,
-            proxy=proxy,
-        )
+        kwargs["verification_code"] = auto
+        return login_fn(**kwargs)
 
 
 def _cred_flags_for_accounts(accounts: list[InstagramAccount]) -> dict[int, dict]:
@@ -957,15 +960,25 @@ def add_account(
         else:
             if not username or not password:
                 raise InstagramAuthError("Usuário e senha são obrigatórios.")
-            settings_dict = _login_credentials_with_totp_retry(
-                username=username,
-                password=password,
-                proxy=proxy,
-                verification_code=verification_code.strip() or None,
-                totp_encrypted=encrypted_totp or stored_totp,
-                totp_raw=totp_secret.strip() or None,
-                backend="aiograpi" if use_aiograpi else "instagrapi",
-            )
+            pending_settings = None
+            if verification_code.strip():
+                pending_settings = load_pending_2fa(user.id, username)
+            try:
+                settings_dict = _login_credentials_with_totp_retry(
+                    username=username,
+                    password=password,
+                    proxy=proxy,
+                    verification_code=verification_code.strip() or None,
+                    totp_encrypted=encrypted_totp or stored_totp,
+                    totp_raw=totp_secret.strip() or None,
+                    backend="aiograpi" if use_aiograpi else "instagrapi",
+                    settings_dict=pending_settings,
+                )
+            except InstagramTwoFactorRequired as exc:
+                if getattr(exc, "settings", None):
+                    save_pending_2fa(user.id, username, exc.settings)
+                raise
+            clear_pending_2fa(user.id, username)
             encrypted_pw = encrypt_secret(password)
 
     except InstagramTwoFactorRequired as exc:
@@ -1366,15 +1379,21 @@ def _perform_account_reconnect(
                 stored_pw = decrypt_secret(encrypted_password)
                 if stored_pw:
                     try:
+                        vcode = (verification_code or "").strip() or None
+                        pending = load_pending_2fa(acc.user_id, username) if vcode else None
                         settings_dict = _login_credentials_with_totp_retry(
                             username=username,
                             password=stored_pw,
                             proxy=proxy,
-                            verification_code=(verification_code or "").strip() or None,
+                            verification_code=vcode,
                             totp_encrypted=encrypted_totp_secret,
                             backend=account_provider,
+                            settings_dict=pending,
                         )
+                        clear_pending_2fa(acc.user_id, username)
                     except InstagramTwoFactorRequired as exc:
+                        if getattr(exc, "settings", None):
+                            save_pending_2fa(acc.user_id, username, exc.settings)
                         return {
                             "status": "needs_2fa",
                             "message": str(exc),
@@ -1422,14 +1441,28 @@ def _perform_account_reconnect(
                     "error_code": "password",
                     "message": "Senha ausente. Salve em Credenciais / 2FA ou informe no reconectar.",
                 }
-            settings_dict = _login_credentials_with_totp_retry(
-                username=username,
-                password=pw,
-                proxy=proxy,
-                verification_code=(verification_code or "").strip() or None,
-                totp_encrypted=encrypted_totp_secret,
-                backend=account_provider if account_provider == "aiograpi" else "instagrapi",
-            )
+            vcode = (verification_code or "").strip() or None
+            pending = load_pending_2fa(acc.user_id, username) if vcode else None
+            try:
+                settings_dict = _login_credentials_with_totp_retry(
+                    username=username,
+                    password=pw,
+                    proxy=proxy,
+                    verification_code=vcode,
+                    totp_encrypted=encrypted_totp_secret,
+                    backend=account_provider if account_provider == "aiograpi" else "instagrapi",
+                    settings_dict=pending,
+                )
+                clear_pending_2fa(acc.user_id, username)
+            except InstagramTwoFactorRequired as exc:
+                if getattr(exc, "settings", None):
+                    save_pending_2fa(acc.user_id, username, exc.settings)
+                return {
+                    "status": "needs_2fa",
+                    "message": str(exc),
+                    "username": username,
+                    "has_totp": bool(encrypted_totp_secret),
+                }
         else:
             return {
                 "status": "error",
@@ -1460,6 +1493,8 @@ def _perform_account_reconnect(
             "username": acc.username,
         }
     except InstagramTwoFactorRequired as exc:
+        if getattr(exc, "settings", None) and username:
+            save_pending_2fa(acc.user_id, username, exc.settings)
         return {
             "status": "needs_2fa",
             "message": str(exc),
