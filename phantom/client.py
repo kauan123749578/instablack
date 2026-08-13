@@ -488,72 +488,16 @@ class EnhancedClient(instagrapi.Client):
         """
         Login using the latest Bloks CAA flow.
 
-        Overrides instagrapi's legacy ``accounts/login/`` login with the
-        current Bloks-based CAA login used by the Instagram Android app.
-        Falls back to the parent implementation when Bloks fails after a
-        2FA code was already provided (avoids endless “enter code again”).
-
-        Parameters
-        ----------
-        username : str, optional
-            Instagram username.
-        password : str, optional
-            Instagram password.
-        relogin : bool
-            Force re-login even if session exists.
-        verification_code : str
-            TFA / OTP verification code.
-
-        Returns
-        -------
-        bool
-            True on success.
+        Overrides instagrapi's legacy ``accounts/login/`` (morto / 429) with
+        Phantom Bloks CAA. 2FA usa o mesmo caminho do instagrapi
+        (``_login_with_bloks_two_factor``) — sem fallback para login clássico.
         """
-        from instagrapi.exceptions import (
-            BadPassword,
-            ChallengeRequired,
-            FeedbackRequired,
-            PleaseWaitFewMinutes,
-            TwoFactorRequired,
-            UnknownError,
-        )
-
-        code = (verification_code or "").strip()
-        try:
-            flow = LoginFlow(self)
-            return flow.login(
-                username=username,
-                password=password,
-                verification_code=verification_code,
-                relogin=relogin,
-            )
-        except TwoFactorRequired:
-            # Sem código: Instagram pediu 2FA de verdade — sobe pra UI.
-            if not code:
-                raise
-            logger.warning(
-                "Phantom Bloks 2FA falhou com código presente — fallback login clássico"
-            )
-        except (BadPassword, ChallengeRequired, FeedbackRequired, PleaseWaitFewMinutes):
-            raise
-        except UnknownError as exc:
-            if not code:
-                raise
-            logger.warning(
-                "Phantom Bloks login falhou após 2FA (%s) — fallback login clássico",
-                exc,
-            )
-        except Exception as exc:
-            logger.warning(
-                "Phantom Bloks login falhou (%s) — fallback login clássico",
-                exc,
-            )
-
-        return super().login(
+        flow = LoginFlow(self)
+        return flow.login(
             username=username,
             password=password,
-            relogin=relogin,
             verification_code=verification_code,
+            relogin=relogin,
         )
 
     # ── Convenience methods ────────────────────────────────────────────

@@ -146,29 +146,80 @@ class LoginFlow:
         last_json = deepcopy(self.client.last_json) if isinstance(self.client.last_json, dict) else {}
         self._raise_if_bloks_error(last_json)
 
-        # Phase 4 — Handle TFA if needed
+        # Phase 4 — Handle TFA if needed (fluxo Bloks do instagrapi.mixins.auth)
         if self._needs_two_factor(result):
+            code = (verification_code or "").strip()
             context = self._extract_context(result)
-            if context and not verification_code.strip():
+            if not code:
                 raise TwoFactorRequired(
                     "Instagram returned a Bloks two-factor context; "
                     "provide verification_code for login",
                     response=getattr(result, "response", None),
                 )
-            if context:
-                result = self._handle_two_factor(context, verification_code)
-            elif verification_code.strip():
-                result = self._legacy_two_factor(verification_code)
-            else:
+            if not context:
                 raise TwoFactorRequired(
-                    "Two-factor required but no verification code provided"
+                    "Two-factor required but no verification context in Bloks response"
                 )
 
-            # Check for errors after TFA verification
-            last_json = deepcopy(self.client.last_json) if isinstance(self.client.last_json, dict) else {}
-            self._raise_if_bloks_error(last_json)
+            login_json = (
+                deepcopy(self.client.last_json)
+                if isinstance(self.client.last_json, dict)
+                else {}
+            )
+            login_json["two_step_verification_context"] = context
+            if isinstance(result, dict):
+                nested_ctx = self.client.bloks_extract_two_step_verification_context(result)
+                if nested_ctx:
+                    context = nested_ctx
+                    login_json["two_step_verification_context"] = nested_ctx
 
-        # Phase 5 — Apply login response and establish session
+            # Mesma sequência de instagrapi._login_with_bloks_two_factor:
+            # entrypoint → method_picker → select_method → (enter_*) → verify
+            # + bloks_apply_login_response
+            challenge = self.client._infer_bloks_two_factor_challenge(login_json, code)
+            self.client.bloks_two_step_verification_entrypoint(context)
+            self.client.bloks_two_step_verification_method_picker(context)
+            self.client.bloks_two_step_verification_select_method(
+                context, selected_method=challenge
+            )
+            if challenge == "backup_codes":
+                self.client.bloks_two_step_verification_enter_backup_code(context)
+                code = self.client._normalize_backup_code(code)
+            elif challenge == "totp":
+                # App abre a tela TOTP antes do verify; instagrapi expõe o método
+                # mas o helper legado não chama — aqui chamamos.
+                try:
+                    self.client.bloks_two_step_verification_enter_totp_code(context)
+                except Exception:
+                    logger.debug("enter_totp_code skipped", exc_info=True)
+
+            tfa_result = self.client.bloks_two_step_verification_verify_code(
+                context,
+                code,
+                challenge=challenge,
+            )
+            last_after = (
+                deepcopy(self.client.last_json)
+                if isinstance(self.client.last_json, dict)
+                else {}
+            )
+            self._raise_if_bloks_error(last_after)
+
+            if self._apply_login(tfa_result) or self._apply_login(last_after):
+                self._dual_tokens()
+                self._post_login_flow()
+                self.client.last_login = time.time()
+                self.client.relogin_attempt = 0
+                return True
+
+            # Código já foi enviado: NÃO levantar TwoFactorRequired (UI em loop).
+            raise UnknownError(
+                "Instagram aceitou o pedido de 2FA Bloks, mas a resposta não "
+                "trouxe o payload de login (authorization/sessionid). "
+                "Troque a proxy ou tente de novo com um código fresco."
+            )
+
+        # Phase 5 — Apply login response (sem 2FA) and establish session
         applied = self._apply_login(result)
         if not applied:
             login_json = deepcopy(self.client.last_json) if isinstance(self.client.last_json, dict) else {}
@@ -195,8 +246,6 @@ class LoginFlow:
                     **self._exception_context(login_json),
                 )
 
-            # NÃO usar TwoFactorRequired aqui: a UI do painel interpreta como
-            # “código 2FA inválido, digite de novo” e entra em loop eterno.
             raise UnknownError(
                 "Bloks login response did not contain embedded auth payload. "
                 "The account may require a different verification flow.",
@@ -482,78 +531,75 @@ class LoginFlow:
         last_json = deepcopy(self.client.last_json) if isinstance(self.client.last_json, dict) else {}
         return self.client._extract_two_step_verification_context(last_json)
 
-    def _handle_two_factor(self, context: str, verification_code: str) -> Dict:
-        """
-        Handle Bloks two-factor verification.
-
-        Follows the same sequence as the Instagram Android app:
-        entrypoint -> method_picker -> select_method -> verify_code
-        """
-        challenge = self._infer_challenge(context, verification_code)
-        self.client.bloks_two_step_verification_entrypoint(context)
-        self.client.bloks_two_step_verification_method_picker(context)
-        self.client.bloks_two_step_verification_select_method(context, selected_method=challenge)
-        if challenge == "backup_codes":
-            self.client.bloks_two_step_verification_enter_backup_code(context)
-        code = self.client._normalize_backup_code(verification_code) if challenge == "backup_codes" else verification_code
-        result = self.client.bloks_two_step_verification_verify_code(
-            context,
-            code,
-            challenge=challenge,
-        )
-        return result
-
-    def _infer_challenge(self, context: str, verification_code: str) -> str:
-        """Infer the TFA challenge type from context."""
-        if self._looks_like_backup_code(verification_code):
-            return "backup_codes"
-        last_json = deepcopy(self.client.last_json) if isinstance(self.client.last_json, dict) else {}
-        if last_json.get("two_factor_info"):
-            sms = self.client._login_response_bool(last_json, "sms_two_factor_on")
-            totp = self.client._login_response_bool(last_json, "totp_two_factor_on")
-            if sms and not totp:
-                return "sms"
-        return "totp"
-
-    def _looks_like_backup_code(self, code: str) -> bool:
-        """Check if a code looks like an 8-digit backup code."""
-        import re
-        return bool(re.fullmatch(r"\d{8}", re.sub(r"[\s-]+", "", str(code).strip())))
-
-    def _legacy_two_factor(self, verification_code: str) -> Dict:
-        """Fallback to legacy two-factor login flow."""
-        last_json = deepcopy(self.client.last_json) if isinstance(self.client.last_json, dict) else {}
-        two_factor_identifier = last_json.get("two_factor_info", {}).get("two_factor_identifier")
-        data = {
-            "verification_code": verification_code,
-            "phone_id": self.client.phone_id,
-            "_csrftoken": self.client.token,
-            "two_factor_identifier": two_factor_identifier,
-            "username": self.client.username,
-            "trust_this_device": "0",
-            "guid": self.client.uuid,
-            "device_id": self.client.android_device_id,
-            "waterfall_id": str(uuid4()),
-            "verification_method": "3",
-        }
-        return self.client.private_request("accounts/two_factor_login/", data, login=True)
-
     # ── Phase 5: Apply login response ──────────────────────────────────
 
+    @staticmethod
+    def _header_get(headers: Any, *names: str) -> Optional[str]:
+        """Case-insensitive header lookup (curl_cffi / PhantomResponse)."""
+        if not headers:
+            return None
+        try:
+            items = dict(headers).items()
+        except Exception:
+            return None
+        lower_map = {str(k).lower(): v for k, v in items}
+        for name in names:
+            value = lower_map.get(name.lower())
+            if value:
+                return value
+        return None
+
     def _apply_login(self, result: Dict) -> bool:
-        """Apply the Bloks login response to the client session."""
-        # First try the standard bloks apply
-        if self.client.bloks_apply_login_response(result):
-            self._dual_tokens()
-            return True
-        # Try extracting from last response headers
-        ig_auth = self.client.last_response.headers.get("ig-set-authorization") if hasattr(self.client, "last_response") else None
+        """Apply the Bloks login response to the client session.
+
+        Mirrors instagrapi ``bloks_apply_login_response`` + header/cookie
+        fallbacks (PhantomResponse headers are case-sensitive dicts).
+        """
+        candidates: list = []
+        if isinstance(result, dict):
+            candidates.append(result)
+        last_json = getattr(self.client, "last_json", None)
+        if isinstance(last_json, dict) and last_json not in candidates:
+            candidates.append(last_json)
+
+        for candidate in candidates:
+            try:
+                if self.client.bloks_apply_login_response(candidate):
+                    self._dual_tokens()
+                    return True
+            except Exception:
+                logger.debug("bloks_apply_login_response failed", exc_info=True)
+            try:
+                parsed = self.client.bloks_extract_login_response(candidate)
+                if parsed and self.client.bloks_apply_login_response(parsed):
+                    self._dual_tokens()
+                    return True
+            except Exception:
+                logger.debug("bloks_extract_login_response failed", exc_info=True)
+
+        last_resp = getattr(self.client, "last_response", None)
+        headers = getattr(last_resp, "headers", None) if last_resp is not None else None
+        ig_auth = self._header_get(headers, "ig-set-authorization", "IG-Set-Authorization")
         if ig_auth:
             self.client.authorization_data = self.client.parse_authorization(ig_auth)
-            auth_header = f"Bearer IGT:2:{ig_auth}" if ":" not in ig_auth else ig_auth
+            auth_header = (
+                f"Bearer IGT:2:{ig_auth}" if ":" not in str(ig_auth) else ig_auth
+            )
             self.client.private.headers["Authorization"] = auth_header
             self._dual_tokens()
             return True
+
+        # Sessão já pode ter sido aplicada via Set-Cookie no transport.
+        try:
+            cookies = getattr(self.client, "cookie_dict", {}) or {}
+            auth_data = getattr(self.client, "authorization_data", None) or {}
+            if cookies.get("sessionid") or auth_data.get("sessionid") or auth_data.get(
+                "ds_user_id"
+            ):
+                self._dual_tokens()
+                return True
+        except Exception:
+            pass
         return False
 
     # ── Phase 6: Post-login flow ───────────────────────────────────────

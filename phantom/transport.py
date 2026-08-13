@@ -230,7 +230,21 @@ class PhantomResponse:
 
     @property
     def headers(self) -> dict:
-        return dict(self._resp.headers)
+        # Case-insensitive: instagrapi faz .get("ig-set-authorization") e
+        # curl_cffi pode devolver "IG-Set-Authorization".
+        raw = dict(self._resp.headers)
+        class _CI(dict):
+            def get(self, key, default=None):  # type: ignore[override]
+                if key in self:
+                    return super().get(key, default)
+                if isinstance(key, str):
+                    lower = key.lower()
+                    for k, v in self.items():
+                        if isinstance(k, str) and k.lower() == lower:
+                            return v
+                return default
+
+        return _CI(raw)
 
     @property
     def cookies(self):
