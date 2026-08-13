@@ -70,13 +70,11 @@ Regras:
 
 Modal `#reconnect-session-modal` fora de `#app-content` → navegação SPA não trazia o HTML → JS fazia `if (!modal) return` **sem alert**. Challenge nativo (“Manual verification… challenge_code_handler”) **não** se resolve só com senha do cofre — liberar no app/site do IG e colar sessionid/cookies novos.
 
-### 3.3) Login senha: `/accounts/login/` → 429 vs CAA
+### 3.3) Login senha: copiar PostagemIG, não inventar CAA-first
 
-Forçar `Client.login()` (endpoint legado) no Railway → proxy toma **429** (`too many 429` / Max retries). Local às vezes passa com IP limpo.
+PostagemIG-Entrega: `instagrapi` **2.16.25** + `Client().login(user, senha)` + `delay_range=[2,5]` + settings no 2FA. Sem forçar `pt_BR`/UUIDs estáveis no connect.
 
-- Connect: **`bloks_caa_login`** (prepare + send) em `login_with_credentials`; 2FA via `_login_with_bloks_two_factor` / profile-code.
-- Sem retry urllib3 em status 429 no client de login.
-- Phantom LoginFlow **não** no connect (AAC/attestation fake).
+No Railway, `accounts/login/` pode 429 no IP da proxy → aí sim fallback CAA (`_try_caa_login`). IP queimado (`104.x` etc.) falha em qualquer método — **trocar proxy**.
 
 ### 4) Contas Meta `code=190`
 
@@ -192,6 +190,6 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 | 2026-08-11 | fix | Pós-Phantom: health **aiograpi** não pode usar instagrapi/Phantom (marcava `needs_login` e pulava publish). `core/device_fingerprint.py` isola UUID estável; patch story só no 1º client instagrapi. Redeploy **worker-publish + worker-misc**. |
 | 2026-08-11 | fix | Recovery one-shot `recover_publish_after_phantom`: reativa Meta/aiograpi `needs_login` (token/sessão OK), limpa locks Meta, `next_run_at=now` em automações **active**. Dispara via beat (60s, Redis NX). Redeploy **beat + worker-misc + worker-publish**. |
 | 2026-08-12 | fix | Login user/senha **sem Phantom**: Bloks 2FA não aplicava auth → UI pedia código em loop (só dono “passava”). `allow_phantom=False` em `login_with_credentials`; Phantom não levanta mais `TwoFactorRequired` falso no apply; fallback stock se Bloks falhar com código. Redeploy **web**. |
-| 2026-08-13 | fix | Connect senha via **CAA** (`bloks_caa_login` prepare→send→2FA), sem `accounts/login/` (429 Max retries). Sem retry HTTP 429 no client. Redeploy **web**. |
+| 2026-08-13 | fix | Connect senha = **PostagemIG** (`Client().login`, delay [2,5], sem locale BR forçado). CAA só se legado der 429. Redeploy **web**. |
 
 <!-- Ao corrigir bugs de produção: acrescente uma linha acima e, se for armadilha nova, uma subseção em "O que já quebrou". -->
