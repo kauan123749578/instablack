@@ -1568,9 +1568,12 @@
     }
 
     async function submitForm(with2fa) {
+      ensureCsrfOnForm(form);
       const fd = new FormData(form);
       const proxyInput = form.querySelector('[name="proxy"]');
       if (proxyInput) fd.set("proxy", normalizeProxyValue(proxyInput.value));
+      const token = csrfToken();
+      if (token) fd.set("csrf_token", token);
       if (with2fa) {
         const code = codeInput?.value.trim() || "";
         if (!code) {
@@ -1587,10 +1590,16 @@
         connectBtn.textContent = "Conectando…";
       }
       try {
+        const headers = {
+          "X-Requested-With": "fetch",
+          Accept: "application/json, text/html",
+        };
+        if (token) headers["X-CSRF-Token"] = token;
         const resp = await fetch(form.action, {
           method: "POST",
           body: fd,
-          headers: { "X-Requested-With": "fetch", Accept: "application/json, text/html" },
+          headers,
+          credentials: "same-origin",
           redirect: "manual",
         });
         if (resp.status === 303 || resp.status === 302) {
@@ -1616,6 +1625,12 @@
             window.location.href = data.redirect;
             return;
           }
+          if (resp.status === 403 && (data.error === "csrf_invalid" || data.detail)) {
+            setTwofaConnecting(false);
+            alert(data.detail || "CSRF inválido. Recarregue a página (F5) e tente de novo.");
+            window.location.reload();
+            return;
+          }
           if (resp.status === 403 && data.needs_2fa) {
             setTwofaConnecting(false);
             const formTotp = !!(form.querySelector('[name="totp_secret"]')?.value || "").trim();
@@ -1625,7 +1640,13 @@
             return;
           }
         }
-        if (resp.ok || resp.status === 400 || resp.status === 403) {
+        if (resp.status === 403) {
+          setTwofaConnecting(false);
+          alert("Sessão/CSRF expirado. Recarregue a página (F5) e tente de novo.");
+          window.location.reload();
+          return;
+        }
+        if (resp.ok || resp.status === 400) {
           const html = await resp.text();
           const doc = new DOMParser().parseFromString(html, "text/html");
           const newContent = doc.getElementById("app-content");
@@ -1642,9 +1663,13 @@
         }
         setTwofaConnecting(false);
         window.location.href = "/accounts";
-      } catch {
+      } catch (err) {
         setTwofaConnecting(false);
-        form.submit();
+        // NÃO form.submit() nativo: FormData/multipart sem header = CSRF HTML.
+        alert(
+          (err && err.message) ||
+            "Falha de rede ao conectar. Recarregue a página (F5) e tente de novo."
+        );
       } finally {
         if (!with2fa && connectBtn) {
           connectBtn.disabled = false;

@@ -27,6 +27,7 @@
   </p>
 
   <form method="post" action="/accounts/add" class="form-grid" id="account-add-form">
+    <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
     <fieldset class="auth-method-groups">
       <legend>Método de autenticação</legend>
 
