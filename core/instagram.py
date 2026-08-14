@@ -448,9 +448,8 @@ def _build_postagemig_login_client(
     proxy: str,
     settings_dict: dict | None,
 ) -> Client:
-    """Mesmo client do PostagemIG-Entrega: stock Client + delay [2,5], sem locale forçado."""
-    _ensure_story_sticker_patch()
-    cl = Client()
+    """Connect: Phantom (TLS/headers) + login oficial instagrapi; sem locale BR forçado."""
+    cl = _new_instagrapi_client(allow_phantom=True)
     cl.delay_range = [2, 5]
     if settings_dict:
         try:

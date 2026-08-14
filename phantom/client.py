@@ -31,7 +31,6 @@ from instagrapi.exceptions import ClientError, ClientJSONDecodeError
 
 from .endpoints import get_endpoint_meta
 from .headers import HeaderBuilder
-from .login import LoginFlow
 from .navigation import NavigationTracker
 from .transport import PhantomSession, create_session, IMPERSONATE_BROWSER
 
@@ -478,12 +477,9 @@ class EnhancedClient(instagrapi.Client):
         verification_code="",
     ):
         """
-        Login using the latest Bloks CAA flow.
+        Login oficial do instagrapi (legado + CAA interno).
 
-        Overrides instagrapi's legacy ``accounts/login/`` login with the
-        current Bloks-based CAA login used by the Instagram Android app.
-        Falls back to the parent implementation when the Bloks flow is
-        not applicable.
+        Headers/TLS continuam do Phantom; o LoginFlow Bloks não intercepta.
 
         Parameters
         ----------
@@ -501,12 +497,13 @@ class EnhancedClient(instagrapi.Client):
         bool
             True on success.
         """
-        flow = LoginFlow(self)
-        return flow.login(
+        # TLS/headers Phantom + login oficial do instagrapi (legado + CAA).
+        # LoginFlow Bloks próprio pedia 2FA em loop e não aplicava sessão.
+        return super().login(
             username=username,
             password=password,
-            verification_code=verification_code,
             relogin=relogin,
+            verification_code=verification_code,
         )
 
     # ── Convenience methods ────────────────────────────────────────────

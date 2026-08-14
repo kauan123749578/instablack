@@ -195,9 +195,10 @@ class LoginFlow:
                     **self._exception_context(login_json),
                 )
 
-            raise TwoFactorRequired(
+            # Código já pode ter sido enviado — não reabrir modal de 2FA.
+            raise UnknownError(
                 "Bloks login response did not contain embedded auth payload. "
-                "The account may require a different verification flow.",
+                "Troque a proxy ou tente de novo com um código fresco.",
                 response=getattr(result, "response", None),
                 **self._exception_context(login_json),
             )

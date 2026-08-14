@@ -70,14 +70,15 @@ Regras:
 
 Modal `#reconnect-session-modal` fora de `#app-content` → navegação SPA não trazia o HTML → JS fazia `if (!modal) return` **sem alert**. Challenge nativo (“Manual verification… challenge_code_handler”) **não** se resolve só com senha do cofre — liberar no app/site do IG e colar sessionid/cookies novos.
 
-### 3.3) Login senha: legado rate-limit → CAA → 2FA
+### 3.3) Login senha: Phantom TLS + login oficial instagrapi
 
-PostagemIG local: `Client().login` chega em `TwoFactorRequired`. No Railway o mesmo `@` muitas vezes toma **PleaseWait/429** em `accounts/login/` **antes** do 2FA.
+A pasta `melhorias/` **não é importada**. O runtime é `phantom/` + `core/instagram.py`.
 
-- `instagrapi==2.18.14`: `login()` só cai no CAA em **BadPassword**. PleaseWait **não** tenta CAA sozinho.
-- Connect web: em PleaseWait/429 → `_try_caa_login` (oficial). Se vier `two_step_verification_context` sem código → **abrir modal 2FA** (não mostrar só “troque a proxy”).
-- Teto 85s no login + gunicorn 180s (evita “Failed to fetch”).
-- Não forçar `pt_BR`/UUIDs estáveis no client de connect.
+Não usar `Client()` stock no connect (TLS `requests` + `/accounts/login/` morto → 429). Não usar o `LoginFlow` Bloks do Phantom no `EnhancedClient.login` (2FA em loop).
+
+- Connect: `EnhancedClient` (curl_cffi + headers) e `super().login()` do **instagrapi 2.18.14**.
+- PleaseWait/429 no legado → `_try_caa_login`. Sem código + `two_step` → modal 2FA.
+- Teto 85s + gunicorn 180s. Sem locale BR forçado no connect.
 
 ### 4) Contas Meta `code=190`
 
@@ -197,5 +198,6 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 | 2026-08-13 | dep | **instagrapi==2.18.14** (latest PyPI/GitHub; > 2.18.9). Não pinar 2.16.25 do PostagemIG. Redeploy **web + workers**. |
 | 2026-08-13 | fix | Connect: teto 85s no login + fail-fast em PleaseWait/429 (sem CAA extra) + msg clara no "Failed to fetch". gunicorn `--timeout 180`. app-v **102**. Redeploy **web**. |
 | 2026-08-13 | fix | PleaseWait/429 no legado → **CAA `_try_caa_login`** de novo (AGENT_MEMORY 3.3): sem isso o web não pedia 2FA. Redeploy **web**. |
+| 2026-08-14 | fix | Connect instagrapi: Phantom **só TLS/headers**; `login()` volta ao oficial (não LoginFlow). Stock Client no connect = 429. Redeploy **web**. |
 
 <!-- Ao corrigir bugs de produção: acrescente uma linha acima e, se for armadilha nova, uma subseção em "O que já quebrou". -->
