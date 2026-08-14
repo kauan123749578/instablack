@@ -379,21 +379,27 @@ def get_public_ip(proxy: str | None = None) -> str | None:
         return None
 
 
-def check_proxy(proxy: str) -> bool:
+def inspect_proxy(proxy: str) -> tuple[bool, str | None]:
+    """Um único round-trip ipify: (ok, ip da proxy)."""
     if not proxy or not proxy.strip():
-        return False
+        return False, None
     normalized = normalize_proxy(proxy)
     proxy_ip = get_public_ip(normalized)
     if not proxy_ip:
         # Falha no serviço externo de IP não prova vazamento. A publicação ainda
         # usará o proxy no instagrapi; se a proxy estiver realmente fora, o upload/login falha.
         log.warning("Não foi possível confirmar IP da proxy; seguindo sem marcar vazamento.")
-        return True
+        return True, None
     server_ip = _server_public_ip()
     if server_ip and proxy_ip == server_ip:
         log.error("Proxy vazou IP do servidor (%s). Bloqueando.", server_ip)
-        return False
-    return True
+        return False, proxy_ip
+    return True, proxy_ip
+
+
+def check_proxy(proxy: str) -> bool:
+    ok, _ = inspect_proxy(proxy)
+    return ok
 
 
 def _pending_settings(cl: Client, fallback: dict | None) -> dict | None:
@@ -450,7 +456,8 @@ def _build_postagemig_login_client(
 ) -> Client:
     """Connect: Phantom (TLS/headers) + login oficial instagrapi; sem locale BR forçado."""
     cl = _new_instagrapi_client(allow_phantom=True)
-    cl.delay_range = [2, 5]
+    # Connect: pausa curta (2–5s por request deixava o 2FA em ~1 min).
+    cl.delay_range = [1, 2]
     if settings_dict:
         try:
             cl.set_settings(settings_dict)
@@ -496,7 +503,7 @@ def _caa_after_legacy_throttle(
     cl.username = username
     cl.password = password
     log.warning(
-        "Legado throttled @%s (%s) — CAA fallback (proxy_ip=%s)",
+        "CAA @%s (%s proxy_ip=%s)",
         username,
         type(legacy_exc).__name__,
         proxy_ip or "?",
@@ -569,8 +576,26 @@ def _login_credentials_body(
             raise InstagramAuthError(text) from exc
         raise InstagramAuthError(text)
 
+    # CAA primeiro: /accounts/login/ no Railway quase sempre 429 antes do 2FA.
+    if hasattr(cl, "_try_caa_login"):
+        try:
+            return _caa_after_legacy_throttle(
+                cl,
+                username=username,
+                password=password,
+                verification_code=code,
+                code_sent=code_sent,
+                settings_dict=settings_dict,
+                proxy=proxy,
+                proxy_ip=proxy_ip,
+                legacy_exc=PleaseWaitFewMinutes("caa-first"),
+            )
+        except InstagramTwoFactorRequired:
+            raise
+        except InstagramAuthError as exc:
+            log.warning("CAA-first falhou @%s — tentando login() legado: %s", username, exc)
+
     try:
-        # Docs instagrapi: cl.login(user, senha[, verification_code=])
         if code:
             cl.login(username, password, verification_code=code)
         else:
@@ -653,12 +678,16 @@ def login_with_credentials(
         raise InstagramAuthError("Proxy é obrigatório. Nenhuma requisição será feita sem proxy.")
 
     normalized = normalize_proxy(proxy)
-    if not check_proxy(normalized):
-        raise InstagramAuthError(
-            "Proxy vazando IP do servidor. "
-            "Teste o proxy antes — formato: ip:porta:usuario:senha"
-        )
-    proxy_ip = get_public_ip(normalized)
+    # 2ª volta (já tem settings + código 2FA): não repetir ipify.
+    skip_ip_probe = bool(settings_dict) and bool((verification_code or "").strip())
+    proxy_ip: str | None = None
+    if not skip_ip_probe:
+        ok, proxy_ip = inspect_proxy(normalized)
+        if not ok:
+            raise InstagramAuthError(
+                "Proxy vazando IP do servidor. "
+                "Teste o proxy antes — formato: ip:porta:usuario:senha"
+            )
 
     with ThreadPoolExecutor(max_workers=1) as pool:
         fut = pool.submit(
