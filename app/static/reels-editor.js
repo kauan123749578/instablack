@@ -1,8 +1,12 @@
 (() => {
+  const TWEMOJI = "https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72";
   const $ = (id) => document.getElementById(id);
   const canvas = $("canvas");
   const textLayer = $("textLayer");
   const textPreview = $("textPreview");
+  const emojiPreviewRow = $("emojiPreviewRow");
+  const watermarkLayer = $("watermarkLayer");
+  const watermarkPreview = $("watermarkPreview");
   const handle = $("resizeHandle");
   const reelVideo = $("reelVideo");
   const reelImage = $("reelImage");
@@ -11,20 +15,24 @@
   const previewDialog = $("previewDialog");
   const reelsShell = $("reelsShell");
   const mediaInput = $("mediaInput");
-  const mediaList = $("mediaList");
-  const mediaCountHint = $("mediaCountHint");
   const fileDropLabel = $("fileDropLabel");
+  const mediaNameHint = $("mediaNameHint");
   const publishThumbImg = $("publishThumbImg");
+  const audioInput = $("audioInput");
 
   const state = {
     x: 0.5,
-    y: 0.5,
+    y: 0.45,
+    wmX: 0.5,
+    wmY: 0.88,
     fontScale: 1,
+    selected: "text",
   };
-  let mediaFiles = [];
-  let previewIndex = 0;
+  let mediaFile = null;
+  let audioFile = null;
   let activePhraseIndex = 0;
-  let phrases = [{ texto: "Sua frase aqui\nquebra de linha ok" }];
+  let phrases = [{ texto: "Sua frase aqui\nquebra de linha ok", emojis: [] }];
+  let emojiCatalog = [];
   let interaction = null;
   let objectUrls = [];
 
@@ -49,6 +57,16 @@
       .replace(/"/g, "&quot;");
   }
 
+  function twemojiUrl(char) {
+    const parts = [];
+    for (const c of char) {
+      const cp = c.codePointAt(0);
+      if (cp === 0xfe0f) continue;
+      parts.push(cp.toString(16));
+    }
+    return `${TWEMOJI}/${parts.join("-")}.png`;
+  }
+
   function revokeUrls() {
     objectUrls.forEach((u) => URL.revokeObjectURL(u));
     objectUrls = [];
@@ -58,8 +76,16 @@
     return (file?.type || "").startsWith("video/");
   }
 
+  function activePhrase() {
+    return phrases[activePhraseIndex] || phrases[0];
+  }
+
   function activePhraseText() {
-    return (phrases[activePhraseIndex]?.texto || "").trim();
+    return (activePhrase()?.texto || "").trim();
+  }
+
+  function activeEmojis() {
+    return Array.isArray(activePhrase()?.emojis) ? activePhrase().emojis : [];
   }
 
   function syncFitClass() {
@@ -67,13 +93,25 @@
     reelsShell.classList.toggle("fit-contain", !cover);
   }
 
+  function cssColor(value) {
+    const v = (value || "white").trim();
+    if (v.startsWith("0x")) return `#${v.slice(2)}`;
+    return v;
+  }
+
+  function selectLayer(name) {
+    state.selected = name;
+    textLayer.classList.toggle("selected", name === "text");
+    watermarkLayer.classList.toggle("selected", name === "watermark");
+  }
+
   function updateTextLayer() {
     syncFitClass();
     const canvasH = canvas.clientHeight || 640;
     const fs = Math.round(canvasH * 0.045 * state.fontScale);
-    const color = $("textColor").value || "yellow";
+    const color = cssColor($("textColor").value || "white");
     const borderW = Number($("borderWidth").value || 2);
-    const borderColor = $("borderColor").value || "black";
+    const borderColor = cssColor($("borderColor").value || "black");
 
     textPreview.textContent = activePhraseText() || "Texto…";
     textPreview.style.fontSize = `${fs}px`;
@@ -83,11 +121,53 @@
       : "";
     textLayer.style.left = `${state.x * 100}%`;
     textLayer.style.top = `${state.y * 100}%`;
-    textLayer.style.transform = `translate(-50%, -50%)`;
+    textLayer.style.transform = "translate(-50%, -50%)";
     textLayer.hidden = false;
+
+    emojiPreviewRow.innerHTML = activeEmojis()
+      .map((e) => `<img src="${twemojiUrl(e)}" alt="${escapeHtml(e)}" draggable="false">`)
+      .join("");
+
+    const wmOn = $("watermarkEnabled").checked;
+    watermarkLayer.hidden = !wmOn;
+    if (wmOn) {
+      watermarkPreview.textContent = ($("watermarkInput").value || "").trim() || "@marca";
+      watermarkLayer.style.left = `${state.wmX * 100}%`;
+      watermarkLayer.style.top = `${state.wmY * 100}%`;
+      watermarkLayer.style.transform = "translate(-50%, -50%)";
+    }
 
     $("fontScaleValue").textContent = `${Math.round(state.fontScale * 100)}%`;
     $("borderWidthValue").textContent = String(borderW);
+    $("audioVolumeValue").textContent = `${$("audioVolume").value}%`;
+  }
+
+  function renderActiveEmojis() {
+    const box = $("activeEmojis");
+    if (!box) return;
+    const emojis = activeEmojis();
+    if (!emojis.length) {
+      box.innerHTML = '<span class="muted" style="font-size:12px">Nenhum emoji selecionado</span>';
+      return;
+    }
+    box.innerHTML = emojis
+      .map(
+        (e, idx) =>
+          `<span class="emoji-chip"><img src="${twemojiUrl(e)}" alt="" width="20" height="20">${escapeHtml(e)}` +
+          `<button type="button" data-rm-emoji="${idx}" title="Remover">×</button></span>`
+      )
+      .join("");
+  }
+
+  function renderEmojiPicker() {
+    const box = $("emojiPicker");
+    if (!box) return;
+    box.innerHTML = emojiCatalog
+      .map(
+        (item) =>
+          `<button type="button" data-add-emoji="${escapeHtml(item.char)}" title="Adicionar">${item.char}</button>`
+      )
+      .join("");
   }
 
   function point(event) {
@@ -105,11 +185,15 @@
     if (!file) {
       emptyState.style.display = "grid";
       publishThumbImg.hidden = true;
+      mediaNameHint.textContent = "";
+      fileDropLabel.textContent = "Clique ou arraste 1 vídeo ou foto";
       const empty = $("publishThumb")?.querySelector(".publish-thumb-empty");
       if (empty) empty.hidden = false;
       return;
     }
     emptyState.style.display = "none";
+    fileDropLabel.textContent = file.name;
+    mediaNameHint.textContent = isVideoFile(file) ? "Vídeo carregado" : "Foto carregada";
     const url = URL.createObjectURL(file);
     objectUrls.push(url);
     if (isVideoFile(file)) {
@@ -127,96 +211,76 @@
     updateTextLayer();
   }
 
-  function renderMediaList() {
-    if (!mediaFiles.length) {
-      mediaList.hidden = true;
-      mediaList.innerHTML = "";
-      if (mediaCountHint) mediaCountHint.textContent = "";
-      fileDropLabel.textContent = "Clique ou arraste mídia de fundo";
-      return;
-    }
-    mediaList.hidden = false;
-    if (mediaCountHint) mediaCountHint.textContent = `(${mediaFiles.length})`;
-    fileDropLabel.textContent = `${mediaFiles.length} arquivo(s)`;
-    mediaList.innerHTML = mediaFiles
-      .map(
-        (file, idx) =>
-          `<li class="${idx === previewIndex ? "active" : ""}" data-idx="${idx}">` +
-          `<button type="button" class="studio-media-pick">${idx + 1}. ${escapeHtml(file.name)}</button>` +
-          `<button type="button" class="studio-media-remove" title="Remover" data-remove="${idx}">×</button></li>`
-      )
-      .join("");
-  }
-
   function renderPhrasesList() {
     const box = $("phrasesList");
     if (!box) return;
     box.innerHTML = phrases
-      .map(
-        (p, idx) =>
+      .map((p, idx) => {
+        const em = Array.isArray(p.emojis) && p.emojis.length ? ` ${p.emojis.join("")}` : "";
+        return (
           `<div class="reels-phrase-card${idx === activePhraseIndex ? " active" : ""}" data-phrase="${idx}">` +
-          `<pre>${escapeHtml(p.texto || "")}</pre>` +
+          `<pre>${escapeHtml((p.texto || "") + em)}</pre>` +
           `<div class="reels-phrase-actions">` +
           `<button type="button" class="btn btn-sm" data-edit="${idx}">Editar</button>` +
           `<button type="button" class="btn btn-sm btn-danger" data-del="${idx}">Remover</button>` +
           `</div></div>`
-      )
+        );
+      })
       .join("");
   }
 
   function appendLayoutFields(form) {
     updateTextLayer();
     form.append("text", activePhraseText());
+    form.append("emojis_json", JSON.stringify(activeEmojis()));
     form.append("x", String(state.x));
     form.append("y", String(state.y));
+    form.append("watermark_x", String(state.wmX));
+    form.append("watermark_y", String(state.wmY));
     form.append("font_scale", String(state.fontScale));
     form.append("text_color", $("textColor").value);
     form.append("border_color", $("borderColor").value);
     form.append("border_width", $("borderWidth").value);
     form.append("watermark_text", $("watermarkInput").value);
-    form.append(
-      "watermark_enabled",
-      $("watermarkEnabled").checked ? "true" : "false"
-    );
-    form.append(
-      "fit_cover",
-      $("fitInput").value === "cover" ? "true" : "false"
-    );
+    form.append("watermark_enabled", $("watermarkEnabled").checked ? "true" : "false");
+    form.append("fit_cover", $("fitInput").value === "cover" ? "true" : "false");
     form.append("photo_duration", $("photoDuration").value || "8");
     form.append("video_duration", $("videoDuration").value || "60");
+    form.append("audio_mode", $("audioMode").value || "replace");
+    form.append("audio_volume", String(Number($("audioVolume").value || 100) / 100));
+    if (audioFile) form.append("audio", audioFile, audioFile.name);
   }
 
-  function currentMediaFile() {
-    return mediaFiles[previewIndex] || mediaFiles[0] || null;
+  function requireMedia() {
+    if (!mediaFile) throw new Error("Escolha um vídeo ou foto de fundo.");
+    return mediaFile;
   }
 
   function formForPreview() {
-    const file = currentMediaFile();
-    if (!file) throw new Error("Escolha vídeo ou foto de fundo.");
     const form = new FormData();
-    form.append("media", file);
+    form.append("media", requireMedia());
     appendLayoutFields(form);
     return form;
   }
 
   function formForRenderOne() {
-    const file = currentMediaFile();
-    if (!file) throw new Error("Escolha vídeo ou foto de fundo.");
     if (!activePhraseText()) throw new Error("Digite o texto da frase.");
     const form = new FormData();
-    form.append("media", file);
+    form.append("media", requireMedia());
     form.append("filename", `reel_${activePhraseIndex + 1}.mp4`);
     appendLayoutFields(form);
     return form;
   }
 
   function formForBatch() {
-    if (!mediaFiles.length) throw new Error("Escolha mídia de fundo.");
     const valid = phrases.filter((p) => (p.texto || "").trim());
     if (!valid.length) throw new Error("Adicione frases com texto.");
     const form = new FormData();
-    mediaFiles.forEach((f) => form.append("media_files", f));
-    form.append("phrases_json", JSON.stringify(valid.map((p) => ({ texto: p.texto }))));
+    form.append("media", requireMedia());
+    form.append(
+      "phrases_json",
+      JSON.stringify(valid.map((p) => ({ texto: p.texto, emojis: p.emojis || [] })))
+    );
     appendLayoutFields(form);
     return form;
   }
@@ -228,6 +292,14 @@
     a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  async function loadEmojiCatalog() {
+    try {
+      const res = await fetch("/reels-editor/emojis/catalog");
+      if (res.ok) emojiCatalog = await res.json();
+    } catch {}
+    renderEmojiPicker();
   }
 
   document.querySelectorAll(".studio-tab").forEach((tab) => {
@@ -242,13 +314,22 @@
 
   textLayer.addEventListener("pointerdown", (event) => {
     if (event.target === handle) return;
+    selectLayer("text");
     const p = point(event);
-    interaction = { type: "drag", dx: state.x - p.x, dy: state.y - p.y };
+    interaction = { type: "drag-text", dx: state.x - p.x, dy: state.y - p.y };
     textLayer.setPointerCapture(event.pointerId);
+  });
+
+  watermarkLayer.addEventListener("pointerdown", (event) => {
+    selectLayer("watermark");
+    const p = point(event);
+    interaction = { type: "drag-wm", dx: state.wmX - p.x, dy: state.wmY - p.y };
+    watermarkLayer.setPointerCapture(event.pointerId);
   });
 
   handle.addEventListener("pointerdown", (event) => {
     event.stopPropagation();
+    selectLayer("text");
     const p = point(event);
     interaction = { type: "resize", startX: p.x, startScale: state.fontScale };
     handle.setPointerCapture(event.pointerId);
@@ -257,9 +338,12 @@
   window.addEventListener("pointermove", (event) => {
     if (!interaction) return;
     const p = point(event);
-    if (interaction.type === "drag") {
+    if (interaction.type === "drag-text") {
       state.x = clamp(0.05, p.x + interaction.dx, 0.95);
-      state.y = clamp(0.08, p.y + interaction.dy, 0.92);
+      state.y = clamp(0.08, p.y + interaction.dy, 0.82);
+    } else if (interaction.type === "drag-wm") {
+      state.wmX = clamp(0.08, p.x + interaction.dx, 0.92);
+      state.wmY = clamp(0.1, p.y + interaction.dy, 0.96);
     } else {
       const delta = (p.x - interaction.startX) * 2;
       state.fontScale = clamp(0.5, interaction.startScale + delta, 2);
@@ -272,52 +356,75 @@
   });
 
   mediaInput.addEventListener("change", () => {
-    const picked = [...(mediaInput.files || [])];
-    if (!picked.length) return;
-    mediaFiles = picked.slice(0, 30);
-    previewIndex = 0;
-    renderMediaList();
-    showPreviewFile(mediaFiles[0]);
+    const picked = mediaInput.files?.[0];
+    if (!picked) return;
+    mediaFile = picked;
+    showPreviewFile(mediaFile);
   });
 
-  mediaList?.addEventListener("click", (event) => {
-    const removeBtn = event.target.closest("[data-remove]");
-    if (removeBtn) {
-      const idx = Number(removeBtn.dataset.remove);
-      mediaFiles.splice(idx, 1);
-      if (previewIndex >= mediaFiles.length) previewIndex = Math.max(0, mediaFiles.length - 1);
-      renderMediaList();
-      showPreviewFile(mediaFiles[previewIndex] || null);
-      return;
-    }
-    const pick = event.target.closest(".studio-media-pick");
-    if (!pick) return;
-    const li = pick.closest("[data-idx]");
-    previewIndex = Number(li?.dataset.idx || 0);
-    renderMediaList();
-    showPreviewFile(mediaFiles[previewIndex]);
+  audioInput.addEventListener("change", () => {
+    audioFile = audioInput.files?.[0] || null;
+    $("audioDropLabel").textContent = audioFile ? audioFile.name : "Opcional — clique para escolher";
+    $("clearAudioBtn").hidden = !audioFile;
   });
 
-  $("phraseInput").addEventListener("input", () => {
-    phrases[activePhraseIndex].texto = $("phraseInput").value;
+  $("clearAudioBtn").addEventListener("click", () => {
+    audioFile = null;
+    audioInput.value = "";
+    $("audioDropLabel").textContent = "Opcional — clique para escolher";
+    $("clearAudioBtn").hidden = true;
+  });
+
+  $("emojiPicker").addEventListener("click", (event) => {
+    const btn = event.target.closest("[data-add-emoji]");
+    if (!btn) return;
+    const emoji = btn.dataset.addEmoji;
+    const list = activeEmojis();
+    if (list.length >= 8) return;
+    list.push(emoji);
+    activePhrase().emojis = list;
+    renderActiveEmojis();
     renderPhrasesList();
     updateTextLayer();
   });
 
-  $("textColor").addEventListener("change", updateTextLayer);
-  $("borderColor").addEventListener("change", updateTextLayer);
+  $("activeEmojis").addEventListener("click", (event) => {
+    const btn = event.target.closest("[data-rm-emoji]");
+    if (!btn) return;
+    const idx = Number(btn.dataset.rmEmoji);
+    const list = activeEmojis();
+    list.splice(idx, 1);
+    activePhrase().emojis = list;
+    renderActiveEmojis();
+    renderPhrasesList();
+    updateTextLayer();
+  });
+
+  $("phraseInput").addEventListener("input", () => {
+    activePhrase().texto = $("phraseInput").value;
+    renderPhrasesList();
+    updateTextLayer();
+  });
+
+  ["textColor", "borderColor"].forEach((id) => {
+    $(id).addEventListener("change", updateTextLayer);
+  });
   $("borderWidth").addEventListener("input", updateTextLayer);
   $("fontScale").addEventListener("input", (e) => {
     state.fontScale = Number(e.target.value) / 100;
     updateTextLayer();
   });
   $("fitInput").addEventListener("change", updateTextLayer);
+  $("watermarkInput").addEventListener("input", updateTextLayer);
+  $("watermarkEnabled").addEventListener("change", updateTextLayer);
+  $("audioVolume").addEventListener("input", updateTextLayer);
 
   $("addPhraseBtn").addEventListener("click", () => {
-    phrases.push({ texto: "Nova frase" });
+    phrases.push({ texto: "Nova frase", emojis: [] });
     activePhraseIndex = phrases.length - 1;
     $("phraseInput").value = phrases[activePhraseIndex].texto;
     renderPhrasesList();
+    renderActiveEmojis();
     updateTextLayer();
   });
 
@@ -330,6 +437,7 @@
       if (activePhraseIndex >= phrases.length) activePhraseIndex = phrases.length - 1;
       $("phraseInput").value = phrases[activePhraseIndex].texto;
       renderPhrasesList();
+      renderActiveEmojis();
       updateTextLayer();
       return;
     }
@@ -340,32 +448,39 @@
     activePhraseIndex = idx;
     $("phraseInput").value = phrases[idx].texto;
     renderPhrasesList();
+    renderActiveEmojis();
     updateTextLayer();
   });
 
   $("closePreview").addEventListener("click", () => previewDialog.close());
+
+  async function postAction(url, form, successMsg, download) {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "X-CSRF-Token": csrfToken() },
+      body: form,
+    });
+    if (!response.ok) {
+      let message = `HTTP ${response.status}`;
+      try {
+        const payload = await response.json();
+        message = payload.detail || payload.error || message;
+      } catch {}
+      throw new Error(message);
+    }
+    const blob = await response.blob();
+    if (download) await downloadBlob(blob, download);
+    setStatus(successMsg, "ok");
+    return blob;
+  }
 
   $("previewButton").addEventListener("click", async () => {
     const btn = $("previewButton");
     btn.disabled = true;
     setStatus("Gerando prévia FFmpeg…");
     try {
-      const response = await fetch("/reels-editor/preview", {
-        method: "POST",
-        headers: { "X-CSRF-Token": csrfToken() },
-        body: formForPreview(),
-      });
-      if (!response.ok) {
-        let message = `HTTP ${response.status}`;
-        try {
-          const payload = await response.json();
-          message = payload.detail || payload.error || message;
-        } catch {}
-        throw new Error(message);
-      }
-      const blob = await response.blob();
+      const blob = await postAction("/reels-editor/preview", formForPreview(), "Prévia pronta.");
       $("finalPreview").src = URL.createObjectURL(blob);
-      setStatus("Prévia pronta.", "ok");
       previewDialog.showModal();
     } catch (error) {
       setStatus(error.message, "error");
@@ -379,22 +494,12 @@
     btn.disabled = true;
     setStatus("Gerando reel…");
     try {
-      const response = await fetch("/reels-editor/render", {
-        method: "POST",
-        headers: { "X-CSRF-Token": csrfToken() },
-        body: formForRenderOne(),
-      });
-      if (!response.ok) {
-        let message = `HTTP ${response.status}`;
-        try {
-          const payload = await response.json();
-          message = payload.detail || payload.error || message;
-        } catch {}
-        throw new Error(message);
-      }
-      const blob = await response.blob();
-      await downloadBlob(blob, `reel_${activePhraseIndex + 1}.mp4`);
-      setStatus("Reel baixado.", "ok");
+      await postAction(
+        "/reels-editor/render",
+        formForRenderOne(),
+        "Reel baixado.",
+        `reel_${activePhraseIndex + 1}.mp4`
+      );
     } catch (error) {
       setStatus(error.message, "error");
     } finally {
@@ -403,27 +508,13 @@
   });
 
   $("renderBatchButton").addEventListener("click", async () => {
-    if (!confirm(`Gerar ${phrases.length} reel(s) em ZIP? Pode demorar.`)) return;
+    const count = phrases.filter((p) => (p.texto || "").trim()).length;
+    if (!confirm(`Gerar ${count} reel(s) com o mesmo vídeo? Pode demorar.`)) return;
     const btn = $("renderBatchButton");
     btn.disabled = true;
     setStatus("Gerando lote…");
     try {
-      const response = await fetch("/reels-editor/render-batch", {
-        method: "POST",
-        headers: { "X-CSRF-Token": csrfToken() },
-        body: formForBatch(),
-      });
-      if (!response.ok) {
-        let message = `HTTP ${response.status}`;
-        try {
-          const payload = await response.json();
-          message = payload.detail || payload.error || message;
-        } catch {}
-        throw new Error(message);
-      }
-      const blob = await response.blob();
-      await downloadBlob(blob, "reels_gerados.zip");
-      setStatus("ZIP baixado.", "ok");
+      await postAction("/reels-editor/render-batch", formForBatch(), "ZIP baixado.", "reels_gerados.zip");
     } catch (error) {
       setStatus(error.message, "error");
     } finally {
@@ -434,7 +525,10 @@
   window.addEventListener("resize", () => updateTextLayer());
 
   $("phraseInput").value = phrases[0].texto;
+  selectLayer("text");
   renderPhrasesList();
+  renderActiveEmojis();
+  loadEmojiCatalog().then(updateTextLayer);
   updateTextLayer();
 
   if (window.lucide?.createIcons) window.lucide.createIcons();

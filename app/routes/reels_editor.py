@@ -14,23 +14,32 @@ from app.deps import get_current_user
 from app.templating import templates
 from core.database import get_db
 from core.reels_editor import ReelsEditorError, render_preview_jpeg, render_reel_mp4
-from core.storage import get_storage
 from models.models import User
 
 router = APIRouter(prefix="/reels-editor", tags=["reels-editor"])
 
 MAX_MEDIA_BYTES = 80 * 1024 * 1024
-ALLOWED_MEDIA = {
-    ".mp4",
-    ".mov",
-    ".webm",
-    ".mkv",
-    ".avi",
-    ".jpg",
-    ".jpeg",
-    ".png",
-    ".webp",
-}
+MAX_AUDIO_BYTES = 25 * 1024 * 1024
+ALLOWED_MEDIA = {".mp4", ".mov", ".webm", ".mkv", ".avi", ".jpg", ".jpeg", ".png", ".webp"}
+ALLOWED_AUDIO = {".mp3", ".m4a", ".aac", ".wav", ".ogg", ".flac"}
+EMOJI_CATALOG = Path(__file__).resolve().parents[1] / "static" / "reels-emojis" / "catalog.json"
+
+
+def _parse_emojis(raw: str) -> list[str]:
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(data, list):
+        return []
+    out: list[str] = []
+    for item in data:
+        s = str(item or "").strip()
+        if s:
+            out.append(s)
+    return out[:12]
 
 
 def _parse_layout(
@@ -43,22 +52,32 @@ def _parse_layout(
     border_width: int,
     watermark_text: str,
     watermark_enabled: str,
+    watermark_x: float,
+    watermark_y: float,
     fit_cover: str,
     photo_duration: float,
     video_duration: float,
+    emojis_json: str = "[]",
+    audio_mode: str = "replace",
+    audio_volume: float = 1.0,
 ) -> dict:
     return {
         "x_frac": max(0.0, min(1.0, float(x))),
         "y_frac": max(0.0, min(1.0, float(y))),
         "font_scale": max(0.35, min(2.5, float(font_scale or 1.0))),
-        "text_color": (text_color or "yellow").strip() or "yellow",
+        "text_color": (text_color or "white").strip() or "white",
         "border_color": (border_color or "black").strip() or "black",
         "border_width": max(0, min(6, int(border_width or 2))),
         "watermark_text": (watermark_text or "").strip(),
         "watermark_enabled": str(watermark_enabled).lower() in ("1", "true", "yes", "on"),
+        "watermark_x_frac": max(0.0, min(1.0, float(watermark_x))),
+        "watermark_y_frac": max(0.0, min(1.0, float(watermark_y))),
         "fit_cover": str(fit_cover).lower() in ("1", "true", "yes", "on", "cover"),
         "photo_duration": max(1.0, min(60.0, float(photo_duration or 8))),
         "video_duration": max(1.0, min(60.0, float(video_duration or 60))),
+        "emojis": _parse_emojis(emojis_json),
+        "audio_mode": (audio_mode or "replace").strip().lower() or "replace",
+        "audio_volume": max(0.0, min(2.0, float(audio_volume or 1.0))),
     }
 
 
@@ -72,6 +91,53 @@ async def _read_media(media: UploadFile) -> tuple[bytes, str]:
     if ext not in ALLOWED_MEDIA:
         raise HTTPException(400, detail="Formato não suportado.")
     return raw, ext
+
+
+async def _read_audio(audio: UploadFile | None) -> tuple[bytes, str] | None:
+    if audio is None or not audio.filename:
+        return None
+    raw = await audio.read()
+    if not raw:
+        return None
+    if len(raw) > MAX_AUDIO_BYTES:
+        raise HTTPException(413, detail="Áudio maior que 25 MB.")
+    ext = Path(audio.filename or "music.mp3").suffix.lower()
+    if ext not in ALLOWED_AUDIO:
+        raise HTTPException(400, detail="Áudio: use MP3, M4A, AAC, WAV ou OGG.")
+    return raw, ext
+
+
+def _render_kwargs(layout: dict, *, text: str, emojis: list[str] | None = None) -> dict:
+    return {
+        "text": text,
+        "emojis": emojis if emojis is not None else layout["emojis"],
+        "x_frac": layout["x_frac"],
+        "y_frac": layout["y_frac"],
+        "font_scale": layout["font_scale"],
+        "text_color": layout["text_color"],
+        "border_color": layout["border_color"],
+        "border_width": layout["border_width"],
+        "watermark_text": layout["watermark_text"],
+        "watermark_enabled": layout["watermark_enabled"],
+        "watermark_x_frac": layout["watermark_x_frac"],
+        "watermark_y_frac": layout["watermark_y_frac"],
+        "fit_cover": layout["fit_cover"],
+        "photo_duration": layout["photo_duration"],
+        "video_duration": layout["video_duration"],
+        "audio_mode": layout["audio_mode"],
+        "audio_volume": layout["audio_volume"],
+    }
+
+
+@router.get("/emojis/catalog")
+def reels_emoji_catalog(user: User = Depends(get_current_user)):
+    _ = user
+    if not EMOJI_CATALOG.exists():
+        return []
+    try:
+        return json.loads(EMOJI_CATALOG.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return []
 
 
 @router.get("")
@@ -94,14 +160,17 @@ def reels_editor_page(
 async def reels_editor_preview(
     media: UploadFile = File(...),
     text: str = Form(""),
+    emojis_json: str = Form("[]"),
     x: float = Form(0.5),
     y: float = Form(0.5),
     font_scale: float = Form(1.0),
-    text_color: str = Form("yellow"),
+    text_color: str = Form("white"),
     border_color: str = Form("black"),
     border_width: int = Form(2),
     watermark_text: str = Form(""),
     watermark_enabled: str = Form("true"),
+    watermark_x: float = Form(0.5),
+    watermark_y: float = Form(0.88),
     fit_cover: str = Form("true"),
     photo_duration: float = Form(8),
     video_duration: float = Form(60),
@@ -117,9 +186,12 @@ async def reels_editor_preview(
         border_width=border_width,
         watermark_text=watermark_text,
         watermark_enabled=watermark_enabled,
+        watermark_x=watermark_x,
+        watermark_y=watermark_y,
         fit_cover=fit_cover,
         photo_duration=photo_duration,
         video_duration=video_duration,
+        emojis_json=emojis_json,
     )
     raw, ext = await _read_media(media)
     import tempfile
@@ -128,19 +200,7 @@ async def reels_editor_preview(
         src = Path(td) / f"source{ext}"
         src.write_bytes(raw)
         try:
-            jpeg = render_preview_jpeg(
-                src,
-                text=text,
-                x_frac=layout["x_frac"],
-                y_frac=layout["y_frac"],
-                font_scale=layout["font_scale"],
-                text_color=layout["text_color"],
-                border_color=layout["border_color"],
-                border_width=layout["border_width"],
-                watermark_text=layout["watermark_text"],
-                watermark_enabled=layout["watermark_enabled"],
-                fit_cover=layout["fit_cover"],
-            )
+            jpeg = render_preview_jpeg(src, **_render_kwargs(layout, text=text))
         except ReelsEditorError as exc:
             raise HTTPException(400, detail=str(exc)) from exc
     return Response(jpeg, media_type="image/jpeg")
@@ -150,17 +210,23 @@ async def reels_editor_preview(
 async def reels_editor_render_one(
     media: UploadFile = File(...),
     text: str = Form(""),
+    emojis_json: str = Form("[]"),
     x: float = Form(0.5),
     y: float = Form(0.5),
     font_scale: float = Form(1.0),
-    text_color: str = Form("yellow"),
+    text_color: str = Form("white"),
     border_color: str = Form("black"),
     border_width: int = Form(2),
     watermark_text: str = Form(""),
     watermark_enabled: str = Form("true"),
+    watermark_x: float = Form(0.5),
+    watermark_y: float = Form(0.88),
     fit_cover: str = Form("true"),
     photo_duration: float = Form(8),
     video_duration: float = Form(60),
+    audio_mode: str = Form("replace"),
+    audio_volume: float = Form(1.0),
+    audio: UploadFile | None = File(None),
     filename: str = Form("reel.mp4"),
     user: User = Depends(get_current_user),
 ):
@@ -174,34 +240,35 @@ async def reels_editor_render_one(
         border_width=border_width,
         watermark_text=watermark_text,
         watermark_enabled=watermark_enabled,
+        watermark_x=watermark_x,
+        watermark_y=watermark_y,
         fit_cover=fit_cover,
         photo_duration=photo_duration,
         video_duration=video_duration,
+        emojis_json=emojis_json,
+        audio_mode=audio_mode,
+        audio_volume=audio_volume,
     )
     raw, ext = await _read_media(media)
+    audio_blob = await _read_audio(audio)
     import tempfile
 
     with tempfile.TemporaryDirectory(prefix="ib-reels-out-") as td:
         td_path = Path(td)
         src = td_path / f"source{ext}"
         src.write_bytes(raw)
+        audio_path = None
+        if audio_blob:
+            ab, aext = audio_blob
+            audio_path = td_path / f"music{aext}"
+            audio_path.write_bytes(ab)
         out = td_path / "reel.mp4"
         try:
             render_reel_mp4(
                 src,
                 out,
-                text=text,
-                x_frac=layout["x_frac"],
-                y_frac=layout["y_frac"],
-                font_scale=layout["font_scale"],
-                text_color=layout["text_color"],
-                border_color=layout["border_color"],
-                border_width=layout["border_width"],
-                watermark_text=layout["watermark_text"],
-                watermark_enabled=layout["watermark_enabled"],
-                fit_cover=layout["fit_cover"],
-                photo_duration=layout["photo_duration"],
-                video_duration=layout["video_duration"],
+                audio_path=audio_path,
+                **_render_kwargs(layout, text=text),
             )
         except ReelsEditorError as exc:
             raise HTTPException(400, detail=str(exc)) from exc
@@ -217,22 +284,28 @@ async def reels_editor_render_one(
 
 @router.post("/render-batch")
 async def reels_editor_render_batch(
-    media_files: list[UploadFile] = File(...),
+    media: UploadFile = File(...),
     phrases_json: str = Form("[]"),
+    emojis_json: str = Form("[]"),
     x: float = Form(0.5),
     y: float = Form(0.5),
     font_scale: float = Form(1.0),
-    text_color: str = Form("yellow"),
+    text_color: str = Form("white"),
     border_color: str = Form("black"),
     border_width: int = Form(2),
     watermark_text: str = Form(""),
     watermark_enabled: str = Form("true"),
+    watermark_x: float = Form(0.5),
+    watermark_y: float = Form(0.88),
     fit_cover: str = Form("true"),
     photo_duration: float = Form(8),
     video_duration: float = Form(60),
+    audio_mode: str = Form("replace"),
+    audio_volume: float = Form(1.0),
+    audio: UploadFile | None = File(None),
     user: User = Depends(get_current_user),
 ):
-    """Gera um ZIP com um reel por frase (rotação de mídias)."""
+    """Gera um ZIP com um reel por frase usando a mesma mídia de fundo."""
     _ = user
     try:
         phrases = json.loads(phrases_json or "[]")
@@ -240,13 +313,21 @@ async def reels_editor_render_batch(
         raise HTTPException(400, detail="Frases inválidas.") from exc
     if not isinstance(phrases, list) or not phrases:
         raise HTTPException(400, detail="Adicione pelo menos uma frase.")
-    texts = [str(p.get("texto") if isinstance(p, dict) else p).strip() for p in phrases]
-    texts = [t for t in texts if t]
-    if not texts:
-        raise HTTPException(400, detail="Nenhuma frase com texto.")
 
-    if not media_files:
-        raise HTTPException(400, detail="Envie pelo menos uma mídia de fundo.")
+    parsed: list[tuple[str, list[str]]] = []
+    default_emojis = _parse_emojis(emojis_json)
+    for p in phrases:
+        if isinstance(p, dict):
+            txt = str(p.get("texto") or "").strip()
+            em = p.get("emojis")
+            emojis = [str(e).strip() for e in em if str(e).strip()] if isinstance(em, list) else default_emojis
+        else:
+            txt = str(p).strip()
+            emojis = default_emojis
+        if txt:
+            parsed.append((txt, emojis[:12]))
+    if not parsed:
+        raise HTTPException(400, detail="Nenhuma frase com texto.")
 
     layout = _parse_layout(
         x=x,
@@ -257,45 +338,39 @@ async def reels_editor_render_batch(
         border_width=border_width,
         watermark_text=watermark_text,
         watermark_enabled=watermark_enabled,
+        watermark_x=watermark_x,
+        watermark_y=watermark_y,
         fit_cover=fit_cover,
         photo_duration=photo_duration,
         video_duration=video_duration,
+        emojis_json=emojis_json,
+        audio_mode=audio_mode,
+        audio_volume=audio_volume,
     )
 
+    raw, ext = await _read_media(media)
+    audio_blob = await _read_audio(audio)
     import tempfile
-
-    media_blobs: list[tuple[bytes, str]] = []
-    for mf in media_files[:30]:
-        raw, ext = await _read_media(mf)
-        media_blobs.append((raw, ext))
-    if not media_blobs:
-        raise HTTPException(400, detail="Mídia inválida.")
 
     zip_buf = io.BytesIO()
     with tempfile.TemporaryDirectory(prefix="ib-reels-batch-") as td:
         td_path = Path(td)
+        src = td_path / f"source{ext}"
+        src.write_bytes(raw)
+        audio_path = None
+        if audio_blob:
+            ab, aext = audio_blob
+            audio_path = td_path / f"music{aext}"
+            audio_path.write_bytes(ab)
         with zipfile.ZipFile(zip_buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-            for i, text in enumerate(texts):
-                raw, ext = media_blobs[i % len(media_blobs)]
-                src = td_path / f"in_{i}{ext}"
+            for i, (text, emojis) in enumerate(parsed):
                 out = td_path / f"reel_{i + 1}.mp4"
-                src.write_bytes(raw)
                 try:
                     render_reel_mp4(
                         src,
                         out,
-                        text=text,
-                        x_frac=layout["x_frac"],
-                        y_frac=layout["y_frac"],
-                        font_scale=layout["font_scale"],
-                        text_color=layout["text_color"],
-                        border_color=layout["border_color"],
-                        border_width=layout["border_width"],
-                        watermark_text=layout["watermark_text"],
-                        watermark_enabled=layout["watermark_enabled"],
-                        fit_cover=layout["fit_cover"],
-                        photo_duration=layout["photo_duration"],
-                        video_duration=layout["video_duration"],
+                        audio_path=audio_path,
+                        **_render_kwargs(layout, text=text, emojis=emojis),
                     )
                 except ReelsEditorError as exc:
                     raise HTTPException(400, detail=f"Frase {i + 1}: {exc}") from exc

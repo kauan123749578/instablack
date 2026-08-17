@@ -100,7 +100,106 @@
   margin-top: 6px;
 }
 
-.reels-check {
+.reels-watermark-layer {
+  position: absolute;
+  left: 50%;
+  top: 88%;
+  transform: translate(-50%, -50%);
+  z-index: 4;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.85);
+  border: 1px dashed rgba(201, 162, 39, 0.45);
+  border-radius: 4px;
+  max-width: 90%;
+  text-align: center;
+}
+
+.reels-watermark-layer.selected {
+  border-color: rgba(201, 162, 39, 0.85);
+  background: rgba(201, 162, 39, 0.12);
+}
+
+.reels-watermark-layer:active {
+  cursor: grabbing;
+}
+
+.reels-emoji-row {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.reels-emoji-row img {
+  width: 1.15em;
+  height: 1.15em;
+  object-fit: contain;
+}
+
+.reels-emoji-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.reels-emoji-picker button {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.reels-emoji-picker button:hover {
+  border-color: rgba(201, 162, 39, 0.55);
+  background: rgba(201, 162, 39, 0.1);
+}
+
+.reels-active-emojis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  min-height: 28px;
+}
+
+.reels-active-emojis .emoji-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 18px;
+}
+
+.reels-active-emojis .emoji-chip button {
+  border: none;
+  background: none;
+  color: #aaa;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+}
+
+.reels-canvas-hint {
+  text-align: center;
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+
   display: flex;
   align-items: center;
   gap: 8px;
