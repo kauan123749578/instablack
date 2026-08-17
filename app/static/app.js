@@ -193,6 +193,7 @@
     if (
       url.startsWith("/automations/new") ||
       url.startsWith("/automations/story-studio") ||
+      url.startsWith("/reels-editor") ||
       url.startsWith("/accounts/notes") ||
       url.startsWith("/camuflagem")
     ) {

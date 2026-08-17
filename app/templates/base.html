@@ -10,7 +10,7 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <meta name="theme-color" content="#C9A227" />
   <meta name="csrf-token" content="{{ request.session.get('csrf_token', '') }}" />
-  <meta name="ib-app-v" content="103" />
+  <meta name="ib-app-v" content="105" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="mobile-web-app-capable" content="yes" />
@@ -23,6 +23,7 @@
 </head>
 {% set nav_auth = request.state.auth_user if request.state.view_as_active and request.state.auth_user else user %}
 {% set _billing_user = nav_auth %}
+{% set _panel_guard_auth = request.state.auth_user if request.state.auth_user else user %}
 <body class="app-body premium-app{% if request.state.view_as_active %} is-view-as{% endif %}{% if _billing_user and _billing_user.billing_blocked and not _billing_user.is_owner %} is-billing-locked{% endif %}">
   <div class="ambient-grid"></div>
 
@@ -124,6 +125,10 @@
           <a href="/automations/story-studio" class="nav-link" data-nav="/automations/story-studio">
             <i data-lucide="link-2" class="nav-icon"></i>
             <span class="nav-text">Story Link Studio</span>
+          </a>
+          <a href="/reels-editor" class="nav-link" data-nav="/reels-editor">
+            <i data-lucide="clapperboard" class="nav-icon"></i>
+            <span class="nav-text">Editor de Reels</span>
           </a>
           <a href="/aquecimento" class="nav-link" data-nav="/aquecimento">
             <i data-lucide="flame" class="nav-icon"></i>
@@ -288,6 +293,7 @@
         <a href="/automations" data-nav="/automations"><i data-lucide="refresh-cw"></i><span>Automações</span></a>
         <a href="/automations/media-library" data-nav="/automations/media-library"><i data-lucide="image"></i><span>Biblioteca</span></a>
         <a href="/automations/story-studio" data-nav="/automations/story-studio"><i data-lucide="link-2"></i><span>Story Link Studio</span></a>
+        <a href="/reels-editor" data-nav="/reels-editor"><i data-lucide="clapperboard"></i><span>Editor de Reels</span></a>
         <a href="/automations/new/story"><i data-lucide="circle-dot"></i><span>Agendar Story</span></a>
         <a href="/aquecimento" data-nav="/aquecimento"><i data-lucide="flame"></i><span>Aquecimento Meta</span></a>
         <a href="/warmup" data-nav="/warmup"><i data-lucide="users"></i><span>Aquecer contas (instagrapi)</span></a>
@@ -357,6 +363,9 @@
   {% endif %}
 
   <script src="https://cdn.jsdelivr.net/npm/lucide@0.475.0/dist/umd/lucide.min.js" crossorigin="anonymous"></script>
+  {% if _panel_guard_auth and not _panel_guard_auth.is_owner %}
+  <script src="/static/panel-guard.js?v=1"></script>
+  {% endif %}
   <script src="/static/app.js?v=101"></script>
   {% block scripts %}{% endblock %}
 </body>

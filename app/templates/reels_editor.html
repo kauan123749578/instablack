@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}Editor de Reels{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="/static/story-studio.css?v=7" />
+<link rel="stylesheet" href="/static/reels-editor.css?v=1" />
+{% endblock %}
+{% block content %}
+<div class="studio-app reels-editor-app" id="reelsShell">
+  <section class="studio-workspace">
+    <div class="phone-shell">
+      <div class="story-canvas reels-canvas" id="canvas">
+        <video id="reelVideo" playsinline muted loop hidden></video>
+        <img id="reelImage" alt="" hidden>
+        <div class="empty-state" id="emptyState">Escolha vídeo ou foto</div>
+        <div class="reels-text-layer selected" id="textLayer" hidden>
+          <pre class="reels-text-content" id="textPreview"></pre>
+          <span class="handle" id="resizeHandle"></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="studio-editor">
+    <nav class="studio-tabs" role="tablist">
+      <button type="button" class="studio-tab active" data-tab="media" role="tab">Mídia</button>
+      <button type="button" class="studio-tab" data-tab="texto" role="tab">Texto</button>
+      <button type="button" class="studio-tab" data-tab="frases" role="tab">Frases</button>
+      <button type="button" class="studio-tab" data-tab="marca" role="tab">Marca</button>
+    </nav>
+
+    <div class="studio-tab-panel active" id="tab-media" role="tabpanel">
+      <div class="field">
+        <label for="mediaInput">Vídeos / fotos <span class="muted" id="mediaCountHint"></span></label>
+        <label class="file-drop">
+          <input id="mediaInput" type="file" accept="video/mp4,video/quicktime,video/webm,image/jpeg,image/png,image/webp" multiple hidden>
+          <span id="fileDropLabel">Clique ou arraste mídia de fundo</span>
+        </label>
+        <ul class="studio-media-list" id="mediaList" hidden></ul>
+      </div>
+      <div class="field">
+        <label for="fitInput">Ajuste do fundo</label>
+        <select id="fitInput">
+          <option value="cover">Preencher tela (crop)</option>
+          <option value="contain">Foto inteira (letterbox)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="photoDuration">Duração foto (seg)</label>
+        <input id="photoDuration" type="number" min="1" max="60" value="8">
+      </div>
+      <div class="field">
+        <label for="videoDuration">Duração vídeo máx (seg)</label>
+        <input id="videoDuration" type="number" min="1" max="60" value="60">
+      </div>
+      <p class="muted studio-hint">Arraste o texto no preview para posicionar. Igual ao Story Studio.</p>
+    </div>
+
+    <div class="studio-tab-panel" id="tab-texto" role="tabpanel">
+      <div class="field">
+        <label for="phraseInput">Texto da frase ativa</label>
+        <textarea id="phraseInput" rows="5" placeholder="Digite o texto&#10;quebra de linha ok"></textarea>
+      </div>
+      <div class="field">
+        <label for="textColor">Cor do texto</label>
+        <select id="textColor">
+          <option value="yellow" selected>Amarelo</option>
+          <option value="white">Branco</option>
+          <option value="black">Preto</option>
+          <option value="red">Vermelho</option>
+          <option value="#00FFFF">Ciano</option>
+          <option value="#FF69B4">Rosa</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="borderColor">Cor da borda</label>
+        <select id="borderColor">
+          <option value="black" selected>Preto</option>
+          <option value="white">Branco</option>
+          <option value="yellow">Amarelo</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="borderWidth">Espessura borda <span id="borderWidthValue">2</span></label>
+        <input id="borderWidth" type="range" min="0" max="6" value="2">
+      </div>
+      <div class="field">
+        <label for="fontScale">Tamanho <span id="fontScaleValue">100%</span></label>
+        <input id="fontScale" type="range" min="50" max="200" value="100">
+      </div>
+    </div>
+
+    <div class="studio-tab-panel" id="tab-frases" role="tabpanel">
+      <div class="field">
+        <label>Lista de frases (1 reel por frase)</label>
+        <div id="phrasesList" class="reels-phrases-list"></div>
+        <button type="button" class="btn btn-sm" id="addPhraseBtn" style="margin-top:8px">+ Adicionar frase</button>
+        <p class="muted studio-hint" style="margin-top:8px">Cada frase gera um reel. Mídias alternam automaticamente.</p>
+      </div>
+    </div>
+
+    <div class="studio-tab-panel" id="tab-marca" role="tabpanel">
+      <div class="field">
+        <label class="reels-check">
+          <input type="checkbox" id="watermarkEnabled" checked>
+          Mostrar marca d'água
+        </label>
+      </div>
+      <div class="field">
+        <label for="watermarkInput">Texto da marca</label>
+        <input id="watermarkInput" type="text" maxlength="60" value="@{{ user.username }}">
+      </div>
+    </div>
+  </section>
+
+  <aside class="studio-publish">
+    <h3 class="publish-title">Gerar Reels</h3>
+    <div class="publish-thumb" id="publishThumb">
+      <span class="publish-thumb-empty">Prévia FFmpeg</span>
+      <img id="publishThumbImg" alt="" hidden>
+    </div>
+    <button type="button" class="btn-studio secondary" id="previewButton">Prévia final</button>
+    <button type="button" class="btn-studio primary" id="renderOneButton">GERAR 1 REEL</button>
+    <button type="button" class="btn-studio schedule" id="renderBatchButton">GERAR TODOS (ZIP)</button>
+    <div class="status" id="status"></div>
+  </aside>
+</div>
+
+<dialog id="previewDialog">
+  <img id="finalPreview" alt="Prévia final">
+  <button type="button" class="btn-studio secondary" id="closePreview">Fechar</button>
+</dialog>
+{% endblock %}
+{% block scripts %}
+<script src="/static/reels-editor.js?v=1"></script>
+{% endblock %}

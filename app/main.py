@@ -36,6 +36,7 @@ from app.routes import (
     meta_apps,
     notifications,
     profile,
+    reels_editor,
 )
 from app.templating import templates
 from core.database import SessionLocal
@@ -299,6 +300,7 @@ def create_app() -> FastAPI:
     app.include_router(automations.router)
     app.include_router(aquecimento.router)
     app.include_router(camuflagem.router)
+    app.include_router(reels_editor.router)
     app.include_router(profile.router)
     app.include_router(admin.router)
     app.include_router(notifications.router)

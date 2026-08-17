@@ -1,0 +1,122 @@
+/* Editor de Reels — camada de texto arrastável (Story Studio + editor_reels) */
+.reels-editor-app .reels-canvas {
+  background: #000;
+}
+
+#reelVideo,
+#reelImage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.reels-editor-app.fit-contain #reelVideo,
+.reels-editor-app.fit-contain #reelImage {
+  object-fit: contain;
+}
+
+.reels-text-layer {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  transform-origin: center center;
+  max-width: 92%;
+  padding: 0.15em 0.35em;
+  cursor: grab;
+  z-index: 3;
+  text-align: center;
+  touch-action: none;
+  user-select: none;
+}
+
+.reels-text-layer:active {
+  cursor: grabbing;
+}
+
+.reels-text-layer.selected {
+  outline: 1px dashed rgba(201, 162, 39, 0.65);
+  outline-offset: 4px;
+}
+
+.reels-text-content {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: pre-wrap;
+  word-break: break-word;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.55);
+  -webkit-font-smoothing: antialiased;
+}
+
+.reels-text-layer .handle {
+  position: absolute;
+  right: -10px;
+  bottom: -10px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #c9a227;
+  border: 2px solid #0a0a0a;
+  cursor: nwse-resize;
+}
+
+.reels-phrases-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.reels-phrase-card {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+}
+
+.reels-phrase-card.active {
+  border-color: rgba(201, 162, 39, 0.55);
+  background: rgba(201, 162, 39, 0.08);
+}
+
+.reels-phrase-card pre {
+  margin: 0;
+  font-size: 12px;
+  white-space: pre-wrap;
+  color: #ddd;
+  font-family: inherit;
+}
+
+.reels-phrase-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.reels-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+@media (max-width: 1100px) {
+  .reels-editor-app.studio-app {
+    grid-template-columns: 1fr;
+    min-height: auto;
+  }
+  .studio-workspace {
+    border-right: none;
+    border-bottom: 1px solid rgba(201, 162, 39, 0.18);
+  }
+  .studio-publish {
+    border-top: 1px solid rgba(201, 162, 39, 0.18);
+  }
+}
