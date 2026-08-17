@@ -46,6 +46,8 @@ class User(Base):
     owner_private: Mapped[bool] = mapped_column(Boolean, default=False)
     # Libera conectar via Instagrapi (senha / sessionid / session.json). Owner sempre pode.
     allow_instagrapi: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Cobrança: trava o painel (popup) até o suporte liberar. Não é ban (ainda entra).
+    billing_blocked: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     # Incrementa no login e na troca de senha — 1 sessão ativa por conta.
     session_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")

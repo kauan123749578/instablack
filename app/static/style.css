@@ -1578,6 +1578,75 @@ input[type="checkbox"]:checked::after {
 .modal-card.twofa-modal--connecting #twofa-connecting {
   display: flex !important;
 }
+
+body.is-billing-locked {
+  overflow: hidden;
+}
+body.is-billing-locked .app,
+body.is-billing-locked .mobile-drawer,
+body.is-billing-locked .bottom-nav,
+body.is-billing-locked .view-as-banner {
+  pointer-events: none;
+  user-select: none;
+  filter: blur(4px);
+}
+.billing-lock-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(8px);
+}
+.billing-lock-card {
+  width: 100%;
+  max-width: 420px;
+  background: #0a0a0a;
+  border: 1px solid rgba(201, 162, 39, 0.35);
+  border-radius: 16px;
+  padding: 28px 24px 22px;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+}
+.billing-lock-icon {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 12px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(201, 162, 39, 0.12);
+  color: #c9a227;
+}
+.billing-lock-icon svg,
+.billing-lock-icon i {
+  width: 24px;
+  height: 24px;
+}
+.billing-lock-card h2 {
+  margin: 0 0 10px;
+  font-size: 22px;
+  color: #fff3c4;
+}
+.billing-lock-card p {
+  margin: 0 0 10px;
+  color: #d5d5d5;
+  font-size: 15px;
+  line-height: 1.45;
+}
+.billing-lock-hint {
+  font-size: 13px !important;
+  color: #9a9a9a !important;
+}
+.billing-lock-logout {
+  margin-top: 16px;
+}
+.billing-lock-logout .btn {
+  min-width: 160px;
+}
 .reconnect-modal-divider {
   display: flex; align-items: center; gap: 10px;
   color: var(--muted, #888); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;

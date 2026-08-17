@@ -1331,6 +1331,17 @@ def _execute_publish(
             account.last_error = auth_status_reason(recent_auth_failure)
             account_status = account.status
         owner_user_id = account.user_id
+        from app.utils.billing import is_panel_blocked
+        from models.models import User as _BillingUser
+
+        owner_row = db.get(_BillingUser, owner_user_id) if owner_user_id else None
+        if is_panel_blocked(owner_row):
+            log.info(
+                "publish skipped billing_blocked account=%s user=%s",
+                account_id,
+                owner_user_id,
+            )
+            return {"skipped": True, "reason": "billing_blocked"}
         username = account.username
         password = (
             decrypt_secret(account.encrypted_password)

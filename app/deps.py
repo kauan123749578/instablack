@@ -65,6 +65,24 @@ def get_auth_user(
             status_code=status.HTTP_303_SEE_OTHER,
             headers={"Location": "/login?reason=session"},
         )
+    from app.utils.billing import is_panel_blocked
+
+    if is_panel_blocked(user) and request.method in ("POST", "PUT", "PATCH", "DELETE"):
+        path = (request.url.path or "/").rstrip("/") or "/"
+        if path != "/logout":
+            accept = request.headers.get("accept", "")
+            msg = (
+                "Painel bloqueado: fale com o suporte para pagar a mensalidade "
+                "e liberar o acesso."
+            )
+            if "application/json" in accept or "fetch" in (
+                request.headers.get("x-requested-with") or ""
+            ).lower():
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=msg)
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=msg,
+            )
     return user
 
 

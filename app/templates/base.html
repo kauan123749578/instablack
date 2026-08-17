@@ -10,19 +10,20 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <meta name="theme-color" content="#C9A227" />
   <meta name="csrf-token" content="{{ request.session.get('csrf_token', '') }}" />
-  <meta name="ib-app-v" content="102" />
+  <meta name="ib-app-v" content="103" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="mobile-web-app-capable" content="yes" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bricolage+Grotesque:wght@600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=62" />
+  <link rel="stylesheet" href="/static/style.css?v=63" />
   <link rel="stylesheet" href="/static/dashboard.css?v=56" />
   {% block head %}{% endblock %}
 </head>
-<body class="app-body premium-app{% if request.state.view_as_active %} is-view-as{% endif %}">
-  {% set nav_auth = request.state.auth_user if request.state.view_as_active and request.state.auth_user else user %}
+{% set nav_auth = request.state.auth_user if request.state.view_as_active and request.state.auth_user else user %}
+{% set _billing_user = nav_auth %}
+<body class="app-body premium-app{% if request.state.view_as_active %} is-view-as{% endif %}{% if _billing_user and _billing_user.billing_blocked and not _billing_user.is_owner %} is-billing-locked{% endif %}">
   <div class="ambient-grid"></div>
 
   {% if request.state.view_as_active %}
@@ -333,8 +334,30 @@
     </div>
   </div>
 
+  {% if _billing_user and _billing_user.billing_blocked and not _billing_user.is_owner %}
+  <div class="billing-lock-overlay" role="dialog" aria-modal="true" aria-labelledby="billing-lock-title">
+    <div class="billing-lock-card">
+      <div class="billing-lock-icon" aria-hidden="true">
+        <i data-lucide="lock"></i>
+      </div>
+      <h2 id="billing-lock-title">Painel bloqueado</h2>
+      <p>
+        Sua mensalidade está pendente. O acesso ao Instablack foi pausado.
+      </p>
+      <p class="billing-lock-hint">
+        Fale com o <strong>suporte</strong> para pagar e liberar o painel de novo.
+        Enquanto isso, automações e publicações também ficam pausadas.
+      </p>
+      <form action="/logout" method="post" class="billing-lock-logout">
+        <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
+        <button type="submit" class="btn">Sair da conta</button>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+
   <script src="https://cdn.jsdelivr.net/npm/lucide@0.475.0/dist/umd/lucide.min.js" crossorigin="anonymous"></script>
-  <script src="/static/app.js?v=100"></script>
+  <script src="/static/app.js?v=101"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

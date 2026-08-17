@@ -93,6 +93,13 @@ def get_extension_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token inválido ou revogado. Gere um novo no painel.",
         )
+    from app.utils.billing import is_panel_blocked
+
+    if is_panel_blocked(user):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Painel bloqueado: fale com o suporte para pagar a mensalidade.",
+        )
     return user
 
 

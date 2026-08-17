@@ -525,6 +525,31 @@ def toggle_user_instagrapi(
     )
 
 
+@router.post("/users/{user_id}/toggle-billing")
+def toggle_user_billing(
+    user_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_owner_user),
+):
+    """Trava/libera o painel para cobrança de mensalidade. Só o dono."""
+    target = db.get(User, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    if target.id == admin.id or _is_owner(target):
+        return RedirectResponse(
+            "/admin?error=billing_self",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    if not _admin_can_see(admin, target):
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    target.billing_blocked = not bool(getattr(target, "billing_blocked", False))
+    db.commit()
+    return RedirectResponse(
+        "/admin?ok=billing_on" if target.billing_blocked else "/admin?ok=billing_off",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
 @router.post("/instagrapi/revoke-all")
 def revoke_all_instagrapi(
     db: Session = Depends(get_db),
