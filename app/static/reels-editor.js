@@ -227,6 +227,12 @@
     if ($("phrasesCountHint")) {
       $("phrasesCountHint").textContent = `(${phrases.length})`;
     }
+    if ($("exportHint")) {
+      $("exportHint").textContent =
+        phrases.length > 1
+          ? `${phrases.length} frases · mesmo vídeo`
+          : "Mesmo vídeo · uma frase por reel";
+    }
     box.innerHTML = phrases
       .map((p, idx) => {
         const emCount = Array.isArray(p.emojis) && p.emojis.length ? ` · ${p.emojis.length} emoji(s)` : "";
@@ -431,6 +437,18 @@
 
   ["textColor", "borderColor"].forEach((id) => {
     $(id).addEventListener("change", updateTextLayer);
+  });
+
+  document.querySelectorAll(".reels-swatches").forEach((group) => {
+    group.addEventListener("click", (event) => {
+      const btn = event.target.closest("button[data-val]");
+      if (!btn) return;
+      const target = $(group.dataset.for);
+      if (!target) return;
+      target.value = btn.dataset.val;
+      group.querySelectorAll("button").forEach((b) => b.classList.toggle("is-on", b === btn));
+      target.dispatchEvent(new Event("change"));
+    });
   });
   $("borderWidth").addEventListener("input", updateTextLayer);
   $("fontScale").addEventListener("input", (e) => {

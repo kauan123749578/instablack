@@ -1,7 +1,7 @@
-/* Editor de Reels — layout 2 colunas, compacto e mobile */
+/* Editor de Reels — atelier cinematográfico (não herda o card genérico) */
 
 .shark-content:has(.reels-editor-app) {
-  padding: 12px 16px 16px;
+  padding: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -9,25 +9,176 @@
 
 .reels-editor-app.studio-app {
   display: grid;
-  grid-template-columns: minmax(240px, 38%) minmax(0, 1fr);
+  grid-template-columns: minmax(280px, 1.05fr) minmax(340px, 420px);
   width: 100%;
   flex: 1 1 auto;
   min-height: 0;
   height: 100%;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: hidden;
+  background: #050505;
 }
 
 .reels-editor-app .studio-workspace {
+  position: relative;
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
   min-height: 0;
-  padding: 16px 12px;
+  padding: 28px 24px 20px;
+  border-right: 0;
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 18%, rgba(201, 162, 39, 0.16), transparent 58%),
+    radial-gradient(ellipse 50% 40% at 80% 90%, rgba(80, 50, 10, 0.22), transparent 50%),
+    linear-gradient(180deg, #0b0b0c 0%, #050505 100%);
 }
 
-.reels-editor-app .phone-shell {
-  width: min(100%, 320px);
-  max-height: min(72vh, 680px);
+.reels-stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  z-index: 1;
+}
+
+.reels-stage-orbs {
+  pointer-events: none;
+  position: absolute;
+  inset: -18% -30% auto;
+  height: 70%;
+  background:
+    radial-gradient(circle at 30% 40%, rgba(232, 212, 139, 0.18), transparent 42%),
+    radial-gradient(circle at 70% 60%, rgba(201, 162, 39, 0.1), transparent 46%);
+  filter: blur(18px);
+  animation: reelsOrb 8s ease-in-out infinite alternate;
+}
+
+@keyframes reelsOrb {
+  from { transform: translate3d(-8px, 0, 0) scale(1); }
+  to { transform: translate3d(10px, 12px, 0) scale(1.06); }
+}
+
+.reels-stage-meta {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.reels-chip {
+  font-family: var(--font-display), sans-serif;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  font-weight: 700;
+  color: #f5e08a;
+  border: 1px solid rgba(201, 162, 39, 0.35);
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(10px);
+}
+
+.reels-chip-dim {
+  color: #9aa0aa;
+  letter-spacing: 0.12em;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.reels-chip-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #fca5a5;
+  border-color: rgba(248, 113, 113, 0.35);
+}
+
+.reels-chip-live span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 8px #ef4444;
+  animation: reelsPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes reelsPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.reels-editor-app .phone-shell,
+.reels-phone {
+  width: min(100%, 300px);
+  aspect-ratio: 9 / 16;
+  max-height: min(68vh, 640px);
+  padding: 11px 10px 14px;
+  border-radius: 32px;
+  background:
+    linear-gradient(160deg, #2a2a2e 0%, #0d0d0f 42%, #070708 100%);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 0 0 8px rgba(0, 0, 0, 0.55),
+    0 30px 80px rgba(0, 0, 0, 0.65),
+    0 0 80px rgba(201, 162, 39, 0.12);
+  position: relative;
+}
+
+.reels-phone-notch {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  width: 86px;
+  height: 10px;
+  transform: translateX(-50%);
+  background: #050505;
+  border-radius: 999px;
+  z-index: 6;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.reels-phone-home {
+  position: absolute;
+  bottom: 7px;
+  left: 50%;
+  width: 78px;
+  height: 4px;
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+}
+
+.reels-editor-app .reels-canvas {
+  background: #000;
+  border-radius: 22px;
+}
+
+.reels-empty-mark {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  margin: 0 auto 8px;
+  border-radius: 50%;
+  border: 1px dashed rgba(201, 162, 39, 0.5);
+  color: #e8d48b;
+  font-size: 22px;
+}
+
+.reels-editor-app .empty-state {
+  color: #c9b87a;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.reels-canvas-hint {
+  margin: 16px 0 0;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6b7280;
+  text-align: center;
 }
 
 .reels-side {
@@ -35,8 +186,33 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  border-left: 1px solid rgba(201, 162, 39, 0.18);
-  background: linear-gradient(180deg, rgba(201, 162, 39, 0.06) 0%, #0e1219 40%);
+  background:
+    linear-gradient(180deg, rgba(18, 16, 12, 0.92), rgba(8, 8, 10, 0.98));
+  border-left: 1px solid rgba(201, 162, 39, 0.14);
+  box-shadow: -24px 0 60px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(18px);
+}
+
+.reels-side-head {
+  padding: 22px 22px 8px;
+  flex-shrink: 0;
+}
+
+.reels-kicker {
+  margin: 0 0 4px;
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: #c9a227;
+}
+
+.reels-side-head h2 {
+  margin: 0;
+  font-family: var(--font-display), sans-serif;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: #f7f3ea;
 }
 
 .reels-editor-app .studio-editor {
@@ -46,26 +222,57 @@
   display: flex;
   flex-direction: column;
   border-right: 0;
-  padding: 14px 16px 8px;
+  padding: 8px 22px 8px;
   background: transparent;
 }
 
-.reels-editor-app .studio-tabs {
+.reels-tabs.studio-tabs {
   flex-shrink: 0;
   flex-wrap: nowrap;
   overflow-x: auto;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
+  padding: 0;
+  gap: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   scrollbar-width: none;
 }
 
-.reels-editor-app .studio-tabs::-webkit-scrollbar {
-  display: none;
-}
+.reels-tabs::-webkit-scrollbar { display: none; }
 
 .reels-editor-app .studio-tab {
-  flex: 1 0 auto;
-  padding: 8px 10px;
-  white-space: nowrap;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 12px 12px;
+  border-radius: 0;
+  background: transparent;
+  color: #8b9099;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: none;
+  border-bottom: 2px solid transparent;
+}
+
+.reels-editor-app .studio-tab i,
+.reels-editor-app .studio-tab svg {
+  width: 14px;
+  height: 14px;
+}
+
+.reels-editor-app .studio-tab:hover {
+  color: #eee;
+  background: transparent;
+}
+
+.reels-editor-app .studio-tab.active {
+  color: #f5e08a;
+  background: transparent;
+  box-shadow: none;
+  border-bottom-color: #c9a227;
 }
 
 .reels-editor-app .studio-tab-panel {
@@ -76,37 +283,116 @@
   padding-right: 4px;
 }
 
-.reels-editor-app .studio-tab-panel.active {
-  display: block;
+.reels-editor-app .studio-tab-panel.active { display: block; }
+
+.reels-editor-app .studio-editor .field { margin-bottom: 14px; }
+
+.reels-editor-app .studio-editor label {
+  color: #b7b3a8;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 600;
 }
 
-.reels-editor-app .studio-editor .field {
-  margin-bottom: 10px;
-}
-
+.reels-editor-app .studio-editor input,
+.reels-editor-app .studio-editor select,
 .reels-editor-app .studio-editor textarea {
   width: 100%;
-  border: 1px solid rgba(201, 162, 39, 0.22);
-  border-radius: 11px;
-  padding: 10px 12px;
-  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+  padding: 11px 12px;
+  background: rgba(255, 255, 255, 0.03);
   color: #f7f8fa;
   outline: none;
   font: inherit;
   box-sizing: border-box;
+}
+
+.reels-editor-app .studio-editor textarea {
   resize: vertical;
-  min-height: 72px;
+  min-height: 76px;
+  line-height: 1.45;
+}
+
+.reels-editor-app .studio-editor input:focus,
+.reels-editor-app .studio-editor select:focus,
+.reels-editor-app .studio-editor textarea:focus {
+  border-color: rgba(201, 162, 39, 0.55);
+  box-shadow: 0 0 0 3px rgba(201, 162, 39, 0.12);
+}
+
+.reels-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
 }
 
 .reels-field-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: 12px;
 }
 
-.reels-editor-app .reels-canvas {
-  background: #000;
+.reels-drop.file-drop {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 22px 14px;
+  border-radius: 16px;
+  border: 1px dashed rgba(201, 162, 39, 0.28);
+  background:
+    radial-gradient(ellipse at top, rgba(201, 162, 39, 0.1), transparent 60%),
+    rgba(0, 0, 0, 0.25);
+  color: #d9d3c5;
 }
+
+.reels-drop svg {
+  width: 22px;
+  height: 22px;
+  color: #e8d48b;
+}
+
+.reels-drop strong { font-size: 13px; font-weight: 650; color: #f4efe4; }
+.reels-drop small { font-size: 11px; color: #8b8680; }
+.reels-drop-sm { padding: 16px 12px; }
+
+.reels-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.reels-swatches button {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  background: var(--sw);
+  cursor: pointer;
+  padding: 0;
+}
+
+.reels-swatches button.is-on {
+  border-color: #f5e08a;
+  box-shadow: 0 0 0 3px rgba(201, 162, 39, 0.28);
+}
+
+.reels-mini-btn {
+  margin-top: 8px;
+  border: 1px solid rgba(201, 162, 39, 0.28);
+  background: transparent;
+  color: #e8d48b;
+  border-radius: 999px;
+  padding: 7px 12px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.reels-mini-btn:hover { background: rgba(201, 162, 39, 0.1); }
 
 #reelVideo,
 #reelImage {
@@ -128,7 +414,6 @@
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  transform-origin: center center;
   max-width: 92%;
   padding: 0.15em 0.35em;
   cursor: grab;
@@ -138,9 +423,7 @@
   user-select: none;
 }
 
-.reels-text-layer:active {
-  cursor: grabbing;
-}
+.reels-text-layer:active { cursor: grabbing; }
 
 .reels-text-layer.selected {
   outline: 1px dashed rgba(201, 162, 39, 0.65);
@@ -155,7 +438,6 @@
   white-space: pre-wrap;
   word-break: break-word;
   text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.55);
-  -webkit-font-smoothing: antialiased;
 }
 
 .reels-text-layer .handle {
@@ -179,15 +461,15 @@
 }
 
 .reels-phrase-card {
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
-  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 9px 11px;
   background: rgba(255, 255, 255, 0.03);
   cursor: pointer;
 }
 
 .reels-phrase-card.active {
-  border-color: rgba(201, 162, 39, 0.55);
+  border-color: rgba(201, 162, 39, 0.5);
   background: rgba(201, 162, 39, 0.08);
 }
 
@@ -230,10 +512,6 @@
   background: rgba(201, 162, 39, 0.12);
 }
 
-.reels-watermark-layer:active {
-  cursor: grabbing;
-}
-
 .reels-emoji-row {
   display: flex;
   justify-content: center;
@@ -250,19 +528,18 @@
 
 .reels-emoji-picker {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(36px, 1fr));
-  gap: 5px;
+  grid-template-columns: repeat(auto-fill, minmax(38px, 1fr));
+  gap: 6px;
 }
 
 .reels-emoji-picker button {
   width: 100%;
   aspect-ratio: 1;
-  max-width: 40px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.04);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.03);
   cursor: pointer;
-  padding: 3px;
+  padding: 4px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -276,7 +553,7 @@
 }
 
 .reels-emoji-picker button:hover {
-  border-color: rgba(201, 162, 39, 0.55);
+  border-color: rgba(201, 162, 39, 0.45);
   background: rgba(201, 162, 39, 0.1);
 }
 
@@ -308,125 +585,140 @@
   padding: 0;
 }
 
-.reels-canvas-hint {
-  text-align: center;
-  margin: 8px 0 0;
-  font-size: 12px;
-}
-
 .reels-check {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
+  font-size: 13px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #eee !important;
 }
 
-.reels-editor-app .studio-publish {
+.reels-export.studio-publish {
   flex-shrink: 0;
-  padding: 10px 16px 14px;
-  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.35));
-  border-top: 1px solid rgba(201, 162, 39, 0.18);
+  padding: 14px 22px 18px;
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.45));
+  border-top: 1px solid rgba(201, 162, 39, 0.14);
+}
+
+.reels-export-copy {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+  gap: 12px;
+}
+
+.reels-export-copy span {
+  font-family: var(--font-display), sans-serif;
+  font-size: 13px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #e8d48b;
+}
+
+.reels-export-copy small {
+  color: #7b7780;
+  font-size: 11px;
 }
 
 .reels-publish-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 0.85fr 1.15fr;
   gap: 8px;
 }
 
-.reels-editor-app .btn-studio {
-  margin: 0;
+.reels-btn {
+  width: 100%;
+  border: 0;
+  border-radius: 12px;
+  padding: 12px 14px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
 }
 
-.reels-editor-app .btn-studio.primary {
-  margin-top: 0;
+.reels-btn:disabled { opacity: 0.5; cursor: wait; }
+
+.reels-btn-ghost {
+  color: #e8e2d6;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.reels-editor-app #addPhraseBtn,
-.reels-editor-app #clearAudioBtn {
+.reels-btn-gold {
+  color: #1a1408;
+  background: linear-gradient(135deg, #f5e08a, #c9a227 60%, #8b6914);
+  box-shadow: 0 10px 28px rgba(201, 162, 39, 0.28);
+}
+
+.reels-editor-app .studio-publish .status {
+  min-height: 16px;
   margin-top: 8px;
+  font-size: 12px;
 }
 
 @media (max-width: 1100px) {
   .shark-content:has(.reels-editor-app) {
-    padding: 10px 12px 80px;
     overflow-y: auto;
+    padding: 0 0 80px;
   }
 
   .reels-editor-app.studio-app {
     grid-template-columns: 1fr;
     height: auto;
-    min-height: 0;
   }
 
   .reels-editor-app .studio-workspace {
-    border-right: none;
-    border-bottom: 1px solid rgba(201, 162, 39, 0.18);
-    padding: 12px 10px 8px;
+    padding: 18px 12px 10px;
   }
 
-  .reels-editor-app .phone-shell {
-    width: min(52vw, 280px);
-    max-height: 48vh;
+  .reels-phone {
+    width: min(52vw, 260px);
+    max-height: 46vh;
   }
 
   .reels-side {
     border-left: 0;
+    box-shadow: none;
   }
 
-  .reels-editor-app .studio-editor {
-    max-height: none;
-    overflow: visible;
-  }
-
+  .reels-editor-app .studio-editor,
   .reels-editor-app .studio-tab-panel.active {
     overflow: visible;
-  }
-
-  .reels-phrases-list {
-    max-height: 180px;
   }
 }
 
 @media (max-width: 768px) {
-  .reels-editor-app .phone-shell {
-    width: min(58vw, 240px);
-    max-height: 42vh;
+  .reels-phone {
+    width: min(58vw, 230px);
+    max-height: 40vh;
   }
 
-  .reels-field-row {
-    grid-template-columns: 1fr;
-  }
-
+  .reels-field-row,
   .reels-publish-actions {
     grid-template-columns: 1fr;
   }
 
-  .reels-editor-app .studio-publish {
+  .reels-side-head h2 { font-size: 22px; }
+
+  .reels-export.studio-publish {
     position: sticky;
     bottom: 64px;
     z-index: 8;
     background: rgba(8, 8, 10, 0.96);
-    backdrop-filter: blur(10px);
+    backdrop-filter: blur(12px);
   }
 
-  .reels-editor-app .studio-tab {
-    font-size: 11px;
-    padding: 8px 9px;
-  }
-
-  .reels-emoji-picker {
-    grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
-  }
-
-  .reels-emoji-picker button {
-    max-width: none;
-  }
+  .reels-editor-app .studio-tab span { display: none; }
+  .reels-editor-app .studio-tab { padding: 10px 14px 12px; }
 }
 
 @media (max-width: 480px) {
-  .reels-editor-app .phone-shell {
-    width: min(70vw, 220px);
-    max-height: 38vh;
+  .reels-phone {
+    width: min(68vw, 210px);
+    max-height: 36vh;
   }
 }
