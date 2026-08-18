@@ -2,18 +2,12 @@
 {% block title %}Editor de Reels{% endblock %}
 {% block head %}
 <link rel="stylesheet" href="/static/story-studio.css?v=7" />
-<link rel="stylesheet" href="/static/reels-editor.css?v=5" />
+<link rel="stylesheet" href="/static/reels-editor.css?v=6" />
 {% endblock %}
 {% block content %}
 <div class="studio-app reels-editor-app" id="reelsShell">
   <section class="studio-workspace">
     <div class="reels-stage">
-      <div class="reels-stage-orbs" aria-hidden="true"></div>
-      <div class="reels-stage-meta">
-        <span class="reels-chip">ATELIER</span>
-        <span class="reels-chip reels-chip-dim">9:16</span>
-        <span class="reels-chip reels-chip-live"><span></span> PREVIEW</span>
-      </div>
       <div class="phone-shell reels-phone">
         <span class="reels-phone-notch" aria-hidden="true"></span>
         <div class="story-canvas reels-canvas" id="canvas">
@@ -21,7 +15,7 @@
           <img id="reelImage" alt="" hidden>
           <div class="empty-state" id="emptyState">
             <span class="reels-empty-mark">+</span>
-            Solte o vídeo aqui
+            Solte vídeo ou foto
           </div>
           <div class="reels-text-layer selected" id="textLayer" hidden>
             <pre class="reels-text-content" id="textPreview"></pre>
@@ -34,14 +28,13 @@
         </div>
         <span class="reels-phone-home" aria-hidden="true"></span>
       </div>
-      <p class="reels-canvas-hint">Arraste o texto e a marca d’água no celular</p>
     </div>
   </section>
 
   <div class="reels-side">
     <header class="reels-side-head">
-      <p class="reels-kicker">Instablack · Studio</p>
       <h2>Editor de Reels</h2>
+      <p class="reels-side-sub">Arraste texto e marca no preview</p>
     </header>
 
     <section class="studio-editor">
@@ -59,8 +52,8 @@
           <label class="file-drop reels-drop">
             <input id="mediaInput" type="file" accept="video/mp4,video/quicktime,video/webm,image/jpeg,image/png,image/webp" hidden>
             <i data-lucide="upload-cloud"></i>
-            <strong id="fileDropLabel">Solte o vídeo ou foto</strong>
-            <small>MP4, MOV, JPG, PNG · um arquivo</small>
+            <strong id="fileDropLabel">Vídeo ou foto</strong>
+            <small>MP4 · MOV · JPG · PNG</small>
           </label>
           <p class="muted studio-hint" id="mediaNameHint"></p>
         </div>
@@ -68,17 +61,17 @@
           <div class="field">
             <label for="fitInput">Enquadramento</label>
             <select id="fitInput">
-              <option value="cover">Preencher (crop)</option>
-              <option value="contain">Inteiro (letterbox)</option>
+              <option value="cover">Crop</option>
+              <option value="contain">Inteiro</option>
             </select>
           </div>
           <div class="field">
-            <label for="photoDuration">Foto · seg</label>
+            <label for="photoDuration">Foto · s</label>
             <input id="photoDuration" type="number" min="1" max="60" value="8">
           </div>
         </div>
         <div class="field">
-          <label for="videoDuration">Corte máx. do vídeo · seg</label>
+          <label for="videoDuration">Vídeo máx · s</label>
           <input id="videoDuration" type="number" min="1" max="60" value="60">
         </div>
       </div>
@@ -86,7 +79,7 @@
       <div class="studio-tab-panel" id="tab-texto" role="tabpanel">
         <div class="field">
           <label for="phraseInput">Frase ativa</label>
-          <textarea id="phraseInput" rows="3" placeholder="Escreva o texto&#10;quebra de linha ok"></textarea>
+          <textarea id="phraseInput" rows="3" placeholder="Texto do reel"></textarea>
         </div>
         <div class="field">
           <label>Emojis iOS</label>
@@ -95,14 +88,14 @@
         </div>
         <div class="reels-field-row">
           <div class="field">
-            <label>Cor do texto</label>
+            <label>Texto</label>
             <div class="reels-swatches" data-for="textColor">
-              <button type="button" data-val="white" class="is-on" style="--sw:#f6f6f6" title="Branco"></button>
-              <button type="button" data-val="yellow" style="--sw:#f5d76e" title="Amarelo"></button>
-              <button type="button" data-val="black" style="--sw:#111" title="Preto"></button>
-              <button type="button" data-val="red" style="--sw:#e11d48" title="Vermelho"></button>
-              <button type="button" data-val="0x00FFFF" style="--sw:#22d3ee" title="Ciano"></button>
-              <button type="button" data-val="0xFF69B4" style="--sw:#fb7185" title="Rosa"></button>
+              <button type="button" data-val="white" class="is-on" style="--sw:#f6f6f6"></button>
+              <button type="button" data-val="yellow" style="--sw:#f5d76e"></button>
+              <button type="button" data-val="black" style="--sw:#111"></button>
+              <button type="button" data-val="red" style="--sw:#e11d48"></button>
+              <button type="button" data-val="0x00FFFF" style="--sw:#22d3ee"></button>
+              <button type="button" data-val="0xFF69B4" style="--sw:#fb7185"></button>
             </div>
             <select id="textColor" class="reels-sr">
               <option value="white" selected>Branco</option>
@@ -116,9 +109,9 @@
           <div class="field">
             <label>Borda</label>
             <div class="reels-swatches" data-for="borderColor">
-              <button type="button" data-val="black" class="is-on" style="--sw:#111" title="Preto"></button>
-              <button type="button" data-val="white" style="--sw:#f6f6f6" title="Branco"></button>
-              <button type="button" data-val="yellow" style="--sw:#f5d76e" title="Amarelo"></button>
+              <button type="button" data-val="black" class="is-on" style="--sw:#111"></button>
+              <button type="button" data-val="white" style="--sw:#f6f6f6"></button>
+              <button type="button" data-val="yellow" style="--sw:#f5d76e"></button>
             </div>
             <select id="borderColor" class="reels-sr">
               <option value="black" selected>Preto</option>
@@ -129,11 +122,11 @@
         </div>
         <div class="reels-field-row">
           <div class="field">
-            <label for="borderWidth">Espessura <span id="borderWidthValue">2</span></label>
+            <label for="borderWidth">Borda <span id="borderWidthValue">2</span></label>
             <input id="borderWidth" type="range" min="0" max="6" value="2">
           </div>
           <div class="field">
-            <label for="fontScale">Escala <span id="fontScaleValue">100%</span></label>
+            <label for="fontScale">Tamanho <span id="fontScaleValue">100%</span></label>
             <input id="fontScale" type="range" min="50" max="200" value="100">
           </div>
         </div>
@@ -141,16 +134,15 @@
 
       <div class="studio-tab-panel" id="tab-frases" role="tabpanel">
         <div class="field">
-          <label for="phrasesTxtInput">Lote de frases</label>
+          <label for="phrasesTxtInput">Importar .txt</label>
           <label class="file-drop reels-drop reels-drop-sm">
             <input id="phrasesTxtInput" type="file" accept=".txt,text/plain" hidden>
             <i data-lucide="file-text"></i>
-            <strong id="phrasesTxtLabel">Importar .txt</strong>
-            <small>Uma frase por linha</small>
+            <strong id="phrasesTxtLabel">Uma frase por linha</strong>
           </label>
         </div>
         <div class="field">
-          <label>Fila <span class="muted" id="phrasesCountHint"></span></label>
+          <label>Frases <span class="muted" id="phrasesCountHint"></span></label>
           <div id="phrasesList" class="reels-phrases-list"></div>
           <button type="button" class="reels-mini-btn" id="addPhraseBtn">+ Nova frase</button>
         </div>
@@ -158,14 +150,13 @@
 
       <div class="studio-tab-panel" id="tab-audio" role="tabpanel">
         <div class="field">
-          <label for="audioInput">Trilha</label>
+          <label for="audioInput">Música</label>
           <label class="file-drop reels-drop reels-drop-sm">
             <input id="audioInput" type="file" accept="audio/mpeg,audio/mp4,audio/aac,audio/wav,audio/ogg" hidden>
             <i data-lucide="audio-lines"></i>
-            <strong id="audioDropLabel">MP3 / M4A opcional</strong>
-            <small>Substitui ou mistura com o vídeo</small>
+            <strong id="audioDropLabel">MP3 / M4A</strong>
           </label>
-          <button type="button" class="reels-mini-btn" id="clearAudioBtn" hidden>Remover trilha</button>
+          <button type="button" class="reels-mini-btn" id="clearAudioBtn" hidden>Remover</button>
         </div>
         <div class="reels-field-row">
           <div class="field">
@@ -176,7 +167,7 @@
             </select>
           </div>
           <div class="field">
-            <label for="audioVolume">Volume <span id="audioVolumeValue">100%</span></label>
+            <label for="audioVolume">Vol. <span id="audioVolumeValue">100%</span></label>
             <input id="audioVolume" type="range" min="20" max="200" value="100">
           </div>
         </div>
@@ -186,22 +177,17 @@
         <div class="field">
           <label class="reels-check">
             <input type="checkbox" id="watermarkEnabled" checked>
-            Mostrar marca d’água
+            Marca d’água
           </label>
         </div>
         <div class="field">
-          <label for="watermarkInput">Handle</label>
+          <label for="watermarkInput">Texto</label>
           <input id="watermarkInput" type="text" maxlength="60" value="@{{ user.username }}">
         </div>
-        <p class="muted studio-hint">Arraste no celular para posicionar.</p>
       </div>
     </section>
 
     <aside class="studio-publish reels-export">
-      <div class="reels-export-copy">
-        <span>Exportar</span>
-        <small id="exportHint">Mesmo vídeo · uma frase por reel</small>
-      </div>
       <div class="reels-publish-actions">
         <button type="button" class="reels-btn reels-btn-ghost" id="renderOneButton">Gerar 1</button>
         <button type="button" class="reels-btn reels-btn-gold" id="renderBatchButton">Gerar todos · ZIP</button>
