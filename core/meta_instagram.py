@@ -95,10 +95,28 @@ def _mock_meta_http(method: str, url: str, **kwargs) -> requests.Response:
     lower = path.lower()
     payload: dict = {"id": "mock_media_1"}
 
-    if "/media_publish" in lower or lower.endswith("/media_publish"):
+    if method.upper() == "DELETE":
+        payload = {"success": True}
+    elif "/media_publish" in lower or lower.endswith("/media_publish"):
         payload = {"id": f"mock_published_{int(time.time())}"}
     elif re.search(r"/media/?$", lower) or "/media?" in (url.lower()):
-        payload = {"id": f"mock_container_{int(time.time())}"}
+        if method.upper() == "GET":
+            payload = {
+                "data": [
+                    {
+                        "id": "mock_reel_1",
+                        "caption": "Reel mock",
+                        "media_type": "VIDEO",
+                        "media_product_type": "REELS",
+                        "timestamp": "2026-08-18T00:00:00+0000",
+                        "permalink": "https://www.instagram.com/reel/MOCK/",
+                        "thumbnail_url": "https://via.placeholder.com/240x420",
+                    }
+                ],
+                "paging": {},
+            }
+        else:
+            payload = {"id": f"mock_container_{int(time.time())}"}
     elif "status_code" in (kwargs.get("params") or {}) or "/?" in url:
         # container status poll
         if re.search(r"/\d+", path) or "mock_container" in path:
@@ -296,6 +314,131 @@ def delete_media(access_token: str, media_id: str, *, rounds: int = 4) -> bool:
                     exc,
                 )
     return False
+
+
+def _is_reel_media(item: dict) -> bool:
+    product = str(item.get("media_product_type") or "").upper()
+    media_type = str(item.get("media_type") or "").upper()
+    if product in ("STORY", "AD"):
+        return False
+    if product == "REELS":
+        return True
+    return media_type == "VIDEO"
+
+
+def list_ig_reels(
+    access_token: str,
+    ig_user_id: str,
+    *,
+    after: str | None = None,
+    limit: int = 24,
+    proxy: str | None = None,
+) -> dict:
+    """Lista Reels da conta via Graph API. Devolve items + cursor `after`."""
+    want = max(1, min(int(limit or 24), 40))
+    items: list[dict] = []
+    next_after: str | None = (after or "").strip() or None
+    with meta_proxy_scope(proxy):
+        for _ in range(4):
+            params = {
+                "fields": (
+                    "id,caption,media_type,media_product_type,timestamp,"
+                    "permalink,thumbnail_url,media_url,shortcode"
+                ),
+                "limit": 50,
+                "access_token": access_token,
+            }
+            if next_after:
+                params["after"] = next_after
+            response = _http(
+                "GET",
+                _graph_url(f"{ig_user_id}/media"),
+                params=params,
+                timeout=45,
+            )
+            payload = _json_or_error(response, "Falha ao listar mídias da conta")
+            for raw in payload.get("data") or []:
+                if not isinstance(raw, dict) or not _is_reel_media(raw):
+                    continue
+                mid = str(raw.get("id") or "").strip()
+                if not mid:
+                    continue
+                caption = str(raw.get("caption") or "").strip()
+                items.append(
+                    {
+                        "id": mid,
+                        "caption": caption[:160],
+                        "timestamp": str(raw.get("timestamp") or ""),
+                        "permalink": str(raw.get("permalink") or ""),
+                        "thumb": str(raw.get("thumbnail_url") or raw.get("media_url") or ""),
+                        "product": str(
+                            raw.get("media_product_type") or raw.get("media_type") or "REELS"
+                        ),
+                    }
+                )
+                if len(items) >= want:
+                    break
+            paging = payload.get("paging") if isinstance(payload.get("paging"), dict) else {}
+            next_after = str((paging.get("cursors") or {}).get("after") or "").strip() or None
+            if len(items) >= want or not next_after:
+                break
+    return {"items": items[:want], "after": next_after}
+
+
+def try_delete_media(
+    access_token: str,
+    media_id: str,
+    *,
+    proxy: str | None = None,
+) -> tuple[bool, str]:
+    """Apaga mídia já publicada (uso no painel). Sem espera longa de Reel recém-postado."""
+    if not media_id:
+        return False, "ID da mídia ausente."
+    url = _graph_url(media_id)
+    last_err = "A Meta não confirmou a exclusão."
+    with meta_proxy_scope(proxy):
+        for round_i in range(2):
+            if round_i:
+                time.sleep(4.0)
+            try:
+                response = _http(
+                    "DELETE",
+                    url,
+                    params={"access_token": access_token},
+                    timeout=30,
+                )
+                try:
+                    data = response.json() if response.content else {}
+                except ValueError:
+                    data = {}
+                if response.ok and (
+                    data.get("success") is True
+                    or (isinstance(data, dict) and not data.get("error"))
+                ):
+                    return True, "Apagado."
+                error = data.get("error") if isinstance(data, dict) else {}
+                msg = ""
+                code = None
+                if isinstance(error, dict):
+                    msg = str(error.get("message") or error.get("error_user_msg") or "")
+                    code = error.get("code")
+                last_err = msg or f"HTTP {response.status_code}"
+                if code in (100, 33) and round_i == 0:
+                    continue
+                if code in (10, 200) or "permission" in last_err.lower():
+                    return (
+                        False,
+                        "Sem permissão para apagar. A Meta só deixa remover mídia que este app publicou. "
+                        "Reconecte a conta concedendo publicação de conteúdo.",
+                    )
+                break
+            except MetaInstagramError as exc:
+                last_err = str(exc)
+                break
+            except Exception as exc:
+                last_err = str(exc)[:200]
+                break
+    return False, last_err[:240]
 
 
 def fetch_media_caption(access_token: str, media_id: str) -> str | None:

@@ -201,6 +201,6 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 | 2026-08-13 | fix | PleaseWait/429 no legado → **CAA `_try_caa_login`** de novo (AGENT_MEMORY 3.3): sem isso o web não pedia 2FA. Redeploy **web**. |
 | 2026-08-14 | fix | Connect instagrapi: Phantom **só TLS/headers**; `login()` volta ao oficial (não LoginFlow). Stock Client no connect = 429. Redeploy **web**. |
 | 2026-08-14 | perf | Connect mais rápido: 1× ipify, delay [1,2], CAA-first (sem esperar 429 no legado). Redeploy **web**. |
-| 2026-08-18 | feat | Admin: KPI com total de usuários da plataforma. Automações: cards premium. Contas conectadas: pastas (criar/renomear/excluir + arrastar conta). Criar automação seleciona pasta. Redeploy **web**. |
+| 2026-08-18 | feat | **Apagar Reels** (API oficial): lista mídia Graph e deleta um a um com confirmação. Meta só remove o que o app publicou. Redeploy **web**. |
 
 <!-- Ao corrigir bugs de produção: acrescente uma linha acima e, se for armadilha nova, uma subseção em "O que já quebrou". -->

@@ -240,6 +240,7 @@
         appContent.innerHTML = newContent.innerHTML;
         delete document.body.dataset.pageAccountsConnected;
         delete document.body.dataset.pageVault;
+        delete document.body.dataset.pageReelsClean;
         if (doc.body?.dataset?.pageAccountsConnected) {
           document.body.dataset.pageAccountsConnected = doc.body.dataset.pageAccountsConnected;
         }
@@ -252,6 +253,9 @@
         }
         if (html.includes('data-page-notes="1"')) {
           document.body.dataset.pageNotes = "1";
+        }
+        if (html.includes('data-page-reels-clean="1"') || html.includes("pageReelsClean")) {
+          document.body.dataset.pageReelsClean = "1";
         }
         if (push) history.pushState({ url }, "", url);
         setActiveNav(new URL(url, window.location.origin).pathname);
@@ -3502,6 +3506,204 @@
     recount();
   }
 
+  function initReelsCleanup() {
+    const page = document.querySelector("[data-page-reels-clean]");
+    if (!page && !document.body.dataset.pageReelsClean) return;
+    const accountSel = document.getElementById("reels-clean-account");
+    const grid = document.getElementById("reels-clean-grid");
+    const statusEl = document.getElementById("reels-clean-status");
+    const loadBtn = document.getElementById("reels-clean-load");
+    const moreBtn = document.getElementById("reels-clean-more");
+    const moreWrap = document.getElementById("reels-clean-more-wrap");
+    const selectAllBtn = document.getElementById("reels-clean-select-all");
+    const deleteBtn = document.getElementById("reels-clean-delete");
+    if (!accountSel || !grid || !loadBtn) return;
+
+    let after = "";
+    let loading = false;
+
+    function setStatus(msg, kind) {
+      if (!statusEl) return;
+      statusEl.textContent = msg || "";
+      statusEl.classList.toggle("is-error", kind === "error");
+    }
+
+    function selectedIds() {
+      return Array.from(grid.querySelectorAll('input[name="reel_id"]:checked')).map((el) => el.value);
+    }
+
+    function syncActions() {
+      const hasCards = !!grid.querySelector(".reels-clean-card");
+      selectAllBtn.hidden = !hasCards;
+      deleteBtn.hidden = !hasCards;
+    }
+
+    function formatWhen(raw) {
+      if (!raw) return "";
+      const d = new Date(raw);
+      if (Number.isNaN(d.getTime())) return raw;
+      return d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+    }
+
+    function appendItems(items) {
+      items.forEach((item) => {
+        const card = document.createElement("label");
+        card.className = "reels-clean-card";
+        card.dataset.mediaId = String(item.id || "");
+
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        box.name = "reel_id";
+        box.value = String(item.id || "");
+
+        const thumbWrap = document.createElement("div");
+        thumbWrap.className = "reels-clean-thumb";
+        const thumbUrl = String(item.thumb || "");
+        if (/^https:\/\//i.test(thumbUrl)) {
+          const img = document.createElement("img");
+          img.src = thumbUrl;
+          img.alt = "";
+          img.loading = "lazy";
+          thumbWrap.appendChild(img);
+        } else {
+          const ph = document.createElement("span");
+          ph.className = "reels-clean-ph";
+          ph.innerHTML = '<i data-lucide="clapperboard"></i>';
+          thumbWrap.appendChild(ph);
+        }
+
+        const meta = document.createElement("div");
+        meta.className = "reels-clean-meta";
+        const when = document.createElement("span");
+        when.className = "reels-clean-when";
+        when.textContent = formatWhen(item.timestamp);
+        const cap = document.createElement("span");
+        cap.className = "reels-clean-cap";
+        cap.textContent = item.caption || "Sem legenda";
+        meta.appendChild(when);
+        meta.appendChild(cap);
+        const permalink = String(item.permalink || "");
+        if (/^https:\/\/(www\.)?instagram\.com\//i.test(permalink)) {
+          const a = document.createElement("a");
+          a.href = permalink;
+          a.target = "_blank";
+          a.rel = "noopener";
+          a.textContent = "abrir";
+          meta.appendChild(a);
+        }
+
+        card.appendChild(box);
+        card.appendChild(thumbWrap);
+        card.appendChild(meta);
+        grid.appendChild(card);
+      });
+      if (window.lucide?.createIcons) window.lucide.createIcons();
+      syncActions();
+    }
+
+    async function loadPage(reset) {
+      const accountId = accountSel.value;
+      if (!accountId) {
+        setStatus("Selecione uma conta Meta.", "error");
+        return;
+      }
+      if (loading) return;
+      loading = true;
+      loadBtn.disabled = true;
+      if (moreBtn) moreBtn.disabled = true;
+      setStatus(reset ? "Carregando Reels…" : "Carregando mais…");
+      try {
+        const qs = new URLSearchParams({ account_id: accountId });
+        if (!reset && after) qs.set("after", after);
+        const res = await fetch(`/accounts/reels/list?${qs.toString()}`, { credentials: "same-origin" });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const detail = payload.detail;
+          const msg = typeof detail === "string" ? detail : "Não foi possível listar os Reels.";
+          throw new Error(msg);
+        }
+        if (reset) {
+          grid.innerHTML = "";
+          after = "";
+        }
+        after = payload.after || "";
+        const items = payload.items || [];
+        if (reset && !items.length) {
+          setStatus("Nenhum Reel encontrado nesta conta (pela API oficial).");
+        } else {
+          appendItems(items);
+          setStatus(`${grid.querySelectorAll(".reels-clean-card").length} Reel(s) listado(s).`);
+        }
+        if (moreWrap) moreWrap.hidden = !after;
+      } catch (err) {
+        setStatus(err.message || "Falha ao carregar.", "error");
+      } finally {
+        loading = false;
+        loadBtn.disabled = false;
+        if (moreBtn) moreBtn.disabled = false;
+      }
+    }
+
+    loadBtn.addEventListener("click", () => loadPage(true));
+    moreBtn?.addEventListener("click", () => loadPage(false));
+    selectAllBtn?.addEventListener("click", () => {
+      const boxes = grid.querySelectorAll('input[name="reel_id"]');
+      const allOn = Array.from(boxes).every((b) => b.checked);
+      boxes.forEach((b) => {
+        b.checked = !allOn;
+      });
+    });
+    deleteBtn?.addEventListener("click", async () => {
+      const ids = selectedIds();
+      const accountId = accountSel.value;
+      if (!accountId || !ids.length) {
+        setStatus("Selecione pelo menos um Reel.", "error");
+        return;
+      }
+      if (!window.confirm(`Apagar ${ids.length} Reel(s) no Instagram? Não dá para desfazer.`)) return;
+      deleteBtn.disabled = true;
+      let okCount = 0;
+      let failCount = 0;
+      for (let i = 0; i < ids.length; i += 1) {
+        const mediaId = ids[i];
+        setStatus(`Apagando ${i + 1}/${ids.length}…`);
+        try {
+          const res = await fetch("/accounts/reels/delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            body: JSON.stringify({ account_id: Number(accountId), media_id: mediaId }),
+          });
+          const payload = await res.json().catch(() => ({}));
+          if (!res.ok || !payload.ok) {
+            failCount += 1;
+            setStatus(payload.detail || `Falha em ${i + 1}/${ids.length}`, "error");
+          } else {
+            okCount += 1;
+            grid.querySelector(`[data-media-id="${mediaId}"]`)?.remove();
+          }
+        } catch (_) {
+          failCount += 1;
+        }
+        if (i < ids.length - 1) {
+          await new Promise((resolve) => window.setTimeout(resolve, 700));
+        }
+      }
+      deleteBtn.disabled = false;
+      syncActions();
+      setStatus(
+        failCount
+          ? `Apagados ${okCount}. Falhou ${failCount} (Meta recusou ou Reel recém-postado).`
+          : `Apagados ${okCount} Reel(s).`,
+        failCount ? "error" : ""
+      );
+    });
+
+    if (accountSel.value) {
+      loadPage(true);
+    }
+  }
+
   function initPage() {
     showFlashOkFromStorage();
     initLucide();
@@ -3525,6 +3727,7 @@
     initAccountsReconnect();
     initAccountFolders();
     initAccountFolderPicks();
+    initReelsCleanup();
     initVaultPage();
     initAuthMethodForm();
     initProfileEditForm();
