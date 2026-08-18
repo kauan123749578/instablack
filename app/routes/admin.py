@@ -76,6 +76,11 @@ def admin_dashboard(
     is_owner = _is_owner(admin)
     users = db.scalars(select(User).order_by(User.created_at.desc())).all()
     rows = []
+    users_total = 0
+    users_active = 0
+    users_banned = 0
+    ig_total = 0
+    auto_total = 0
     for u in users:
         if not _admin_can_see(admin, u):
             continue
@@ -88,6 +93,13 @@ def admin_dashboard(
         auto_count = db.scalar(
             select(func.count(Automation.id)).where(Automation.user_id == u.id)
         ) or 0
+        users_total += 1
+        if u.is_active:
+            users_active += 1
+        else:
+            users_banned += 1
+        ig_total += ig_count
+        auto_total += auto_count
         rows.append({
             "user": u,
             "ig_count": ig_count,
@@ -102,6 +114,11 @@ def admin_dashboard(
             "user": admin,
             "is_owner": is_owner,
             "rows": rows,
+            "users_total": users_total,
+            "users_active": users_active,
+            "users_banned": users_banned,
+            "ig_total": ig_total,
+            "auto_total": auto_total,
             "ok": request.query_params.get("ok"),
             "error": request.query_params.get("error"),
             "invites": list_invites(db),

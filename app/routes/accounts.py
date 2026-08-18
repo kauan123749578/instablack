@@ -8,14 +8,20 @@ import secrets
 from fastapi import APIRouter, Body, Depends, Form, HTTPException, Request, status
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from app.deps import get_current_user, get_effective_user, reject_view_as_secrets
 from app.security import decrypt_secret, encrypt_secret
 from app.templating import templates
 from app.config import get_settings
-from app.utils.account_health import offline_accounts
+from app.utils.account_folders import (
+    folder_name_taken,
+    folders_template_context,
+    get_user_folder,
+    next_folder_sort,
+    normalize_folder_name,
+)
 from app.utils.totp import TotpError, current_totp_code, normalize_totp_secret
 from app.utils.proxy import (
     clean_sessionid,
@@ -69,7 +75,7 @@ from core.web_cookies import (
     web_cookies_status,
 )
 
-from models.models import InstagramAccount, User
+from models.models import AccountFolder, InstagramAccount, User
 
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 VISIBLE_ACCOUNT_STATUSES = ("active", "paused", "needs_login", "proxy_down", "banned")
@@ -92,6 +98,14 @@ class CredentialsBody(BaseModel):
     clear_password: bool = False
     clear_totp: bool = False
     clear_email: bool = False
+
+
+class FolderNameBody(BaseModel):
+    name: str = ""
+
+
+class MoveFolderBody(BaseModel):
+    folder_id: int | None = None
 
 
 def _encrypt_totp_secret(raw: str | None) -> str | None:
@@ -710,6 +724,7 @@ def connected_accounts(
     }
     meta_display = _meta_account_display(accounts)
     cred_flags = _cred_flags_for_accounts(accounts)
+    folder_ctx = folders_template_context(db, user.id, accounts)
     # Não segurar SELECT instagram_accounts aberto durante o render.
     release_db_transaction(db)
     return templates.TemplateResponse(
@@ -720,8 +735,100 @@ def connected_accounts(
             "cookie_flags": cookie_flags,
             "meta_display": meta_display,
             "cred_flags": cred_flags,
+            **folder_ctx,
         },
     )
+
+
+@router.post("/folders")
+def create_account_folder(
+    body: FolderNameBody,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_effective_user),
+):
+    name = normalize_folder_name(body.name)
+    if len(name) < 1:
+        raise HTTPException(400, detail="Dê um nome para a pasta.")
+    if folder_name_taken(db, user.id, name):
+        raise HTTPException(400, detail="Já existe uma pasta com esse nome.")
+    folder = AccountFolder(
+        user_id=user.id,
+        name=name,
+        sort_order=next_folder_sort(db, user.id),
+    )
+    db.add(folder)
+    db.commit()
+    db.refresh(folder)
+    return {"ok": True, "id": folder.id, "name": folder.name, "count": 0}
+
+
+@router.post("/folders/{folder_id}/rename")
+def rename_account_folder(
+    folder_id: int,
+    body: FolderNameBody,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_effective_user),
+):
+    folder = get_user_folder(db, user.id, folder_id)
+    if not folder:
+        raise HTTPException(404, detail="Pasta não encontrada.")
+    name = normalize_folder_name(body.name)
+    if len(name) < 1:
+        raise HTTPException(400, detail="Dê um nome para a pasta.")
+    if folder_name_taken(db, user.id, name, exclude_id=folder.id):
+        raise HTTPException(400, detail="Já existe uma pasta com esse nome.")
+    folder.name = name
+    db.commit()
+    return {"ok": True, "id": folder.id, "name": folder.name}
+
+
+@router.post("/folders/{folder_id}/delete")
+def delete_account_folder(
+    folder_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_effective_user),
+):
+    folder = get_user_folder(db, user.id, folder_id)
+    if not folder:
+        raise HTTPException(404, detail="Pasta não encontrada.")
+    db.execute(
+        update(InstagramAccount)
+        .where(
+            InstagramAccount.user_id == user.id,
+            InstagramAccount.folder_id == folder.id,
+        )
+        .values(folder_id=None)
+    )
+    db.delete(folder)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/{account_id}/folder")
+def move_account_folder(
+    account_id: int,
+    body: MoveFolderBody,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_effective_user),
+):
+    acc = db.scalar(
+        select(InstagramAccount).where(
+            InstagramAccount.id == account_id,
+            InstagramAccount.user_id == user.id,
+        )
+    )
+    if not acc:
+        raise HTTPException(404, detail="Conta não encontrada.")
+    folder_id = body.folder_id
+    if folder_id is None:
+        acc.folder_id = None
+    else:
+        folder = get_user_folder(db, user.id, folder_id)
+        if not folder:
+            raise HTTPException(404, detail="Pasta não encontrada.")
+        acc.folder_id = folder.id
+    db.commit()
+    return {"ok": True, "account_id": acc.id, "folder_id": acc.folder_id}
 
 
 @router.get("/vault")

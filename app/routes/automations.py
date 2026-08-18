@@ -15,7 +15,7 @@ from PIL import Image, ImageOps
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.deps import get_current_user, get_effective_user
+from app.utils.account_folders import folders_template_context
 from app.templating import templates
 from app.utils.calendar_schedule import (
     days_to_json,
@@ -315,6 +315,12 @@ def _schedule_humanize_fields(
     }
 
 
+def _page_ctx(db: Session, user, accounts, extra: dict | None = None) -> dict:
+    ctx = dict(extra or {})
+    ctx.update(folders_template_context(db, user.id, accounts))
+    return ctx
+
+
 @router.get("")
 def list_automations(
     request: Request,
@@ -336,21 +342,26 @@ def list_automations(
     quota = reel_video_quota(db, user)
     return templates.TemplateResponse(
         "automations.html",
-        {
-            "request": request,
-            "user": user,
-            "automations": automations,
-            "all_accounts": all_accounts,
-            "intervals": ALLOWED_INTERVALS,
-            "meta_min_interval": META_MIN_INTERVAL,
-            "meta_warmup_days": META_WARMUP_DAYS,
-            "meta_warmup_min_interval": META_WARMUP_MIN_INTERVAL,
-            "captions_textarea_value": captions_textarea_value,
-            "anti_farm_prefs": get_anti_farm_prefs(user),
-            "reel_videos_used": quota["used"],
-            "reel_videos_limit": quota["limit"],
-            "reel_videos_remaining": quota["remaining"],
-        },
+        _page_ctx(
+            db,
+            user,
+            all_accounts,
+            {
+                "request": request,
+                "user": user,
+                "automations": automations,
+                "all_accounts": all_accounts,
+                "intervals": ALLOWED_INTERVALS,
+                "meta_min_interval": META_MIN_INTERVAL,
+                "meta_warmup_days": META_WARMUP_DAYS,
+                "meta_warmup_min_interval": META_WARMUP_MIN_INTERVAL,
+                "captions_textarea_value": captions_textarea_value,
+                "anti_farm_prefs": get_anti_farm_prefs(user),
+                "reel_videos_used": quota["used"],
+                "reel_videos_limit": quota["limit"],
+                "reel_videos_remaining": quota["remaining"],
+            },
+        ),
     )
 
 
@@ -382,22 +393,27 @@ def new_automation_page(
     quota = reel_video_quota(db, user)
     return templates.TemplateResponse(
         "new_automation.html",
-        {
-            "request": request,
-            "user": user,
-            "accounts": accounts,
-            "intervals": ALLOWED_INTERVALS,
-            "meta_min_interval": META_MIN_INTERVAL,
-            "meta_warmup_days": META_WARMUP_DAYS,
-            "meta_warmup_min_interval": META_WARMUP_MIN_INTERVAL,
-            "anti_farm_prefs": get_anti_farm_prefs(user),
-            "content_types": CONTENT_TYPES,
-            "default_content_type": default_type,
-            "error": err_msg,
-            "reel_videos_used": quota["used"],
-            "reel_videos_limit": quota["limit"],
-            "reel_videos_remaining": quota["remaining"],
-        },
+        _page_ctx(
+            db,
+            user,
+            accounts,
+            {
+                "request": request,
+                "user": user,
+                "accounts": accounts,
+                "intervals": ALLOWED_INTERVALS,
+                "meta_min_interval": META_MIN_INTERVAL,
+                "meta_warmup_days": META_WARMUP_DAYS,
+                "meta_warmup_min_interval": META_WARMUP_MIN_INTERVAL,
+                "anti_farm_prefs": get_anti_farm_prefs(user),
+                "content_types": CONTENT_TYPES,
+                "default_content_type": default_type,
+                "error": err_msg,
+                "reel_videos_used": quota["used"],
+                "reel_videos_limit": quota["limit"],
+                "reel_videos_remaining": quota["remaining"],
+            },
+        ),
     )
 
 
@@ -422,19 +438,24 @@ def new_story_page(
     }.get(err_key or "")
     return templates.TemplateResponse(
         "new_automation.html",
-        {
-            "request": request,
-            "user": user,
-            "accounts": accounts,
-            "intervals": ALLOWED_INTERVALS,
-            "meta_min_interval": META_MIN_INTERVAL,
-            "meta_warmup_days": META_WARMUP_DAYS,
-            "meta_warmup_min_interval": META_WARMUP_MIN_INTERVAL,
-            "anti_farm_prefs": get_anti_farm_prefs(user),
-            "content_types": CONTENT_TYPES,
-            "default_content_type": "story",
-            "error": err_msg or None,
-        },
+        _page_ctx(
+            db,
+            user,
+            accounts,
+            {
+                "request": request,
+                "user": user,
+                "accounts": accounts,
+                "intervals": ALLOWED_INTERVALS,
+                "meta_min_interval": META_MIN_INTERVAL,
+                "meta_warmup_days": META_WARMUP_DAYS,
+                "meta_warmup_min_interval": META_WARMUP_MIN_INTERVAL,
+                "anti_farm_prefs": get_anti_farm_prefs(user),
+                "content_types": CONTENT_TYPES,
+                "default_content_type": "story",
+                "error": err_msg or None,
+            },
+        ),
     )
 
 
@@ -857,12 +878,17 @@ def new_calendar_page(
     ).all()
     return templates.TemplateResponse(
         "new_calendar_automation.html",
-        {
-            "request": request,
-            "user": user,
-            "accounts": accounts,
-            "error": None,
-        },
+        _page_ctx(
+            db,
+            user,
+            accounts,
+            {
+                "request": request,
+                "user": user,
+                "accounts": accounts,
+                "error": None,
+            },
+        ),
     )
 
 
@@ -922,12 +948,17 @@ async def create_calendar_automation(
         ).all()
         return templates.TemplateResponse(
             "new_calendar_automation.html",
-            {
-                "request": request,
-                "user": user,
-                "accounts": all_accounts,
-                "error": error,
-            },
+            _page_ctx(
+                db,
+                user,
+                all_accounts,
+                {
+                    "request": request,
+                    "user": user,
+                    "accounts": all_accounts,
+                    "error": error,
+                },
+            ),
             status_code=status.HTTP_400_BAD_REQUEST,
         )
 

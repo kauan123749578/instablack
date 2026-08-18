@@ -325,6 +325,7 @@
         <button type="button" class="btn btn-sm" id="accounts-clear">Limpar</button>
         <span class="muted account-pick-hint" id="accounts-pick-count"></span>
       </div>
+      {% include "partials/account_folder_picks.html" %}
       <div class="checkbox-row account-pick-grid" id="accounts-pick-grid">
         {% for ac in accounts %}
         {% set st = ac.status or 'active' %}

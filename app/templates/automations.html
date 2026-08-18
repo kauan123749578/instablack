@@ -97,47 +97,83 @@
 {% if automations %}
 <div class="auto-grid">
   {% for a in automations %}
-  <article class="auto-card">
+  {% set playlist_total = automation_video_count(a) %}
+  {% set playlist_next = (a.current_index or 0) + 1 %}
+  {% set type_icon = 'clapperboard' if a.content_type == 'reel' else ('circle-dot' if a.content_type == 'story' else 'image') %}
+  <article class="auto-card auto-card--{{ a.content_type|default('reel') }} auto-card--{{ a.status }}">
     <div class="auto-card-header">
-      <h3>{{ a.name }}
-        <span class="type-badge">{{ a.content_type|default('reel') }}</span>
-        {% if a.schedule_type == 'calendar' %}<span class="type-badge type-badge--cal">calendário</span>{% endif %}
-      </h3>
+      <div class="auto-card-identity">
+        <span class="auto-card-icon" aria-hidden="true"><i data-lucide="{{ type_icon }}"></i></span>
+        <div class="auto-card-titles">
+          <h3>{{ a.name }}</h3>
+          <div class="auto-card-tags">
+            <span class="type-badge">{{ a.content_type|default('reel') }}</span>
+            {% if a.schedule_type == 'calendar' %}<span class="type-badge type-badge--cal">calendário</span>{% endif %}
+            {% if a.camouflage_cover_key %}<span class="type-badge type-badge--camu">camuflagem</span>{% endif %}
+          </div>
+        </div>
+      </div>
       <span class="badge {{ a.status }}">{{ status_label(a.status) }}</span>
     </div>
+
+    <div class="auto-card-stats">
+      <div>
+        <span class="auto-card-stat-label">Próxima</span>
+        <strong>{{ a.next_run_at | localtime('%d/%m %H:%M') }}</strong>
+      </div>
+      <div>
+        <span class="auto-card-stat-label">Última</span>
+        <strong>{{ a.last_run_at | localtime('%d/%m %H:%M') }}</strong>
+      </div>
+      <div>
+        <span class="auto-card-stat-label">Publicados</span>
+        <strong>{{ a.total_runs }}</strong>
+      </div>
+    </div>
+
     <ul class="auto-meta">
-      <li>A cada <strong>{% if a.schedule_type == 'calendar' %}dias {{ a.calendar_days }} às {{ format_calendar_times(a.calendar_time) }}{% else %}{{ a.interval_minutes }} min{% endif %}</strong>
-        {% if a.jitter_enabled %} · variação ±{{ a.jitter_minutes or 10 }} min{% endif %}
+      <li>
+        <i data-lucide="clock-3" class="inline-icon"></i>
+        {% if a.schedule_type == 'calendar' %}
+        Dias {{ a.calendar_days }} às {{ format_calendar_times(a.calendar_time) }}
+        {% else %}
+        A cada {{ a.interval_minutes }} min
+        {% endif %}
+        {% if a.jitter_enabled %} · ±{{ a.jitter_minutes or 10 }} min{% endif %}
         {% if a.stagger_enabled is not defined or a.stagger_enabled %}
-          · espaçamento contas {{ a.stagger_min_minutes|default(2) }}–{{ a.stagger_max_minutes|default(8) }} min
-        {% else %}
-          · espaçamento contas OFF
+          · espaçamento {{ a.stagger_min_minutes|default(2) }}–{{ a.stagger_max_minutes|default(8) }} min
         {% endif %}
-        {% if a.posts_per_batch and a.rest_minutes %} · {{ a.posts_per_batch }} posts / descanso {{ a.rest_minutes }} min{% endif %}
       </li>
-      <li>{{ a.accounts|length }} conta(s):
+      <li class="auto-card-accounts">
+        <i data-lucide="users" class="inline-icon"></i>
         {% if a.accounts %}
-          {% for ac in a.accounts %}@{{ ac.username }}{% if not loop.last %}, {% endif %}{% endfor %}
+          {% for ac in a.accounts[:4] %}
+          <span class="auto-acc-chip">@{{ ac.username }}</span>
+          {% endfor %}
+          {% if a.accounts|length > 4 %}
+          <span class="auto-acc-chip auto-acc-chip--more">+{{ a.accounts|length - 4 }}</span>
+          {% endif %}
         {% else %}
-          <span class="muted">nenhuma selecionada ainda</span>
+          <span class="muted">nenhuma conta ainda</span>
         {% endif %}
       </li>
-      <li>Próxima: <strong>{{ a.next_run_at | localtime('%d/%m %H:%M') }}</strong></li>
-      <li>Última: {{ a.last_run_at | localtime('%d/%m %H:%M') }}</li>
-      <li>Total publicado: <strong>{{ a.total_runs }}</strong></li>
-      {% if automation_video_count(a) > 1 %}
-      {% set playlist_names = automation_playlist_names(a) %}
-      {% set playlist_total = automation_video_count(a) %}
-      {% set playlist_next = (a.current_index or 0) + 1 %}
-      <li>Playlist:
-        <strong>
-          {% if a.status == 'completed' %}
-            {{ playlist_total }}/{{ playlist_total }} · concluída
-          {% else %}
-            próximo {{ playlist_next }}/{{ playlist_total }}
-          {% endif %}
-        </strong>
+      {% if playlist_total > 1 %}
+      <li class="auto-playlist-bar-wrap">
+        <div class="auto-playlist-bar-head">
+          Playlist
+          <strong>
+            {% if a.status == 'completed' %}
+              {{ playlist_total }}/{{ playlist_total }} · concluída
+            {% else %}
+              {{ playlist_next }}/{{ playlist_total }}
+            {% endif %}
+          </strong>
+        </div>
+        <div class="auto-playlist-bar" aria-hidden="true">
+          <span style="width:{% if a.status == 'completed' %}100{% elif playlist_total %}{{ ((a.current_index or 0) / playlist_total * 100)|round|int }}{% else %}0{% endif %}%"></span>
+        </div>
       </li>
+      {% set playlist_names = automation_playlist_names(a) %}
       <li class="auto-playlist-details">
         <details>
           <summary>Ver vídeos <span class="muted">({{ playlist_total }})</span></summary>
@@ -153,14 +189,12 @@
           {% endif %}
         </details>
       </li>
-      {% elif automation_video_count(a) == 0 %}
+      {% elif playlist_total == 0 %}
       <li><strong style="color:var(--red)">Rascunho sem vídeos</strong> — o upload em blocos não terminou.</li>
       {% endif %}
-      {% if a.thumb_original_name %}<li>Capa: {{ a.thumb_original_name }}</li>{% endif %}
-      {% if a.camouflage_cover_key %}<li><strong style="color:#E8C547">Camuflagem ativa</strong> ({{ ((a.camouflage_opacity or 0.25) * 100)|round|int }}%)</li>{% else %}{% if a.content_type == 'reel' %}<li class="muted">Camuflagem: off</li>{% endif %}{% endif %}
     </ul>
     {% if a.caption and a.content_type != 'story' %}
-    <p class="auto-caption">"{{ a.caption[:160] }}{% if a.caption|length > 160 %}…{% endif %}"</p>
+    <p class="auto-caption">{{ a.caption[:140] }}{% if a.caption|length > 140 %}…{% endif %}</p>
     {% endif %}
     <div class="auto-actions">
       {% if a.status == 'active' %}
@@ -172,50 +206,7 @@
         <button type="submit" class="btn btn-sm btn-primary">{% if a.status == 'paused' %}Ativar{% else %}Retomar{% endif %}</button>
       </form>
       {% endif %}
-      {% if automation_video_count(a) > 1 and a.status != 'completed' %}
-      <form method="post" action="/automations/{{ a.id }}/skip-video" class="inline"
-            onsubmit="return confirm('Pular para o próximo vídeo da playlist?');">
-        <button type="submit" class="btn btn-sm">Pular vídeo</button>
-      </form>
-      {% endif %}
-      {% if automation_video_count(a) > 1 %}
-      <form method="post" action="/automations/{{ a.id }}/reset-playlist" class="inline"
-            onsubmit="return confirm('Reiniciar playlist do vídeo 1?');">
-        <button type="submit" class="btn btn-sm">Reiniciar playlist</button>
-      </form>
-      {% endif %}
       <a href="/automations/{{ a.id }}/logs" class="btn btn-sm" data-nav="/automations/{{ a.id }}/logs">Logs</a>
-      <form method="post" action="/automations/{{ a.id }}/duplicate" class="inline"
-            onsubmit="return confirm('Duplicar esta automação (mesmos vídeos, sem reenviar)?');">
-        <button type="submit" class="btn btn-sm">Duplicar</button>
-      </form>
-      {% if a.content_type == 'reel' %}
-      <details class="edit-panel">
-        <summary>Adicionar vídeos</summary>
-        <form method="post"
-              action="/automations/{{ a.id }}/upload-batch"
-              enctype="multipart/form-data"
-              class="form-grid"
-              data-playlist-upload-form
-              data-automation-id="{{ a.id }}"
-              data-reel-videos-remaining="{{ reel_videos_remaining|default(150) }}"
-              data-reel-videos-limit="{{ reel_videos_limit|default(150) }}">
-          <label>Novos vídeos Reels (.mp4)
-            <input type="file"
-                   name="videos"
-                   accept="video/mp4,video/quicktime,video/webm"
-                   multiple
-                   data-playlist-upload-input>
-            <span class="muted" style="display:block;margin-top:4px;font-size:12px">
-              Limite da conta: {{ reel_videos_used|default(0) }}/{{ reel_videos_limit|default(150) }} vídeos
-              ({{ reel_videos_remaining|default(150) }} restantes). Envio em paralelo ao R2.
-            </span>
-            <span class="muted" style="display:block;margin-top:4px;font-size:12px" data-playlist-upload-status></span>
-          </label>
-          <button type="submit" class="btn btn-primary btn-sm" data-playlist-upload-button>Adicionar à playlist</button>
-        </form>
-      </details>
-      {% endif %}
       <details class="edit-panel">
         <summary>Editar</summary>
         <form method="post" action="/automations/{{ a.id }}/edit" enctype="multipart/form-data" class="form-grid">
@@ -323,6 +314,7 @@
           {% endif %}
           <fieldset>
             <legend>Contas <span class="muted">(pode deixar vazio para rascunho)</span></legend>
+            {% include "partials/account_folder_picks.html" %}
             <div class="checkbox-row">
               {% set selected_ids = a.accounts|map(attribute='id')|list %}
               {% for ac in all_accounts %}
@@ -340,6 +332,51 @@
           </fieldset>
           <button type="submit" class="btn btn-primary btn-sm">Salvar</button>
         </form>
+      </details>
+      <details class="edit-panel auto-more-panel">
+        <summary>Mais</summary>
+        <div class="auto-more-actions">
+          {% if playlist_total > 1 and a.status != 'completed' %}
+          <form method="post" action="/automations/{{ a.id }}/skip-video" class="inline"
+                onsubmit="return confirm('Pular para o próximo vídeo da playlist?');">
+            <button type="submit" class="btn btn-sm">Pular vídeo</button>
+          </form>
+          {% endif %}
+          {% if playlist_total > 1 %}
+          <form method="post" action="/automations/{{ a.id }}/reset-playlist" class="inline"
+                onsubmit="return confirm('Reiniciar playlist do vídeo 1?');">
+            <button type="submit" class="btn btn-sm">Reiniciar playlist</button>
+          </form>
+          {% endif %}
+          <form method="post" action="/automations/{{ a.id }}/duplicate" class="inline"
+                onsubmit="return confirm('Duplicar esta automação (mesmos vídeos, sem reenviar)?');">
+            <button type="submit" class="btn btn-sm">Duplicar</button>
+          </form>
+          {% if a.content_type == 'reel' %}
+          <form method="post"
+                action="/automations/{{ a.id }}/upload-batch"
+                enctype="multipart/form-data"
+                class="form-grid"
+                data-playlist-upload-form
+                data-automation-id="{{ a.id }}"
+                data-reel-videos-remaining="{{ reel_videos_remaining|default(150) }}"
+                data-reel-videos-limit="{{ reel_videos_limit|default(150) }}">
+            <label>Novos vídeos Reels (.mp4)
+              <input type="file"
+                     name="videos"
+                     accept="video/mp4,video/quicktime,video/webm"
+                     multiple
+                     data-playlist-upload-input>
+              <span class="muted" style="display:block;margin-top:4px;font-size:12px">
+                Limite da conta: {{ reel_videos_used|default(0) }}/{{ reel_videos_limit|default(150) }} vídeos
+                ({{ reel_videos_remaining|default(150) }} restantes). Envio em paralelo ao R2.
+              </span>
+              <span class="muted" style="display:block;margin-top:4px;font-size:12px" data-playlist-upload-status></span>
+            </label>
+            <button type="submit" class="btn btn-primary btn-sm" data-playlist-upload-button>Adicionar à playlist</button>
+          </form>
+          {% endif %}
+        </div>
       </details>
       <form method="post" action="/automations/{{ a.id }}/delete"
             onsubmit="return confirm('Excluir definitivamente esta automação?');">

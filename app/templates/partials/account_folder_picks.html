@@ -1,0 +1,19 @@
+{% if folders %}
+<div class="account-folder-picks">
+  <span class="account-folder-picks-label">Pastas</span>
+  {% for f in folders %}
+  <button type="button" class="folder-pick-chip" data-ids="{{ folder_account_ids.get(f.id, [])|join(',') }}">
+    <i data-lucide="folder"></i>
+    {{ f.name }}
+    <span>{{ folder_account_ids.get(f.id, [])|length }}</span>
+  </button>
+  {% endfor %}
+  {% if unfiled_account_ids %}
+  <button type="button" class="folder-pick-chip" data-ids="{{ unfiled_account_ids|join(',') }}">
+    <i data-lucide="folder-open"></i>
+    Sem pasta
+    <span>{{ unfiled_account_ids|length }}</span>
+  </button>
+  {% endif %}
+</div>
+{% endif %}

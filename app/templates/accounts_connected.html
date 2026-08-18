@@ -57,6 +57,39 @@
   {% endif %}
 </div>
 
+<div class="acc-folder-board" data-page-accounts-folders="1">
+  <div class="acc-folder-rail" id="acc-folder-rail">
+    <button type="button" class="acc-folder-chip is-on" data-filter="all">
+      Todas
+      <span class="acc-folder-count">{{ accounts|length }}</span>
+    </button>
+    <button type="button" class="acc-folder-chip" data-filter="none" data-drop="none">
+      Sem pasta
+      <span class="acc-folder-count" data-count-none>{{ unfiled_account_ids|length }}</span>
+    </button>
+    {% for f in folders %}
+    <div class="acc-folder-chip" data-filter="{{ f.id }}" data-drop="{{ f.id }}" data-folder-id="{{ f.id }}">
+      <i data-lucide="folder"></i>
+      <span class="acc-folder-name">{{ f.name }}</span>
+      <span class="acc-folder-count" data-count-folder="{{ f.id }}">{{ folder_account_ids.get(f.id, [])|length }}</span>
+      <button type="button" class="acc-folder-icon-btn" data-rename-folder="{{ f.id }}" title="Renomear">
+        <i data-lucide="pencil"></i>
+      </button>
+      <button type="button" class="acc-folder-icon-btn acc-folder-icon-btn--danger" data-delete-folder="{{ f.id }}" title="Excluir pasta">
+        <i data-lucide="trash-2"></i>
+      </button>
+    </div>
+    {% endfor %}
+  </div>
+  <form class="acc-folder-create" id="acc-folder-create" onsubmit="return false;">
+    <input type="text" id="acc-folder-name" maxlength="40" placeholder="Nova pasta (ex.: clientes, farm 1)" autocomplete="off">
+    <button type="button" class="btn btn-sm btn-primary" id="acc-folder-create-btn">
+      <i data-lucide="folder-plus"></i> Criar pasta
+    </button>
+  </form>
+  <p class="muted acc-folder-hint">Arraste o @ da conta até uma pasta. Na automação, clique na pasta para marcar as contas.</p>
+</div>
+
 <div class="panel">
   <div class="panel-header">
     <h3>Contas conectadas ({{ accounts|length }})</h3>
@@ -80,8 +113,8 @@
       <tbody>
         {% for acc in accounts %}
         {% set meta = meta_display.get(acc.id) if meta_display else none %}
-        <tr>
-          <td class="ig-handle">@{{ acc.username }}</td>
+        <tr data-account-id="{{ acc.id }}" data-folder-id="{{ acc.folder_id or '' }}">
+          <td class="ig-handle acc-drag-handle" draggable="true" title="Arraste para uma pasta">@{{ acc.username }}</td>
           <td>
             {% if acc.provider == 'meta' %}
             <span class="og-badge badge-green">API oficial</span>

@@ -77,6 +77,37 @@
 <div class="alert alert-error">Informe um número válido para o limite de contas.</div>
 {% endif %}
 
+<div class="og-kpi-row admin-kpi-row">
+  <article class="og-glass-card og-kpi-card">
+    <div class="og-kpi-top">
+      <div class="og-kpi-icon og-kpi-icon--purple"><i data-lucide="users"></i></div>
+    </div>
+    <div class="og-kpi-value">{{ users_total }}</div>
+    <div class="og-kpi-label">Usuários na plataforma</div>
+  </article>
+  <article class="og-glass-card og-kpi-card">
+    <div class="og-kpi-top">
+      <div class="og-kpi-icon og-kpi-icon--green"><i data-lucide="user-check"></i></div>
+    </div>
+    <div class="og-kpi-value">{{ users_active }}</div>
+    <div class="og-kpi-label">Ativos</div>
+  </article>
+  <article class="og-glass-card og-kpi-card">
+    <div class="og-kpi-top">
+      <div class="og-kpi-icon og-kpi-icon--orange"><i data-lucide="user-x"></i></div>
+    </div>
+    <div class="og-kpi-value">{{ users_banned }}</div>
+    <div class="og-kpi-label">Banidos / inativos</div>
+  </article>
+  <article class="og-glass-card og-kpi-card">
+    <div class="og-kpi-top">
+      <div class="og-kpi-icon og-kpi-icon--pink"><i data-lucide="instagram"></i></div>
+    </div>
+    <div class="og-kpi-value">{{ ig_total }}</div>
+    <div class="og-kpi-label">Contas IG · {{ auto_total }} automações</div>
+  </article>
+</div>
+
 {% if ok == 'invite' %}
 <div class="alert alert-ok">
   Link de convite gerado.

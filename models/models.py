@@ -79,6 +79,29 @@ class User(Base):
     account_notes: Mapped[List["AccountNote"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    account_folders: Mapped[List["AccountFolder"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+class AccountFolder(Base):
+    """Pasta do usuário para agrupar contas Instagram (ex.: clientes, farm)."""
+
+    __tablename__ = "account_folders"
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", name="uq_account_folders_user_name"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(40))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    user: Mapped["User"] = relationship(back_populates="account_folders")
+    accounts: Mapped[List["InstagramAccount"]] = relationship(back_populates="folder")
 
 
 class UserMetaApp(Base):
@@ -201,8 +224,12 @@ class InstagramAccount(Base):
     created_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    folder_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("account_folders.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
     user: Mapped["User"] = relationship(back_populates="instagram_accounts")
+    folder: Mapped[Optional["AccountFolder"]] = relationship(back_populates="accounts")
     meta_app: Mapped[Optional["UserMetaApp"]] = relationship(
         back_populates="instagram_accounts"
     )

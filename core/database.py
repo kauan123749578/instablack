@@ -387,6 +387,8 @@ def _sqlite_migrate(bind=None) -> None:
                 conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN encrypted_totp_secret TEXT"))
             if "login_email" not in acols:
                 conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN login_email VARCHAR(255)"))
+            if "folder_id" not in acols:
+                conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN folder_id INTEGER"))
             conn.execute(
                 text(
                     "CREATE INDEX IF NOT EXISTS ix_instagram_accounts_user_status "
@@ -645,6 +647,7 @@ def _postgres_migrate(bind=None) -> None:
                 ("warmup_started_at", "TIMESTAMPTZ"),
                 ("encrypted_totp_secret", "TEXT"),
                 ("login_email", "VARCHAR(255)"),
+                ("folder_id", "INTEGER"),
             ],
         )
         if _table_exists(conn, "instagram_accounts"):
@@ -653,6 +656,8 @@ def _postgres_migrate(bind=None) -> None:
                 [
                     "CREATE INDEX IF NOT EXISTS ix_instagram_accounts_user_status "
                     "ON instagram_accounts (user_id, status)",
+                    "CREATE INDEX IF NOT EXISTS ix_instagram_accounts_folder_id "
+                    "ON instagram_accounts (folder_id)",
                 ],
             )
 

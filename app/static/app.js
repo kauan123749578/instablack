@@ -3324,6 +3324,184 @@
     }
   }
 
+  function asyncJsonError(payload, fallback) {
+    const detail = payload && payload.detail;
+    if (typeof detail === "string" && detail) return detail;
+    if (Array.isArray(detail) && detail[0] && detail[0].msg) return detail[0].msg;
+    return fallback;
+  }
+
+  function initAccountFolderPicks() {
+    document.querySelectorAll(".folder-pick-chip").forEach((btn) => {
+      if (btn.dataset.bound === "1") return;
+      btn.dataset.bound = "1";
+      btn.addEventListener("click", () => {
+        const ids = new Set((btn.dataset.ids || "").split(",").filter(Boolean));
+        const form = btn.closest("form") || document;
+        form.querySelectorAll('input[name="account_ids"]').forEach((box) => {
+          box.checked = ids.has(String(box.value));
+        });
+        form.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+    });
+  }
+
+  function initAccountFolders() {
+    const board = document.querySelector(".acc-folder-board");
+    if (!board) return;
+
+    const rows = () => document.querySelectorAll("tr[data-account-id]");
+    let filter = "all";
+
+    function applyFilter() {
+      document.querySelectorAll(".acc-folder-chip").forEach((chip) => {
+        chip.classList.toggle("is-on", String(chip.dataset.filter) === String(filter));
+      });
+      rows().forEach((row) => {
+        const fid = row.getAttribute("data-folder-id") || "";
+        let show = true;
+        if (filter === "none") show = !fid;
+        else if (filter !== "all") show = fid === String(filter);
+        row.classList.toggle("is-hidden-folder", !show);
+      });
+    }
+
+    function recount() {
+      const counts = { none: 0 };
+      rows().forEach((row) => {
+        const fid = row.getAttribute("data-folder-id") || "";
+        if (!fid) counts.none += 1;
+        else counts[fid] = (counts[fid] || 0) + 1;
+      });
+      const noneEl = board.querySelector("[data-count-none]");
+      if (noneEl) noneEl.textContent = String(counts.none);
+      board.querySelectorAll("[data-count-folder]").forEach((el) => {
+        el.textContent = String(counts[el.getAttribute("data-count-folder")] || 0);
+      });
+    }
+
+    board.addEventListener("click", (event) => {
+      const renameBtn = event.target.closest("[data-rename-folder]");
+      if (renameBtn) {
+        event.preventDefault();
+        event.stopPropagation();
+        const id = renameBtn.getAttribute("data-rename-folder");
+        const chip = renameBtn.closest("[data-folder-id]");
+        const current = chip?.querySelector(".acc-folder-name")?.textContent || "";
+        const name = (window.prompt("Novo nome da pasta", current) || "").trim();
+        if (!name || name === current) return;
+        fetch(`/accounts/folders/${id}/rename`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name }),
+        })
+          .then(async (res) => {
+            const payload = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(asyncJsonError(payload, "Não foi possível renomear."));
+            const label = chip?.querySelector(".acc-folder-name");
+            if (label) label.textContent = payload.name || name;
+          })
+          .catch((err) => alert(err.message || "Falha ao renomear."));
+        return;
+      }
+      const deleteBtn = event.target.closest("[data-delete-folder]");
+      if (deleteBtn) {
+        event.preventDefault();
+        event.stopPropagation();
+        const id = deleteBtn.getAttribute("data-delete-folder");
+        if (!window.confirm("Excluir esta pasta? As contas ficam sem pasta.")) return;
+        fetch(`/accounts/folders/${id}/delete`, { method: "POST" })
+          .then(async (res) => {
+            const payload = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(asyncJsonError(payload, "Não foi possível excluir."));
+            rows().forEach((row) => {
+              if (row.getAttribute("data-folder-id") === String(id)) {
+                row.setAttribute("data-folder-id", "");
+              }
+            });
+            deleteBtn.closest("[data-folder-id]")?.remove();
+            if (String(filter) === String(id)) filter = "all";
+            recount();
+            applyFilter();
+          })
+          .catch((err) => alert(err.message || "Falha ao excluir."));
+        return;
+      }
+      const chip = event.target.closest("[data-filter]");
+      if (!chip || !board.contains(chip)) return;
+      filter = chip.getAttribute("data-filter") || "all";
+      applyFilter();
+    });
+
+    document.getElementById("acc-folder-create-btn")?.addEventListener("click", () => {
+      const input = document.getElementById("acc-folder-name");
+      const name = (input?.value || "").trim();
+      if (!name) {
+        input?.focus();
+        return;
+      }
+      fetch("/accounts/folders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      })
+        .then(async (res) => {
+          const payload = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(asyncJsonError(payload, "Não foi possível criar a pasta."));
+          window.location.href = "/accounts/connected";
+        })
+        .catch((err) => alert(err.message || "Falha ao criar pasta."));
+    });
+    document.getElementById("acc-folder-name")?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        document.getElementById("acc-folder-create-btn")?.click();
+      }
+    });
+
+    document.querySelectorAll(".acc-drag-handle").forEach((handle) => {
+      handle.addEventListener("dragstart", (event) => {
+        const row = handle.closest("tr[data-account-id]");
+        if (!row) return;
+        event.dataTransfer.setData("text/plain", row.getAttribute("data-account-id") || "");
+        event.dataTransfer.effectAllowed = "move";
+      });
+    });
+
+    board.querySelectorAll("[data-drop]").forEach((chip) => {
+      chip.addEventListener("dragover", (event) => {
+        event.preventDefault();
+        chip.classList.add("is-drop");
+      });
+      chip.addEventListener("dragleave", () => chip.classList.remove("is-drop"));
+      chip.addEventListener("drop", (event) => {
+        event.preventDefault();
+        chip.classList.remove("is-drop");
+        const accountId = event.dataTransfer.getData("text/plain");
+        if (!accountId) return;
+        const raw = chip.getAttribute("data-drop");
+        const folderId = raw === "none" ? null : Number(raw);
+        fetch(`/accounts/${accountId}/folder`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ folder_id: folderId }),
+        })
+          .then(async (res) => {
+            const payload = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(asyncJsonError(payload, "Não foi possível mover."));
+            const row = document.querySelector(`tr[data-account-id="${accountId}"]`);
+            if (row) row.setAttribute("data-folder-id", folderId == null ? "" : String(folderId));
+            recount();
+            applyFilter();
+          })
+          .catch((err) => alert(err.message || "Falha ao mover conta."));
+      });
+    });
+
+    applyFilter();
+    recount();
+  }
+
   function initPage() {
     showFlashOkFromStorage();
     initLucide();
@@ -3345,6 +3523,8 @@
     initCalendarTimes();
     initAccountsConnect();
     initAccountsReconnect();
+    initAccountFolders();
+    initAccountFolderPicks();
     initVaultPage();
     initAuthMethodForm();
     initProfileEditForm();

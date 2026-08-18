@@ -10,14 +10,14 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <meta name="theme-color" content="#C9A227" />
   <meta name="csrf-token" content="{{ request.session.get('csrf_token', '') }}" />
-  <meta name="ib-app-v" content="110" />
+  <meta name="ib-app-v" content="111" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="mobile-web-app-capable" content="yes" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bricolage+Grotesque:wght@600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=63" />
+  <link rel="stylesheet" href="/static/style.css?v=64" />
   <link rel="stylesheet" href="/static/dashboard.css?v=56" />
   {% block head %}{% endblock %}
 </head>
@@ -366,7 +366,7 @@
   {% if _panel_guard_auth and not _panel_guard_auth.is_owner %}
   <script src="/static/panel-guard.js?v=1"></script>
   {% endif %}
-  <script src="/static/app.js?v=101"></script>
+  <script src="/static/app.js?v=102"></script>
   {% block scripts %}{% endblock %}
 </body>
 </html>
