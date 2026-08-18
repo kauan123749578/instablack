@@ -129,6 +129,29 @@ def _render_kwargs(layout: dict, *, text: str, emojis: list[str] | None = None) 
     }
 
 
+def _write_reel(
+    td_path: Path,
+    *,
+    raw: bytes,
+    ext: str,
+    out_name: str,
+    layout: dict,
+    text: str,
+    emojis: list[str] | None,
+    audio_path: Path | None,
+) -> Path:
+    src = td_path / f"src_{out_name}{ext}"
+    src.write_bytes(raw)
+    out = td_path / out_name
+    render_reel_mp4(
+        src,
+        out,
+        audio_path=audio_path,
+        **_render_kwargs(layout, text=text, emojis=emojis),
+    )
+    return out
+
+
 @router.get("/emojis/catalog")
 def reels_emoji_catalog(user: User = Depends(get_current_user)):
     _ = user
@@ -235,6 +258,7 @@ async def reels_editor_render_one(
 @router.post("/render-batch")
 async def reels_editor_render_batch(
     media: UploadFile = File(...),
+    media_b: UploadFile | None = File(None),
     phrases_json: str = Form("[]"),
     emojis_json: str = Form("[]"),
     x: float = Form(0.5),
@@ -302,37 +326,163 @@ async def reels_editor_render_batch(
         audio_volume=audio_volume,
     )
 
-    raw, ext = await _read_media(media)
+    media_blobs: list[tuple[str, bytes, str]] = []
+    raw_a, ext_a = await _read_media(media)
+    media_blobs.append(("a", raw_a, ext_a))
+    if media_b is not None and media_b.filename:
+        raw_b, ext_b = await _read_media(media_b)
+        media_blobs.append(("b", raw_b, ext_b))
     audio_blob = await _read_audio(audio)
     import tempfile
 
     zip_buf = io.BytesIO()
     with tempfile.TemporaryDirectory(prefix="ib-reels-batch-") as td:
         td_path = Path(td)
-        src = td_path / f"source{ext}"
-        src.write_bytes(raw)
         audio_path = None
         if audio_blob:
             ab, aext = audio_blob
             audio_path = td_path / f"music{aext}"
             audio_path.write_bytes(ab)
         with zipfile.ZipFile(zip_buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-            for i, (text, emojis) in enumerate(parsed):
-                out = td_path / f"reel_{i + 1}.mp4"
-                try:
-                    render_reel_mp4(
-                        src,
-                        out,
-                        audio_path=audio_path,
-                        **_render_kwargs(layout, text=text, emojis=emojis),
+            for slot, raw, ext in media_blobs:
+                src = td_path / f"source_{slot}{ext}"
+                src.write_bytes(raw)
+                for i, (text, emojis) in enumerate(parsed):
+                    out = td_path / f"reel_{slot}_{i + 1}.mp4"
+                    try:
+                        render_reel_mp4(
+                            src,
+                            out,
+                            audio_path=audio_path,
+                            **_render_kwargs(layout, text=text, emojis=emojis),
+                        )
+                    except ReelsEditorError as exc:
+                        label = f"{slot.upper()} frase {i + 1}"
+                        raise HTTPException(400, detail=f"{label}: {exc}") from exc
+                    arc = (
+                        f"reel_{slot}_{i + 1}.mp4"
+                        if len(media_blobs) > 1
+                        else f"reel_{i + 1}.mp4"
                     )
-                except ReelsEditorError as exc:
-                    raise HTTPException(400, detail=f"Frase {i + 1}: {exc}") from exc
-                zf.write(out, arcname=f"reel_{i + 1}.mp4")
+                    zf.write(out, arcname=arc)
 
     zip_buf.seek(0)
     return StreamingResponse(
         zip_buf,
         media_type="application/zip",
         headers={"Content-Disposition": 'attachment; filename="reels_gerados.zip"'},
+    )
+
+
+@router.post("/render-variations")
+async def reels_editor_render_variations(
+    media_a: UploadFile = File(...),
+    media_b: UploadFile | None = File(None),
+    text: str = Form(""),
+    emojis_json: str = Form("[]"),
+    x: float = Form(0.5),
+    y: float = Form(0.5),
+    font_scale: float = Form(1.0),
+    text_color: str = Form("white"),
+    border_color: str = Form("black"),
+    border_width: int = Form(2),
+    watermark_text: str = Form(""),
+    watermark_enabled: str = Form("true"),
+    watermark_x: float = Form(0.5),
+    watermark_y: float = Form(0.88),
+    fit_cover: str = Form("true"),
+    photo_duration: float = Form(8),
+    video_duration: float = Form(60),
+    audio_mode: str = Form("replace"),
+    audio_volume: float = Form(1.0),
+    audio: UploadFile | None = File(None),
+    user: User = Depends(get_current_user),
+):
+    """Gera reel A (+ B se enviado) com a mesma frase/config."""
+    _ = user
+    if not (text or "").strip():
+        raise HTTPException(400, detail="Digite o texto da frase.")
+    layout = _parse_layout(
+        x=x,
+        y=y,
+        font_scale=font_scale,
+        text_color=text_color,
+        border_color=border_color,
+        border_width=border_width,
+        watermark_text=watermark_text,
+        watermark_enabled=watermark_enabled,
+        watermark_x=watermark_x,
+        watermark_y=watermark_y,
+        fit_cover=fit_cover,
+        photo_duration=photo_duration,
+        video_duration=video_duration,
+        emojis_json=emojis_json,
+        audio_mode=audio_mode,
+        audio_volume=audio_volume,
+    )
+    blobs: list[tuple[str, bytes, str]] = []
+    raw_a, ext_a = await _read_media(media_a)
+    blobs.append(("reel_a.mp4", raw_a, ext_a))
+    if media_b is not None and media_b.filename:
+        raw_b, ext_b = await _read_media(media_b)
+        blobs.append(("reel_b.mp4", raw_b, ext_b))
+    audio_blob = await _read_audio(audio)
+    import tempfile
+
+    if len(blobs) == 1:
+        with tempfile.TemporaryDirectory(prefix="ib-reels-var-") as td:
+            td_path = Path(td)
+            audio_path = None
+            if audio_blob:
+                ab, aext = audio_blob
+                audio_path = td_path / f"music{aext}"
+                audio_path.write_bytes(ab)
+            try:
+                out = _write_reel(
+                    td_path,
+                    raw=blobs[0][1],
+                    ext=blobs[0][2],
+                    out_name="reel_a.mp4",
+                    layout=layout,
+                    text=text.strip(),
+                    emojis=layout["emojis"],
+                    audio_path=audio_path,
+                )
+            except ReelsEditorError as exc:
+                raise HTTPException(400, detail=str(exc)) from exc
+            return Response(
+                out.read_bytes(),
+                media_type="video/mp4",
+                headers={"Content-Disposition": 'attachment; filename="reel_a.mp4"'},
+            )
+
+    zip_buf = io.BytesIO()
+    with tempfile.TemporaryDirectory(prefix="ib-reels-var-") as td:
+        td_path = Path(td)
+        audio_path = None
+        if audio_blob:
+            ab, aext = audio_blob
+            audio_path = td_path / f"music{aext}"
+            audio_path.write_bytes(ab)
+        with zipfile.ZipFile(zip_buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            for arc, raw, ext in blobs:
+                try:
+                    out = _write_reel(
+                        td_path,
+                        raw=raw,
+                        ext=ext,
+                        out_name=arc,
+                        layout=layout,
+                        text=text.strip(),
+                        emojis=layout["emojis"],
+                        audio_path=audio_path,
+                    )
+                except ReelsEditorError as exc:
+                    raise HTTPException(400, detail=str(exc)) from exc
+                zf.write(out, arcname=arc)
+    zip_buf.seek(0)
+    return StreamingResponse(
+        zip_buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="reels_variacoes.zip"'},
     )

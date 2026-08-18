@@ -1,4 +1,4 @@
-/* Reels Editor — split view: preview colado no painel, sem vazio */
+/* Reels Editor — dual preview + painel sem scroll feio */
 
 .main-wrap:has(.reels-editor-app) .topbar {
   display: none;
@@ -24,14 +24,14 @@
   background: #050505;
 }
 
-/* Preview: ocupa o resto, celular GRANDE encostado no painel */
+/* Preview: dois celulares centralizados */
 .reels-editor-app .studio-workspace {
   flex: 1 1 auto;
   min-width: 0;
   display: flex;
-  justify-content: flex-end;
+  justify-content: center;
   align-items: center;
-  padding: 12px 0 12px 16px;
+  padding: 12px 16px;
   border-right: 0;
   background: #050505;
   position: relative;
@@ -41,12 +41,12 @@
 .reels-editor-app .studio-workspace::before {
   content: "";
   position: absolute;
-  right: -80px;
+  left: 50%;
   top: 50%;
-  transform: translateY(-50%);
-  width: min(55vh, 480px);
-  height: min(88vh, 860px);
-  background: radial-gradient(ellipse at center, rgba(201, 162, 39, 0.12), transparent 70%);
+  transform: translate(-50%, -50%);
+  width: min(90vw, 900px);
+  height: min(85vh, 780px);
+  background: radial-gradient(ellipse at center, rgba(201, 162, 39, 0.1), transparent 70%);
   pointer-events: none;
 }
 
@@ -55,15 +55,68 @@
   z-index: 1;
   display: flex;
   align-items: center;
+  justify-content: center;
   height: 100%;
+  width: 100%;
+}
+
+.reels-dual {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(12px, 2vw, 28px);
+  height: 100%;
+  width: 100%;
+}
+
+.reels-phone-wrap {
+  position: relative;
+  flex: 0 1 auto;
+  cursor: pointer;
+  opacity: 0.72;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.reels-phone-wrap.is-active {
+  opacity: 1;
+  transform: scale(1.02);
+}
+
+.reels-phone-wrap.is-active .reels-phone {
+  box-shadow:
+    0 0 0 2px rgba(201, 162, 39, 0.55),
+    0 24px 60px rgba(0, 0, 0, 0.55),
+    0 0 40px rgba(201, 162, 39, 0.12);
+}
+
+.reels-phone-wrap.is-dragover .reels-phone {
+  box-shadow:
+    0 0 0 2px rgba(201, 162, 39, 0.8),
+    0 0 24px rgba(201, 162, 39, 0.25);
+}
+
+.reels-slot-badge {
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 8;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #e8d48b;
+  background: rgba(10, 10, 12, 0.92);
+  border: 1px solid rgba(201, 162, 39, 0.35);
 }
 
 .reels-editor-app .phone-shell,
 .reels-phone {
-  height: min(calc(100dvh - 24px), 820px);
+  height: min(calc(100dvh - 36px), 720px);
   width: auto;
   aspect-ratio: 9 / 16;
-  max-width: min(calc((100dvh - 24px) * 9 / 16), 460px);
+  max-width: min(calc((100dvh - 36px) * 9 / 16), 340px);
   padding: 10px;
   border-radius: 28px;
   background: linear-gradient(155deg, #1e1e22, #0a0a0c);
@@ -126,6 +179,7 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow: hidden;
   background: #0a0a0c;
   border-left: 1px solid rgba(255, 255, 255, 0.06);
 }
@@ -215,6 +269,13 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.reels-editor-app .studio-tab-panel::-webkit-scrollbar {
+  display: none;
 }
 
 .reels-editor-app .studio-tab-panel.active { display: block; }
@@ -320,8 +381,12 @@
 
 .reels-mini-btn:hover { border-color: rgba(201, 162, 39, 0.4); color: #e8d48b; }
 
-#reelVideo,
-#reelImage {
+#reelVideo0,
+#reelVideo1,
+#reelImage0,
+#reelImage1,
+.reels-canvas video,
+.reels-canvas img {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -330,8 +395,8 @@
   pointer-events: none;
 }
 
-.reels-editor-app.fit-contain #reelVideo,
-.reels-editor-app.fit-contain #reelImage {
+.reels-editor-app.fit-contain .reels-canvas video,
+.reels-editor-app.fit-contain .reels-canvas img {
   object-fit: contain;
 }
 
@@ -411,8 +476,14 @@
 
 .reels-emoji-picker {
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 5px;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.reels-emoji-field {
+  overflow: hidden;
 }
 
 .reels-emoji-picker button {
@@ -509,12 +580,18 @@
   padding: 12px 20px 16px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   background: #08080a;
+  overflow: hidden;
 }
 
 .reels-publish-actions {
   display: grid;
-  grid-template-columns: 1fr 1.2fr;
+  grid-template-columns: 1fr 1fr;
   gap: 8px;
+}
+
+.reels-btn-full {
+  width: 100%;
+  margin-top: 8px;
 }
 
 .reels-btn {
@@ -567,10 +644,20 @@
     padding: 16px 12px 8px;
   }
 
+  .reels-dual {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    gap: 10px;
+  }
+
   .reels-editor-app .phone-shell,
   .reels-phone {
-    height: min(52vh, 520px);
-    max-width: min(78vw, 300px);
+    height: min(48vh, 480px);
+    max-width: min(42vw, 280px);
+  }
+
+  .reels-phone-wrap.is-active {
+    transform: none;
   }
 
   .reels-side {
@@ -585,7 +672,7 @@
   }
 
   .reels-emoji-picker {
-    grid-template-columns: repeat(6, 1fr);
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 }
 

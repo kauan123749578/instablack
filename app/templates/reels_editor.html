@@ -2,31 +2,38 @@
 {% block title %}Editor de Reels{% endblock %}
 {% block head %}
 <link rel="stylesheet" href="/static/story-studio.css?v=7" />
-<link rel="stylesheet" href="/static/reels-editor.css?v=6" />
+<link rel="stylesheet" href="/static/reels-editor.css?v=7" />
 {% endblock %}
 {% block content %}
 <div class="studio-app reels-editor-app" id="reelsShell">
   <section class="studio-workspace">
     <div class="reels-stage">
-      <div class="phone-shell reels-phone">
-        <span class="reels-phone-notch" aria-hidden="true"></span>
-        <div class="story-canvas reels-canvas" id="canvas">
-          <video id="reelVideo" playsinline muted loop hidden></video>
-          <img id="reelImage" alt="" hidden>
-          <div class="empty-state" id="emptyState">
-            <span class="reels-empty-mark">+</span>
-            Solte vídeo ou foto
-          </div>
-          <div class="reels-text-layer selected" id="textLayer" hidden>
-            <pre class="reels-text-content" id="textPreview"></pre>
-            <div class="reels-emoji-row" id="emojiPreviewRow"></div>
-            <span class="handle" id="resizeHandle"></span>
-          </div>
-          <div class="reels-watermark-layer" id="watermarkLayer" hidden>
-            <span id="watermarkPreview"></span>
+      <div class="reels-dual">
+        {% for slot, label in [('0', 'A'), ('1', 'B')] %}
+        <div class="reels-phone-wrap{% if slot == '1' %} is-active{% endif %}" data-slot="{{ slot }}" id="phoneWrap{{ slot }}">
+          <span class="reels-slot-badge">{{ label }}</span>
+          <div class="phone-shell reels-phone">
+            <span class="reels-phone-notch" aria-hidden="true"></span>
+            <div class="story-canvas reels-canvas" id="canvas{{ slot }}">
+              <video id="reelVideo{{ slot }}" playsinline muted loop hidden></video>
+              <img id="reelImage{{ slot }}" alt="" hidden>
+              <div class="empty-state" id="emptyState{{ slot }}">
+                <span class="reels-empty-mark">+</span>
+                Solte vídeo ou foto
+              </div>
+              <div class="reels-text-layer{% if slot == '1' %} selected{% endif %}" id="textLayer{{ slot }}" hidden>
+                <pre class="reels-text-content" id="textPreview{{ slot }}"></pre>
+                <div class="reels-emoji-row" id="emojiPreviewRow{{ slot }}"></div>
+                <span class="handle" id="resizeHandle{{ slot }}"></span>
+              </div>
+              <div class="reels-watermark-layer" id="watermarkLayer{{ slot }}" hidden>
+                <span id="watermarkPreview{{ slot }}"></span>
+              </div>
+            </div>
+            <span class="reels-phone-home" aria-hidden="true"></span>
           </div>
         </div>
-        <span class="reels-phone-home" aria-hidden="true"></span>
+        {% endfor %}
       </div>
     </div>
   </section>
@@ -34,7 +41,7 @@
   <div class="reels-side">
     <header class="reels-side-head">
       <h2>Editor de Reels</h2>
-      <p class="reels-side-sub">Arraste texto e marca no preview</p>
+      <p class="reels-side-sub">Dois vídeos · mesmo texto · clique no celular para editar</p>
     </header>
 
     <section class="studio-editor">
@@ -47,16 +54,25 @@
       </nav>
 
       <div class="studio-tab-panel active" id="tab-media" role="tabpanel">
-        <div class="field">
-          <label for="mediaInput">Fundo</label>
-          <label class="file-drop reels-drop">
-            <input id="mediaInput" type="file" accept="video/mp4,video/quicktime,video/webm,image/jpeg,image/png,image/webp" hidden>
-            <i data-lucide="upload-cloud"></i>
-            <strong id="fileDropLabel">Vídeo ou foto</strong>
-            <small>MP4 · MOV · JPG · PNG</small>
-          </label>
-          <p class="muted studio-hint" id="mediaNameHint"></p>
+        <div class="reels-field-row reels-media-uploads">
+          <div class="field">
+            <label for="mediaInput0">Vídeo A</label>
+            <label class="file-drop reels-drop reels-drop-sm">
+              <input id="mediaInput0" type="file" accept="video/mp4,video/quicktime,video/webm,image/jpeg,image/png,image/webp" hidden>
+              <i data-lucide="upload-cloud"></i>
+              <strong id="fileDropLabel0">Clique ou solte</strong>
+            </label>
+          </div>
+          <div class="field">
+            <label for="mediaInput1">Vídeo B</label>
+            <label class="file-drop reels-drop reels-drop-sm">
+              <input id="mediaInput1" type="file" accept="video/mp4,video/quicktime,video/webm,image/jpeg,image/png,image/webp" hidden>
+              <i data-lucide="upload-cloud"></i>
+              <strong id="fileDropLabel1">Clique ou solte</strong>
+            </label>
+          </div>
         </div>
+        <p class="muted studio-hint" id="mediaNameHint">Ou arraste direto no preview A ou B</p>
         <div class="reels-field-row">
           <div class="field">
             <label for="fitInput">Enquadramento</label>
@@ -79,9 +95,9 @@
       <div class="studio-tab-panel" id="tab-texto" role="tabpanel">
         <div class="field">
           <label for="phraseInput">Frase ativa</label>
-          <textarea id="phraseInput" rows="3" placeholder="Texto do reel"></textarea>
+          <textarea id="phraseInput" rows="2" placeholder="Texto do reel"></textarea>
         </div>
-        <div class="field">
+        <div class="field reels-emoji-field">
           <label>Emojis iOS</label>
           <div id="emojiPicker" class="reels-emoji-picker"></div>
           <div id="activeEmojis" class="reels-active-emojis"></div>
@@ -189,14 +205,15 @@
 
     <aside class="studio-publish reels-export">
       <div class="reels-publish-actions">
-        <button type="button" class="reels-btn reels-btn-ghost" id="renderOneButton">Gerar 1</button>
-        <button type="button" class="reels-btn reels-btn-gold" id="renderBatchButton">Gerar todos · ZIP</button>
+        <button type="button" class="reels-btn reels-btn-ghost" id="renderOneButton">Gerar ativo</button>
+        <button type="button" class="reels-btn reels-btn-gold" id="renderVariationsButton">Gerar A+B</button>
       </div>
+      <button type="button" class="reels-btn reels-btn-ghost reels-btn-full" id="renderBatchButton">Gerar todos · ZIP</button>
       <div class="status" id="status"></div>
     </aside>
   </div>
 </div>
 {% endblock %}
 {% block scripts %}
-<script src="/static/reels-editor.js?v=5"></script>
+<script src="/static/reels-editor.js?v=6"></script>
 {% endblock %}
