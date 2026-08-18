@@ -197,9 +197,36 @@
     updateTextLayer();
   }
 
+  function parsePhrasesFromTxt(raw) {
+    const text = String(raw || "")
+      .replace(/^\uFEFF/, "")
+      .replace(/\r\n/g, "\n")
+      .replace(/\r/g, "\n")
+      .trim();
+    if (!text) return [];
+    const expand = (block) =>
+      block.replace(/\\n/g, "\n").replace(/\/n/g, "\n").trim();
+    const chunks = /\n\s*\n/.test(text)
+      ? text.split(/\n\s*\n/)
+      : text.split("\n");
+    return chunks.map(expand).filter(Boolean).slice(0, 80);
+  }
+
+  function applyImportedPhrases(lines) {
+    phrases = lines.map((texto) => ({ texto, emojis: [] }));
+    activePhraseIndex = 0;
+    $("phraseInput").value = phrases[0].texto;
+    renderPhrasesList();
+    renderActiveEmojis();
+    updateTextLayer();
+  }
+
   function renderPhrasesList() {
     const box = $("phrasesList");
     if (!box) return;
+    if ($("phrasesCountHint")) {
+      $("phrasesCountHint").textContent = `(${phrases.length})`;
+    }
     box.innerHTML = phrases
       .map((p, idx) => {
         const emCount = Array.isArray(p.emojis) && p.emojis.length ? ` · ${p.emojis.length} emoji(s)` : "";
@@ -352,6 +379,23 @@
     audioInput.value = "";
     $("audioDropLabel").textContent = "Opcional — clique para escolher";
     $("clearAudioBtn").hidden = true;
+  });
+
+  $("phrasesTxtInput").addEventListener("change", async () => {
+    const file = $("phrasesTxtInput").files?.[0];
+    if (!file) return;
+    try {
+      const raw = await file.text();
+      const lines = parsePhrasesFromTxt(raw);
+      if (!lines.length) throw new Error("Nenhuma frase encontrada no .txt.");
+      applyImportedPhrases(lines);
+      $("phrasesTxtLabel").textContent = `${file.name} · ${lines.length} frase(s)`;
+      setStatus(`${lines.length} frase(s) importadas.`, "ok");
+    } catch (error) {
+      setStatus(error.message || "Falha ao ler o .txt.", "error");
+    } finally {
+      $("phrasesTxtInput").value = "";
+    }
   });
 
   $("emojiPicker").addEventListener("click", (event) => {

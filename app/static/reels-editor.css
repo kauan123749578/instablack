@@ -1,4 +1,109 @@
-/* Editor de Reels — camada de texto arrastável (Story Studio + editor_reels) */
+/* Editor de Reels — layout 2 colunas, compacto e mobile */
+
+.shark-content:has(.reels-editor-app) {
+  padding: 12px 16px 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.reels-editor-app.studio-app {
+  display: grid;
+  grid-template-columns: minmax(240px, 38%) minmax(0, 1fr);
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+}
+
+.reels-editor-app .studio-workspace {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-height: 0;
+  padding: 16px 12px;
+}
+
+.reels-editor-app .phone-shell {
+  width: min(100%, 320px);
+  max-height: min(72vh, 680px);
+}
+
+.reels-side {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-left: 1px solid rgba(201, 162, 39, 0.18);
+  background: linear-gradient(180deg, rgba(201, 162, 39, 0.06) 0%, #0e1219 40%);
+}
+
+.reels-editor-app .studio-editor {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-right: 0;
+  padding: 14px 16px 8px;
+  background: transparent;
+}
+
+.reels-editor-app .studio-tabs {
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  margin-bottom: 12px;
+  scrollbar-width: none;
+}
+
+.reels-editor-app .studio-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.reels-editor-app .studio-tab {
+  flex: 1 0 auto;
+  padding: 8px 10px;
+  white-space: nowrap;
+}
+
+.reels-editor-app .studio-tab-panel {
+  display: none;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.reels-editor-app .studio-tab-panel.active {
+  display: block;
+}
+
+.reels-editor-app .studio-editor .field {
+  margin-bottom: 10px;
+}
+
+.reels-editor-app .studio-editor textarea {
+  width: 100%;
+  border: 1px solid rgba(201, 162, 39, 0.22);
+  border-radius: 11px;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.35);
+  color: #f7f8fa;
+  outline: none;
+  font: inherit;
+  box-sizing: border-box;
+  resize: vertical;
+  min-height: 72px;
+}
+
+.reels-field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
 .reels-editor-app .reels-canvas {
   background: #000;
 }
@@ -68,15 +173,15 @@
 .reels-phrases-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  max-height: 280px;
+  gap: 6px;
+  max-height: min(240px, 32vh);
   overflow-y: auto;
 }
 
 .reels-phrase-card {
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 10px;
-  padding: 10px;
+  padding: 8px 10px;
   background: rgba(255, 255, 255, 0.03);
   cursor: pointer;
 }
@@ -144,27 +249,28 @@
 }
 
 .reels-emoji-picker {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(36px, 1fr));
+  gap: 5px;
 }
 
 .reels-emoji-picker button {
-  width: 44px;
-  height: 44px;
-  border-radius: 10px;
+  width: 100%;
+  aspect-ratio: 1;
+  max-width: 40px;
+  border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.04);
   cursor: pointer;
-  padding: 4px;
+  padding: 3px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 
 .reels-emoji-picker button img {
-  width: 32px;
-  height: 32px;
+  width: 26px;
+  height: 26px;
   object-fit: contain;
   pointer-events: none;
 }
@@ -179,18 +285,17 @@
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 8px;
-  min-height: 28px;
+  min-height: 24px;
 }
 
 .reels-active-emojis .emoji-chip {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 8px;
+  padding: 3px 7px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  font-size: 18px;
 }
 
 .reels-active-emojis .emoji-chip button {
@@ -209,22 +314,119 @@
   font-size: 12px;
 }
 
+.reels-check {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 14px;
 }
 
+.reels-editor-app .studio-publish {
+  flex-shrink: 0;
+  padding: 10px 16px 14px;
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.35));
+  border-top: 1px solid rgba(201, 162, 39, 0.18);
+}
+
+.reels-publish-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.reels-editor-app .btn-studio {
+  margin: 0;
+}
+
+.reels-editor-app .btn-studio.primary {
+  margin-top: 0;
+}
+
+.reels-editor-app #addPhraseBtn,
+.reels-editor-app #clearAudioBtn {
+  margin-top: 8px;
+}
+
 @media (max-width: 1100px) {
+  .shark-content:has(.reels-editor-app) {
+    padding: 10px 12px 80px;
+    overflow-y: auto;
+  }
+
   .reels-editor-app.studio-app {
     grid-template-columns: 1fr;
-    min-height: auto;
+    height: auto;
+    min-height: 0;
   }
-  .studio-workspace {
+
+  .reels-editor-app .studio-workspace {
     border-right: none;
     border-bottom: 1px solid rgba(201, 162, 39, 0.18);
+    padding: 12px 10px 8px;
   }
-  .studio-publish {
-    border-top: 1px solid rgba(201, 162, 39, 0.18);
+
+  .reels-editor-app .phone-shell {
+    width: min(52vw, 280px);
+    max-height: 48vh;
+  }
+
+  .reels-side {
+    border-left: 0;
+  }
+
+  .reels-editor-app .studio-editor {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .reels-editor-app .studio-tab-panel.active {
+    overflow: visible;
+  }
+
+  .reels-phrases-list {
+    max-height: 180px;
+  }
+}
+
+@media (max-width: 768px) {
+  .reels-editor-app .phone-shell {
+    width: min(58vw, 240px);
+    max-height: 42vh;
+  }
+
+  .reels-field-row {
+    grid-template-columns: 1fr;
+  }
+
+  .reels-publish-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .reels-editor-app .studio-publish {
+    position: sticky;
+    bottom: 64px;
+    z-index: 8;
+    background: rgba(8, 8, 10, 0.96);
+    backdrop-filter: blur(10px);
+  }
+
+  .reels-editor-app .studio-tab {
+    font-size: 11px;
+    padding: 8px 9px;
+  }
+
+  .reels-emoji-picker {
+    grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+  }
+
+  .reels-emoji-picker button {
+    max-width: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .reels-editor-app .phone-shell {
+    width: min(70vw, 220px);
+    max-height: 38vh;
   }
 }
