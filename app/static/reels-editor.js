@@ -1,5 +1,5 @@
 (() => {
-  const TWEMOJI = "https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72";
+  const EMOJI_BASE = "/static/reels-emojis";
   const $ = (id) => document.getElementById(id);
   const canvas = $("canvas");
   const textLayer = $("textLayer");
@@ -12,12 +12,10 @@
   const reelImage = $("reelImage");
   const emptyState = $("emptyState");
   const statusBox = $("status");
-  const previewDialog = $("previewDialog");
   const reelsShell = $("reelsShell");
   const mediaInput = $("mediaInput");
   const fileDropLabel = $("fileDropLabel");
   const mediaNameHint = $("mediaNameHint");
-  const publishThumbImg = $("publishThumbImg");
   const audioInput = $("audioInput");
 
   const state = {
@@ -57,14 +55,8 @@
       .replace(/"/g, "&quot;");
   }
 
-  function twemojiUrl(char) {
-    const parts = [];
-    for (const c of char) {
-      const cp = c.codePointAt(0);
-      if (cp === 0xfe0f) continue;
-      parts.push(cp.toString(16));
-    }
-    return `${TWEMOJI}/${parts.join("-")}.png`;
+  function emojiUrl(file) {
+    return `${EMOJI_BASE}/${encodeURIComponent(file)}`;
   }
 
   function revokeUrls() {
@@ -125,7 +117,7 @@
     textLayer.hidden = false;
 
     emojiPreviewRow.innerHTML = activeEmojis()
-      .map((e) => `<img src="${twemojiUrl(e)}" alt="${escapeHtml(e)}" draggable="false">`)
+      .map((file) => `<img src="${emojiUrl(file)}" alt="" draggable="false">`)
       .join("");
 
     const wmOn = $("watermarkEnabled").checked;
@@ -152,8 +144,8 @@
     }
     box.innerHTML = emojis
       .map(
-        (e, idx) =>
-          `<span class="emoji-chip"><img src="${twemojiUrl(e)}" alt="" width="20" height="20">${escapeHtml(e)}` +
+        (file, idx) =>
+          `<span class="emoji-chip"><img src="${emojiUrl(file)}" alt="" width="24" height="24">` +
           `<button type="button" data-rm-emoji="${idx}" title="Remover">×</button></span>`
       )
       .join("");
@@ -165,7 +157,8 @@
     box.innerHTML = emojiCatalog
       .map(
         (item) =>
-          `<button type="button" data-add-emoji="${escapeHtml(item.char)}" title="Adicionar">${item.char}</button>`
+          `<button type="button" data-add-emoji="${escapeHtml(item.file)}" title="${escapeHtml(item.label || item.char || item.file)}">` +
+          `<img src="${emojiUrl(item.file)}" alt="${escapeHtml(item.char || "")}"></button>`
       )
       .join("");
   }
@@ -184,11 +177,8 @@
     reelImage.hidden = true;
     if (!file) {
       emptyState.style.display = "grid";
-      publishThumbImg.hidden = true;
       mediaNameHint.textContent = "";
       fileDropLabel.textContent = "Clique ou arraste 1 vídeo ou foto";
-      const empty = $("publishThumb")?.querySelector(".publish-thumb-empty");
-      if (empty) empty.hidden = false;
       return;
     }
     emptyState.style.display = "none";
@@ -204,10 +194,6 @@
       reelImage.src = url;
       reelImage.hidden = false;
     }
-    publishThumbImg.src = url;
-    publishThumbImg.hidden = false;
-    const empty = $("publishThumb")?.querySelector(".publish-thumb-empty");
-    if (empty) empty.hidden = true;
     updateTextLayer();
   }
 
@@ -216,10 +202,10 @@
     if (!box) return;
     box.innerHTML = phrases
       .map((p, idx) => {
-        const em = Array.isArray(p.emojis) && p.emojis.length ? ` ${p.emojis.join("")}` : "";
+        const emCount = Array.isArray(p.emojis) && p.emojis.length ? ` · ${p.emojis.length} emoji(s)` : "";
         return (
           `<div class="reels-phrase-card${idx === activePhraseIndex ? " active" : ""}" data-phrase="${idx}">` +
-          `<pre>${escapeHtml((p.texto || "") + em)}</pre>` +
+          `<pre>${escapeHtml(p.texto || "")}${escapeHtml(emCount)}</pre>` +
           `<div class="reels-phrase-actions">` +
           `<button type="button" class="btn btn-sm" data-edit="${idx}">Editar</button>` +
           `<button type="button" class="btn btn-sm btn-danger" data-del="${idx}">Remover</button>` +
@@ -254,13 +240,6 @@
   function requireMedia() {
     if (!mediaFile) throw new Error("Escolha um vídeo ou foto de fundo.");
     return mediaFile;
-  }
-
-  function formForPreview() {
-    const form = new FormData();
-    form.append("media", requireMedia());
-    appendLayoutFields(form);
-    return form;
   }
 
   function formForRenderOne() {
@@ -378,10 +357,10 @@
   $("emojiPicker").addEventListener("click", (event) => {
     const btn = event.target.closest("[data-add-emoji]");
     if (!btn) return;
-    const emoji = btn.dataset.addEmoji;
+    const file = btn.dataset.addEmoji;
     const list = activeEmojis();
     if (list.length >= 8) return;
-    list.push(emoji);
+    list.push(file);
     activePhrase().emojis = list;
     renderActiveEmojis();
     renderPhrasesList();
@@ -452,8 +431,6 @@
     updateTextLayer();
   });
 
-  $("closePreview").addEventListener("click", () => previewDialog.close());
-
   async function postAction(url, form, successMsg, download) {
     const response = await fetch(url, {
       method: "POST",
@@ -473,21 +450,6 @@
     setStatus(successMsg, "ok");
     return blob;
   }
-
-  $("previewButton").addEventListener("click", async () => {
-    const btn = $("previewButton");
-    btn.disabled = true;
-    setStatus("Gerando prévia FFmpeg…");
-    try {
-      const blob = await postAction("/reels-editor/preview", formForPreview(), "Prévia pronta.");
-      $("finalPreview").src = URL.createObjectURL(blob);
-      previewDialog.showModal();
-    } catch (error) {
-      setStatus(error.message, "error");
-    } finally {
-      btn.disabled = false;
-    }
-  });
 
   $("renderOneButton").addEventListener("click", async () => {
     const btn = $("renderOneButton");

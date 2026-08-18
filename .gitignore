@@ -10,11 +10,14 @@ venv/
 *.db
 *.sqlite*
 session.json
-scripts/web_signup_capture.json
-scripts/web_signup_state.json
-scripts/web_signup_cookies.json
-scripts/web_signup_pending/
-scripts/web_signup_accounts/
+scripts/web_signup/web_signup_capture.json
+scripts/web_signup/web_signup_state.json
+scripts/web_signup/web_signup_cookies.json
+scripts/web_signup/pending/
+scripts/web_signup/accounts/
+scripts/web_signup/signup_gmail_imap.json
+scripts/web_signup/chrome_profiles/
+scripts/web_signup/chrome_signup_selectors.json
 scripts/*_body.txt
 storage/
 tmp/
@@ -44,4 +47,5 @@ Thumbs.db
 !app/static/pwa-icon-192.png
 !app/static/pwa-icon-512.png
 !app/static/pwa-icon-512-maskable.png
+!app/static/reels-emojis/*.png
 !extension/icons/*.png

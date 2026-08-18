@@ -4,14 +4,13 @@ from __future__ import annotations
 import re
 import subprocess
 import tempfile
-import urllib.request
 from pathlib import Path
 
 from app.config import settings
 
 VIDEO_EXT = {".mp4", ".mov", ".webm", ".m4v", ".mkv", ".avi"}
 IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif"}
-TWEMOJI_BASE = "https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72"
+EMOJI_DIR = Path(__file__).resolve().parents[1] / "app" / "static" / "reels-emojis"
 _EMOJI_RE = re.compile(
     r"[\U0001F300-\U0001FAFF\U00002600-\U000027BF\U0001F900-\U0001F9FF"
     r"\U0001F100-\U0001F1FF\U0001F600-\U0001F64F\U0001F000-\U0001F0FF"
@@ -115,40 +114,34 @@ def strip_emojis(text: str) -> str:
     return "\n".join(lines).strip()
 
 
-def _twemoji_codepoint(emoji: str) -> str:
-    parts = []
-    for char in emoji:
-        cp = ord(char)
-        if cp == 0xFE0F:
-            continue
-        parts.append(f"{cp:x}")
-    return "-".join(parts)
-
-
-def _fetch_twemoji_png(emoji: str, cache_dir: Path) -> Path | None:
-    code = _twemoji_codepoint(emoji)
-    if not code:
-        return None
-    dest = cache_dir / f"{code}.png"
-    if dest.exists() and dest.stat().st_size > 0:
-        return dest
-    url = f"{TWEMOJI_BASE}/{code}.png"
+def _has_audio_stream(media_path: Path) -> bool:
+    cmd = [
+        "ffprobe",
+        "-v",
+        "error",
+        "-select_streams",
+        "a:0",
+        "-show_entries",
+        "stream=codec_type",
+        "-of",
+        "csv=p=0",
+        str(media_path),
+    ]
     try:
-        with urllib.request.urlopen(url, timeout=20) as resp:
-            dest.write_bytes(resp.read())
-        return dest if dest.exists() else None
+        out = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=20)
+        return "audio" in (out.stdout or "").lower()
     except Exception:
-        return None
+        return False
 
 
-def _resolve_emoji_pngs(emojis: list[str], cache_dir: Path) -> list[Path]:
+def _resolve_emoji_pngs(emojis: list[str]) -> list[Path]:
     paths: list[Path] = []
-    for emoji in emojis:
-        char = (emoji or "").strip()
-        if not char:
+    for raw in emojis:
+        name = Path((raw or "").strip()).name
+        if not name.lower().endswith(".png"):
             continue
-        png = _fetch_twemoji_png(char, cache_dir)
-        if png:
+        png = EMOJI_DIR / name
+        if png.exists() and png.is_file():
             paths.append(png)
     return paths
 
@@ -283,7 +276,7 @@ def _layout_kwargs(
     text_only = strip_emojis(_normalize_text(text))
     text_file = cache_dir / "overlay.txt"
     text_file.write_text(text_only, encoding="utf-8")
-    emoji_pngs = _resolve_emoji_pngs(emojis or [], cache_dir)
+    emoji_pngs = _resolve_emoji_pngs(emojis or [])
     filt = build_overlay_filter(
         text_file=text_file,
         width=1080,
@@ -303,68 +296,6 @@ def _layout_kwargs(
         emoji_pngs=emoji_pngs,
     )
     return filt, text_only
-
-
-def render_preview_jpeg(
-    media_path: Path,
-    *,
-    text: str,
-    emojis: list[str] | None = None,
-    x_frac: float = 0.5,
-    y_frac: float = 0.5,
-    font_scale: float = 1.0,
-    text_color: str = "white",
-    border_color: str = "black",
-    border_width: int = 2,
-    watermark_text: str = "",
-    watermark_enabled: bool = True,
-    watermark_x_frac: float = 0.5,
-    watermark_y_frac: float = 0.88,
-    fit_cover: bool = True,
-) -> bytes:
-    is_image = is_image_path(media_path)
-    with tempfile.TemporaryDirectory(prefix="ib-reels-preview-") as td:
-        td_path = Path(td)
-        filt, _ = _layout_kwargs(
-            text=text,
-            emojis=emojis,
-            x_frac=x_frac,
-            y_frac=y_frac,
-            font_scale=font_scale,
-            text_color=text_color,
-            border_color=border_color,
-            border_width=border_width,
-            watermark_text=watermark_text,
-            watermark_enabled=watermark_enabled,
-            watermark_x_frac=watermark_x_frac,
-            watermark_y_frac=watermark_y_frac,
-            fit_cover=fit_cover,
-            is_image=is_image,
-            cache_dir=td_path,
-        )
-        out = td_path / "preview.jpg"
-        cmd = [_ffmpeg(), "-hide_banner", "-loglevel", "error", "-y"]
-        if is_image:
-            cmd.extend(["-loop", "1", "-i", str(media_path)])
-        else:
-            cmd.extend(["-ss", "0.5", "-i", str(media_path)])
-        cmd.extend(
-            [
-                "-filter_complex",
-                filt,
-                "-map",
-                "[outv]",
-                "-frames:v",
-                "1",
-                "-q:v",
-                "2",
-                str(out),
-            ]
-        )
-        _run_ffmpeg(cmd, timeout=120)
-        if not out.exists():
-            raise ReelsEditorError("Prévia não gerada.")
-        return out.read_bytes()
 
 
 def render_reel_mp4(
@@ -395,6 +326,7 @@ def render_reel_mp4(
     has_music = bool(audio_path and audio_path.exists())
     mode = (audio_mode or "replace").strip().lower()
     vol = max(0.0, min(2.0, float(audio_volume or 1.0)))
+    has_video_audio = (not is_image) and _has_audio_stream(media_path)
 
     with tempfile.TemporaryDirectory(prefix="ib-reels-render-") as td:
         td_path = Path(td)
@@ -424,7 +356,7 @@ def render_reel_mp4(
         if has_music:
             cmd.extend(["-i", str(audio_path)])
 
-        if has_music and mode == "mix" and not is_image:
+        if has_music and mode == "mix" and has_video_audio:
             filt = (
                 filt.replace("[outv];", "[outv];")
                 + f"[0:a]volume=0.35[a0];[1:a]volume={vol:.2f}[a1];"
@@ -435,8 +367,8 @@ def render_reel_mp4(
             cmd.extend(["-filter_complex", filt, "-map", "[outv]"])
             if has_music:
                 cmd.extend(["-map", "1:a"])
-            elif not is_image:
-                cmd.extend(["-map", "0:a?"])
+            elif has_video_audio:
+                cmd.extend(["-map", "0:a"])
 
         cmd.extend(
             [
@@ -450,7 +382,7 @@ def render_reel_mp4(
                 "yuv420p",
             ]
         )
-        if has_music or not is_image:
+        if has_music or has_video_audio:
             cmd.extend(["-c:a", "aac", "-b:a", "128k"])
         cmd.extend(["-t", str(int(duration)), "-shortest", "-movflags", "+faststart", str(output_path)])
         _run_ffmpeg(cmd, timeout=600)

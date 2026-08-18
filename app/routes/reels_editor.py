@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.deps import get_current_user
 from app.templating import templates
 from core.database import get_db
-from core.reels_editor import ReelsEditorError, render_preview_jpeg, render_reel_mp4
+from core.reels_editor import ReelsEditorError, render_reel_mp4
 from models.models import User
 
 router = APIRouter(prefix="/reels-editor", tags=["reels-editor"])
@@ -36,8 +36,8 @@ def _parse_emojis(raw: str) -> list[str]:
         return []
     out: list[str] = []
     for item in data:
-        s = str(item or "").strip()
-        if s:
+        s = Path(str(item or "").strip()).name
+        if s.lower().endswith(".png"):
             out.append(s)
     return out[:12]
 
@@ -156,56 +156,6 @@ def reels_editor_page(
     )
 
 
-@router.post("/preview")
-async def reels_editor_preview(
-    media: UploadFile = File(...),
-    text: str = Form(""),
-    emojis_json: str = Form("[]"),
-    x: float = Form(0.5),
-    y: float = Form(0.5),
-    font_scale: float = Form(1.0),
-    text_color: str = Form("white"),
-    border_color: str = Form("black"),
-    border_width: int = Form(2),
-    watermark_text: str = Form(""),
-    watermark_enabled: str = Form("true"),
-    watermark_x: float = Form(0.5),
-    watermark_y: float = Form(0.88),
-    fit_cover: str = Form("true"),
-    photo_duration: float = Form(8),
-    video_duration: float = Form(60),
-    user: User = Depends(get_current_user),
-):
-    _ = user
-    layout = _parse_layout(
-        x=x,
-        y=y,
-        font_scale=font_scale,
-        text_color=text_color,
-        border_color=border_color,
-        border_width=border_width,
-        watermark_text=watermark_text,
-        watermark_enabled=watermark_enabled,
-        watermark_x=watermark_x,
-        watermark_y=watermark_y,
-        fit_cover=fit_cover,
-        photo_duration=photo_duration,
-        video_duration=video_duration,
-        emojis_json=emojis_json,
-    )
-    raw, ext = await _read_media(media)
-    import tempfile
-
-    with tempfile.TemporaryDirectory(prefix="ib-reels-in-") as td:
-        src = Path(td) / f"source{ext}"
-        src.write_bytes(raw)
-        try:
-            jpeg = render_preview_jpeg(src, **_render_kwargs(layout, text=text))
-        except ReelsEditorError as exc:
-            raise HTTPException(400, detail=str(exc)) from exc
-    return Response(jpeg, media_type="image/jpeg")
-
-
 @router.post("/render")
 async def reels_editor_render_one(
     media: UploadFile = File(...),
@@ -320,7 +270,11 @@ async def reels_editor_render_batch(
         if isinstance(p, dict):
             txt = str(p.get("texto") or "").strip()
             em = p.get("emojis")
-            emojis = [str(e).strip() for e in em if str(e).strip()] if isinstance(em, list) else default_emojis
+            emojis = (
+                [Path(str(e)).name for e in em if str(e).strip().endswith(".png")]
+                if isinstance(em, list)
+                else default_emojis
+            )
         else:
             txt = str(p).strip()
             emojis = default_emojis

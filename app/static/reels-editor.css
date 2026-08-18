@@ -138,8 +138,8 @@
 }
 
 .reels-emoji-row img {
-  width: 1.15em;
-  height: 1.15em;
+  width: 1.35em;
+  height: 1.35em;
   object-fit: contain;
 }
 
@@ -150,14 +150,23 @@
 }
 
 .reels-emoji-picker button {
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.04);
   cursor: pointer;
-  font-size: 20px;
-  line-height: 1;
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.reels-emoji-picker button img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  pointer-events: none;
 }
 
 .reels-emoji-picker button:hover {
