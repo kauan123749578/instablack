@@ -206,7 +206,7 @@ def build_overlay_filter(
     watermark_y_frac: float,
     fit_cover: bool,
     is_image: bool,
-    emoji_pngs: list[Path] | None = None,
+    emoji_count: int = 0,
     video_duration: float = 60.0,
 ) -> str:
     width = 1080
@@ -223,7 +223,6 @@ def build_overlay_filter(
     border = _ffmpeg_color(border_color, fallback="black")
     line_sp = max(4, int(fs * 0.3))
 
-    # Sempre normaliza para 9:16 (Reels).
     if fit_cover or is_image:
         scale = (
             "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,"
@@ -260,7 +259,7 @@ def build_overlay_filter(
             f"borderw={border_w}:"
             f"bordercolor={border}@0.95:"
             f"shadowcolor=black@0.45:shadowx=2:shadowy=2:"
-            f"x=max(10,(w-text_w)/2):"
+            f"x=(w-text_w)/2:"
             f"y={line_y}[{next_label}];"
         )
         current = next_label
@@ -270,23 +269,22 @@ def build_overlay_filter(
     parts.append(last)
     current = "txt"
     label_counter += 1
-    emoji_paths = emoji_pngs or []
     emoji_y: int | None = None
     emoji_size = max(28, int(fs * 1.3))
 
-    if emoji_paths:
+    if emoji_count > 0:
         emoji_spacing = int(emoji_size * 0.15)
-        total_w = len(emoji_paths) * emoji_size + max(0, len(emoji_paths) - 1) * emoji_spacing
+        total_w = emoji_count * emoji_size + max(0, emoji_count - 1) * emoji_spacing
         start_x = max(0, int(width / 2 - total_w / 2))
         emoji_y = start_y + total_text_height + int(fs * 0.8)
-        for idx, png in enumerate(emoji_paths):
+        even = emoji_size if emoji_size % 2 == 0 else emoji_size + 1
+        for idx in range(emoji_count):
+            input_idx = idx + 1  # input 0 = vídeo
             emoji_label = f"em{idx}"
             next_label = f"v{label_counter}"
             label_counter += 1
             emoji_x = start_x + idx * (emoji_size + emoji_spacing)
-            png_path = str(png.resolve()).replace("\\", "/").replace(":", "\\:")
-            even = emoji_size if emoji_size % 2 == 0 else emoji_size + 1
-            parts.append(f"movie='{png_path}',scale={even}:{even}[{emoji_label}];")
+            parts.append(f"[{input_idx}:v]scale={even}:{even}[{emoji_label}];")
             parts.append(
                 f"[{current}][{emoji_label}]overlay="
                 f"x={emoji_x}:y={emoji_y}[{next_label}];"
@@ -303,7 +301,7 @@ def build_overlay_filter(
         wm_fs = max(14, int(height * 0.012))
         wm_label = f"v{label_counter}"
         label_counter += 1
-        if emoji_paths and emoji_y is not None:
+        if emoji_count > 0 and emoji_y is not None:
             watermark_y = emoji_y + emoji_size + int(fs * 0.5)
         else:
             watermark_y = start_y + total_text_height + int(fs * 0.6)
@@ -329,7 +327,6 @@ def build_overlay_filter(
     fade_duration = 0.5
     clip_duration = max(1.0, float(video_duration or 60.0))
     fade_in_label = f"v{label_counter}"
-    label_counter += 1
     fade_out_label = "outv"
     parts.append(f"[{current}]fade=t=in:st=0:d={fade_duration}[{fade_in_label}];")
     parts.append(
@@ -357,7 +354,7 @@ def _layout_kwargs(
     is_image: bool,
     cache_dir: Path,
     video_duration: float = 60.0,
-) -> tuple[str, str]:
+) -> tuple[str, str, list[Path]]:
     text_only = strip_emojis(_normalize_text(text))
     text_file = cache_dir / "overlay.txt"
     text_file.write_text(text_only, encoding="utf-8")
@@ -378,10 +375,10 @@ def _layout_kwargs(
         watermark_y_frac=watermark_y_frac,
         fit_cover=fit_cover,
         is_image=is_image,
-        emoji_pngs=emoji_pngs,
+        emoji_count=len(emoji_pngs),
         video_duration=video_duration,
     )
-    return filt, text_only
+    return filt, text_only, emoji_pngs
 
 
 def render_reel_mp4(
@@ -417,7 +414,7 @@ def render_reel_mp4(
     with tempfile.TemporaryDirectory(prefix="ib-reels-render-") as td:
         td_path = Path(td)
         duration = max(1.0, min(60.0, float(photo_duration if is_image else video_duration)))
-        filt, _ = _layout_kwargs(
+        filt, _, emoji_pngs = _layout_kwargs(
             text=text,
             emojis=emojis,
             x_frac=x_frac,
@@ -435,25 +432,33 @@ def render_reel_mp4(
             cache_dir=td_path,
             video_duration=duration,
         )
+        filter_file = td_path / "filter.txt"
+        filter_file.write_text(filt, encoding="utf-8")
+
         cmd = [_ffmpeg(), "-hide_banner", "-loglevel", "error", "-y"]
         if is_image:
             cmd.extend(["-loop", "1", "-i", str(media_path)])
         else:
             cmd.extend(["-i", str(media_path)])
+        for ep in emoji_pngs:
+            cmd.extend(["-i", str(ep)])
+
+        audio_input_idx: int | None = None
         if has_music:
+            audio_input_idx = 1 + len(emoji_pngs)
             cmd.extend(["-i", str(audio_path)])
 
         if has_music and mode == "mix" and has_video_audio:
-            filt = (
-                filt.replace("[outv];", "[outv];")
-                + f"[0:a]volume=0.35[a0];[1:a]volume={vol:.2f}[a1];"
-                + "[a0][a1]amix=inputs=2:duration=first:dropout_transition=2[aout];"
+            filt_audio = (
+                f"[0:a]volume=0.35[a0];[{audio_input_idx}:a]volume={vol:.2f}[a1];"
+                "[a0][a1]amix=inputs=2:duration=first:dropout_transition=2[aout];"
             )
-            cmd.extend(["-filter_complex", filt, "-map", "[outv]", "-map", "[aout]"])
+            filter_file.write_text(filt + filt_audio, encoding="utf-8")
+            cmd.extend(["-filter_complex_script", str(filter_file), "-map", "[outv]", "-map", "[aout]"])
         else:
-            cmd.extend(["-filter_complex", filt, "-map", "[outv]"])
-            if has_music:
-                cmd.extend(["-map", "1:a"])
+            cmd.extend(["-filter_complex_script", str(filter_file), "-map", "[outv]"])
+            if has_music and audio_input_idx is not None:
+                cmd.extend(["-map", f"{audio_input_idx}:a"])
             elif has_video_audio:
                 cmd.extend(["-map", "0:a"])
 

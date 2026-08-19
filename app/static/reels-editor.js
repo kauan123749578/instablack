@@ -187,8 +187,15 @@
       const layout = slotLayout(i);
       const text = (layout.texto || "").trim() || (i === state.activeSlot ? "Texto…" : "");
       const fs = autoFontSize(text, canvasH, layout.fontScale || 1);
-      const emojiHtml = (layout.emojis || [])
-        .map((file) => `<img src="${emojiUrl(file)}" alt="" draggable="false">`)
+      const emojiSize = Math.max(22, Math.round(fs * 1.3));
+      const emojiGap = Math.round(fs * 0.8);
+      const emojis = layout.emojis || [];
+      const emojiHtml = emojis
+        .map(
+          (file) =>
+            `<img src="${emojiUrl(file)}" alt="" draggable="false" ` +
+            `width="${emojiSize}" height="${emojiSize}">`
+        )
         .join("");
       s.textPreview.textContent = text;
       s.textPreview.style.fontSize = `${fs}px`;
@@ -199,18 +206,20 @@
       s.textLayer.style.left = `${layout.x * 100}%`;
       s.textLayer.style.top = `${layout.y * 100}%`;
       s.textLayer.style.transform = "translate(-50%, -50%)";
-      s.textLayer.hidden = !text && !emojiHtml;
+      s.textLayer.hidden = !text && !emojis.length;
       s.emojiRow.innerHTML = emojiHtml;
-      s.emojiRow.hidden = !emojiHtml;
-      s.emojiRow.style.marginTop = `${Math.round(fs * 0.35)}px`;
+      s.emojiRow.hidden = !emojis.length;
+      s.emojiRow.style.marginTop = emojis.length ? `${emojiGap}px` : "0";
 
       s.watermarkLayer.hidden = !wmOn;
       if (wmOn) {
         s.watermarkPreview.textContent = wmText;
         const useAutoWm = Math.abs(state.wmY - 0.88) < 0.02;
-        if (useAutoWm && emojiHtml) {
+        if (useAutoWm && emojis.length) {
+          const wmTop =
+            layout.y * canvasH + emojiGap / canvasH + (emojiSize * 1.5) / canvasH;
           s.watermarkLayer.style.left = "50%";
-          s.watermarkLayer.style.top = `${Math.min(92, layout.y * 100 + 18)}%`;
+          s.watermarkLayer.style.top = `${Math.min(92, (wmTop / canvasH) * 100)}%`;
         } else {
           s.watermarkLayer.style.left = `${state.wmX * 100}%`;
           s.watermarkLayer.style.top = `${state.wmY * 100}%`;
@@ -555,14 +564,21 @@
     }
   });
 
+  function syncEmojisToPhrase(list) {
+    activeLayout().emojis = list;
+    if (phrases[activePhraseIndex]) {
+      phrases[activePhraseIndex].emojis = [...list];
+    }
+  }
+
   $("emojiPicker").addEventListener("click", (event) => {
     const btn = event.target.closest("[data-add-emoji]");
     if (!btn) return;
     const file = btn.dataset.addEmoji;
-    const list = activeLayout().emojis || [];
+    const list = [...(activeLayout().emojis || [])];
     if (list.length >= 8) return;
     list.push(file);
-    activeLayout().emojis = list;
+    syncEmojisToPhrase(list);
     renderActiveEmojis();
     renderPhrasesList();
     updateTextLayer();
@@ -572,9 +588,9 @@
     const btn = event.target.closest("[data-rm-emoji]");
     if (!btn) return;
     const idx = Number(btn.dataset.rmEmoji);
-    const list = activeLayout().emojis || [];
+    const list = [...(activeLayout().emojis || [])];
     list.splice(idx, 1);
-    activeLayout().emojis = list;
+    syncEmojisToPhrase(list);
     renderActiveEmojis();
     renderPhrasesList();
     updateTextLayer();

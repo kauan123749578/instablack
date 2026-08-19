@@ -411,6 +411,11 @@
   text-align: center;
   touch-action: none;
   user-select: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
 }
 
 .reels-text-layer.selected {
@@ -426,6 +431,8 @@
   white-space: pre-wrap;
   word-break: break-word;
   text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.55);
+  width: 100%;
+  text-align: center;
 }
 
 .reels-text-layer .handle {
@@ -464,15 +471,20 @@
 .reels-emoji-row {
   display: flex;
   justify-content: center;
-  gap: 4px;
-  margin-top: 4px;
-  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  width: 100%;
+  line-height: 1;
 }
 
 .reels-emoji-row img {
-  width: 1.45em;
-  height: 1.45em;
+  width: auto;
+  height: auto;
   object-fit: contain;
+  flex-shrink: 0;
+  display: block;
+  pointer-events: none;
 }
 
 .reels-emoji-picker {
