@@ -954,6 +954,7 @@
     const videoInput = document.getElementById("video-input");
     const videoList = document.getElementById("video-file-list");
     const reelUploadHelp = document.getElementById("reel-upload-help");
+    const photoUploadHelp = document.getElementById("photo-upload-help");
     if (!sel) return;
 
     const params = new URLSearchParams(window.location.search);
@@ -977,11 +978,12 @@
         if (storyLinkWrap) storyLinkWrap.style.display = "";
         if (commentAutoReplyWrap) commentAutoReplyWrap.style.display = "none";
         if (reelUploadHelp) reelUploadHelp.style.display = "none";
+        if (photoUploadHelp) photoUploadHelp.style.display = "none";
       } else if (t === "photo") {
-        if (mediaLabel) mediaLabel.firstChild.textContent = "Foto para o feed (.jpg/.png) ";
+        if (mediaLabel) mediaLabel.firstChild.textContent = "Fotos para o feed (.jpg/.png) ";
         if (videoInput) {
-          videoInput.name = "video";
-          videoInput.removeAttribute("multiple");
+          videoInput.name = "videos";
+          videoInput.setAttribute("multiple", "multiple");
           videoInput.accept = "image/jpeg,image/png,image/webp";
         }
         if (videoList) videoList.style.display = "none";
@@ -993,6 +995,7 @@
         if (storyLinkWrap) storyLinkWrap.style.display = "none";
         if (commentAutoReplyWrap) commentAutoReplyWrap.style.display = "";
         if (reelUploadHelp) reelUploadHelp.style.display = "none";
+        if (photoUploadHelp) photoUploadHelp.style.display = "block";
       } else {
         if (mediaLabel) mediaLabel.firstChild.textContent = "Vídeos Reels (.mp4) ";
         if (videoInput) {
@@ -1008,6 +1011,7 @@
         if (storyLinkWrap) storyLinkWrap.style.display = "none";
         if (commentAutoReplyWrap) commentAutoReplyWrap.style.display = "";
         if (reelUploadHelp) reelUploadHelp.style.display = "block";
+        if (photoUploadHelp) photoUploadHelp.style.display = "none";
       }
       document.dispatchEvent(new CustomEvent("automation-media-changed"));
     }
@@ -2841,6 +2845,29 @@
           videoList.style.display = files.length > 1 ? "block" : "none";
         }
       } else {
+        const isPhoto = contentType?.value === "photo";
+        if (isPhoto) {
+          const bad = files.filter((f) => !imageExt.test(f.name));
+          if (bad.length) {
+            videoName.textContent = "Arquivo inválido: " + bad.map((f) => f.name).join(", ") + " — use .jpg/.png";
+            videoName.style.color = "var(--red, #ef4444)";
+          } else if (maxReelFiles <= 0) {
+            videoName.textContent = "Limite de " + reelVideosLimit + " fotos/vídeos atingido. Apague mídias antigas para liberar espaço.";
+            videoName.style.color = "var(--red, #ef4444)";
+          } else if (files.length > maxReelFiles) {
+            videoName.textContent = "Limite: no máximo " + maxReelFiles + " foto(s) agora (" + reelVideosLimit + " no total por conta).";
+            videoName.style.color = "var(--red, #ef4444)";
+          } else {
+            videoName.textContent = files.length === 1
+              ? files[0].name
+              : files.length + " foto(s) selecionada(s)";
+            videoName.style.color = "var(--green, #22c55e)";
+          }
+          if (videoList) {
+            videoList.innerHTML = files.map((f) => "<li>" + escapeHtml(f.name) + "</li>").join("");
+            videoList.style.display = files.length > 1 ? "block" : "none";
+          }
+        } else {
         videoName.textContent = files[0].name;
         videoName.style.color = "var(--green, #22c55e)";
         if (videoList && contentType?.value === "story") {
@@ -2851,6 +2878,7 @@
           videoList.style.display = files.length > 1 ? "block" : "none";
         } else if (videoList) {
           videoList.style.display = "none";
+        }
         }
       }
     }
@@ -2915,9 +2943,20 @@
           return;
         }
       } else if (contentType?.value === "photo") {
-        if (!imageExt.test(files[0].name)) {
+        if (maxReelFiles <= 0) {
           e.preventDefault();
-          alert("Para foto no feed, use .jpg ou .png.");
+          alert("Limite de " + reelVideosLimit + " fotos/vídeos por conta atingido. Apague mídias ou automações antigas para liberar espaço.");
+          return;
+        }
+        if (files.length > maxReelFiles) {
+          e.preventDefault();
+          alert("Você só pode enviar mais " + maxReelFiles + " foto(s) (limite " + reelVideosLimit + " no total por conta). Selecione menos arquivos.");
+          return;
+        }
+        const bad = files.filter((f) => !imageExt.test(f.name));
+        if (bad.length) {
+          e.preventDefault();
+          alert("Para foto no feed, use .jpg, .png ou .webp: " + bad.map((f) => f.name).join(", "));
           return;
         }
       }

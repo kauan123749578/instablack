@@ -93,6 +93,17 @@ def _normalize_text(raw: str) -> str:
     return (raw or "").replace("\\n", "\n").replace("/n", "\n").strip()
 
 
+def _escape_drawtext(text: str) -> str:
+    """Escapa uma string para uso direto no parâmetro text= do drawtext."""
+    return (
+        text
+        .replace("\\", "\\\\")
+        .replace("'", "\\'")
+        .replace(":", "\\:")
+        .replace("\n", " ")
+    )
+
+
 def _ffmpeg_color(raw: str, *, fallback: str = "white") -> str:
     color = (raw or fallback).strip() or fallback
     if color.startswith("#") and len(color) >= 7:
@@ -172,6 +183,10 @@ def build_overlay_filter(
     fs = _font_size(height, font_scale)
     font = _font_path_escaped()
     font_part = f"fontfile='{font}':" if font else ""
+    border_w = max(0, min(6, int(border_width or 2)))
+    color = _ffmpeg_color(text_color, fallback="white")
+    border = _ffmpeg_color(border_color, fallback="black")
+    line_sp = max(4, fs // 6)
 
     if fit_cover or is_image:
         scale = (
@@ -184,29 +199,52 @@ def build_overlay_filter(
             "pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1[base];"
         )
 
-    text_path = str(text_file.resolve()).replace("\\", "/").replace(":", "\\:")
-    x_expr = f"(w*{x_frac:.4f})-(text_w/2)"
-    y_expr = f"(h*{y_frac:.4f})-(text_h/2)"
-    border_w = max(0, min(6, int(border_width or 2)))
-    color = _ffmpeg_color(text_color, fallback="white")
-    border = _ffmpeg_color(border_color, fallback="black")
+    # Renderiza cada linha individualmente e centraliza via (w-text_w)/2.
+    # Isso garante centralização correta no FFmpeg 4.x que não tem text_align.
+    raw_text = text_file.read_text(encoding="utf-8", errors="replace").strip()
+    lines = raw_text.split("\n") if raw_text else [""]
+    # Remove linhas vazias extras mas mantém pelo menos uma
+    lines = [l for l in lines if l.strip()] or [""]
 
-    parts = [
-        scale,
-        f"[base]drawtext={font_part}"
-        f"textfile='{text_path}':"
-        f"fontsize={fs}:"
-        f"fontcolor={color}:"
-        f"borderw={border_w}:"
-        f"bordercolor={border}@0.95:"
-        f"shadowcolor=black@0.45:shadowx=2:shadowy=2:"
-        f"x={x_expr}:"
-        f"y={y_expr}:"
-        f"line_spacing={max(4, fs // 6)}[txt];",
-    ]
+    # Altura total do bloco de texto para calcular o y inicial
+    line_height = fs + line_sp
+    total_height = len(lines) * line_height
+    # y_frac aponta para o centro do bloco — calculamos o topo do bloco
+    y_top_expr = f"(h*{y_frac:.4f})-({total_height}//2)"
 
+    current = "base"
+    label_counter = 0
+    parts = [scale]
+
+    for i, line in enumerate(lines):
+        label_counter += 1
+        next_label = f"lt{label_counter}"
+        if not line.strip():
+            parts.append(f"[{current}]copy[{next_label}];")
+            current = next_label
+            continue
+        esc = _escape_drawtext(line)
+        x_expr = "(w-text_w)/2"
+        y_expr = f"(h*{y_frac:.4f})-({total_height}//2)+{i * line_height}"
+        parts.append(
+            f"[{current}]drawtext={font_part}"
+            f"text='{esc}':"
+            f"fontsize={fs}:"
+            f"fontcolor={color}:"
+            f"borderw={border_w}:"
+            f"bordercolor={border}@0.95:"
+            f"shadowcolor=black@0.45:shadowx=2:shadowy=2:"
+            f"x={x_expr}:"
+            f"y={y_expr}[{next_label}];"
+        )
+        current = next_label
+
+    # Renomeia o último stream para [txt]
+    last = parts.pop()
+    last = last[: last.rfind("[")] + "[txt];"
+    parts.append(last)
     current = "txt"
-    label_counter = 1
+    label_counter += 1
     emoji_size = max(28, int(fs * 1.25))
     emoji_y_frac = min(0.92, y_frac + 0.07)
     emoji_paths = emoji_pngs or []

@@ -21,7 +21,7 @@ from app.utils.charts import attach_chart_paths
 from app.utils.official_analytics import user_official_insights_summary
 from app.utils.timezone import brt_now
 from core.database import get_db
-from models.models import Automation, InstagramAccount, PublishLog, User, automation_accounts
+from models.models import Automation, CommentAutoReply, InstagramAccount, PublishLog, User, automation_accounts
 
 router = APIRouter(tags=["dashboard"])
 log = logging.getLogger(__name__)
@@ -44,6 +44,23 @@ _RANK_CACHE: dict[tuple, tuple[float, list[dict]]] = {}
 _RANK_CACHE_TTL = 120.0
 _PROFILE_PIC_ENQUEUE_AT: dict[int, float] = {}
 _PROFILE_PIC_ENQUEUE_COOLDOWN = 90.0
+
+
+def _count_comment_replies(db: Session, user_id: int) -> int:
+    """Respostas a comentários (auto-reply + manual registradas)."""
+    return int(
+        _dashboard_safe_scalar(
+            db,
+            select(func.count(CommentAutoReply.id))
+            .join(InstagramAccount, CommentAutoReply.account_id == InstagramAccount.id)
+            .where(
+                InstagramAccount.user_id == user_id,
+                CommentAutoReply.reply_text != "(já respondido)",
+            ),
+            label="comment_replies",
+        )
+        or 0
+    )
 
 
 def _maybe_enqueue_profile_pics(user_id: int, accounts: list[InstagramAccount]) -> None:
@@ -545,6 +562,7 @@ def _dashboard_shell_context(chart_days: int) -> dict:
         "dash_lazy": True,
         "accounts_count": 0,
         "active_automations": 0,
+        "comment_replies_total": 0,
         "total_automations": 0,
         "pubs_today": 0,
         "pubs_growth": None,
@@ -629,6 +647,7 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
         label="new_accounts_month",
     )
     new_automations_month = 0
+    comment_replies_total = _count_comment_replies(db, user.id)
 
     # KPI do dia: bounds BRT (igual /logs e Top do Dia), não só o dict do gráfico.
     pubs_today = _count_logs_by_accounts(db, account_ids, status="success", day=today)
@@ -781,6 +800,7 @@ def _dashboard_context(db: Session, user: User, chart_days: int) -> dict:
         "accounts_count": len(account_ids),
         "accounts_data": accounts_data,
         "active_automations": active_automations,
+        "comment_replies_total": comment_replies_total,
         "total_automations": total_automations,
         "automations": automations,
         "pubs_today": pubs_today,
@@ -826,6 +846,7 @@ def _dashboard_fast_context(db: Session, user: User, chart_days: int) -> dict:
     active_automations = 0
     total_automations = 0
     new_automations_month = 0
+    comment_replies_total = _count_comment_replies(db, user.id)
 
     pubs_today = _count_logs_by_accounts(db, account_ids, status="success", day=today)
     pubs_yesterday = _count_logs_by_accounts(db, account_ids, status="success", day=yesterday)
@@ -857,6 +878,7 @@ def _dashboard_fast_context(db: Session, user: User, chart_days: int) -> dict:
         "kpi_lazy": False,
         "accounts_count": accounts_count,
         "active_automations": active_automations,
+        "comment_replies_total": comment_replies_total,
         "total_automations": total_automations,
         "pubs_today": pubs_today,
         "pubs_growth": pubs_growth,

@@ -21,14 +21,11 @@
     <article class="og-glass-card og-kpi-card">
       <div class="og-kpi-top">
         <div class="og-kpi-icon og-kpi-icon--pink">
-          <i data-lucide="refresh-cw"></i>
+          <i data-lucide="message-circle"></i>
         </div>
-        {% if new_automations_month > 0 %}
-        <span class="og-kpi-trend og-kpi-trend--up">+{{ new_automations_month }} este mês</span>
-        {% endif %}
       </div>
-      <div class="og-kpi-value">{{ active_automations }}</div>
-      <div class="og-kpi-label">Automações ativas</div>
+      <div class="og-kpi-value">{{ comment_replies_total|default(0) }}</div>
+      <div class="og-kpi-label">Comentários respondidos</div>
     </article>
 
     <article class="og-glass-card og-kpi-card">

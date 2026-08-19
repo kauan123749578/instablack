@@ -1154,7 +1154,26 @@ async def create_automation(
             if not upload_files:
                 error = "Envie o arquivo de mídia."
             elif content_type == "photo":
-                upload_files = upload_files[:1]
+                allowed_photo_ext = {".jpg", ".jpeg", ".png", ".webp"}
+                bad = [
+                    f.filename
+                    for f in upload_files
+                    if Path(f.filename or "").suffix.lower() not in allowed_photo_ext
+                ]
+                if bad:
+                    error = (
+                        f"Formato inválido para foto: {', '.join(bad)}. "
+                        "Use JPG/PNG/WebP."
+                    )
+                elif len(upload_files) > MAX_REEL_UPLOAD_FILES:
+                    error = (
+                        f"Selecione no máximo {MAX_REEL_UPLOAD_FILES} fotos por criação. "
+                        "Crie em lotes menores para evitar timeout do servidor."
+                    )
+                else:
+                    quota = reel_video_quota(db, user, adding=len(upload_files))
+                    if not quota["ok"]:
+                        error = reel_video_quota_error(quota)
             elif content_type == "story" and len(upload_files) > 30:
                 error = "Selecione no máximo 30 mídias por automação de Stories."
             elif content_type == "story":
@@ -1292,6 +1311,8 @@ async def create_automation(
     video_key = video_entries[0]["video_key"]
     if len(video_entries) == 1:
         video_original_name = video_entries[0]["video_original_name"]
+    elif content_type == "photo":
+        video_original_name = f"{len(video_entries)} fotos"
     else:
         video_original_name = f"{len(video_entries)} vídeos"
     # Story calendário: grava horário BRT em cada item da playlist (pairing estável).

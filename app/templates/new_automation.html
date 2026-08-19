@@ -107,7 +107,8 @@
         <input type="file" id="video-input" name="videos" accept="video/mp4,video/quicktime,video/webm" multiple>
       </div>
       <span id="video-file-name" class="muted" style="display:block;margin-top:4px;font-size:12px">Nenhum vídeo selecionado</span>
-      <span id="reel-upload-help" class="muted" style="display:block;margin-top:4px;font-size:12px">O rascunho é criado primeiro e os arquivos sobem em paralelo. Limite: {{ reel_videos_used|default(0) }}/{{ reel_videos_limit|default(150) }} vídeos Reels nesta conta ({{ reel_videos_remaining|default(150) }} restantes).</span>
+      <span id="reel-upload-help" class="muted" style="display:block;margin-top:4px;font-size:12px">O rascunho é criado primeiro e os arquivos sobem em paralelo. Limite: {{ reel_videos_used|default(0) }}/{{ reel_videos_limit|default(150) }} mídias (Reels + fotos) nesta conta ({{ reel_videos_remaining|default(150) }} restantes).</span>
+      <span id="photo-upload-help" class="muted" style="display:none;margin-top:4px;font-size:12px">Selecione uma ou várias fotos — a automação publica uma por ciclo. Limite: {{ reel_videos_used|default(0) }}/{{ reel_videos_limit|default(150) }} mídias (Reels + fotos) nesta conta.</span>
       <ul id="video-file-list" class="video-file-list muted" style="display:none;margin:6px 0 0;padding-left:18px;font-size:12px"></ul>
     </label>
 

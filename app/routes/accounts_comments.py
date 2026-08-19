@@ -18,7 +18,7 @@ from core.meta_instagram import (
     list_media_comments,
     reply_to_comment,
 )
-from models.models import InstagramAccount, User
+from models.models import CommentAutoReply, InstagramAccount, User
 
 router = APIRouter(prefix="/accounts/comments", tags=["accounts-comments"])
 
@@ -175,6 +175,17 @@ def comments_reply(
             {"ok": False, "detail": str(exc), "username": acc.username},
             status_code=400,
         )
+    if not db.scalar(
+        select(CommentAutoReply.id).where(CommentAutoReply.ig_comment_id == comment_id)
+    ):
+        db.add(
+            CommentAutoReply(
+                ig_comment_id=comment_id,
+                account_id=acc.id,
+                reply_text=str(result.get("message") or body.message)[:500],
+            )
+        )
+        db.commit()
     return {
         "ok": True,
         "comment_id": comment_id,
