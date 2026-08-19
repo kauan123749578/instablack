@@ -95,7 +95,7 @@
             <span class="nav-text">Extensão Chrome</span>
           </a>
           {% if not request.state.view_as_active or (request.state.auth_user and request.state.auth_user.is_owner) %}
-          <a href="/accounts/vault" class="nav-link" data-nav="/accounts/vault">
+          <a href="/authenticator/page" class="nav-link" data-nav="/authenticator/page">
             <i data-lucide="key-round" class="nav-icon"></i>
             <span class="nav-text">Cofre</span>
           </a>
@@ -289,7 +289,7 @@
         <a href="/accounts/connected" data-nav="/accounts/connected"><i data-lucide="instagram"></i><span>Contas conectadas</span></a>
         <a href="/accounts" data-nav="/accounts"><i data-lucide="user-plus"></i><span>Adicionar conta</span></a>
         {% if not request.state.view_as_active or (request.state.auth_user and request.state.auth_user.is_owner) %}
-        <a href="/accounts/vault" data-nav="/accounts/vault"><i data-lucide="key-round"></i><span>Cofre</span></a>
+        <a href="/authenticator/page" data-nav="/authenticator/page"><i data-lucide="key-round"></i><span>Autenticador</span></a>
         <a href="/accounts/notes" data-nav="/accounts/notes"><i data-lucide="notebook-text"></i><span>Bloco de notas</span></a>
         <a href="/accounts/reels" data-nav="/accounts/reels"><i data-lucide="trash-2"></i><span>Apagar Reels</span></a>
         <a href="/accounts/comments" data-nav="/accounts/comments"><i data-lucide="message-circle"></i><span>Responder comentários</span></a>

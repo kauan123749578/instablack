@@ -382,6 +382,12 @@
                       {% if u.allow_instagrapi %}Bloquear Instagrapi{% else %}Liberar Instagrapi{% endif %}
                     </button>
                   </form>
+                  <form method="post" action="/admin/users/{{ u.id }}/toggle-multi-session" class="admin-more-form"
+                        onsubmit="return confirm('{% if u.allow_multi_session %}Revogar múltiplas sessões de @{{ u.username }}?{% else %}Liberar múltiplas sessões para @{{ u.username }}?{% endif %}');">
+                    <button type="submit" class="admin-more-item {% if u.allow_multi_session %}admin-more-item--accent{% endif %}">
+                      {% if u.allow_multi_session %}<i data-lucide="monitor-x"></i> Revogar multi-sessão{% else %}<i data-lucide="monitor-check"></i> Liberar multi-sessão{% endif %}
+                    </button>
+                  </form>
                   <form method="post" action="/admin/users/{{ u.id }}/toggle-billing" class="admin-more-form"
                         onsubmit="return confirm('{% if u.billing_blocked %}Liberar o painel de @{{ u.username }}?{% else %}Bloquear o painel de @{{ u.username }} para cobrança da mensalidade? Ele verá um aviso e precisará chamar o suporte.{% endif %}');">
                     <button type="submit" class="admin-more-item {% if u.billing_blocked %}admin-more-item--accent{% else %}admin-more-item--danger{% endif %}">

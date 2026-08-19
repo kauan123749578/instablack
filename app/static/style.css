@@ -2819,3 +2819,72 @@ body.is-view-as .app {
   .comments-reply-media-list,
   .comments-reply-thread { max-height: none; }
 }
+
+/* ── Autenticador independente ── */
+.auth-panel {
+  max-width: 100%;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(201,162,39,0.25);
+  background: transparent;
+}
+.auth-panel-body {
+  background: rgba(255,255,255,0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  min-height: 60px;
+}
+.auth-entry--card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid rgba(201,162,39,0.18);
+  border-radius: 10px;
+  background: rgba(255,255,255,0.04);
+  cursor: default;
+}
+.auth-entry--card:hover {
+  border-color: rgba(201,162,39,0.5);
+}
+.auth-entry-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.auth-entry-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e8e0c8;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.auth-entry--card .auth-entry-code {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 6px;
+  color: #C9A227;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.auth-entry--card .auth-entry-code:hover { opacity: 0.8; }
+.btn-icon {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #888;
+  padding: 2px 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  transition: color 0.15s;
+}
+.btn-icon:hover { color: #C9A227; }
+.btn-icon svg { width: 14px; height: 14px; }

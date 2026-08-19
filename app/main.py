@@ -30,6 +30,7 @@ from app.routes import (
     admin,
     aquecimento,
     auth,
+    authenticator,
     automations,
     camuflagem,
     dashboard,
@@ -308,6 +309,7 @@ def create_app() -> FastAPI:
     app.include_router(profile.router)
     app.include_router(admin.router)
     app.include_router(notifications.router)
+    app.include_router(authenticator.router)
 
     @app.get("/privacy", include_in_schema=False)
     def privacy_policy(request: Request):

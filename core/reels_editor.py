@@ -36,9 +36,18 @@ def _ffmpeg() -> str:
 
 
 def _font_path_escaped() -> str | None:
-    candidates = [
+    import os
+
+    env_font = os.environ.get("REELS_FONT_PATH", "").strip()
+    candidates = []
+    if env_font:
+        candidates.append(Path(env_font))
+    candidates += [
         Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
         Path("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"),
+        Path("/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf"),
+        Path("/usr/share/fonts/truetype/freefont/FreeSansBold.ttf"),
+        Path("/usr/share/fonts/TTF/DejaVuSans-Bold.ttf"),
         Path("C:/Windows/Fonts/segoeuib.ttf"),
         Path("C:/Windows/Fonts/arialbd.ttf"),
     ]
@@ -224,7 +233,7 @@ def build_overlay_filter(
             current = next_label
             continue
         esc = _escape_drawtext(line)
-        x_expr = "(w-text_w)/2"
+        x_expr = "max(10,(w-text_w)/2)"
         y_expr = f"(h*{y_frac:.4f})-{half_h}+{i * line_height}"
         parts.append(
             f"[{current}]drawtext={font_part}"
@@ -260,7 +269,8 @@ def build_overlay_filter(
             label_counter += 1
             emoji_x = start_x + idx * (emoji_size + emoji_spacing)
             png_path = str(png.resolve()).replace("\\", "/").replace(":", "\\:")
-            parts.append(f"movie='{png_path}',scale={emoji_size}:-1[{emoji_label}];")
+            even = emoji_size if emoji_size % 2 == 0 else emoji_size + 1
+            parts.append(f"movie='{png_path}',scale={even}:{even}[{emoji_label}];")
             parts.append(
                 f"[{current}][{emoji_label}]overlay="
                 f"x={emoji_x}:y={emoji_y}[{next_label}];"

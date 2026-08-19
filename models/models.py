@@ -51,6 +51,8 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     # Incrementa no login e na troca de senha — 1 sessão ativa por conta.
     session_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Dono pode liberar o usuário para manter múltiplas sessões simultâneas.
+    allow_multi_session: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     # Hash SHA-256 do token da extensão Chrome (pareamento).
     extension_token_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     account_limit: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=None)
@@ -77,6 +79,9 @@ class User(Base):
         back_populates="user", cascade="all, delete-orphan"
     )
     account_notes: Mapped[List["AccountNote"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    authenticator_entries: Mapped[List["AuthenticatorEntry"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
     account_folders: Mapped[List["AccountFolder"]] = relationship(
@@ -537,3 +542,19 @@ class AccountNote(Base):
     )
 
     user: Mapped["User"] = relationship(back_populates="account_notes")
+
+
+class AuthenticatorEntry(Base):
+    """Entrada do Autenticador 2FA independente (nome livre + chave TOTP)."""
+
+    __tablename__ = "authenticator_entries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    encrypted_secret: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    user: Mapped["User"] = relationship(back_populates="authenticator_entries")

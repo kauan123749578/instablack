@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+{% block title %}Autenticador — instablack{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2><i data-lucide="shield-check" class="inline-icon"></i> Autenticador</h2>
+  <p class="muted page-header-sub">
+    Cole a <strong>chave secreta</strong> (Base32) — o código de 6 dígitos aparece aqui e atualiza sozinho a cada 30&thinsp;s.
+  </p>
+</div>
+
+<!-- Área de códigos ao vivo -->
+<section class="auth-panel" id="auth-live-section">
+  <header class="auth-panel-bar">
+    <span class="auth-panel-title">Códigos ao vivo</span>
+  </header>
+  <div class="auth-panel-body" id="auth-live-list">
+    <p class="auth-empty muted" id="auth-empty-msg">Nenhuma chave salva ainda. Adicione abaixo.</p>
+  </div>
+</section>
+
+<!-- Formulário para adicionar nova entrada -->
+<div class="og-glass-card form-card" style="margin-top:20px">
+  <h3 style="margin:0 0 16px;font-size:16px">Adicionar chave</h3>
+  <div class="form-grid" id="auth-add-form">
+    <label class="field-label" style="grid-column:1/-1">
+      Nome / Rótulo
+      <input type="text" id="auth-add-name" placeholder="Ex.: @minhaconta · Google · Binance"
+             autocomplete="off" maxlength="120">
+    </label>
+    <label class="field-label" style="grid-column:1/-1">
+      Chave secreta <span class="muted">(Base32 ou otpauth://)</span>
+      <input type="text" id="auth-add-secret" placeholder="Ex.: JBSW Y3DP EHPK 3PXP"
+             autocomplete="off" spellcheck="false" maxlength="500">
+    </label>
+    <div style="grid-column:1/-1;display:flex;gap:8px;align-items:center">
+      <button type="button" class="btn btn-primary" id="auth-add-btn">Adicionar</button>
+      <span class="auth-add-msg muted" id="auth-add-msg" aria-live="polite"></span>
+    </div>
+  </div>
+</div>
+
+<p class="muted" style="margin-top:12px;font-size:12px">
+  Cole a <strong>chave secreta</strong> do app Authenticator (Base32 ou otpauth://), não o código azul de 6 dígitos.
+</p>
+
+<template id="auth-entry-tpl">
+  <div class="auth-entry auth-entry--card" data-entry-id="">
+    <div class="auth-entry-main">
+      <div class="auth-entry-name-row">
+        <span class="auth-entry-label"></span>
+        <button type="button" class="btn-icon auth-rename-btn" title="Renomear">
+          <i data-lucide="pencil"></i>
+        </button>
+        <button type="button" class="btn-icon auth-delete-btn" title="Remover" style="color:#e55">
+          <i data-lucide="trash-2"></i>
+        </button>
+      </div>
+      <div class="auth-entry-code" title="Clique para copiar"></div>
+    </div>
+    <div class="auth-timer" aria-hidden="true">
+      <svg class="auth-ring" viewBox="0 0 36 36">
+        <circle class="auth-ring-bg" cx="18" cy="18" r="15.5" />
+        <circle class="auth-ring-fg vault-ring" cx="18" cy="18" r="15.5"
+                stroke-dasharray="97.4" stroke-dashoffset="0" />
+      </svg>
+    </div>
+  </div>
+</template>
+
+<script>
+(function () {
+  const list = document.getElementById("auth-live-list");
+  const empty = document.getElementById("auth-empty-msg");
+  const tpl = document.getElementById("auth-entry-tpl");
+  const addBtn = document.getElementById("auth-add-btn");
+  const addMsg = document.getElementById("auth-add-msg");
+  const nameInput = document.getElementById("auth-add-name");
+  const secretInput = document.getElementById("auth-add-secret");
+
+  // ---------- render ----------
+  function renderEntry(e) {
+    const node = tpl.content.cloneNode(true);
+    const card = node.querySelector(".auth-entry--card");
+    card.dataset.entryId = e.id;
+    card.querySelector(".auth-entry-label").textContent = e.name;
+    const codeEl = card.querySelector(".auth-entry-code");
+    codeEl.textContent = e.code;
+    setRing(card, e.remaining);
+    codeEl.addEventListener("click", () => copyCode(e.code, codeEl));
+    card.querySelector(".auth-rename-btn").addEventListener("click", () => startRename(e.id, card));
+    card.querySelector(".auth-delete-btn").addEventListener("click", () => deleteEntry(e.id, card));
+    list.appendChild(node);
+    if (window.lucide) lucide.createIcons({ nodes: [list.lastElementChild] });
+  }
+
+  function setRing(card, remaining) {
+    const ring = card.querySelector(".vault-ring");
+    if (!ring) return;
+    const total = 97.4;
+    ring.style.strokeDashoffset = total - (remaining / 30) * total;
+  }
+
+  function updateEntry(card, e) {
+    card.querySelector(".auth-entry-code").textContent = e.code;
+    setRing(card, e.remaining);
+  }
+
+  // ---------- copy ----------
+  function copyCode(code, el) {
+    navigator.clipboard?.writeText(code).then(() => {
+      const orig = el.textContent;
+      el.textContent = "Copiado!";
+      setTimeout(() => { el.textContent = orig; }, 1200);
+    });
+  }
+
+  // ---------- rename ----------
+  function startRename(id, card) {
+    const label = card.querySelector(".auth-entry-label");
+    const current = label.textContent;
+    const inp = document.createElement("input");
+    inp.type = "text";
+    inp.value = current;
+    inp.className = "auth-rename-input";
+    inp.style.cssText = "font-size:14px;padding:2px 6px;border-radius:6px;border:1px solid #c9a227;background:#1a1a1a;color:#fff;width:100%";
+    label.replaceWith(inp);
+    inp.focus();
+    inp.select();
+    const commit = async () => {
+      const name = inp.value.trim();
+      if (!name || name === current) { inp.replaceWith(label); return; }
+      const r = await fetch(`/authenticator/${id}/rename`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      if (r.ok) {
+        label.textContent = name;
+      }
+      inp.replaceWith(label);
+    };
+    inp.addEventListener("blur", commit);
+    inp.addEventListener("keydown", e => { if (e.key === "Enter") commit(); if (e.key === "Escape") { inp.replaceWith(label); } });
+  }
+
+  // ---------- delete ----------
+  async function deleteEntry(id, card) {
+    if (!confirm("Remover esta chave?")) return;
+    const r = await fetch(`/authenticator/${id}`, { method: "DELETE" });
+    if (r.ok) {
+      card.remove();
+      if (!list.querySelector(".auth-entry--card")) empty.style.display = "";
+    }
+  }
+
+  // ---------- add ----------
+  addBtn.addEventListener("click", async () => {
+    const name = nameInput.value.trim();
+    const secret = secretInput.value.trim();
+    if (!name || !secret) { addMsg.textContent = "Preencha o nome e a chave."; return; }
+    addMsg.textContent = "Salvando…";
+    try {
+      const r = await fetch("/authenticator", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, secret }),
+      });
+      const data = await r.json();
+      if (!r.ok) { addMsg.textContent = data.detail || "Erro."; return; }
+      empty.style.display = "none";
+      renderEntry(data);
+      nameInput.value = "";
+      secretInput.value = "";
+      addMsg.textContent = "Adicionado!";
+      setTimeout(() => { addMsg.textContent = ""; }, 2000);
+    } catch (e) {
+      addMsg.textContent = "Erro de rede.";
+    }
+  });
+
+  // ---------- bootstrap + polling ----------
+  async function loadAll() {
+    try {
+      const r = await fetch("/authenticator");
+      const data = await r.json();
+      list.querySelectorAll(".auth-entry--card").forEach(c => c.remove());
+      if (!data.length) { empty.style.display = ""; return; }
+      empty.style.display = "none";
+      data.forEach(e => renderEntry(e));
+    } catch (_) {}
+  }
+
+  async function pollCodes() {
+    try {
+      const r = await fetch("/authenticator/codes");
+      const data = await r.json();
+      data.forEach(e => {
+        const card = list.querySelector(`[data-entry-id="${e.id}"]`);
+        if (card) updateEntry(card, e);
+      });
+    } catch (_) {}
+  }
+
+  loadAll();
+  setInterval(pollCodes, 3000);
+})();
+</script>
+{% endblock %}

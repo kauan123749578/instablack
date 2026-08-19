@@ -59,7 +59,8 @@ def get_auth_user(
         cookie_ver_int = int(cookie_ver) if cookie_ver is not None else 0
     except (TypeError, ValueError):
         cookie_ver_int = -1
-    if cookie_ver_int != db_ver:
+    allow_multi = bool(getattr(user, "allow_multi_session", False))
+    if not allow_multi and cookie_ver_int != db_ver:
         request.session.clear()
         raise HTTPException(
             status_code=status.HTTP_303_SEE_OTHER,
