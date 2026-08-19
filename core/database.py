@@ -648,6 +648,7 @@ def _postgres_migrate(bind=None) -> None:
                 ("extension_token_hash", "VARCHAR(64)"),
                 ("allow_instagrapi", "BOOLEAN DEFAULT FALSE"),
                 ("billing_blocked", "BOOLEAN DEFAULT FALSE"),
+                ("allow_multi_session", "BOOLEAN DEFAULT FALSE"),
             ],
         )
         if _table_exists(conn, "users"):
