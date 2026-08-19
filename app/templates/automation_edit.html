@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block title %}Editar — {{ automation.name }}{% endblock %}
+{% block content %}
+<div class="page-header page-header--row">
+  <div>
+    <a href="/automations" class="muted" style="font-size:13px;text-decoration:none">&larr; Voltar às automações</a>
+    <h2 style="margin:6px 0 0">Editar automação</h2>
+    <p class="muted page-header-sub">{{ automation.name }} · {{ automation.content_type|default('reel') }}</p>
+  </div>
+  <span class="badge {{ automation.status }}">{{ status_label(automation.status) }}</span>
+</div>
+
+{% if request.query_params.get('ok') == 'saved' %}
+<div class="alert alert-ok">Alterações salvas.</div>
+{% endif %}
+
+<div class="form-card form-card--premium">
+  <form method="post" action="/automations/{{ automation.id }}/edit" enctype="multipart/form-data" class="form-grid">
+    <label>Tipo
+      <select name="content_type" class="edit-content-type">
+        <option value="reel" {% if automation.content_type == 'reel' %}selected{% endif %}>Reels</option>
+        <option value="story" {% if automation.content_type == 'story' %}selected{% endif %}>Story</option>
+        <option value="photo" {% if automation.content_type == 'photo' %}selected{% endif %}>Foto feed</option>
+      </select>
+    </label>
+    <label>Intervalo
+      <select name="interval_minutes" class="interval-minutes-select"
+              data-meta-min="{{ meta_min_interval|default(60) }}"
+              data-meta-warmup-days="{{ meta_warmup_days|default(7) }}"
+              data-meta-warmup-min="{{ meta_warmup_min_interval|default(180) }}"
+              data-meta-warmup-enabled="{{ '1' if (anti_farm_prefs or {}).get('meta_warmup_enabled', true) else '0' }}">
+        {% for m in intervals %}
+        <option value="{{ m }}" data-minutes="{{ m }}" {% if m == automation.interval_minutes %}selected{% endif %}>{{ interval_label(m) }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <fieldset>
+      <legend>Espaçamento entre contas <span class="muted">(anti-farm)</span></legend>
+      <label class="checkbox-row">
+        <input type="checkbox" name="stagger_enabled" value="1"
+               {% if automation.stagger_enabled is not defined or automation.stagger_enabled %}checked{% endif %}>
+        Espalhar posts entre as contas do mesmo ciclo
+      </label>
+      <label>Mínimo (minutos)
+        <input type="number" name="stagger_min_minutes" min="1" max="120"
+               value="{{ automation.stagger_min_minutes if automation.stagger_min_minutes is defined and automation.stagger_min_minutes is not none else 2 }}">
+      </label>
+      <label>Máximo (minutos)
+        <input type="number" name="stagger_max_minutes" min="1" max="120"
+               value="{{ automation.stagger_max_minutes if automation.stagger_max_minutes is defined and automation.stagger_max_minutes is not none else 8 }}">
+      </label>
+    </fieldset>
+    <fieldset>
+      <legend>Variação de horário</legend>
+      <label class="checkbox-row">
+        <input type="checkbox" name="jitter_enabled" value="1" {% if automation.jitter_enabled %}checked{% endif %}>
+        Ativar variação aleatória (± minutos)
+      </label>
+      <label>Máximo (minutos)
+        <input type="number" name="jitter_minutes" min="1" max="120" value="{{ automation.jitter_minutes or 10 }}">
+      </label>
+    </fieldset>
+    <fieldset>
+      <legend>Descanso após lote</legend>
+      <label>Posts por ciclo
+        <input type="number" name="posts_per_batch" min="0" max="500" value="{{ automation.posts_per_batch or 0 }}">
+      </label>
+      <label>Minutos de descanso
+        <input type="number" name="rest_minutes" min="0" max="10080" value="{{ automation.rest_minutes or 0 }}">
+      </label>
+    </fieldset>
+    <div class="edit-caption-wrap"{% if automation.content_type == 'story' %} style="display:none"{% endif %}>
+      <label>Legenda (obrigatória · fixa para todos)
+        <textarea name="caption" rows="8" class="edit-caption-field"
+                  {% if automation.content_type != 'story' %}required{% endif %}>{{ automation.caption }}</textarea>
+      </label>
+    </div>
+    <label>Trocar capa (.jpg/.png)
+      <input type="file" name="thumb" accept="image/jpeg,image/png,image/webp">
+    </label>
+    {% if automation.thumb_key %}
+    <label class="checkbox-row">
+      <input type="checkbox" name="remove_thumb" value="true"> Remover capa atual
+    </label>
+    {% endif %}
+    {% if automation.content_type in ('reel', 'photo') %}
+    <fieldset>
+      <legend>Resposta automática a comentários</legend>
+      <label class="checkbox-row">
+        <input type="checkbox" name="comment_auto_reply_enabled" value="1"
+               {% if automation.comment_auto_reply_enabled %}checked{% endif %}>
+        Responder comentários automaticamente (API Meta)
+      </label>
+      <label>Mensagens <span class="muted">(uma por linha)</span>
+        <textarea name="comment_auto_reply_message" rows="5">{{ automation | comment_reply_messages }}</textarea>
+      </label>
+      <label>Esperar (segundos)
+        <input type="number" name="comment_auto_reply_delay_seconds" min="3" max="120"
+               value="{{ automation.comment_auto_reply_delay_seconds or 5 }}">
+      </label>
+    </fieldset>
+    {% endif %}
+    {% if automation.content_type == 'reel' %}
+    <fieldset>
+      <legend>Camuflagem do Reel</legend>
+      <label class="checkbox-row">
+        <input type="checkbox" name="camouflage_enabled" value="1"
+               {% if automation.camouflage_cover_key %}checked{% endif %}>
+        Aplicar camuflagem em todos os Reels
+      </label>
+      <label>Imagem de camuflagem
+        <input type="file" name="camouflage_cover" accept="image/jpeg,image/png,image/webp">
+      </label>
+      {% if automation.camouflage_cover_key %}
+      <label class="checkbox-row">
+        <input type="checkbox" name="remove_camouflage" value="true"> Remover camuflagem
+      </label>
+      {% endif %}
+      <label>Opacidade (%)
+        <input type="number" name="camouflage_opacity_pct" min="5" max="40"
+               value="{{ ((automation.camouflage_opacity or 0.25) * 100)|round|int }}">
+      </label>
+    </fieldset>
+    {% endif %}
+    <fieldset>
+      <legend>Contas</legend>
+      {% set selected_ids = automation.accounts|map(attribute='id')|list %}
+      {% include "partials/account_folder_picks.html" %}
+      <div class="checkbox-row">
+        {% for ac in all_accounts %}
+        <label>
+          <input type="checkbox" name="account_ids" value="{{ ac.id }}"
+                 data-provider="{{ ac.provider or 'instagrapi' }}"
+                 {% if ac.id in selected_ids %}checked{% endif %}>
+          @{{ ac.username }}
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    <div class="form-actions-row">
+      <button type="submit" class="btn btn-primary">Salvar alterações</button>
+      <a href="/automations/{{ automation.id }}/logs" class="btn" data-nav="/automations/{{ automation.id }}/logs">Ver logs</a>
+    </div>
+  </form>
+</div>
+
+{% set playlist_total = automation_video_count(automation) %}
+{% if playlist_total > 1 or automation.content_type == 'reel' %}
+<div class="form-card" style="margin-top:16px">
+  <h3 style="margin:0 0 12px;font-size:15px">Playlist e ações</h3>
+  <div class="auto-more-actions" style="display:flex;flex-wrap:wrap;gap:8px">
+    {% if playlist_total > 1 and automation.status != 'completed' %}
+    <form method="post" action="/automations/{{ automation.id }}/skip-video" class="inline"
+          onsubmit="return confirm('Pular para o próximo vídeo?');">
+      <button type="submit" class="btn btn-sm">Pular vídeo</button>
+    </form>
+    {% endif %}
+    {% if playlist_total > 1 %}
+    <form method="post" action="/automations/{{ automation.id }}/reset-playlist" class="inline"
+          onsubmit="return confirm('Reiniciar playlist do vídeo 1?');">
+      <button type="submit" class="btn btn-sm">Reiniciar playlist</button>
+    </form>
+    {% endif %}
+    <form method="post" action="/automations/{{ automation.id }}/duplicate" class="inline"
+          onsubmit="return confirm('Duplicar esta automação?');">
+      <button type="submit" class="btn btn-sm">Duplicar</button>
+    </form>
+  </div>
+  {% if automation.content_type == 'reel' %}
+  <form method="post" action="/automations/{{ automation.id }}/upload-batch"
+        enctype="multipart/form-data" class="form-grid" style="margin-top:14px"
+        data-playlist-upload-form data-automation-id="{{ automation.id }}"
+        data-reel-videos-remaining="{{ reel_videos_remaining|default(150) }}"
+        data-reel-videos-limit="{{ reel_videos_limit|default(150) }}">
+    <label>Adicionar vídeos à playlist (.mp4)
+      <input type="file" name="videos" accept="video/mp4,video/quicktime,video/webm" multiple data-playlist-upload-input>
+      <span class="muted" style="display:block;margin-top:4px;font-size:12px">
+        Limite: {{ reel_videos_used|default(0) }}/{{ reel_videos_limit|default(150) }} mídias ({{ reel_videos_remaining|default(150) }} restantes).
+      </span>
+    </label>
+    <button type="submit" class="btn btn-primary btn-sm" data-playlist-upload-button>Adicionar à playlist</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

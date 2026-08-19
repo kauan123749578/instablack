@@ -2165,6 +2165,51 @@ def duplicate_automation(
     )
 
 
+@router.get("/{automation_id}/edit")
+def edit_automation_page(
+    request: Request,
+    automation_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_effective_user),
+):
+    automation = db.scalar(
+        select(Automation)
+        .where(Automation.id == automation_id, Automation.user_id == user.id)
+        .options(selectinload(Automation.accounts))
+    )
+    if not automation:
+        raise HTTPException(status_code=404, detail="Automação não encontrada.")
+    all_accounts = db.scalars(
+        select(InstagramAccount).where(
+            InstagramAccount.user_id == user.id,
+            InstagramAccount.status.in_(VISIBLE_ACCOUNT_STATUSES),
+        )
+    ).all()
+    quota = reel_video_quota(db, user)
+    return templates.TemplateResponse(
+        "automation_edit.html",
+        _page_ctx(
+            db,
+            user,
+            all_accounts,
+            {
+                "request": request,
+                "user": user,
+                "automation": automation,
+                "all_accounts": all_accounts,
+                "intervals": ALLOWED_INTERVALS,
+                "meta_min_interval": META_MIN_INTERVAL,
+                "meta_warmup_days": META_WARMUP_DAYS,
+                "meta_warmup_min_interval": META_WARMUP_MIN_INTERVAL,
+                "anti_farm_prefs": get_anti_farm_prefs(user),
+                "reel_videos_used": quota["used"],
+                "reel_videos_limit": quota["limit"],
+                "reel_videos_remaining": quota["remaining"],
+            },
+        ),
+    )
+
+
 @router.post("/{automation_id}/edit")
 async def edit_automation(
     automation_id: int,
@@ -2338,7 +2383,10 @@ async def edit_automation(
         a.status = "paused"
         a.next_run_at = None
     db.commit()
-    return RedirectResponse("/automations", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(
+        f"/automations/{automation_id}/edit?ok=saved",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
 
 
 @router.post("/{automation_id}/delete")

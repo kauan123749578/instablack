@@ -23,13 +23,10 @@
   }));
 
   const state = {
-    x: 0.5,
-    y: 0.45,
     wmX: 0.5,
     wmY: 0.88,
-    fontScale: 1,
     selected: "text",
-    activeSlot: 1,
+    activeSlot: 0,
   };
   const mediaFiles = [null, null];
   const objectUrls = [[], []];
@@ -38,6 +35,28 @@
   let phrases = [{ texto: "Sua frase aqui\nquebra de linha ok", emojis: [] }];
   let emojiCatalog = [];
   let interaction = null;
+
+  function defaultSlotLayout(texto = "") {
+    return { texto, emojis: [], x: 0.5, y: 0.45, fontScale: 1 };
+  }
+
+  const slotLayouts = [
+    defaultSlotLayout("Sua frase aqui\nquebra de linha ok"),
+    defaultSlotLayout("Texto do reel B"),
+  ];
+
+  function activeLayout() {
+    return slotLayouts[state.activeSlot] || slotLayouts[0];
+  }
+
+  function slotLayout(slot) {
+    return slotLayouts[slot] || slotLayouts[0];
+  }
+
+  function syncActiveSlotFromUI() {
+    const layout = activeLayout();
+    layout.texto = $("phraseInput")?.value || layout.texto || "";
+  }
 
   function clamp(min, value, max) {
     return Math.max(min, Math.min(max, value));
@@ -82,7 +101,11 @@
   }
 
   function activeEmojis() {
-    return Array.isArray(activePhrase()?.emojis) ? activePhrase().emojis : [];
+    return Array.isArray(activeLayout().emojis) ? activeLayout().emojis : [];
+  }
+
+  function slotText(slot) {
+    return (slotLayout(slot).texto || "").trim();
   }
 
   function loadedMediaCount() {
@@ -105,14 +128,20 @@
   }
 
   function setActiveSlot(index) {
+    syncActiveSlotFromUI();
     state.activeSlot = index;
+    const layout = activeLayout();
+    if ($("phraseInput")) $("phraseInput").value = layout.texto || "";
+    if ($("fontScale")) $("fontScale").value = Math.round((layout.fontScale || 1) * 100);
     slots.forEach((s, i) => {
       s.wrap.classList.toggle("is-active", i === index);
       s.textLayer.classList.toggle("selected", i === index && state.selected === "text");
       s.watermarkLayer.classList.toggle("selected", i === index && state.selected === "watermark");
     });
     $("renderOneButton").textContent = `Gerar ${slotLabel(index)}`;
+    renderActiveEmojis();
     updateVariationsButton();
+    updateTextLayer();
   }
 
   function selectLayer(name) {
@@ -133,30 +162,32 @@
   function updateTextLayer() {
     syncFitClass();
     const refCanvas = slots[state.activeSlot].canvas;
-    const canvasH = refCanvas.clientHeight || 640;
-    const fs = Math.round(canvasH * 0.045 * state.fontScale);
+    const canvasH = refCanvas?.clientHeight || 640;
     const color = cssColor($("textColor").value || "white");
     const borderW = Number($("borderWidth").value || 2);
     const borderColor = cssColor($("borderColor").value || "black");
-    const text = activePhraseText() || "Texto…";
-    const emojiHtml = activeEmojis()
-      .map((file) => `<img src="${emojiUrl(file)}" alt="" draggable="false">`)
-      .join("");
     const wmOn = $("watermarkEnabled").checked;
     const wmText = ($("watermarkInput").value || "").trim() || "@marca";
 
-    slots.forEach((s) => {
+    slots.forEach((s, i) => {
+      const layout = slotLayout(i);
+      const fs = Math.round(canvasH * 0.045 * (layout.fontScale || 1));
+      const text = (layout.texto || "").trim() || (i === state.activeSlot ? "Texto…" : "");
+      const emojiHtml = (layout.emojis || [])
+        .map((file) => `<img src="${emojiUrl(file)}" alt="" draggable="false">`)
+        .join("");
       s.textPreview.textContent = text;
       s.textPreview.style.fontSize = `${fs}px`;
       s.textPreview.style.color = color;
       s.textPreview.style.webkitTextStroke = borderW
         ? `${Math.max(1, borderW / 2)}px ${borderColor}`
         : "";
-      s.textLayer.style.left = `${state.x * 100}%`;
-      s.textLayer.style.top = `${state.y * 100}%`;
+      s.textLayer.style.left = `${layout.x * 100}%`;
+      s.textLayer.style.top = `${layout.y * 100}%`;
       s.textLayer.style.transform = "translate(-50%, -50%)";
-      s.textLayer.hidden = false;
+      s.textLayer.hidden = !text;
       s.emojiRow.innerHTML = emojiHtml;
+      s.emojiRow.hidden = !emojiHtml;
 
       s.watermarkLayer.hidden = !wmOn;
       if (wmOn) {
@@ -167,7 +198,8 @@
       }
     });
 
-    $("fontScaleValue").textContent = `${Math.round(state.fontScale * 100)}%`;
+    const activeFs = activeLayout().fontScale || 1;
+    $("fontScaleValue").textContent = `${Math.round(activeFs * 100)}%`;
     $("borderWidthValue").textContent = String(borderW);
     $("audioVolumeValue").textContent = `${$("audioVolume").value}%`;
     updateVariationsButton();
@@ -294,52 +326,58 @@
       .join("");
   }
 
-  function appendLayoutFields(form) {
-    updateTextLayer();
-    form.append("text", activePhraseText());
-    form.append("emojis_json", JSON.stringify(activeEmojis()));
-    form.append("x", String(state.x));
-    form.append("y", String(state.y));
-    form.append("watermark_x", String(state.wmX));
-    form.append("watermark_y", String(state.wmY));
-    form.append("font_scale", String(state.fontScale));
-    form.append("text_color", $("textColor").value);
-    form.append("border_color", $("borderColor").value);
-    form.append("border_width", $("borderWidth").value);
-    form.append("watermark_text", $("watermarkInput").value);
-    form.append("watermark_enabled", $("watermarkEnabled").checked ? "true" : "false");
-    form.append("fit_cover", $("fitInput").value === "cover" ? "true" : "false");
-    form.append("photo_duration", $("photoDuration").value || "8");
-    form.append("video_duration", $("videoDuration").value || "60");
-    form.append("audio_mode", $("audioMode").value || "replace");
-    form.append("audio_volume", String(Number($("audioVolume").value || 100) / 100));
-    if (audioFile) form.append("audio", audioFile, audioFile.name);
+  function appendLayoutFields(form, slotIndex, prefix = "") {
+    const layout = slotLayout(slotIndex);
+    const p = prefix ? `${prefix}_` : "";
+    form.append(`${p}text`, (layout.texto || "").trim());
+    form.append(`${p}emojis_json`, JSON.stringify(layout.emojis || []));
+    form.append(`${p}x`, String(layout.x));
+    form.append(`${p}y`, String(layout.y));
+    form.append(`${p}font_scale`, String(layout.fontScale || 1));
+    if (!prefix) {
+      form.append("watermark_x", String(state.wmX));
+      form.append("watermark_y", String(state.wmY));
+      form.append("text_color", $("textColor").value);
+      form.append("border_color", $("borderColor").value);
+      form.append("border_width", $("borderWidth").value);
+      form.append("watermark_text", $("watermarkInput").value);
+      form.append("watermark_enabled", $("watermarkEnabled").checked ? "true" : "false");
+      form.append("fit_cover", $("fitInput").value === "cover" ? "true" : "false");
+      form.append("photo_duration", $("photoDuration").value || "8");
+      form.append("video_duration", $("videoDuration").value || "60");
+      form.append("audio_mode", $("audioMode").value || "replace");
+      form.append("audio_volume", String(Number($("audioVolume").value || 100) / 100));
+      if (audioFile) form.append("audio", audioFile, audioFile.name);
+    }
+  }
+
+  function formForRenderOne() {
+    syncActiveSlotFromUI();
+    if (!slotText(state.activeSlot)) throw new Error("Digite o texto da frase.");
+    const slot = state.activeSlot;
+    const form = new FormData();
+    form.append("media", requireMedia(slot));
+    form.append("filename", `reel_${slotLabel(slot).toLowerCase()}.mp4`);
+    appendLayoutFields(form, slot);
+    return form;
+  }
+
+  function formForVariations() {
+    syncActiveSlotFromUI();
+    if (!slotText(0)) throw new Error("Digite o texto do reel A.");
+    if (!mediaFiles[0]) throw new Error("Carregue o vídeo A.");
+    const form = new FormData();
+    form.append("media_a", requireMedia(0));
+    if (mediaFiles[1]) form.append("media_b", mediaFiles[1], mediaFiles[1].name);
+    appendLayoutFields(form, 0);
+    if (mediaFiles[1]) appendLayoutFields(form, 1, "b");
+    return form;
   }
 
   function requireMedia(slot) {
     const file = mediaFiles[slot];
     if (!file) throw new Error(`Escolha o vídeo ${slotLabel(slot)}.`);
     return file;
-  }
-
-  function formForRenderOne() {
-    if (!activePhraseText()) throw new Error("Digite o texto da frase.");
-    const slot = state.activeSlot;
-    const form = new FormData();
-    form.append("media", requireMedia(slot));
-    form.append("filename", `reel_${slotLabel(slot).toLowerCase()}.mp4`);
-    appendLayoutFields(form);
-    return form;
-  }
-
-  function formForVariations() {
-    if (!activePhraseText()) throw new Error("Digite o texto da frase.");
-    if (!mediaFiles[0]) throw new Error("Carregue o vídeo A.");
-    const form = new FormData();
-    form.append("media_a", requireMedia(0));
-    if (mediaFiles[1]) form.append("media_b", mediaFiles[1], mediaFiles[1].name);
-    appendLayoutFields(form);
-    return form;
   }
 
   function formForBatch() {
@@ -356,7 +394,7 @@
       "phrases_json",
       JSON.stringify(valid.map((p) => ({ texto: p.texto, emojis: p.emojis || [] })))
     );
-    appendLayoutFields(form);
+    appendLayoutFields(form, 0);
     return form;
   }
 
@@ -398,7 +436,8 @@
       setActiveSlot(s.index);
       selectLayer("text");
       const p = point(event, s.canvas);
-      interaction = { type: "drag-text", dx: state.x - p.x, dy: state.y - p.y, canvas: s.canvas };
+      const layout = activeLayout();
+      interaction = { type: "drag-text", dx: layout.x - p.x, dy: layout.y - p.y, canvas: s.canvas };
       s.textLayer.setPointerCapture(event.pointerId);
     });
 
@@ -415,7 +454,8 @@
       setActiveSlot(s.index);
       selectLayer("text");
       const p = point(event, s.canvas);
-      interaction = { type: "resize", startX: p.x, startScale: state.fontScale, canvas: s.canvas };
+      const layout = activeLayout();
+      interaction = { type: "resize", startX: p.x, startScale: layout.fontScale, canvas: s.canvas };
       s.handle.setPointerCapture(event.pointerId);
     });
 
@@ -446,16 +486,17 @@
   window.addEventListener("pointermove", (event) => {
     if (!interaction) return;
     const p = point(event, interaction.canvas);
+    const layout = activeLayout();
     if (interaction.type === "drag-text") {
-      state.x = clamp(0.05, p.x + interaction.dx, 0.95);
-      state.y = clamp(0.08, p.y + interaction.dy, 0.82);
+      layout.x = clamp(0.05, p.x + interaction.dx, 0.95);
+      layout.y = clamp(0.08, p.y + interaction.dy, 0.82);
     } else if (interaction.type === "drag-wm") {
       state.wmX = clamp(0.08, p.x + interaction.dx, 0.92);
       state.wmY = clamp(0.1, p.y + interaction.dy, 0.96);
     } else {
       const delta = (p.x - interaction.startX) * 2;
-      state.fontScale = clamp(0.5, interaction.startScale + delta, 2);
-      $("fontScale").value = Math.round(state.fontScale * 100);
+      layout.fontScale = clamp(0.5, interaction.startScale + delta, 2);
+      $("fontScale").value = Math.round(layout.fontScale * 100);
     }
     updateTextLayer();
   });
@@ -497,10 +538,10 @@
     const btn = event.target.closest("[data-add-emoji]");
     if (!btn) return;
     const file = btn.dataset.addEmoji;
-    const list = activeEmojis();
+    const list = activeLayout().emojis || [];
     if (list.length >= 8) return;
     list.push(file);
-    activePhrase().emojis = list;
+    activeLayout().emojis = list;
     renderActiveEmojis();
     renderPhrasesList();
     updateTextLayer();
@@ -510,16 +551,16 @@
     const btn = event.target.closest("[data-rm-emoji]");
     if (!btn) return;
     const idx = Number(btn.dataset.rmEmoji);
-    const list = activeEmojis();
+    const list = activeLayout().emojis || [];
     list.splice(idx, 1);
-    activePhrase().emojis = list;
+    activeLayout().emojis = list;
     renderActiveEmojis();
     renderPhrasesList();
     updateTextLayer();
   });
 
   $("phraseInput").addEventListener("input", () => {
-    activePhrase().texto = $("phraseInput").value;
+    activeLayout().texto = $("phraseInput").value;
     renderPhrasesList();
     updateTextLayer();
   });
@@ -541,7 +582,7 @@
   });
   $("borderWidth").addEventListener("input", updateTextLayer);
   $("fontScale").addEventListener("input", (e) => {
-    state.fontScale = Number(e.target.value) / 100;
+    activeLayout().fontScale = Number(e.target.value) / 100;
     updateTextLayer();
   });
   $("fitInput").addEventListener("change", updateTextLayer);
@@ -576,6 +617,8 @@
     const idx = Number((edit || card)?.dataset.edit ?? card?.dataset.phrase);
     if (Number.isNaN(idx)) return;
     activePhraseIndex = idx;
+    activeLayout().texto = phrases[idx].texto;
+    activeLayout().emojis = [...(phrases[idx].emojis || [])];
     $("phraseInput").value = phrases[idx].texto;
     renderPhrasesList();
     renderActiveEmojis();
@@ -660,8 +703,8 @@
 
   window.addEventListener("resize", () => updateTextLayer());
 
-  $("phraseInput").value = phrases[0].texto;
-  setActiveSlot(1);
+  $("phraseInput").value = slotLayouts[0].texto;
+  setActiveSlot(0);
   selectLayer("text");
   renderPhrasesList();
   renderActiveEmojis();

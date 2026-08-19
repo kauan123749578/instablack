@@ -1114,7 +1114,38 @@ input[type="checkbox"]:checked::after {
   gap: 8px;
 }
 .auto-meta .inline-icon { width: 14px; height: 14px; margin-top: 2px; color: #c9a227; flex-shrink: 0; }
-.auto-card-accounts { flex-wrap: wrap; }
+.auto-actions--compact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding-top: 12px;
+  border-top: 1px solid rgba(201, 162, 39, 0.1);
+  margin-top: 4px;
+}
+.page-header--row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.form-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-top: 8px;
+}
+.auto-caption {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 12px;
+  line-height: 1.45;
+  color: #b8bcc4;
+}
 .auto-acc-chip {
   display: inline-flex;
   align-items: center;

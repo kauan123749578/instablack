@@ -383,6 +383,11 @@ async def reels_editor_render_variations(
     x: float = Form(0.5),
     y: float = Form(0.5),
     font_scale: float = Form(1.0),
+    text_b: str = Form(""),
+    emojis_json_b: str = Form("[]"),
+    b_x: float = Form(0.5),
+    b_y: float = Form(0.5),
+    b_font_scale: float = Form(1.0),
     text_color: str = Form("white"),
     border_color: str = Form("black"),
     border_width: int = Form(2),
@@ -398,34 +403,36 @@ async def reels_editor_render_variations(
     audio: UploadFile | None = File(None),
     user: User = Depends(get_current_user),
 ):
-    """Gera reel A (+ B se enviado) com a mesma frase/config."""
+    """Gera reel A (+ B se enviado) com texto/layout independente por slot."""
     _ = user
     if not (text or "").strip():
-        raise HTTPException(400, detail="Digite o texto da frase.")
-    layout = _parse_layout(
-        x=x,
-        y=y,
-        font_scale=font_scale,
-        text_color=text_color,
-        border_color=border_color,
-        border_width=border_width,
-        watermark_text=watermark_text,
-        watermark_enabled=watermark_enabled,
-        watermark_x=watermark_x,
-        watermark_y=watermark_y,
-        fit_cover=fit_cover,
-        photo_duration=photo_duration,
-        video_duration=video_duration,
-        emojis_json=emojis_json,
-        audio_mode=audio_mode,
-        audio_volume=audio_volume,
+        raise HTTPException(400, detail="Digite o texto do reel A.")
+    layout_a = _parse_layout(
+        x=x, y=y, font_scale=font_scale,
+        text_color=text_color, border_color=border_color, border_width=border_width,
+        watermark_text=watermark_text, watermark_enabled=watermark_enabled,
+        watermark_x=watermark_x, watermark_y=watermark_y,
+        fit_cover=fit_cover, photo_duration=photo_duration, video_duration=video_duration,
+        emojis_json=emojis_json, audio_mode=audio_mode, audio_volume=audio_volume,
     )
-    blobs: list[tuple[str, bytes, str]] = []
+    layout_b = _parse_layout(
+        x=b_x, y=b_y, font_scale=b_font_scale,
+        text_color=text_color, border_color=border_color, border_width=border_width,
+        watermark_text=watermark_text, watermark_enabled=watermark_enabled,
+        watermark_x=watermark_x, watermark_y=watermark_y,
+        fit_cover=fit_cover, photo_duration=photo_duration, video_duration=video_duration,
+        emojis_json=emojis_json_b, audio_mode=audio_mode, audio_volume=audio_volume,
+    )
+    text_a = text.strip()
+    text_b_clean = (text_b or "").strip() or text_a
+    emojis_a = layout_a["emojis"]
+    emojis_b = layout_b["emojis"] or emojis_a
+    blobs: list[tuple[str, bytes, str, dict, str, list[str]]] = []
     raw_a, ext_a = await _read_media(media_a)
-    blobs.append(("reel_a.mp4", raw_a, ext_a))
+    blobs.append(("reel_a.mp4", raw_a, ext_a, layout_a, text_a, emojis_a))
     if media_b is not None and media_b.filename:
         raw_b, ext_b = await _read_media(media_b)
-        blobs.append(("reel_b.mp4", raw_b, ext_b))
+        blobs.append(("reel_b.mp4", raw_b, ext_b, layout_b, text_b_clean, emojis_b))
     audio_blob = await _read_audio(audio)
     import tempfile
 
@@ -437,16 +444,11 @@ async def reels_editor_render_variations(
                 ab, aext = audio_blob
                 audio_path = td_path / f"music{aext}"
                 audio_path.write_bytes(ab)
+            arc, raw, ext, layout, txt, emojis = blobs[0]
             try:
                 out = _write_reel(
-                    td_path,
-                    raw=blobs[0][1],
-                    ext=blobs[0][2],
-                    out_name="reel_a.mp4",
-                    layout=layout,
-                    text=text.strip(),
-                    emojis=layout["emojis"],
-                    audio_path=audio_path,
+                    td_path, raw=raw, ext=ext, out_name=arc,
+                    layout=layout, text=txt, emojis=emojis, audio_path=audio_path,
                 )
             except ReelsEditorError as exc:
                 raise HTTPException(400, detail=str(exc)) from exc
@@ -465,20 +467,14 @@ async def reels_editor_render_variations(
             audio_path = td_path / f"music{aext}"
             audio_path.write_bytes(ab)
         with zipfile.ZipFile(zip_buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-            for arc, raw, ext in blobs:
+            for arc, raw, ext, layout, txt, emojis in blobs:
                 try:
                     out = _write_reel(
-                        td_path,
-                        raw=raw,
-                        ext=ext,
-                        out_name=arc,
-                        layout=layout,
-                        text=text.strip(),
-                        emojis=layout["emojis"],
-                        audio_path=audio_path,
+                        td_path, raw=raw, ext=ext, out_name=arc,
+                        layout=layout, text=txt, emojis=emojis, audio_path=audio_path,
                     )
                 except ReelsEditorError as exc:
-                    raise HTTPException(400, detail=str(exc)) from exc
+                    raise HTTPException(400, detail=f"{arc}: {exc}") from exc
                 zf.write(out, arcname=arc)
     zip_buf.seek(0)
     return StreamingResponse(

@@ -209,8 +209,8 @@ def build_overlay_filter(
     # Altura total do bloco de texto para calcular o y inicial
     line_height = fs + line_sp
     total_height = len(lines) * line_height
-    # y_frac aponta para o centro do bloco — calculamos o topo do bloco
-    y_top_expr = f"(h*{y_frac:.4f})-({total_height}//2)"
+    half_h = total_height // 2
+    center_y_px = int(height * y_frac)
 
     current = "base"
     label_counter = 0
@@ -225,7 +225,7 @@ def build_overlay_filter(
             continue
         esc = _escape_drawtext(line)
         x_expr = "(w-text_w)/2"
-        y_expr = f"(h*{y_frac:.4f})-({total_height}//2)+{i * line_height}"
+        y_expr = f"(h*{y_frac:.4f})-{half_h}+{i * line_height}"
         parts.append(
             f"[{current}]drawtext={font_part}"
             f"text='{esc}':"
@@ -246,20 +246,19 @@ def build_overlay_filter(
     current = "txt"
     label_counter += 1
     emoji_size = max(28, int(fs * 1.25))
-    emoji_y_frac = min(0.92, y_frac + 0.07)
+    emoji_gap = max(8, line_sp)
     emoji_paths = emoji_pngs or []
 
     if emoji_paths:
-        total_w = len(emoji_paths) * emoji_size + max(0, len(emoji_paths) - 1) * int(
-            emoji_size * 0.12
-        )
-        start_x = int(width * x_frac - total_w / 2)
+        emoji_spacing = int(emoji_size * 0.12)
+        total_w = len(emoji_paths) * emoji_size + max(0, len(emoji_paths) - 1) * emoji_spacing
+        start_x = max(0, int(width / 2 - total_w / 2))
+        emoji_y = center_y_px + half_h + emoji_gap
         for idx, png in enumerate(emoji_paths):
             emoji_label = f"em{idx}"
             next_label = f"v{label_counter}"
             label_counter += 1
-            emoji_x = start_x + idx * (emoji_size + int(emoji_size * 0.12))
-            emoji_y = int(height * emoji_y_frac)
+            emoji_x = start_x + idx * (emoji_size + emoji_spacing)
             png_path = str(png.resolve()).replace("\\", "/").replace(":", "\\:")
             parts.append(f"movie='{png_path}',scale={emoji_size}:-1[{emoji_label}];")
             parts.append(
