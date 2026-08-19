@@ -10,14 +10,14 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <meta name="theme-color" content="#C9A227" />
   <meta name="csrf-token" content="{{ request.session.get('csrf_token', '') }}" />
-  <meta name="ib-app-v" content="112" />
+  <meta name="ib-app-v" content="113" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="mobile-web-app-capable" content="yes" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bricolage+Grotesque:wght@600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=65" />
+  <link rel="stylesheet" href="/static/style.css?v=66" />
   <link rel="stylesheet" href="/static/dashboard.css?v=56" />
   {% block head %}{% endblock %}
 </head>
@@ -106,6 +106,10 @@
           <a href="/accounts/reels" class="nav-link" data-nav="/accounts/reels">
             <i data-lucide="trash-2" class="nav-icon"></i>
             <span class="nav-text">Apagar Reels</span>
+          </a>
+          <a href="/accounts/comments" class="nav-link" data-nav="/accounts/comments">
+            <i data-lucide="message-circle" class="nav-icon"></i>
+            <span class="nav-text">Responder comentários</span>
           </a>
           <a href="/accounts/profile-edit" class="nav-link" data-nav="/accounts/profile-edit">
             <i data-lucide="user-pen" class="nav-icon"></i>
@@ -288,6 +292,7 @@
         <a href="/accounts/vault" data-nav="/accounts/vault"><i data-lucide="key-round"></i><span>Cofre</span></a>
         <a href="/accounts/notes" data-nav="/accounts/notes"><i data-lucide="notebook-text"></i><span>Bloco de notas</span></a>
         <a href="/accounts/reels" data-nav="/accounts/reels"><i data-lucide="trash-2"></i><span>Apagar Reels</span></a>
+        <a href="/accounts/comments" data-nav="/accounts/comments"><i data-lucide="message-circle"></i><span>Responder comentários</span></a>
         <a href="/accounts/profile-edit" data-nav="/accounts/profile-edit"><i data-lucide="user-pen"></i><span>Editar perfil</span></a>
         {% endif %}
         {% if not request.state.view_as_active %}

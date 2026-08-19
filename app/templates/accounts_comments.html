@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Responder comentários — instablack{% endblock %}
+{% block content %}
+<div class="page-header" data-page-comments-reply="1">
+  <h2><i data-lucide="message-circle" class="inline-icon"></i> Responder comentários</h2>
+  <p class="muted page-header-sub">
+    API oficial Meta — Reels e posts do feed. Reconecte a conta se o token não tiver permissão de comentários.
+  </p>
+</div>
+
+{% if not accounts %}
+<div class="alert alert-error">
+  Nenhuma conta Meta conectada. <a href="/accounts" data-nav="/accounts">Conectar pela API oficial</a>.
+</div>
+{% else %}
+<section class="og-glass-card comments-reply-toolbar">
+  <label>Conta Meta
+    <select id="comments-reply-account">
+      <option value="">Selecione…</option>
+      {% for acc in accounts %}
+      <option value="{{ acc.id }}" {% if selected_account_id == acc.id %}selected{% endif %}>
+        @{{ acc.username }}
+      </option>
+      {% endfor %}
+    </select>
+  </label>
+  <button type="button" class="btn btn-primary" id="comments-reply-load-media">
+    <i data-lucide="refresh-cw"></i> Carregar publicações
+  </button>
+</section>
+
+<p class="muted" id="comments-reply-status" aria-live="polite"></p>
+
+<div class="comments-reply-layout">
+  <section class="comments-reply-panel comments-reply-media-panel">
+    <div class="comments-reply-panel-head">
+      <h3>Reels &amp; feed</h3>
+      <span class="muted" id="comments-reply-media-count"></span>
+    </div>
+    <div class="comments-reply-media-list" id="comments-reply-media-list"></div>
+    <div class="comments-reply-more" id="comments-reply-media-more-wrap" hidden>
+      <button type="button" class="btn btn-sm" id="comments-reply-media-more">Carregar mais</button>
+    </div>
+  </section>
+
+  <section class="comments-reply-panel comments-reply-thread-panel">
+    <div class="comments-reply-panel-head">
+      <h3 id="comments-reply-thread-title">Comentários</h3>
+      <span class="muted" id="comments-reply-thread-meta"></span>
+    </div>
+    <div class="comments-reply-empty" id="comments-reply-empty">
+      <i data-lucide="mouse-pointer-click"></i>
+      <p>Selecione uma publicação para ver e responder comentários.</p>
+    </div>
+    <div class="comments-reply-thread" id="comments-reply-thread" hidden></div>
+    <div class="comments-reply-more" id="comments-reply-comments-more-wrap" hidden>
+      <button type="button" class="btn btn-sm" id="comments-reply-comments-more">Mais comentários</button>
+    </div>
+  </section>
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>document.body.dataset.pageCommentsReply = "1";</script>
+{% endblock %}

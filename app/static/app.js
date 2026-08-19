@@ -241,6 +241,7 @@
         delete document.body.dataset.pageAccountsConnected;
         delete document.body.dataset.pageVault;
         delete document.body.dataset.pageReelsClean;
+        delete document.body.dataset.pageCommentsReply;
         if (doc.body?.dataset?.pageAccountsConnected) {
           document.body.dataset.pageAccountsConnected = doc.body.dataset.pageAccountsConnected;
         }
@@ -256,6 +257,9 @@
         }
         if (html.includes('data-page-reels-clean="1"') || html.includes("pageReelsClean")) {
           document.body.dataset.pageReelsClean = "1";
+        }
+        if (html.includes('data-page-comments-reply="1"') || html.includes("pageCommentsReply")) {
+          document.body.dataset.pageCommentsReply = "1";
         }
         if (push) history.pushState({ url }, "", url);
         setActiveNav(new URL(url, window.location.origin).pathname);
@@ -3704,6 +3708,317 @@
     }
   }
 
+  function initCommentsReply() {
+    const page = document.querySelector("[data-page-comments-reply]");
+    if (!page && !document.body.dataset.pageCommentsReply) return;
+
+    const accountSel = document.getElementById("comments-reply-account");
+    const loadMediaBtn = document.getElementById("comments-reply-load-media");
+    const mediaList = document.getElementById("comments-reply-media-list");
+    const mediaMoreBtn = document.getElementById("comments-reply-media-more");
+    const mediaMoreWrap = document.getElementById("comments-reply-media-more-wrap");
+    const mediaCountEl = document.getElementById("comments-reply-media-count");
+    const statusEl = document.getElementById("comments-reply-status");
+    const threadEl = document.getElementById("comments-reply-thread");
+    const emptyEl = document.getElementById("comments-reply-empty");
+    const threadTitle = document.getElementById("comments-reply-thread-title");
+    const threadMeta = document.getElementById("comments-reply-thread-meta");
+    const commentsMoreBtn = document.getElementById("comments-reply-comments-more");
+    const commentsMoreWrap = document.getElementById("comments-reply-comments-more-wrap");
+
+    if (!accountSel || !loadMediaBtn || !mediaList || !threadEl) return;
+
+    let mediaAfter = "";
+    let commentsAfter = "";
+    let loadingMedia = false;
+    let loadingComments = false;
+    let selectedMedia = null;
+
+    function setStatus(msg, kind) {
+      if (!statusEl) return;
+      statusEl.textContent = msg || "";
+      statusEl.classList.toggle("is-error", kind === "error");
+      statusEl.classList.toggle("is-ok", kind === "ok");
+    }
+
+    function formatWhen(raw) {
+      if (!raw) return "";
+      const d = new Date(raw);
+      if (Number.isNaN(d.getTime())) return raw;
+      return d.toLocaleString("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    }
+
+    function escapeHtml(s) {
+      return String(s || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function renderMediaItems(items, reset) {
+      if (reset) mediaList.innerHTML = "";
+      items.forEach((item) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "comments-reply-media-item";
+        btn.dataset.mediaId = String(item.id || "");
+        if (selectedMedia && selectedMedia.id === item.id) {
+          btn.classList.add("is-active");
+        }
+
+        const thumbWrap = document.createElement("div");
+        thumbWrap.className = "comments-reply-media-thumb";
+        const thumbUrl = String(item.thumb || "");
+        if (/^https:\/\//i.test(thumbUrl)) {
+          const img = document.createElement("img");
+          img.src = thumbUrl;
+          img.alt = "";
+          img.loading = "lazy";
+          thumbWrap.appendChild(img);
+        } else {
+          thumbWrap.innerHTML = '<i data-lucide="image"></i>';
+        }
+
+        const meta = document.createElement("div");
+        meta.className = "comments-reply-media-meta";
+        const kind = document.createElement("span");
+        kind.className = "comments-reply-kind";
+        kind.textContent = item.kind || "Post";
+        const cap = document.createElement("span");
+        cap.className = "comments-reply-cap";
+        cap.textContent = item.caption || "Sem legenda";
+        const when = document.createElement("span");
+        when.className = "comments-reply-when";
+        when.textContent = formatWhen(item.timestamp);
+        meta.appendChild(kind);
+        meta.appendChild(cap);
+        meta.appendChild(when);
+
+        btn.appendChild(thumbWrap);
+        btn.appendChild(meta);
+        btn.addEventListener("click", () => selectMedia(item));
+        mediaList.appendChild(btn);
+      });
+      if (mediaCountEl) {
+        mediaCountEl.textContent = `${mediaList.querySelectorAll(".comments-reply-media-item").length} publicação(ões)`;
+      }
+      if (window.lucide?.createIcons) window.lucide.createIcons();
+    }
+
+    function renderComment(c) {
+      const card = document.createElement("article");
+      card.className = "comments-reply-comment";
+      card.dataset.commentId = String(c.id || "");
+
+      const head = document.createElement("div");
+      head.className = "comments-reply-comment-head";
+      const user = document.createElement("span");
+      user.className = "comments-reply-user";
+      user.textContent = c.username ? `@${c.username.replace(/^@/, "")}` : "Usuário";
+      const time = document.createElement("span");
+      time.className = "comments-reply-time";
+      time.textContent = formatWhen(c.timestamp);
+      head.appendChild(user);
+      head.appendChild(time);
+
+      const text = document.createElement("p");
+      text.className = "comments-reply-text";
+      text.textContent = c.text || "";
+
+      card.appendChild(head);
+      card.appendChild(text);
+
+      const replies = Array.isArray(c.replies) ? c.replies : [];
+      if (replies.length) {
+        const repliesWrap = document.createElement("div");
+        repliesWrap.className = "comments-reply-replies";
+        replies.forEach((r) => {
+          const rep = document.createElement("div");
+          rep.className = "comments-reply-reply";
+          const who = r.username ? `@${String(r.username).replace(/^@/, "")}` : "Você";
+          rep.innerHTML = `<strong>${escapeHtml(who)}</strong> ${escapeHtml(r.text || "")}`;
+          repliesWrap.appendChild(rep);
+        });
+        card.appendChild(repliesWrap);
+      }
+
+      const form = document.createElement("div");
+      form.className = "comments-reply-form";
+      const ta = document.createElement("textarea");
+      ta.placeholder = "Escreva sua resposta…";
+      ta.maxLength = 2200;
+      const actions = document.createElement("div");
+      actions.className = "comments-reply-form-actions";
+      const sendBtn = document.createElement("button");
+      sendBtn.type = "button";
+      sendBtn.className = "btn btn-sm btn-primary";
+      sendBtn.textContent = "Responder";
+      sendBtn.addEventListener("click", () => sendReply(c.id, ta, sendBtn, card));
+      actions.appendChild(sendBtn);
+      form.appendChild(ta);
+      form.appendChild(actions);
+      card.appendChild(form);
+
+      return card;
+    }
+
+    async function sendReply(commentId, textarea, btn, card) {
+      const accountId = accountSel.value;
+      const message = (textarea.value || "").trim();
+      if (!accountId || !commentId || !message) {
+        setStatus("Digite uma resposta.", "error");
+        return;
+      }
+      btn.disabled = true;
+      setStatus("Enviando resposta…");
+      try {
+        const res = await fetch("/accounts/comments/reply", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({
+            account_id: Number(accountId),
+            comment_id: String(commentId),
+            message,
+          }),
+        });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok || !payload.ok) {
+          throw new Error(payload.detail || "Não foi possível responder.");
+        }
+        textarea.value = "";
+        setStatus("Resposta publicada.", "ok");
+        let repliesWrap = card.querySelector(".comments-reply-replies");
+        if (!repliesWrap) {
+          repliesWrap = document.createElement("div");
+          repliesWrap.className = "comments-reply-replies";
+          card.insertBefore(repliesWrap, card.querySelector(".comments-reply-form"));
+        }
+        const rep = document.createElement("div");
+        rep.className = "comments-reply-reply";
+        rep.innerHTML = `<strong>Você</strong> ${escapeHtml(payload.message || message)}`;
+        repliesWrap.appendChild(rep);
+      } catch (err) {
+        setStatus(err.message || "Falha ao responder.", "error");
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function loadComments(reset) {
+      const accountId = accountSel.value;
+      if (!accountId || !selectedMedia?.id) return;
+      if (loadingComments) return;
+      loadingComments = true;
+      if (commentsMoreBtn) commentsMoreBtn.disabled = true;
+      setStatus(reset ? "Carregando comentários…" : "Carregando mais comentários…");
+      try {
+        const qs = new URLSearchParams({
+          account_id: accountId,
+          media_id: String(selectedMedia.id),
+        });
+        if (!reset && commentsAfter) qs.set("after", commentsAfter);
+        const res = await fetch(`/accounts/comments/list?${qs.toString()}`, { credentials: "same-origin" });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(typeof payload.detail === "string" ? payload.detail : "Erro ao listar comentários.");
+        }
+        if (reset) {
+          threadEl.innerHTML = "";
+          commentsAfter = "";
+        }
+        commentsAfter = payload.after || "";
+        const items = payload.items || [];
+        if (reset && !items.length) {
+          threadEl.innerHTML = '<p class="muted" style="padding:16px">Nenhum comentário nesta publicação.</p>';
+        } else {
+          items.forEach((c) => threadEl.appendChild(renderComment(c)));
+        }
+        emptyEl.hidden = true;
+        threadEl.hidden = false;
+        if (commentsMoreWrap) commentsMoreWrap.hidden = !commentsAfter;
+        setStatus(`${threadEl.querySelectorAll(".comments-reply-comment").length} comentário(s).`, "ok");
+      } catch (err) {
+        setStatus(err.message || "Falha ao carregar comentários.", "error");
+      } finally {
+        loadingComments = false;
+        if (commentsMoreBtn) commentsMoreBtn.disabled = false;
+      }
+    }
+
+    function selectMedia(item) {
+      selectedMedia = item;
+      mediaList.querySelectorAll(".comments-reply-media-item").forEach((el) => {
+        el.classList.toggle("is-active", el.dataset.mediaId === String(item.id));
+      });
+      if (threadTitle) threadTitle.textContent = "Comentários";
+      if (threadMeta) {
+        threadMeta.textContent = `${item.kind || "Post"} · ${item.caption || "Sem legenda"}`.slice(0, 80);
+      }
+      loadComments(true);
+    }
+
+    async function loadMedia(reset) {
+      const accountId = accountSel.value;
+      if (!accountId) {
+        setStatus("Selecione uma conta Meta.", "error");
+        return;
+      }
+      if (loadingMedia) return;
+      loadingMedia = true;
+      loadMediaBtn.disabled = true;
+      if (mediaMoreBtn) mediaMoreBtn.disabled = true;
+      setStatus(reset ? "Carregando publicações…" : "Carregando mais…");
+      try {
+        const qs = new URLSearchParams({ account_id: accountId });
+        if (!reset && mediaAfter) qs.set("after", mediaAfter);
+        const res = await fetch(`/accounts/comments/media?${qs.toString()}`, { credentials: "same-origin" });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(typeof payload.detail === "string" ? payload.detail : "Erro ao listar publicações.");
+        }
+        if (reset) {
+          mediaAfter = "";
+          selectedMedia = null;
+          threadEl.innerHTML = "";
+          threadEl.hidden = true;
+          emptyEl.hidden = false;
+          if (commentsMoreWrap) commentsMoreWrap.hidden = true;
+        }
+        mediaAfter = payload.after || "";
+        const items = payload.items || [];
+        if (reset && !items.length) {
+          mediaList.innerHTML = '<p class="muted" style="padding:12px">Nenhuma publicação encontrada.</p>';
+          setStatus("Nenhum Reel ou post do feed nesta conta.");
+        } else {
+          renderMediaItems(items, reset);
+          setStatus(`${mediaList.querySelectorAll(".comments-reply-media-item").length} publicação(ões) carregada(s).`, "ok");
+        }
+        if (mediaMoreWrap) mediaMoreWrap.hidden = !mediaAfter;
+      } catch (err) {
+        setStatus(err.message || "Falha ao carregar.", "error");
+      } finally {
+        loadingMedia = false;
+        loadMediaBtn.disabled = false;
+        if (mediaMoreBtn) mediaMoreBtn.disabled = false;
+      }
+    }
+
+    loadMediaBtn.addEventListener("click", () => loadMedia(true));
+    mediaMoreBtn?.addEventListener("click", () => loadMedia(false));
+    commentsMoreBtn?.addEventListener("click", () => loadComments(false));
+
+    if (accountSel.value) {
+      loadMedia(true);
+    }
+  }
+
   function initPage() {
     showFlashOkFromStorage();
     initLucide();
@@ -3728,6 +4043,7 @@
     initAccountFolders();
     initAccountFolderPicks();
     initReelsCleanup();
+    initCommentsReply();
     initVaultPage();
     initAuthMethodForm();
     initProfileEditForm();

@@ -152,6 +152,7 @@ META_SCOPES = (
     "instagram_business_basic",
     "instagram_business_content_publish",
     "instagram_business_manage_insights",
+    "instagram_business_manage_comments",
 )
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".webm", ".m4v"}
 DEFAULT_PUBLIC_BASE_URL = "https://instablack-production.up.railway.app"
@@ -383,6 +384,194 @@ def list_ig_reels(
             if len(items) >= want or not next_after:
                 break
     return {"items": items[:want], "after": next_after}
+
+
+def _is_commentable_media(item: dict) -> bool:
+    """Reels e posts do feed (foto/vídeo/carrossel) — exclui Story e anúncio."""
+    product = str(item.get("media_product_type") or "").upper()
+    media_type = str(item.get("media_type") or "").upper()
+    if product in ("STORY", "AD"):
+        return False
+    if product == "REELS":
+        return True
+    return media_type in ("IMAGE", "CAROUSEL_ALBUM", "VIDEO")
+
+
+def _media_kind_label(item: dict) -> str:
+    product = str(item.get("media_product_type") or "").upper()
+    media_type = str(item.get("media_type") or "").upper()
+    if product == "REELS":
+        return "Reel"
+    if media_type == "IMAGE":
+        return "Foto"
+    if media_type == "CAROUSEL_ALBUM":
+        return "Carrossel"
+    if media_type == "VIDEO":
+        return "Vídeo"
+    return "Post"
+
+
+def list_ig_media(
+    access_token: str,
+    ig_user_id: str,
+    *,
+    after: str | None = None,
+    limit: int = 24,
+    proxy: str | None = None,
+) -> dict:
+    """Lista Reels + feed (foto/vídeo) para gerenciar comentários."""
+    want = max(1, min(int(limit or 24), 40))
+    items: list[dict] = []
+    next_after: str | None = (after or "").strip() or None
+    with meta_proxy_scope(proxy):
+        for _ in range(4):
+            params = {
+                "fields": (
+                    "id,caption,media_type,media_product_type,timestamp,"
+                    "permalink,thumbnail_url,media_url,shortcode"
+                ),
+                "limit": 50,
+                "access_token": access_token,
+            }
+            if next_after:
+                params["after"] = next_after
+            response = _http(
+                "GET",
+                _graph_url(f"{ig_user_id}/media"),
+                params=params,
+                timeout=45,
+            )
+            payload = _json_or_error(response, "Falha ao listar mídias da conta")
+            for raw in payload.get("data") or []:
+                if not isinstance(raw, dict) or not _is_commentable_media(raw):
+                    continue
+                mid = str(raw.get("id") or "").strip()
+                if not mid:
+                    continue
+                caption = str(raw.get("caption") or "").strip()
+                items.append(
+                    {
+                        "id": mid,
+                        "caption": caption[:160],
+                        "timestamp": str(raw.get("timestamp") or ""),
+                        "permalink": str(raw.get("permalink") or ""),
+                        "thumb": str(raw.get("thumbnail_url") or raw.get("media_url") or ""),
+                        "kind": _media_kind_label(raw),
+                        "product": str(
+                            raw.get("media_product_type") or raw.get("media_type") or ""
+                        ),
+                    }
+                )
+                if len(items) >= want:
+                    break
+            paging = payload.get("paging") if isinstance(payload.get("paging"), dict) else {}
+            next_after = str((paging.get("cursors") or {}).get("after") or "").strip() or None
+            if len(items) >= want or not next_after:
+                break
+    return {"items": items[:want], "after": next_after}
+
+
+def _normalize_comment(raw: dict) -> dict:
+    username = str(raw.get("username") or "").strip()
+    if not username:
+        from_user = raw.get("from") if isinstance(raw.get("from"), dict) else {}
+        username = str(from_user.get("username") or from_user.get("name") or "").strip()
+    replies_raw = raw.get("replies") if isinstance(raw.get("replies"), dict) else {}
+    replies_list = replies_raw.get("data") if isinstance(replies_raw.get("data"), list) else []
+    replies: list[dict] = []
+    for rep in replies_list:
+        if not isinstance(rep, dict):
+            continue
+        rep_user = str(rep.get("username") or "").strip()
+        if not rep_user:
+            rep_from = rep.get("from") if isinstance(rep.get("from"), dict) else {}
+            rep_user = str(rep_from.get("username") or rep_from.get("name") or "").strip()
+        replies.append(
+            {
+                "id": str(rep.get("id") or ""),
+                "text": str(rep.get("text") or ""),
+                "timestamp": str(rep.get("timestamp") or ""),
+                "username": rep_user,
+            }
+        )
+    return {
+        "id": str(raw.get("id") or ""),
+        "text": str(raw.get("text") or ""),
+        "timestamp": str(raw.get("timestamp") or ""),
+        "username": username,
+        "replies": replies,
+    }
+
+
+def list_media_comments(
+    access_token: str,
+    media_id: str,
+    *,
+    after: str | None = None,
+    limit: int = 50,
+    proxy: str | None = None,
+) -> dict:
+    """GET /{ig-media-id}/comments — comentários de Reel ou post do feed."""
+    want = max(1, min(int(limit or 50), 100))
+    items: list[dict] = []
+    next_after: str | None = (after or "").strip() or None
+    with meta_proxy_scope(proxy):
+        params = {
+            "fields": "id,text,timestamp,username,from,replies{id,text,timestamp,username,from}",
+            "limit": min(want, 50),
+            "access_token": access_token,
+        }
+        if next_after:
+            params["after"] = next_after
+        response = _http(
+            "GET",
+            _graph_url(f"{media_id}/comments"),
+            params=params,
+            timeout=45,
+        )
+        payload = _json_or_error(response, "Falha ao listar comentários")
+        for raw in payload.get("data") or []:
+            if isinstance(raw, dict) and raw.get("id"):
+                items.append(_normalize_comment(raw))
+        paging = payload.get("paging") if isinstance(payload.get("paging"), dict) else {}
+        next_after = str((paging.get("cursors") or {}).get("after") or "").strip() or None
+    return {"items": items[:want], "after": next_after}
+
+
+def reply_to_comment(
+    access_token: str,
+    comment_id: str,
+    message: str,
+    *,
+    proxy: str | None = None,
+) -> dict:
+    """POST /{ig-comment-id}/replies — responde comentário (Reel ou feed)."""
+    text = (message or "").strip()
+    if not comment_id:
+        raise MetaInstagramError("ID do comentário ausente.")
+    if not text:
+        raise MetaInstagramError("Digite uma resposta.")
+    if len(text) > 2200:
+        text = text[:2199].rstrip() + "…"
+    with meta_proxy_scope(proxy):
+        response = _http(
+            "POST",
+            _graph_url(f"{comment_id}/replies"),
+            data={"message": text, "access_token": access_token},
+            timeout=45,
+        )
+        data = _json_or_error(response, "Falha ao responder comentário")
+        reply_id = data.get("id")
+        if not reply_id and isinstance(data.get("error"), dict):
+            err = data["error"]
+            msg = str(err.get("message") or err.get("error_user_msg") or "")
+            if "oauth" in msg.lower() or err.get("code") in (190, 102):
+                raise MetaInstagramError(
+                    "Token sem permissão para responder comentários. "
+                    "Reconecte a conta Meta concedindo instagram_business_manage_comments."
+                )
+            raise MetaInstagramError(msg or "A Meta recusou a resposta.")
+        return {"id": str(reply_id or ""), "message": text}
 
 
 def try_delete_media(
