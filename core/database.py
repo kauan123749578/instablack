@@ -306,6 +306,14 @@ def _sqlite_migrate(bind=None) -> None:
             conn.execute(text("ALTER TABLE automations ADD COLUMN rest_minutes INTEGER DEFAULT 0"))
         if "posts_in_batch" not in cols:
             conn.execute(text("ALTER TABLE automations ADD COLUMN posts_in_batch INTEGER DEFAULT 0"))
+        if "comment_auto_reply_enabled" not in cols:
+            conn.execute(text("ALTER TABLE automations ADD COLUMN comment_auto_reply_enabled BOOLEAN DEFAULT 0"))
+        if "comment_auto_reply_message" not in cols:
+            conn.execute(text("ALTER TABLE automations ADD COLUMN comment_auto_reply_message VARCHAR(500)"))
+        if "comment_auto_reply_delay_seconds" not in cols:
+            conn.execute(text("ALTER TABLE automations ADD COLUMN comment_auto_reply_delay_seconds INTEGER DEFAULT 5"))
+        if "comment_auto_reply_messages" not in cols:
+            conn.execute(text("ALTER TABLE automations ADD COLUMN comment_auto_reply_messages TEXT"))
         conn.execute(
             text(
                 "CREATE INDEX IF NOT EXISTS ix_automations_user_status "
@@ -576,6 +584,10 @@ def _postgres_migrate(bind=None) -> None:
                 ("posts_per_batch", "INTEGER DEFAULT 0"),
                 ("rest_minutes", "INTEGER DEFAULT 0"),
                 ("posts_in_batch", "INTEGER DEFAULT 0"),
+                ("comment_auto_reply_enabled", "BOOLEAN DEFAULT FALSE"),
+                ("comment_auto_reply_message", "VARCHAR(500)"),
+                ("comment_auto_reply_delay_seconds", "INTEGER DEFAULT 5"),
+                ("comment_auto_reply_messages", "TEXT"),
             ],
         )
         if _table_exists(conn, "automations"):

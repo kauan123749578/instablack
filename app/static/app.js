@@ -950,6 +950,7 @@
     const thumbWrap = document.getElementById("thumb-wrap");
     const camouflageWrap = document.getElementById("camouflage-wrap");
     const storyLinkWrap = document.getElementById("story-link-wrap");
+    const commentAutoReplyWrap = document.getElementById("comment-auto-reply-wrap");
     const videoInput = document.getElementById("video-input");
     const videoList = document.getElementById("video-file-list");
     const reelUploadHelp = document.getElementById("reel-upload-help");
@@ -974,6 +975,7 @@
         if (thumbWrap) thumbWrap.style.display = "none";
         if (camouflageWrap) camouflageWrap.style.display = "none";
         if (storyLinkWrap) storyLinkWrap.style.display = "";
+        if (commentAutoReplyWrap) commentAutoReplyWrap.style.display = "none";
         if (reelUploadHelp) reelUploadHelp.style.display = "none";
       } else if (t === "photo") {
         if (mediaLabel) mediaLabel.firstChild.textContent = "Foto para o feed (.jpg/.png) ";
@@ -989,6 +991,7 @@
         if (thumbWrap) thumbWrap.style.display = "none";
         if (camouflageWrap) camouflageWrap.style.display = "none";
         if (storyLinkWrap) storyLinkWrap.style.display = "none";
+        if (commentAutoReplyWrap) commentAutoReplyWrap.style.display = "";
         if (reelUploadHelp) reelUploadHelp.style.display = "none";
       } else {
         if (mediaLabel) mediaLabel.firstChild.textContent = "Vídeos Reels (.mp4) ";
@@ -1003,6 +1006,7 @@
         if (thumbWrap) thumbWrap.style.display = "";
         if (camouflageWrap) camouflageWrap.style.display = "";
         if (storyLinkWrap) storyLinkWrap.style.display = "none";
+        if (commentAutoReplyWrap) commentAutoReplyWrap.style.display = "";
         if (reelUploadHelp) reelUploadHelp.style.display = "block";
       }
       document.dispatchEvent(new CustomEvent("automation-media-changed"));

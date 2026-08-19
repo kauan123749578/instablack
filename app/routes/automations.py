@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.deps import get_current_user, get_effective_user
 from app.utils.account_folders import folders_template_context
+from app.utils.comment_auto_reply import comment_auto_reply_from_form
 from app.templating import templates
 from app.utils.calendar_schedule import (
     days_to_json,
@@ -1057,6 +1058,9 @@ async def create_automation(
     caption_rotate_by_reel = _form_str("caption_rotate_by_reel")
     camouflage_enabled = _form_str("camouflage_enabled")
     camouflage_opacity_pct = _form_str("camouflage_opacity_pct", "15") or "15"
+    comment_auto_reply_enabled = _form_str("comment_auto_reply_enabled")
+    comment_auto_reply_message = _form_str("comment_auto_reply_message")
+    comment_auto_reply_delay_seconds = _form_int("comment_auto_reply_delay_seconds", 5)
 
     account_ids: list[int] = []
     for raw in form.getlist("account_ids"):
@@ -1082,6 +1086,12 @@ async def create_automation(
         caption_rotate_by_account=caption_rotate_by_account,
         caption_rotate_by_reel=caption_rotate_by_reel,
     )
+    comment_auto_reply = comment_auto_reply_from_form(
+        enabled_raw=comment_auto_reply_enabled,
+        message_raw=comment_auto_reply_message,
+        delay_raw=comment_auto_reply_delay_seconds,
+        content_type=content_type,
+    )
     captions_json = None  # rotação removida — só legenda fixa
     submitted_cal_times: list[str] = []
     for raw_time in (calendar_times or [calendar_time]):
@@ -1093,6 +1103,10 @@ async def create_automation(
         error = "Tipo de conteúdo inválido."
     elif content_type in ("reel", "photo") and not caption:
         error = "Legenda obrigatória para Reel/Foto. Cole o texto antes de criar."
+    elif comment_auto_reply["comment_auto_reply_enabled"] and not comment_auto_reply.get(
+        "comment_auto_reply_messages"
+    ):
+        error = "Ative resposta automática com pelo menos uma mensagem (uma por linha)."
     elif schedule_mode not in ("now", "recurring", "calendar"):
         error = "Modo de publicação inválido."
     elif schedule_mode == "recurring" and interval_minutes not in ALLOWED_INTERVALS:
@@ -1453,6 +1467,7 @@ async def create_automation(
             status="active" if has_accounts else "paused",
             next_run_at=nxt if has_accounts else None,
             **humanize,
+            **comment_auto_reply,
         )
         automation.accounts = accounts
         db.add(automation)
@@ -1484,6 +1499,7 @@ async def create_automation(
         status="active" if has_accounts else "paused",
         next_run_at=now if has_accounts else None,
         **humanize,
+        **comment_auto_reply,
     )
     automation.accounts = accounts
     db.add(automation)
@@ -2112,6 +2128,12 @@ def duplicate_automation(
         next_run_at=None,
         last_run_at=None,
         total_runs=0,
+        comment_auto_reply_enabled=bool(getattr(src, "comment_auto_reply_enabled", False)),
+        comment_auto_reply_message=getattr(src, "comment_auto_reply_message", None),
+        comment_auto_reply_messages=getattr(src, "comment_auto_reply_messages", None),
+        comment_auto_reply_delay_seconds=int(
+            getattr(src, "comment_auto_reply_delay_seconds", 5) or 5
+        ),
     )
     clone.accounts = list(src.accounts)
     db.add(clone)
@@ -2145,6 +2167,9 @@ async def edit_automation(
     camouflage_cover: UploadFile | None = File(None),
     remove_camouflage: bool = Form(False),
     camouflage_opacity_pct: str = Form(""),
+    comment_auto_reply_enabled: str = Form(""),
+    comment_auto_reply_message: str = Form(""),
+    comment_auto_reply_delay_seconds: int = Form(5),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -2270,6 +2295,23 @@ async def edit_automation(
     a.stagger_max_minutes = int(humanize["stagger_max_minutes"])  # type: ignore[arg-type]
     a.caption_rotate_by_account = False
     a.caption_rotate_by_reel = False
+    comment_auto_reply = comment_auto_reply_from_form(
+        enabled_raw=comment_auto_reply_enabled,
+        message_raw=comment_auto_reply_message,
+        delay_raw=comment_auto_reply_delay_seconds,
+        content_type=content_type,
+    )
+    if comment_auto_reply["comment_auto_reply_enabled"] and not comment_auto_reply.get(
+        "comment_auto_reply_messages"
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Ative resposta automática com pelo menos uma mensagem (uma por linha).",
+        )
+    a.comment_auto_reply_enabled = bool(comment_auto_reply["comment_auto_reply_enabled"])
+    a.comment_auto_reply_message = comment_auto_reply.get("comment_auto_reply_message")
+    a.comment_auto_reply_messages = comment_auto_reply.get("comment_auto_reply_messages")
+    a.comment_auto_reply_delay_seconds = int(comment_auto_reply["comment_auto_reply_delay_seconds"])  # type: ignore[arg-type]
     a.accounts = list(accounts)
     if not accounts:
         a.status = "paused"

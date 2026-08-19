@@ -110,6 +110,7 @@
             <span class="type-badge">{{ a.content_type|default('reel') }}</span>
             {% if a.schedule_type == 'calendar' %}<span class="type-badge type-badge--cal">calendário</span>{% endif %}
             {% if a.camouflage_cover_key %}<span class="type-badge type-badge--camu">camuflagem</span>{% endif %}
+            {% if a.comment_auto_reply_enabled %}<span class="type-badge type-badge--reply">auto-reply</span>{% endif %}
           </div>
         </div>
       </div>
@@ -288,6 +289,27 @@
           <label class="checkbox-row">
             <input type="checkbox" name="remove_thumb" value="true"> Remover capa atual
           </label>
+          {% endif %}
+          {% if a.content_type in ('reel', 'photo') %}
+          <fieldset>
+            <legend>Resposta automática a comentários</legend>
+            <label class="checkbox-row">
+              <input type="checkbox" name="comment_auto_reply_enabled" value="1"
+                     {% if a.comment_auto_reply_enabled %}checked{% endif %}>
+              Responder comentários automaticamente (API Meta)
+            </label>
+            <label style="margin-top:8px;display:block">Mensagens <span class="muted">(uma por linha)</span>
+              <textarea name="comment_auto_reply_message" rows="5"
+                        placeholder="Valeu! Link na bio&#10;Obrigado!">{{ a | comment_reply_messages }}</textarea>
+            </label>
+            <label style="margin-top:8px;display:block">Esperar (segundos)
+              <input type="number" name="comment_auto_reply_delay_seconds" min="3" max="120"
+                     value="{{ a.comment_auto_reply_delay_seconds or 5 }}">
+            </label>
+            <p class="muted" style="margin:6px 0 0;font-size:12px">
+              Monitora comentários a cada ~20s. Várias linhas = resposta aleatória (Reels e fotos do feed).
+            </p>
+          </fieldset>
           {% endif %}
           {% if a.content_type == 'reel' %}
           <fieldset>

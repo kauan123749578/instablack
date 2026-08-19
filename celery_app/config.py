@@ -18,6 +18,7 @@ celery_app = Celery(
         "celery_app.tasks.health",
         "celery_app.tasks.insights",
         "celery_app.tasks.warmup",
+        "celery_app.tasks.comments",
         "celery_app.beat",
     ],
 )
@@ -27,6 +28,7 @@ from celery_app.tasks import health as _health  # noqa: E402,F401
 from celery_app.tasks import insights as _insights  # noqa: E402,F401
 from celery_app.tasks import publish as _publish  # noqa: E402,F401
 from celery_app.tasks import warmup as _warmup  # noqa: E402,F401
+from celery_app.tasks import comments as _comments  # noqa: E402,F401
 import celery_app.beat as _beat  # noqa: E402,F401
 
 celery_conf: dict = {
@@ -47,6 +49,7 @@ celery_conf: dict = {
         "celery_app.tasks.insights.sync_all_views": {"queue": "default"},
         "celery_app.tasks.insights.refresh_missing_profile_pics": {"queue": "default"},
         "celery_app.tasks.warmup.run_warmup_job": {"queue": "default"},
+        "celery_app.tasks.comments.poll_auto_replies": {"queue": "default"},
     },
     "broker_connection_retry_on_startup": True,
     "result_expires": 60 * 60,
@@ -195,5 +198,9 @@ celery_app.conf.beat_schedule = {
     "purge-publish-logs-daily": {
         "task": "celery_app.tasks.health.purge_old_publish_logs",
         "schedule": schedule(run_every=86400),
+    },
+    "comment-auto-reply-every-20s": {
+        "task": "celery_app.tasks.comments.poll_auto_replies",
+        "schedule": schedule(run_every=20),
     },
 }

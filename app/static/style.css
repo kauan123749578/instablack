@@ -1082,6 +1082,7 @@ input[type="checkbox"]:checked::after {
 }
 .auto-card-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
 .type-badge--camu { background: rgba(201,162,39,0.12); color: #E8D48B; }
+.type-badge--reply { background: rgba(56,189,248,0.12); color: #7DD3FC; }
 .auto-card-stats {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

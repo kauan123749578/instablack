@@ -17,6 +17,7 @@ from app.utils.proxy import account_proxy_ip, proxy_label, proxy_to_raw
 from app.utils.intervals import interval_label
 from app.utils.calendar_schedule import format_calendar_times_label
 from app.utils.formatters import format_count, format_interval, status_badge_class, status_label
+from app.utils.comment_auto_reply import messages_for_textarea as comment_reply_messages_text
 from app.utils.timezone import brt_now, format_date_header, greeting_for_user, greeting_period, to_brt
 
 
@@ -157,6 +158,7 @@ templates = CompatJinja2Templates(directory="app/templates")
 templates.env.filters["localtime"] = to_brt
 templates.env.filters["tojson"] = lambda v: json.dumps(v)
 templates.env.filters["signed_media"] = signed_media_url
+templates.env.filters["comment_reply_messages"] = comment_reply_messages_text
 templates.env.globals["greeting_for_user"] = greeting_for_user
 templates.env.globals["greeting_period"] = greeting_period
 templates.env.globals["brt_now"] = brt_now

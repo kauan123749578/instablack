@@ -284,6 +284,11 @@ class Automation(Base):
     posts_per_batch: Mapped[int] = mapped_column(Integer, default=0)
     rest_minutes: Mapped[int] = mapped_column(Integer, default=0)
     posts_in_batch: Mapped[int] = mapped_column(Integer, default=0)
+    # Resposta automática a comentários (API Meta) nos Reels/fotos feed desta automação.
+    comment_auto_reply_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    comment_auto_reply_message: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    comment_auto_reply_messages: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    comment_auto_reply_delay_seconds: Mapped[int] = mapped_column(Integer, default=5)
 
     next_run_at: Mapped[Optional[dt.datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
@@ -364,6 +369,29 @@ class PublishLog(Base):
 
     automation: Mapped[Optional["Automation"]] = relationship(back_populates="publish_logs")
     account: Mapped["InstagramAccount"] = relationship(back_populates="publish_logs")
+
+
+class CommentAutoReply(Base):
+    """Dedup: um reply por comentário IG (evita responder 2× no poll)."""
+
+    __tablename__ = "comment_auto_replies"
+    __table_args__ = (UniqueConstraint("ig_comment_id", name="uq_comment_auto_replies_ig_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ig_comment_id: Mapped[str] = mapped_column(String(64), index=True)
+    publish_log_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("publish_logs.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    automation_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("automations.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    account_id: Mapped[int] = mapped_column(
+        ForeignKey("instagram_accounts.id", ondelete="CASCADE"), index=True
+    )
+    reply_text: Mapped[str] = mapped_column(String(500))
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
 
 class PushSubscription(Base):

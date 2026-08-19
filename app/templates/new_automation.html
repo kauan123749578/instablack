@@ -246,6 +246,26 @@
         </span>
       </fieldset>
 
+      <fieldset class="humanize-fieldset" style="margin-top:14px" id="comment-auto-reply-wrap">
+        <legend>Resposta automática a comentários <span class="muted">(API Meta · Reels e fotos)</span></legend>
+        <label class="checkbox-row" style="margin-bottom:8px">
+          <input type="checkbox" name="comment_auto_reply_enabled" value="1" id="comment-auto-reply-enabled">
+          Responder comentários automaticamente nos posts desta automação
+        </label>
+        <label>Mensagens de resposta <span class="muted">(uma por linha — escolhe aleatório)</span>
+          <textarea name="comment_auto_reply_message" id="comment-auto-reply-message" rows="5"
+                    placeholder="Valeu! Link na bio 🔥&#10;Obrigado pelo comentário!&#10;Confere lá na bio 😊"></textarea>
+        </label>
+        <label style="margin-top:8px;display:block">Esperar antes de responder (segundos)
+          <input type="number" name="comment_auto_reply_delay_seconds" id="comment-auto-reply-delay"
+                 min="3" max="120" value="5">
+          <span class="muted" style="display:block;margin-top:4px;font-size:12px">
+            O Instablack verifica comentários a cada ~20s. Várias mensagens = resposta diferente a cada comentário (menos “robô”).
+            Só funciona em contas Meta (API oficial) com permissão de comentários.
+          </span>
+        </label>
+      </fieldset>
+
       <fieldset class="humanize-fieldset" style="margin-top:14px">
         <legend>Variação de horário <span class="muted">(anti-ban)</span></legend>
         <label class="checkbox-row" style="margin-bottom:8px">
