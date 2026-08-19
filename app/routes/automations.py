@@ -15,6 +15,7 @@ from PIL import Image, ImageOps
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session, selectinload
 
+from app.deps import get_current_user, get_effective_user
 from app.utils.account_folders import folders_template_context
 from app.templating import templates
 from app.utils.calendar_schedule import (
