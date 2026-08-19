@@ -1,10 +1,15 @@
 """Pastas de contas Instagram — contexto de template e validação."""
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy import func, select
+from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.orm import Session
 
 from models.models import AccountFolder, InstagramAccount
+
+log = logging.getLogger(__name__)
 
 
 def normalize_folder_name(raw: str) -> str:
@@ -27,7 +32,20 @@ def folders_template_context(
     user_id: int,
     accounts: list[InstagramAccount] | None = None,
 ) -> dict:
-    folders = load_folders(db, user_id)
+    empty = {
+        "folders": [],
+        "folder_account_ids": {},
+        "unfiled_account_ids": [int(acc.id) for acc in (accounts or [])],
+    }
+    try:
+        folders = load_folders(db, user_id)
+    except (ProgrammingError, OperationalError):
+        log.exception("Pastas de contas indisponíveis (tabela account_folders?)")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return empty
     ids_by_folder: dict[int, list[int]] = {f.id: [] for f in folders}
     unfiled: list[int] = []
     for acc in accounts or []:

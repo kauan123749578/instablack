@@ -387,6 +387,25 @@ def _sqlite_migrate(bind=None) -> None:
                 conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN encrypted_totp_secret TEXT"))
             if "login_email" not in acols:
                 conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN login_email VARCHAR(255)"))
+            if "users" in insp.get_table_names() and "account_folders" not in insp.get_table_names():
+                conn.execute(
+                    text(
+                        "CREATE TABLE account_folders ("
+                        "id INTEGER PRIMARY KEY, "
+                        "user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, "
+                        "name VARCHAR(40) NOT NULL, "
+                        "sort_order INTEGER DEFAULT 0, "
+                        "created_at DATETIME, "
+                        "UNIQUE (user_id, name)"
+                        ")"
+                    )
+                )
+                conn.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS ix_account_folders_user_id "
+                        "ON account_folders (user_id)"
+                    )
+                )
             if "folder_id" not in acols:
                 conn.execute(text("ALTER TABLE instagram_accounts ADD COLUMN folder_id INTEGER"))
             conn.execute(
@@ -624,6 +643,38 @@ def _postgres_migrate(bind=None) -> None:
                     "WHERE username = 'admin' AND is_admin IS NOT TRUE"
                 )
             )
+
+        if _table_exists(conn, "users") and not _table_exists(conn, "account_folders"):
+            conn.execute(text("SET LOCAL lock_timeout = '3000ms'"))
+            try:
+                conn.execute(text("SAVEPOINT sp_account_folders"))
+                conn.execute(
+                    text(
+                        "CREATE TABLE account_folders ("
+                        "id SERIAL PRIMARY KEY, "
+                        "user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, "
+                        "name VARCHAR(40) NOT NULL, "
+                        "sort_order INTEGER NOT NULL DEFAULT 0, "
+                        "created_at TIMESTAMPTZ DEFAULT NOW(), "
+                        "CONSTRAINT uq_account_folders_user_name UNIQUE (user_id, name)"
+                        ")"
+                    )
+                )
+                conn.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS ix_account_folders_user_id "
+                        "ON account_folders (user_id)"
+                    )
+                )
+                conn.execute(text("RELEASE SAVEPOINT sp_account_folders"))
+                log.info("migrate: created account_folders")
+            except Exception as exc:
+                log.warning("migrate: skip account_folders — %s", exc)
+                try:
+                    conn.execute(text("ROLLBACK TO SAVEPOINT sp_account_folders"))
+                    conn.execute(text("RELEASE SAVEPOINT sp_account_folders"))
+                except Exception:
+                    pass
 
         _add_columns_safe(
             conn,
