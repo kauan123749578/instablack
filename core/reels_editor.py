@@ -120,9 +120,32 @@ def _ffmpeg_color(raw: str, *, fallback: str = "white") -> str:
     return color
 
 
-def _font_size(height: int, font_scale: float) -> int:
-    base = height * 0.045 * max(0.35, min(2.5, float(font_scale or 1.0)))
-    return int(max(22, min(120, round(base))))
+def calculate_optimal_font_size(
+    text: str,
+    width: int,
+    height: int,
+    *,
+    font_scale: float = 1.0,
+    min_font_size: int = 30,
+    max_font_size: int = 80,
+) -> int:
+    """Tamanho de fonte automático (mesma lógica do editor_reels de referência)."""
+    lines = [line for line in (text or "").split("\n") if line.strip()]
+    if not lines:
+        return min_font_size
+    max_line_length = max(len(line) for line in lines)
+    num_lines = len(lines)
+    available_width = int(width * 0.9)
+    font_size_by_width = int(available_width / max(max_line_length, 1) * 1.2)
+    available_height = int(height * 0.6)
+    font_size_by_height = int(available_height / max(num_lines * 1.5, 1))
+    font_size = min(font_size_by_width, font_size_by_height)
+    scaled = int(font_size * max(0.35, min(2.5, float(font_scale or 1.0))))
+    return max(min_font_size, min(scaled, max_font_size))
+
+
+def _font_size(height: int, font_scale: float, text: str, width: int = 1080) -> int:
+    return calculate_optimal_font_size(text, width, height, font_scale=font_scale)
 
 
 def strip_emojis(text: str) -> str:
@@ -184,19 +207,23 @@ def build_overlay_filter(
     fit_cover: bool,
     is_image: bool,
     emoji_pngs: list[Path] | None = None,
+    video_duration: float = 60.0,
 ) -> str:
-    x_frac = max(0.05, min(0.95, float(x_frac)))
+    width = 1080
+    height = 1920
     y_frac = max(0.08, min(0.92, float(y_frac)))
     wm_x = max(0.05, min(0.95, float(watermark_x_frac)))
-    wm_y = max(0.08, min(0.96, float(watermark_y_frac)))
-    fs = _font_size(height, font_scale)
+    raw_text = text_file.read_text(encoding="utf-8", errors="replace").strip()
+    lines = [line for line in raw_text.split("\n") if line.strip()] or [""]
+    fs = _font_size(height, font_scale, raw_text, width)
     font = _font_path_escaped()
     font_part = f"fontfile='{font}':" if font else ""
     border_w = max(0, min(6, int(border_width or 2)))
-    color = _ffmpeg_color(text_color, fallback="white")
+    color = _ffmpeg_color(text_color, fallback="yellow")
     border = _ffmpeg_color(border_color, fallback="black")
-    line_sp = max(4, fs // 6)
+    line_sp = max(4, int(fs * 0.3))
 
+    # Sempre normaliza para 9:16 (Reels).
     if fit_cover or is_image:
         scale = (
             "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,"
@@ -208,18 +235,9 @@ def build_overlay_filter(
             "pad=1080:1920:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1[base];"
         )
 
-    # Renderiza cada linha individualmente e centraliza via (w-text_w)/2.
-    # Isso garante centralização correta no FFmpeg 4.x que não tem text_align.
-    raw_text = text_file.read_text(encoding="utf-8", errors="replace").strip()
-    lines = raw_text.split("\n") if raw_text else [""]
-    # Remove linhas vazias extras mas mantém pelo menos uma
-    lines = [l for l in lines if l.strip()] or [""]
-
-    # Altura total do bloco de texto para calcular o y inicial
-    line_height = fs + line_sp
-    total_height = len(lines) * line_height
-    half_h = total_height // 2
-    center_y_px = int(height * y_frac)
+    total_text_height = len(lines) * (fs + line_sp)
+    center_y = int(height * y_frac)
+    start_y = max(10, center_y - total_text_height // 2)
 
     current = "base"
     label_counter = 0
@@ -233,8 +251,7 @@ def build_overlay_filter(
             current = next_label
             continue
         esc = _escape_drawtext(line)
-        x_expr = "max(10,(w-text_w)/2)"
-        y_expr = f"(h*{y_frac:.4f})-{half_h}+{i * line_height}"
+        line_y = start_y + i * (fs + line_sp)
         parts.append(
             f"[{current}]drawtext={font_part}"
             f"text='{esc}':"
@@ -243,26 +260,25 @@ def build_overlay_filter(
             f"borderw={border_w}:"
             f"bordercolor={border}@0.95:"
             f"shadowcolor=black@0.45:shadowx=2:shadowy=2:"
-            f"x={x_expr}:"
-            f"y={y_expr}[{next_label}];"
+            f"x=max(10,(w-text_w)/2):"
+            f"y={line_y}[{next_label}];"
         )
         current = next_label
 
-    # Renomeia o último stream para [txt]
     last = parts.pop()
     last = last[: last.rfind("[")] + "[txt];"
     parts.append(last)
     current = "txt"
     label_counter += 1
-    emoji_size = max(28, int(fs * 1.25))
-    emoji_gap = max(8, line_sp)
     emoji_paths = emoji_pngs or []
+    emoji_y: int | None = None
+    emoji_size = max(28, int(fs * 1.3))
 
     if emoji_paths:
-        emoji_spacing = int(emoji_size * 0.12)
+        emoji_spacing = int(emoji_size * 0.15)
         total_w = len(emoji_paths) * emoji_size + max(0, len(emoji_paths) - 1) * emoji_spacing
         start_x = max(0, int(width / 2 - total_w / 2))
-        emoji_y = center_y_px + half_h + emoji_gap
+        emoji_y = start_y + total_text_height + int(fs * 0.8)
         for idx, png in enumerate(emoji_paths):
             emoji_label = f"em{idx}"
             next_label = f"v{label_counter}"
@@ -284,8 +300,20 @@ def build_overlay_filter(
             .replace("'", "\\'")
             .replace(":", "\\:")
         )
-        wm_fs = max(14, fs // 3)
+        wm_fs = max(14, int(height * 0.012))
         wm_label = f"v{label_counter}"
+        label_counter += 1
+        if emoji_paths and emoji_y is not None:
+            watermark_y = emoji_y + emoji_size + int(fs * 0.5)
+        else:
+            watermark_y = start_y + total_text_height + int(fs * 0.6)
+        use_auto_wm = abs(float(watermark_y_frac) - 0.88) < 0.02
+        if use_auto_wm:
+            wm_x_expr = "(w-text_w)/2"
+            wm_y_expr = str(watermark_y)
+        else:
+            wm_x_expr = f"(w*{wm_x:.4f})-(text_w/2)"
+            wm_y_expr = f"(h*{max(0.08, min(0.96, float(watermark_y_frac))):.4f})-(text_h/2)"
         parts.append(
             f"[{current}]drawtext={font_part}"
             f"text='{wm}':"
@@ -293,12 +321,21 @@ def build_overlay_filter(
             f"fontcolor=white:"
             f"borderw=1:"
             f"bordercolor=black@0.85:"
-            f"x=(w*{wm_x:.4f})-(text_w/2):"
-            f"y=(h*{wm_y:.4f})-(text_h/2)[{wm_label}];"
+            f"x={wm_x_expr}:"
+            f"y={wm_y_expr}[{wm_label}];"
         )
         current = wm_label
 
-    parts.append(f"[{current}]copy[outv];")
+    fade_duration = 0.5
+    clip_duration = max(1.0, float(video_duration or 60.0))
+    fade_in_label = f"v{label_counter}"
+    label_counter += 1
+    fade_out_label = "outv"
+    parts.append(f"[{current}]fade=t=in:st=0:d={fade_duration}[{fade_in_label}];")
+    parts.append(
+        f"[{fade_in_label}]fade=t=out:st={max(0.0, clip_duration - fade_duration)}:"
+        f"d={fade_duration}[{fade_out_label}];"
+    )
     return "".join(parts)
 
 
@@ -319,6 +356,7 @@ def _layout_kwargs(
     fit_cover: bool,
     is_image: bool,
     cache_dir: Path,
+    video_duration: float = 60.0,
 ) -> tuple[str, str]:
     text_only = strip_emojis(_normalize_text(text))
     text_file = cache_dir / "overlay.txt"
@@ -341,6 +379,7 @@ def _layout_kwargs(
         fit_cover=fit_cover,
         is_image=is_image,
         emoji_pngs=emoji_pngs,
+        video_duration=video_duration,
     )
     return filt, text_only
 
@@ -354,7 +393,7 @@ def render_reel_mp4(
     x_frac: float = 0.5,
     y_frac: float = 0.5,
     font_scale: float = 1.0,
-    text_color: str = "white",
+    text_color: str = "yellow",
     border_color: str = "black",
     border_width: int = 2,
     watermark_text: str = "",
@@ -377,6 +416,7 @@ def render_reel_mp4(
 
     with tempfile.TemporaryDirectory(prefix="ib-reels-render-") as td:
         td_path = Path(td)
+        duration = max(1.0, min(60.0, float(photo_duration if is_image else video_duration)))
         filt, _ = _layout_kwargs(
             text=text,
             emojis=emojis,
@@ -393,8 +433,8 @@ def render_reel_mp4(
             fit_cover=fit_cover,
             is_image=is_image,
             cache_dir=td_path,
+            video_duration=duration,
         )
-        duration = max(1.0, min(60.0, float(photo_duration if is_image else video_duration)))
         cmd = [_ffmpeg(), "-hide_banner", "-loglevel", "error", "-y"]
         if is_image:
             cmd.extend(["-loop", "1", "-i", str(media_path)])

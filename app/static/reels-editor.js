@@ -37,7 +37,7 @@
   let interaction = null;
 
   function defaultSlotLayout(texto = "") {
-    return { texto, emojis: [], x: 0.5, y: 0.45, fontScale: 1 };
+    return { texto, emojis: [], x: 0.5, y: 0.5, fontScale: 1 };
   }
 
   const slotLayouts = [
@@ -159,11 +159,25 @@
     btn.textContent = count >= 2 ? "Gerar A+B" : "Gerar A+B (precisa 2)";
   }
 
+  function autoFontSize(text, canvasH, fontScale = 1) {
+    const lines = String(text || "")
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+    if (!lines.length) return Math.round(canvasH * 0.045);
+    const maxLen = Math.max(...lines.map((l) => l.length));
+    const numLines = lines.length;
+    const byWidth = Math.floor((canvasH * 0.9 * (9 / 16)) / Math.max(maxLen, 1) * 1.2);
+    const byHeight = Math.floor((canvasH * 0.6) / (numLines * 1.5));
+    const base = Math.max(30, Math.min(byWidth, byHeight, 80));
+    return Math.round(base * Math.max(0.35, Math.min(2.5, fontScale || 1)));
+  }
+
   function updateTextLayer() {
     syncFitClass();
     const refCanvas = slots[state.activeSlot].canvas;
     const canvasH = refCanvas?.clientHeight || 640;
-    const color = cssColor($("textColor").value || "white");
+    const color = cssColor($("textColor").value || "yellow");
     const borderW = Number($("borderWidth").value || 2);
     const borderColor = cssColor($("borderColor").value || "black");
     const wmOn = $("watermarkEnabled").checked;
@@ -171,8 +185,8 @@
 
     slots.forEach((s, i) => {
       const layout = slotLayout(i);
-      const fs = Math.round(canvasH * 0.045 * (layout.fontScale || 1));
       const text = (layout.texto || "").trim() || (i === state.activeSlot ? "Texto…" : "");
+      const fs = autoFontSize(text, canvasH, layout.fontScale || 1);
       const emojiHtml = (layout.emojis || [])
         .map((file) => `<img src="${emojiUrl(file)}" alt="" draggable="false">`)
         .join("");
@@ -185,15 +199,22 @@
       s.textLayer.style.left = `${layout.x * 100}%`;
       s.textLayer.style.top = `${layout.y * 100}%`;
       s.textLayer.style.transform = "translate(-50%, -50%)";
-      s.textLayer.hidden = !text;
+      s.textLayer.hidden = !text && !emojiHtml;
       s.emojiRow.innerHTML = emojiHtml;
       s.emojiRow.hidden = !emojiHtml;
+      s.emojiRow.style.marginTop = `${Math.round(fs * 0.35)}px`;
 
       s.watermarkLayer.hidden = !wmOn;
       if (wmOn) {
         s.watermarkPreview.textContent = wmText;
-        s.watermarkLayer.style.left = `${state.wmX * 100}%`;
-        s.watermarkLayer.style.top = `${state.wmY * 100}%`;
+        const useAutoWm = Math.abs(state.wmY - 0.88) < 0.02;
+        if (useAutoWm && emojiHtml) {
+          s.watermarkLayer.style.left = "50%";
+          s.watermarkLayer.style.top = `${Math.min(92, layout.y * 100 + 18)}%`;
+        } else {
+          s.watermarkLayer.style.left = `${state.wmX * 100}%`;
+          s.watermarkLayer.style.top = `${state.wmY * 100}%`;
+        }
         s.watermarkLayer.style.transform = "translate(-50%, -50%)";
       }
     });

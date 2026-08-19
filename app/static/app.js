@@ -194,6 +194,7 @@
       url.startsWith("/automations/new") ||
       url.startsWith("/automations/story-studio") ||
       url.startsWith("/reels-editor") ||
+      url.startsWith("/accounts/reels") ||
       url.startsWith("/accounts/notes") ||
       url.startsWith("/camuflagem")
     ) {
@@ -3564,25 +3565,47 @@
     const moreWrap = document.getElementById("reels-clean-more-wrap");
     const selectAllBtn = document.getElementById("reels-clean-select-all");
     const deleteBtn = document.getElementById("reels-clean-delete");
+    const deleteCountEl = document.getElementById("reels-clean-delete-count");
     if (!accountSel || !grid || !loadBtn) return;
+    if (page?.dataset.reelsCleanBound === "1") return;
+    if (page) page.dataset.reelsCleanBound = "1";
 
     let after = "";
     let loading = false;
+
+    function apiErrorMessage(payload, fallback) {
+      if (!payload || typeof payload !== "object") return fallback;
+      if (typeof payload.detail === "string") return payload.detail;
+      if (typeof payload.error === "string") return payload.error;
+      if (typeof payload.message === "string") return payload.message;
+      if (Array.isArray(payload.detail) && payload.detail[0]?.msg) {
+        return payload.detail[0].msg;
+      }
+      return fallback;
+    }
 
     function setStatus(msg, kind) {
       if (!statusEl) return;
       statusEl.textContent = msg || "";
       statusEl.classList.toggle("is-error", kind === "error");
+      statusEl.classList.toggle("is-ok", kind === "ok");
     }
 
     function selectedIds() {
-      return Array.from(grid.querySelectorAll('input[name="reel_id"]:checked')).map((el) => el.value);
+      return Array.from(grid.querySelectorAll('input[name="reel_id"]:checked'))
+        .map((el) => el.value)
+        .filter(Boolean);
     }
 
     function syncActions() {
-      const hasCards = !!grid.querySelector(".reels-clean-card");
-      selectAllBtn.hidden = !hasCards;
-      deleteBtn.hidden = !hasCards;
+      const boxes = grid.querySelectorAll('input[name="reel_id"]');
+      const hasCards = boxes.length > 0;
+      const selected = selectedIds().length;
+      if (selectAllBtn) selectAllBtn.disabled = !hasCards || loading;
+      if (deleteBtn) deleteBtn.disabled = !hasCards || loading || selected === 0;
+      if (deleteCountEl) {
+        deleteCountEl.textContent = selected ? `(${selected})` : "";
+      }
     }
 
     function formatWhen(raw) {
@@ -3592,16 +3615,35 @@
       return d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
     }
 
+    async function deleteOne(mediaId, accountId) {
+      const res = await fetch("/accounts/reels/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ account_id: Number(accountId), media_id: mediaId }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || !payload.ok) {
+        throw new Error(apiErrorMessage(payload, `Falha ao apagar Reel ${mediaId}`));
+      }
+      grid.querySelector(`[data-media-id="${mediaId}"]`)?.remove();
+      return true;
+    }
+
     function appendItems(items) {
       items.forEach((item) => {
-        const card = document.createElement("label");
+        const mediaId = String(item.id || "").trim();
+        if (!mediaId) return;
+
+        const card = document.createElement("article");
         card.className = "reels-clean-card";
-        card.dataset.mediaId = String(item.id || "");
+        card.dataset.mediaId = mediaId;
 
         const box = document.createElement("input");
         box.type = "checkbox";
         box.name = "reel_id";
-        box.value = String(item.id || "");
+        box.value = mediaId;
+        box.addEventListener("change", syncActions);
 
         const thumbWrap = document.createElement("div");
         thumbWrap.className = "reels-clean-thumb";
@@ -3636,12 +3678,45 @@
           a.target = "_blank";
           a.rel = "noopener";
           a.textContent = "abrir";
+          a.addEventListener("click", (ev) => ev.stopPropagation());
           meta.appendChild(a);
         }
+
+        const cardDelete = document.createElement("button");
+        cardDelete.type = "button";
+        cardDelete.className = "btn btn-sm btn-danger reels-clean-card-delete";
+        cardDelete.textContent = "Apagar";
+        cardDelete.addEventListener("click", async (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          const accountId = accountSel.value;
+          if (!accountId) {
+            setStatus("Selecione uma conta Meta.", "error");
+            return;
+          }
+          if (!window.confirm("Apagar este Reel no Instagram? Não dá para desfazer.")) return;
+          cardDelete.disabled = true;
+          try {
+            await deleteOne(mediaId, accountId);
+            setStatus("Reel apagado.", "ok");
+          } catch (err) {
+            setStatus(err.message || "Falha ao apagar.", "error");
+            cardDelete.disabled = false;
+          } finally {
+            syncActions();
+          }
+        });
+
+        card.addEventListener("click", (ev) => {
+          if (ev.target.closest("a, button, input")) return;
+          box.checked = !box.checked;
+          syncActions();
+        });
 
         card.appendChild(box);
         card.appendChild(thumbWrap);
         card.appendChild(meta);
+        card.appendChild(cardDelete);
         grid.appendChild(card);
       });
       if (window.lucide?.createIcons) window.lucide.createIcons();
@@ -3658,6 +3733,7 @@
       loading = true;
       loadBtn.disabled = true;
       if (moreBtn) moreBtn.disabled = true;
+      syncActions();
       setStatus(reset ? "Carregando Reels…" : "Carregando mais…");
       try {
         const qs = new URLSearchParams({ account_id: accountId });
@@ -3665,9 +3741,7 @@
         const res = await fetch(`/accounts/reels/list?${qs.toString()}`, { credentials: "same-origin" });
         const payload = await res.json().catch(() => ({}));
         if (!res.ok) {
-          const detail = payload.detail;
-          const msg = typeof detail === "string" ? detail : "Não foi possível listar os Reels.";
-          throw new Error(msg);
+          throw new Error(apiErrorMessage(payload, "Não foi possível listar os Reels."));
         }
         if (reset) {
           grid.innerHTML = "";
@@ -3679,7 +3753,7 @@
           setStatus("Nenhum Reel encontrado nesta conta (pela API oficial).");
         } else {
           appendItems(items);
-          setStatus(`${grid.querySelectorAll(".reels-clean-card").length} Reel(s) listado(s).`);
+          setStatus(`${grid.querySelectorAll(".reels-clean-card").length} Reel(s) listado(s). Marque os que quer apagar.`);
         }
         if (moreWrap) moreWrap.hidden = !after;
       } catch (err) {
@@ -3688,64 +3762,70 @@
         loading = false;
         loadBtn.disabled = false;
         if (moreBtn) moreBtn.disabled = false;
+        syncActions();
       }
     }
 
     loadBtn.addEventListener("click", () => loadPage(true));
     moreBtn?.addEventListener("click", () => loadPage(false));
+    accountSel.addEventListener("change", () => {
+      grid.innerHTML = "";
+      after = "";
+      if (moreWrap) moreWrap.hidden = true;
+      syncActions();
+      setStatus("");
+    });
     selectAllBtn?.addEventListener("click", () => {
       const boxes = grid.querySelectorAll('input[name="reel_id"]');
       const allOn = Array.from(boxes).every((b) => b.checked);
       boxes.forEach((b) => {
         b.checked = !allOn;
       });
+      syncActions();
     });
     deleteBtn?.addEventListener("click", async () => {
       const ids = selectedIds();
       const accountId = accountSel.value;
-      if (!accountId || !ids.length) {
-        setStatus("Selecione pelo menos um Reel.", "error");
+      if (!accountId) {
+        setStatus("Selecione uma conta Meta.", "error");
+        return;
+      }
+      if (!ids.length) {
+        setStatus("Marque pelo menos um Reel (clique no card).", "error");
         return;
       }
       if (!window.confirm(`Apagar ${ids.length} Reel(s) no Instagram? Não dá para desfazer.`)) return;
       deleteBtn.disabled = true;
       let okCount = 0;
       let failCount = 0;
+      let lastErr = "";
       for (let i = 0; i < ids.length; i += 1) {
         const mediaId = ids[i];
         setStatus(`Apagando ${i + 1}/${ids.length}…`);
         try {
-          const res = await fetch("/accounts/reels/delete", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "same-origin",
-            body: JSON.stringify({ account_id: Number(accountId), media_id: mediaId }),
-          });
-          const payload = await res.json().catch(() => ({}));
-          if (!res.ok || !payload.ok) {
-            failCount += 1;
-            setStatus(payload.detail || `Falha em ${i + 1}/${ids.length}`, "error");
-          } else {
-            okCount += 1;
-            grid.querySelector(`[data-media-id="${mediaId}"]`)?.remove();
-          }
-        } catch (_) {
+          await deleteOne(mediaId, accountId);
+          okCount += 1;
+        } catch (err) {
           failCount += 1;
+          lastErr = err.message || "Falha ao apagar.";
+          setStatus(lastErr, "error");
         }
         if (i < ids.length - 1) {
           await new Promise((resolve) => window.setTimeout(resolve, 700));
         }
       }
-      deleteBtn.disabled = false;
       syncActions();
-      setStatus(
-        failCount
-          ? `Apagados ${okCount}. Falhou ${failCount} (Meta recusou ou Reel recém-postado).`
-          : `Apagados ${okCount} Reel(s).`,
-        failCount ? "error" : ""
-      );
+      if (failCount) {
+        setStatus(
+          `Apagados ${okCount}. Falhou ${failCount}. ${lastErr || "Meta recusou ou Reel recém-postado."}`,
+          "error"
+        );
+      } else {
+        setStatus(`Apagados ${okCount} Reel(s).`, "ok");
+      }
     });
 
+    syncActions();
     if (accountSel.value) {
       loadPage(true);
     }

@@ -2,7 +2,7 @@
 {% block title %}Editor de Reels{% endblock %}
 {% block head %}
 <link rel="stylesheet" href="/static/story-studio.css?v=7" />
-<link rel="stylesheet" href="/static/reels-editor.css?v=7" />
+<link rel="stylesheet" href="/static/reels-editor.css?v=8" />
 {% endblock %}
 {% block content %}
 <div class="studio-app reels-editor-app" id="reelsShell">
@@ -10,7 +10,7 @@
     <div class="reels-stage">
       <div class="reels-dual">
         {% for slot, label in [('0', 'A'), ('1', 'B')] %}
-        <div class="reels-phone-wrap{% if slot == '1' %} is-active{% endif %}" data-slot="{{ slot }}" id="phoneWrap{{ slot }}">
+        <div class="reels-phone-wrap{% if slot == '0' %} is-active{% endif %}" data-slot="{{ slot }}" id="phoneWrap{{ slot }}">
           <span class="reels-slot-badge">{{ label }}</span>
           <div class="phone-shell reels-phone">
             <span class="reels-phone-notch" aria-hidden="true"></span>
@@ -21,7 +21,7 @@
                 <span class="reels-empty-mark">+</span>
                 Solte vídeo ou foto
               </div>
-              <div class="reels-text-layer{% if slot == '1' %} selected{% endif %}" id="textLayer{{ slot }}" hidden>
+              <div class="reels-text-layer{% if slot == '0' %} selected{% endif %}" id="textLayer{{ slot }}" hidden>
                 <pre class="reels-text-content" id="textPreview{{ slot }}"></pre>
                 <div class="reels-emoji-row" id="emojiPreviewRow{{ slot }}"></div>
                 <span class="handle" id="resizeHandle{{ slot }}"></span>
@@ -106,16 +106,16 @@
           <div class="field">
             <label>Texto</label>
             <div class="reels-swatches" data-for="textColor">
-              <button type="button" data-val="white" class="is-on" style="--sw:#f6f6f6"></button>
-              <button type="button" data-val="yellow" style="--sw:#f5d76e"></button>
+              <button type="button" data-val="white" style="--sw:#f6f6f6"></button>
+              <button type="button" data-val="yellow" class="is-on" style="--sw:#f5d76e"></button>
               <button type="button" data-val="black" style="--sw:#111"></button>
               <button type="button" data-val="red" style="--sw:#e11d48"></button>
               <button type="button" data-val="0x00FFFF" style="--sw:#22d3ee"></button>
               <button type="button" data-val="0xFF69B4" style="--sw:#fb7185"></button>
             </div>
             <select id="textColor" class="reels-sr">
-              <option value="white" selected>Branco</option>
-              <option value="yellow">Amarelo</option>
+              <option value="white">Branco</option>
+              <option value="yellow" selected>Amarelo</option>
               <option value="black">Preto</option>
               <option value="red">Vermelho</option>
               <option value="0x00FFFF">Ciano</option>
@@ -215,5 +215,5 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script src="/static/reels-editor.js?v=6"></script>
+<script src="/static/reels-editor.js?v=8"></script>
 {% endblock %}

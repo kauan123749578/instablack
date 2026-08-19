@@ -586,47 +586,49 @@ def try_delete_media(
     url = _graph_url(media_id)
     last_err = "A Meta não confirmou a exclusão."
     with meta_proxy_scope(proxy):
-        for round_i in range(2):
+        methods = (
+            ("DELETE", {"access_token": access_token}),
+            ("POST", {"access_token": access_token, "method": "delete"}),
+        )
+        for round_i in range(3):
             if round_i:
-                time.sleep(4.0)
-            try:
-                response = _http(
-                    "DELETE",
-                    url,
-                    params={"access_token": access_token},
-                    timeout=30,
-                )
+                time.sleep(4.0 if round_i == 1 else 8.0)
+            for http_method, params in methods:
                 try:
-                    data = response.json() if response.content else {}
-                except ValueError:
-                    data = {}
-                if response.ok and (
-                    data.get("success") is True
-                    or (isinstance(data, dict) and not data.get("error"))
-                ):
-                    return True, "Apagado."
-                error = data.get("error") if isinstance(data, dict) else {}
-                msg = ""
-                code = None
-                if isinstance(error, dict):
-                    msg = str(error.get("message") or error.get("error_user_msg") or "")
-                    code = error.get("code")
-                last_err = msg or f"HTTP {response.status_code}"
-                if code in (100, 33) and round_i == 0:
-                    continue
-                if code in (10, 200) or "permission" in last_err.lower():
-                    return (
-                        False,
-                        "Sem permissão para apagar. A Meta só deixa remover mídia que este app publicou. "
-                        "Reconecte a conta concedendo publicação de conteúdo.",
-                    )
-                break
-            except MetaInstagramError as exc:
-                last_err = str(exc)
-                break
-            except Exception as exc:
-                last_err = str(exc)[:200]
-                break
+                    if http_method == "DELETE":
+                        response = _http("DELETE", url, params=params, timeout=30)
+                    else:
+                        response = _http("POST", url, params=params, timeout=30)
+                    try:
+                        data = response.json() if response.content else {}
+                    except ValueError:
+                        data = {}
+                    if response.ok and (
+                        data.get("success") is True
+                        or (isinstance(data, dict) and not data.get("error"))
+                    ):
+                        return True, "Apagado."
+                    error = data.get("error") if isinstance(data, dict) else {}
+                    msg = ""
+                    code = None
+                    if isinstance(error, dict):
+                        msg = str(error.get("message") or error.get("error_user_msg") or "")
+                        code = error.get("code")
+                    last_err = msg or f"HTTP {response.status_code}"
+                    if code in (100, 33) and round_i < 2:
+                        continue
+                    if code in (10, 200) or "permission" in last_err.lower():
+                        return (
+                            False,
+                            "Sem permissão para apagar. A Meta só deixa remover mídia que este app publicou. "
+                            "Reconecte a conta concedendo publicação de conteúdo.",
+                        )
+                except MetaInstagramError as exc:
+                    last_err = str(exc)
+                    break
+                except Exception as exc:
+                    last_err = str(exc)[:200]
+                    break
     return False, last_err[:240]
 
 

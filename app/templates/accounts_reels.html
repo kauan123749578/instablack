@@ -25,11 +25,16 @@
     </select>
   </label>
   <button type="button" class="btn btn-primary" id="reels-clean-load">Carregar Reels</button>
-  <button type="button" class="btn btn-sm" id="reels-clean-select-all" hidden>Selecionar visíveis</button>
-  <button type="button" class="btn btn-sm btn-danger" id="reels-clean-delete" hidden>Apagar selecionados</button>
+  <button type="button" class="btn btn-sm" id="reels-clean-select-all" disabled>Selecionar visíveis</button>
+  <button type="button" class="btn btn-sm btn-danger" id="reels-clean-delete" disabled>
+    Apagar selecionados <span id="reels-clean-delete-count"></span>
+  </button>
 </section>
 
 <p class="muted" id="reels-clean-status" aria-live="polite"></p>
+<p class="muted" style="font-size:12px;margin:-4px 0 12px">
+  Marque os Reels (clique no card) e depois em <strong>Apagar selecionados</strong>.
+</p>
 
 <div class="reels-clean-grid" id="reels-clean-grid"></div>
 <div class="reels-clean-more" id="reels-clean-more-wrap" hidden>

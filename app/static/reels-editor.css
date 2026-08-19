@@ -470,8 +470,9 @@
 }
 
 .reels-emoji-row img {
-  width: 1.3em;
-  height: 1.3em;
+  width: 1.45em;
+  height: 1.45em;
+  object-fit: contain;
 }
 
 .reels-emoji-picker {
