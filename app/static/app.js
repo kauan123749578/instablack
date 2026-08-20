@@ -3586,9 +3586,12 @@
 
     function setStatus(msg, kind) {
       if (!statusEl) return;
-      statusEl.textContent = msg || "";
-      statusEl.classList.toggle("is-error", kind === "error");
-      statusEl.classList.toggle("is-ok", kind === "ok");
+      const text = String(msg || "").trim();
+      statusEl.hidden = !text;
+      statusEl.textContent = text;
+      statusEl.classList.remove("alert-error", "alert-ok");
+      if (kind === "error") statusEl.classList.add("alert-error");
+      if (kind === "ok") statusEl.classList.add("alert-ok");
     }
 
     function selectedIds() {
@@ -3696,12 +3699,16 @@
           }
           if (!window.confirm("Apagar este Reel no Instagram? Não dá para desfazer.")) return;
           cardDelete.disabled = true;
+          const prevLabel = cardDelete.textContent;
+          cardDelete.textContent = "Apagando…";
+          setStatus("Chamando a Meta para apagar este Reel…");
           try {
             await deleteOne(mediaId, accountId);
-            setStatus("Reel apagado.", "ok");
+            setStatus("Reel apagado no Instagram.", "ok");
           } catch (err) {
             setStatus(err.message || "Falha ao apagar.", "error");
             cardDelete.disabled = false;
+            cardDelete.textContent = prevLabel;
           } finally {
             syncActions();
           }

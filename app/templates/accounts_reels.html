@@ -4,7 +4,9 @@
 <div class="page-header" data-page-reels-clean="1">
   <h2><i data-lucide="trash-2" class="inline-icon"></i> Apagar Reels</h2>
   <p class="muted page-header-sub">
-    Só API oficial. A Meta deixa remover mídia que este app publicou — Reel postado pelo Instagram pode ser recusado.
+    Lista via API oficial. Apagar Reel na Meta só é oficial com Facebook Login
+    (<code>instagram_manage_contents</code>). Contas conectadas pelo Login do Instagram
+    costumam ser recusadas — o erro aparece abaixo depois de confirmar.
   </p>
 </div>
 
@@ -31,9 +33,10 @@
   </button>
 </section>
 
-<p class="muted" id="reels-clean-status" aria-live="polite"></p>
+<div class="alert" id="reels-clean-status" aria-live="polite" hidden></div>
 <p class="muted" style="font-size:12px;margin:-4px 0 12px">
   Marque os Reels (clique no card) e depois em <strong>Apagar selecionados</strong>.
+  Depois de OK, espere a mensagem de sucesso ou o erro da Meta.
 </p>
 
 <div class="reels-clean-grid" id="reels-clean-grid"></div>

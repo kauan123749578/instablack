@@ -574,62 +574,95 @@ def reply_to_comment(
         return {"id": str(reply_id or ""), "message": text}
 
 
+def _delete_media_error_message(error: dict | None, http_status: int) -> str:
+    """Traduz o erro da Meta para o painel. Delete oficial exige Facebook Login."""
+    err = error if isinstance(error, dict) else {}
+    msg = str(err.get("error_user_msg") or err.get("message") or "").strip()
+    code = err.get("code")
+    subcode = err.get("error_subcode")
+    blob = f"{msg} {err.get('error_user_title') or ''} {err.get('type') or ''}".lower()
+
+    facebook_login_only = (
+        "instagram_manage_contents" in blob
+        or "facebook login" in blob
+        or "unsupported delete" in blob
+        or "does not support" in blob
+        or "not supported" in blob
+        or subcode in (2207073, 2207085)
+        or code in (3, 10, 200)
+    )
+    if facebook_login_only or code in (3, 10, 200):
+        extra = f" Meta: {msg}" if msg else ""
+        return (
+            "A Meta recusou o DELETE. Pela documentação oficial, apagar Reel/post "
+            "só funciona com Facebook Login (graph.facebook.com + permissão "
+            "instagram_manage_contents). O Instablack conecta via Login do Instagram "
+            f"(graph.instagram.com), então a API recusa.{extra}"
+        )
+    if code in (33,) or "does not exist" in blob:
+        return "Esse Reel não existe mais ou o ID não é deste app. Recarregue a lista."
+    if msg:
+        return msg[:280]
+    return f"A Meta não apagou (HTTP {http_status})."
+
+
 def try_delete_media(
     access_token: str,
     media_id: str,
     *,
     proxy: str | None = None,
 ) -> tuple[bool, str]:
-    """Apaga mídia já publicada (uso no painel). Sem espera longa de Reel recém-postado."""
+    """Apaga mídia já publicada. Uma tentativa rápida + fallback POST method=delete.
+
+    Docs Meta (IG Media DELETE): só Instagram API with Facebook Login,
+    host graph.facebook.com e permissão instagram_manage_contents.
+    Login do Instagram (graph.instagram.com) não tem esse endpoint.
+    """
     if not media_id:
         return False, "ID da mídia ausente."
     url = _graph_url(media_id)
     last_err = "A Meta não confirmou a exclusão."
     with meta_proxy_scope(proxy):
-        methods = (
+        attempts = (
             ("DELETE", {"access_token": access_token}),
             ("POST", {"access_token": access_token, "method": "delete"}),
         )
-        for round_i in range(3):
-            if round_i:
-                time.sleep(4.0 if round_i == 1 else 8.0)
-            for http_method, params in methods:
+        for http_method, params in attempts:
+            try:
+                if http_method == "DELETE":
+                    response = _http("DELETE", url, params=params, timeout=30)
+                else:
+                    response = _http("POST", url, params=params, timeout=30)
                 try:
-                    if http_method == "DELETE":
-                        response = _http("DELETE", url, params=params, timeout=30)
-                    else:
-                        response = _http("POST", url, params=params, timeout=30)
-                    try:
-                        data = response.json() if response.content else {}
-                    except ValueError:
-                        data = {}
-                    if response.ok and (
-                        data.get("success") is True
-                        or (isinstance(data, dict) and not data.get("error"))
-                    ):
-                        return True, "Apagado."
-                    error = data.get("error") if isinstance(data, dict) else {}
-                    msg = ""
-                    code = None
-                    if isinstance(error, dict):
-                        msg = str(error.get("message") or error.get("error_user_msg") or "")
-                        code = error.get("code")
-                    last_err = msg or f"HTTP {response.status_code}"
-                    if code in (100, 33) and round_i < 2:
-                        continue
-                    if code in (10, 200) or "permission" in last_err.lower():
-                        return (
-                            False,
-                            "Sem permissão para apagar. A Meta só deixa remover mídia que este app publicou. "
-                            "Reconecte a conta concedendo publicação de conteúdo.",
-                        )
-                except MetaInstagramError as exc:
-                    last_err = str(exc)
-                    break
-                except Exception as exc:
-                    last_err = str(exc)[:200]
-                    break
-    return False, last_err[:240]
+                    data = response.json() if response.content else {}
+                except ValueError:
+                    data = {}
+                _log.info(
+                    "META delete media=%s via=%s http=%s raw=%s",
+                    media_id,
+                    http_method,
+                    response.status_code,
+                    data or (response.text[:240] if response.text else ""),
+                )
+                if (
+                    response.ok
+                    and isinstance(data, dict)
+                    and not data.get("error")
+                    and data.get("success") is True
+                ):
+                    return True, "Apagado."
+                error = data.get("error") if isinstance(data, dict) else None
+                last_err = _delete_media_error_message(error, response.status_code)
+                if isinstance(error, dict) and error.get("code") in (100, 33):
+                    continue
+            except MetaInstagramError as exc:
+                last_err = _delete_media_error_message(
+                    {"message": str(exc), "code": getattr(exc, "code", None)},
+                    400,
+                )
+            except Exception as exc:
+                last_err = str(exc)[:240]
+    return False, last_err[:420]
 
 
 def fetch_media_caption(access_token: str, media_id: str) -> str | None:
