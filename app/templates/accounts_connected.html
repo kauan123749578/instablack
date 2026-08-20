@@ -54,9 +54,6 @@
           <a href="/accounts/profile-edit" class="btn" data-nav="/accounts/profile-edit">
             <i data-lucide="user-pen"></i> Editar perfil
           </a>
-          <a href="/accounts/reels" class="btn" data-nav="/accounts/reels">
-            <i data-lucide="trash-2"></i> Apagar Reels
-          </a>
           <a href="/accounts/comments" class="btn" data-nav="/accounts/comments">
             <i data-lucide="message-circle"></i> Responder comentários
           </a>
@@ -219,9 +216,6 @@
               </form>
             </details>
             {% elif acc.provider == 'meta' %}
-            <a href="/accounts/reels?account={{ acc.id }}" class="btn btn-sm" data-nav="/accounts/reels?account={{ acc.id }}">
-              Apagar Reels
-            </a>
             <details class="proxy-update-panel">
               <summary class="btn btn-sm">
                 {% if not acc.proxy %}Proxy (opcional){% else %}Atualizar proxy{% endif %}

@@ -25,7 +25,6 @@ from app.routes import (
     account_notes,
     accounts,
     accounts_profile,
-    accounts_reels,
     accounts_comments,
     admin,
     aquecimento,
@@ -294,7 +293,6 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(dashboard.router)
     app.include_router(logs.router)
-    app.include_router(accounts_reels.router)
     app.include_router(accounts.router)
     app.include_router(accounts_profile.router)
     app.include_router(accounts_comments.router)

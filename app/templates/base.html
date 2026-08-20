@@ -103,10 +103,6 @@
             <i data-lucide="notebook-text" class="nav-icon"></i>
             <span class="nav-text">Bloco de notas</span>
           </a>
-          <a href="/accounts/reels" class="nav-link" data-nav="/accounts/reels">
-            <i data-lucide="trash-2" class="nav-icon"></i>
-            <span class="nav-text">Apagar Reels</span>
-          </a>
           <a href="/accounts/comments" class="nav-link" data-nav="/accounts/comments">
             <i data-lucide="message-circle" class="nav-icon"></i>
             <span class="nav-text">Responder comentários</span>
@@ -291,7 +287,6 @@
         {% if not request.state.view_as_active or (request.state.auth_user and request.state.auth_user.is_owner) %}
         <a href="/authenticator/page" data-nav="/authenticator/page"><i data-lucide="key-round"></i><span>Autenticador</span></a>
         <a href="/accounts/notes" data-nav="/accounts/notes"><i data-lucide="notebook-text"></i><span>Bloco de notas</span></a>
-        <a href="/accounts/reels" data-nav="/accounts/reels"><i data-lucide="trash-2"></i><span>Apagar Reels</span></a>
         <a href="/accounts/comments" data-nav="/accounts/comments"><i data-lucide="message-circle"></i><span>Responder comentários</span></a>
         <a href="/accounts/profile-edit" data-nav="/accounts/profile-edit"><i data-lucide="user-pen"></i><span>Editar perfil</span></a>
         {% endif %}

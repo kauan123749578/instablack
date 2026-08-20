@@ -194,7 +194,6 @@
       url.startsWith("/automations/new") ||
       url.startsWith("/automations/story-studio") ||
       url.startsWith("/reels-editor") ||
-      url.startsWith("/accounts/reels") ||
       url.startsWith("/accounts/notes") ||
       url.startsWith("/camuflagem")
     ) {
@@ -241,7 +240,6 @@
         appContent.innerHTML = newContent.innerHTML;
         delete document.body.dataset.pageAccountsConnected;
         delete document.body.dataset.pageVault;
-        delete document.body.dataset.pageReelsClean;
         delete document.body.dataset.pageCommentsReply;
         if (doc.body?.dataset?.pageAccountsConnected) {
           document.body.dataset.pageAccountsConnected = doc.body.dataset.pageAccountsConnected;
@@ -255,9 +253,6 @@
         }
         if (html.includes('data-page-notes="1"')) {
           document.body.dataset.pageNotes = "1";
-        }
-        if (html.includes('data-page-reels-clean="1"') || html.includes("pageReelsClean")) {
-          document.body.dataset.pageReelsClean = "1";
         }
         if (html.includes('data-page-comments-reply="1"') || html.includes("pageCommentsReply")) {
           document.body.dataset.pageCommentsReply = "1";
@@ -3554,290 +3549,6 @@
     recount();
   }
 
-  function initReelsCleanup() {
-    const page = document.querySelector("[data-page-reels-clean]");
-    if (!page && !document.body.dataset.pageReelsClean) return;
-    const accountSel = document.getElementById("reels-clean-account");
-    const grid = document.getElementById("reels-clean-grid");
-    const statusEl = document.getElementById("reels-clean-status");
-    const loadBtn = document.getElementById("reels-clean-load");
-    const moreBtn = document.getElementById("reels-clean-more");
-    const moreWrap = document.getElementById("reels-clean-more-wrap");
-    const selectAllBtn = document.getElementById("reels-clean-select-all");
-    const deleteBtn = document.getElementById("reels-clean-delete");
-    const deleteCountEl = document.getElementById("reels-clean-delete-count");
-    if (!accountSel || !grid || !loadBtn) return;
-    if (page?.dataset.reelsCleanBound === "1") return;
-    if (page) page.dataset.reelsCleanBound = "1";
-
-    let after = "";
-    let loading = false;
-
-    function apiErrorMessage(payload, fallback) {
-      if (!payload || typeof payload !== "object") return fallback;
-      if (typeof payload.detail === "string") return payload.detail;
-      if (typeof payload.error === "string") return payload.error;
-      if (typeof payload.message === "string") return payload.message;
-      if (Array.isArray(payload.detail) && payload.detail[0]?.msg) {
-        return payload.detail[0].msg;
-      }
-      return fallback;
-    }
-
-    function setStatus(msg, kind) {
-      if (!statusEl) return;
-      const text = String(msg || "").trim();
-      statusEl.hidden = !text;
-      statusEl.textContent = text;
-      statusEl.classList.remove("alert-error", "alert-ok");
-      if (kind === "error") statusEl.classList.add("alert-error");
-      if (kind === "ok") statusEl.classList.add("alert-ok");
-    }
-
-    function selectedIds() {
-      return Array.from(grid.querySelectorAll('input[name="reel_id"]:checked'))
-        .map((el) => el.value)
-        .filter(Boolean);
-    }
-
-    function syncActions() {
-      const boxes = grid.querySelectorAll('input[name="reel_id"]');
-      const hasCards = boxes.length > 0;
-      const selected = selectedIds().length;
-      if (selectAllBtn) selectAllBtn.disabled = !hasCards || loading;
-      if (deleteBtn) deleteBtn.disabled = !hasCards || loading || selected === 0;
-      if (deleteCountEl) {
-        deleteCountEl.textContent = selected ? `(${selected})` : "";
-      }
-    }
-
-    function formatWhen(raw) {
-      if (!raw) return "";
-      const d = new Date(raw);
-      if (Number.isNaN(d.getTime())) return raw;
-      return d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-    }
-
-    async function deleteOne(mediaId, accountId) {
-      const res = await fetch("/accounts/reels/delete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "same-origin",
-        body: JSON.stringify({ account_id: Number(accountId), media_id: mediaId }),
-      });
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok || !payload.ok) {
-        throw new Error(apiErrorMessage(payload, `Falha ao apagar Reel ${mediaId}`));
-      }
-      grid.querySelector(`[data-media-id="${mediaId}"]`)?.remove();
-      return true;
-    }
-
-    function appendItems(items) {
-      items.forEach((item) => {
-        const mediaId = String(item.id || "").trim();
-        if (!mediaId) return;
-
-        const card = document.createElement("article");
-        card.className = "reels-clean-card";
-        card.dataset.mediaId = mediaId;
-
-        const box = document.createElement("input");
-        box.type = "checkbox";
-        box.name = "reel_id";
-        box.value = mediaId;
-        box.addEventListener("change", syncActions);
-
-        const thumbWrap = document.createElement("div");
-        thumbWrap.className = "reels-clean-thumb";
-        const thumbUrl = String(item.thumb || "");
-        if (/^https:\/\//i.test(thumbUrl)) {
-          const img = document.createElement("img");
-          img.src = thumbUrl;
-          img.alt = "";
-          img.loading = "lazy";
-          thumbWrap.appendChild(img);
-        } else {
-          const ph = document.createElement("span");
-          ph.className = "reels-clean-ph";
-          ph.innerHTML = '<i data-lucide="clapperboard"></i>';
-          thumbWrap.appendChild(ph);
-        }
-
-        const meta = document.createElement("div");
-        meta.className = "reels-clean-meta";
-        const when = document.createElement("span");
-        when.className = "reels-clean-when";
-        when.textContent = formatWhen(item.timestamp);
-        const cap = document.createElement("span");
-        cap.className = "reels-clean-cap";
-        cap.textContent = item.caption || "Sem legenda";
-        meta.appendChild(when);
-        meta.appendChild(cap);
-        const permalink = String(item.permalink || "");
-        if (/^https:\/\/(www\.)?instagram\.com\//i.test(permalink)) {
-          const a = document.createElement("a");
-          a.href = permalink;
-          a.target = "_blank";
-          a.rel = "noopener";
-          a.textContent = "abrir";
-          a.addEventListener("click", (ev) => ev.stopPropagation());
-          meta.appendChild(a);
-        }
-
-        const cardDelete = document.createElement("button");
-        cardDelete.type = "button";
-        cardDelete.className = "btn btn-sm btn-danger reels-clean-card-delete";
-        cardDelete.textContent = "Apagar";
-        cardDelete.addEventListener("click", async (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-          const accountId = accountSel.value;
-          if (!accountId) {
-            setStatus("Selecione uma conta Meta.", "error");
-            return;
-          }
-          if (!window.confirm("Apagar este Reel no Instagram? Não dá para desfazer.")) return;
-          cardDelete.disabled = true;
-          const prevLabel = cardDelete.textContent;
-          cardDelete.textContent = "Apagando…";
-          setStatus("Chamando a Meta para apagar este Reel…");
-          try {
-            await deleteOne(mediaId, accountId);
-            setStatus("Reel apagado no Instagram.", "ok");
-          } catch (err) {
-            setStatus(err.message || "Falha ao apagar.", "error");
-            cardDelete.disabled = false;
-            cardDelete.textContent = prevLabel;
-          } finally {
-            syncActions();
-          }
-        });
-
-        card.addEventListener("click", (ev) => {
-          if (ev.target.closest("a, button, input")) return;
-          box.checked = !box.checked;
-          syncActions();
-        });
-
-        card.appendChild(box);
-        card.appendChild(thumbWrap);
-        card.appendChild(meta);
-        card.appendChild(cardDelete);
-        grid.appendChild(card);
-      });
-      if (window.lucide?.createIcons) window.lucide.createIcons();
-      syncActions();
-    }
-
-    async function loadPage(reset) {
-      const accountId = accountSel.value;
-      if (!accountId) {
-        setStatus("Selecione uma conta Meta.", "error");
-        return;
-      }
-      if (loading) return;
-      loading = true;
-      loadBtn.disabled = true;
-      if (moreBtn) moreBtn.disabled = true;
-      syncActions();
-      setStatus(reset ? "Carregando Reels…" : "Carregando mais…");
-      try {
-        const qs = new URLSearchParams({ account_id: accountId });
-        if (!reset && after) qs.set("after", after);
-        const res = await fetch(`/accounts/reels/list?${qs.toString()}`, { credentials: "same-origin" });
-        const payload = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          throw new Error(apiErrorMessage(payload, "Não foi possível listar os Reels."));
-        }
-        if (reset) {
-          grid.innerHTML = "";
-          after = "";
-        }
-        after = payload.after || "";
-        const items = payload.items || [];
-        if (reset && !items.length) {
-          setStatus("Nenhum Reel encontrado nesta conta (pela API oficial).");
-        } else {
-          appendItems(items);
-          setStatus(`${grid.querySelectorAll(".reels-clean-card").length} Reel(s) listado(s). Marque os que quer apagar.`);
-        }
-        if (moreWrap) moreWrap.hidden = !after;
-      } catch (err) {
-        setStatus(err.message || "Falha ao carregar.", "error");
-      } finally {
-        loading = false;
-        loadBtn.disabled = false;
-        if (moreBtn) moreBtn.disabled = false;
-        syncActions();
-      }
-    }
-
-    loadBtn.addEventListener("click", () => loadPage(true));
-    moreBtn?.addEventListener("click", () => loadPage(false));
-    accountSel.addEventListener("change", () => {
-      grid.innerHTML = "";
-      after = "";
-      if (moreWrap) moreWrap.hidden = true;
-      syncActions();
-      setStatus("");
-    });
-    selectAllBtn?.addEventListener("click", () => {
-      const boxes = grid.querySelectorAll('input[name="reel_id"]');
-      const allOn = Array.from(boxes).every((b) => b.checked);
-      boxes.forEach((b) => {
-        b.checked = !allOn;
-      });
-      syncActions();
-    });
-    deleteBtn?.addEventListener("click", async () => {
-      const ids = selectedIds();
-      const accountId = accountSel.value;
-      if (!accountId) {
-        setStatus("Selecione uma conta Meta.", "error");
-        return;
-      }
-      if (!ids.length) {
-        setStatus("Marque pelo menos um Reel (clique no card).", "error");
-        return;
-      }
-      if (!window.confirm(`Apagar ${ids.length} Reel(s) no Instagram? Não dá para desfazer.`)) return;
-      deleteBtn.disabled = true;
-      let okCount = 0;
-      let failCount = 0;
-      let lastErr = "";
-      for (let i = 0; i < ids.length; i += 1) {
-        const mediaId = ids[i];
-        setStatus(`Apagando ${i + 1}/${ids.length}…`);
-        try {
-          await deleteOne(mediaId, accountId);
-          okCount += 1;
-        } catch (err) {
-          failCount += 1;
-          lastErr = err.message || "Falha ao apagar.";
-          setStatus(lastErr, "error");
-        }
-        if (i < ids.length - 1) {
-          await new Promise((resolve) => window.setTimeout(resolve, 700));
-        }
-      }
-      syncActions();
-      if (failCount) {
-        setStatus(
-          `Apagados ${okCount}. Falhou ${failCount}. ${lastErr || "Meta recusou ou Reel recém-postado."}`,
-          "error"
-        );
-      } else {
-        setStatus(`Apagados ${okCount} Reel(s).`, "ok");
-      }
-    });
-
-    syncActions();
-    if (accountSel.value) {
-      loadPage(true);
-    }
-  }
-
   function initCommentsReply() {
     const page = document.querySelector("[data-page-comments-reply]");
     if (!page && !document.body.dataset.pageCommentsReply) return;
@@ -4172,7 +3883,6 @@
     initAccountsReconnect();
     initAccountFolders();
     initAccountFolderPicks();
-    initReelsCleanup();
     initCommentsReply();
     initVaultPage();
     initAuthMethodForm();
