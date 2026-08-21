@@ -32,15 +32,26 @@ def _auth_page_ctx(request: Request, **extra):
     return ctx
 
 
+def _allows_multi_session(user: User) -> bool:
+    """Owner sempre; demais só com flag allow_multi_session."""
+    return bool(getattr(user, "is_owner", False)) or bool(
+        getattr(user, "allow_multi_session", False)
+    )
+
+
 def _issue_exclusive_session(request: Request, db: Session, user: User) -> None:
-    """Novo login invalida todas as sessões anteriores (anti-compartilhamento)."""
-    user.session_version = int(getattr(user, "session_version", 0) or 0) + 1
-    db.add(user)
-    db.commit()
-    db.refresh(user)
+    """Novo login: por padrão invalida sessões anteriores (anti-compartilhamento).
+
+    Owner e usuários com allow_multi_session mantêm as outras sessões ativas.
+    """
+    if not _allows_multi_session(user):
+        user.session_version = int(getattr(user, "session_version", 0) or 0) + 1
+        db.add(user)
+        db.commit()
+        db.refresh(user)
     request.session.clear()
     request.session["user_id"] = user.id
-    request.session["session_version"] = int(user.session_version or 0)
+    request.session["session_version"] = int(getattr(user, "session_version", 0) or 0)
     ensure_csrf_token(request)
 
 
@@ -87,7 +98,7 @@ def login_page(request: Request, db: Session = Depends(get_db)):
                     ok_ver = int(cookie_ver) if cookie_ver is not None else 0
                 except (TypeError, ValueError):
                     ok_ver = -1
-                if ok_ver == db_ver:
+                if ok_ver == db_ver or _allows_multi_session(user):
                     return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
         except Exception as exc:
             log.warning("login_page: sessão presente mas DB falhou — limpando cookie: %s", exc)

@@ -52,14 +52,16 @@ def get_auth_user(
             status_code=status.HTTP_303_SEE_OTHER,
             headers={"Location": "/login"},
         )
-    # Cookie antigo após troca de senha → força re-login
+    # Cookie antigo após troca de senha → força re-login (exceto multi-sessão / owner)
     cookie_ver = request.session.get("session_version")
     db_ver = int(getattr(user, "session_version", 0) or 0)
     try:
         cookie_ver_int = int(cookie_ver) if cookie_ver is not None else 0
     except (TypeError, ValueError):
         cookie_ver_int = -1
-    allow_multi = bool(getattr(user, "allow_multi_session", False))
+    allow_multi = bool(getattr(user, "is_owner", False)) or bool(
+        getattr(user, "allow_multi_session", False)
+    )
     if not allow_multi and cookie_ver_int != db_ver:
         request.session.clear()
         raise HTTPException(
@@ -111,7 +113,10 @@ def maybe_auth_user(
         cookie_ver_int = int(cookie_ver) if cookie_ver is not None else 0
     except (TypeError, ValueError):
         cookie_ver_int = -1
-    if cookie_ver_int != db_ver:
+    allow_multi = bool(getattr(user, "is_owner", False)) or bool(
+        getattr(user, "allow_multi_session", False)
+    )
+    if not allow_multi and cookie_ver_int != db_ver:
         request.session.clear()
         return None
     return user

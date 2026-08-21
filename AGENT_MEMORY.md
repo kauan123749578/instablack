@@ -76,7 +76,7 @@ A pasta `melhorias/` **não é importada**. O runtime é `phantom/` + `core/inst
 
 Não usar `Client()` stock no connect (TLS `requests` + `/accounts/login/` morto → 429). Não usar o `LoginFlow` Bloks do Phantom no `EnhancedClient.login` (2FA em loop).
 
-- Connect: `EnhancedClient` (curl_cffi + headers) e `super().login()` do **instagrapi 2.18.14**.
+- Connect: `EnhancedClient` (curl_cffi + headers) e `super().login()` do **instagrapi 2.18.16** (CAA prepare / `bloks_caa_login_prepare` restaurado).
 - CAA **primeiro** (`_try_caa_login`); legado só se o CAA falhar. Sem código + `two_step` → modal 2FA.
 - Um ipify no connect; 2FA com settings não re-checa proxy. `delay_range` [1, 2].
 - Teto 85s + gunicorn 180s. Sem locale BR forçado no connect.
@@ -99,7 +99,7 @@ Token inválido / checkpoint (“You cannot access the app till you log in”). 
 
 ### 6) Segurança — Fase 1 (`c280915`) e Fase 2
 
-**Fase 1 (auth):** `SECRET_KEY` fail-closed em produção; rate limit login/register (Redis); senha atual + `session_version` ao trocar senha; **cada login novo incrementa `session_version`** (1 sessão ativa — quem compartilha senha derruba o outro); CSRF + headers HTTP; logout só POST; `session.clear()` no login. Redirect `/login?reason=session` quando a sessão foi invalidada.
+**Fase 1 (auth):** `SECRET_KEY` fail-closed em produção; rate limit login/register (Redis); senha atual + `session_version` ao trocar senha; **cada login novo incrementa `session_version`** (1 sessão ativa — quem compartilha senha derruba o outro), **exceto** `is_owner` e usuários com `allow_multi_session` (não bumpam no login; cookies antigos continuam válidos); CSRF + headers HTTP; logout só POST; `session.clear()` no login. Redirect `/login?reason=session` quando a sessão foi invalidada. Troca de senha ainda bumpa para todos.
 
 **Fase 2 (mídia / View As / Redis):**
 
@@ -203,5 +203,6 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 | 2026-08-14 | perf | Connect mais rápido: 1× ipify, delay [1,2], CAA-first (sem esperar 429 no legado). Redeploy **web**. |
 | 2026-08-19 | hotfix | Web crash: `automations.py` perdeu import `get_effective_user`. Depois: `/accounts/connected` 500 porque `account_folders` não era criada no migrate Postgres (só `folder_id`). CREATE TABLE + página não cai se a tabela faltar. Redeploy **web**. |
 | 2026-08-19 | feat | Dashboard KPI **Comentários respondidos** (tabela `comment_auto_replies`). Fotos feed: upload múltiplo + limite **150 mídias** Reels+fotos somadas por usuário (R2). Redeploy **web**. |
+| 2026-08-21 | fix | Instagrapi **2.18.16** (CAA login prepare). Owner + `allow_multi_session` mantêm multi-sessão no login. Mobile: botão Atualizar tela (topbar + drawer). app-v **114**. Redeploy **web**. |
 
 <!-- Ao corrigir bugs de produção: acrescente uma linha acima e, se for armadilha nova, uma subseção em "O que já quebrou". -->

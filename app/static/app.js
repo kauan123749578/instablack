@@ -158,6 +158,21 @@
 
   function closeDrawer() { drawer?.classList.remove("open"); }
 
+  function refreshCurrentScreen() {
+    const btn = document.getElementById("mobile-refresh-btn");
+    const drawerBtn = document.getElementById("drawer-refresh-btn");
+    btn?.classList.add("is-spinning");
+    drawerBtn?.classList.add("is-spinning");
+    // Hard reload para pegar KPIs / logs / status atualizados do servidor.
+    window.location.reload();
+  }
+
+  document.getElementById("mobile-refresh-btn")?.addEventListener("click", refreshCurrentScreen);
+  document.getElementById("drawer-refresh-btn")?.addEventListener("click", () => {
+    closeDrawer();
+    refreshCurrentScreen();
+  });
+
   drawerOpen?.addEventListener("click", () => drawer?.classList.add("open"));
   drawerBackdrop?.addEventListener("click", closeDrawer);
   document.getElementById("drawer-close")?.addEventListener("click", closeDrawer);
