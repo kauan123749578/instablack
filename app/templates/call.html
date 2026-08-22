@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Call — instablack{% endblock %}
 {% block head %}
-<link rel="stylesheet" href="/static/call.css?v=8" />
+<link rel="stylesheet" href="/static/call.css?v=9" />
 {% endblock %}
 {% block content %}
 <div class="dc-root" id="call-page"
@@ -39,7 +39,7 @@
           </button>
         </div>
         <div class="dc-conn-actions">
-          <button type="button" class="dc-icon-btn" id="call-cam-btn" disabled title="Câmera (em breve)">
+          <button type="button" class="dc-icon-btn" id="call-cam-btn" title="Câmera" disabled>
             <i data-lucide="video-off"></i>
           </button>
           <button type="button" class="dc-icon-btn" id="call-screen-btn" title="Compartilhar tela">
@@ -165,5 +165,5 @@
 
   {% endif %}
 </div>
-<script src="/static/call.js?v=8"></script>
+<script src="/static/call.js?v=9"></script>
 {% endblock %}

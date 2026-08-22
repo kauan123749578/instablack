@@ -34,6 +34,7 @@
   const fabChat = document.getElementById("call-fab-chat");
   const chatToggle = document.getElementById("call-chat-toggle");
   const micBtn = document.getElementById("call-mic-btn");
+  const camBtn = document.getElementById("call-cam-btn");
   const screenBtn = document.getElementById("call-screen-btn");
   const deafenBtn = document.getElementById("call-deafen-btn");
   const leaveBtn = document.getElementById("call-leave-btn");
@@ -64,11 +65,13 @@
   let room = null;
   let LK = null;
   let micOn = false;
+  let camOn = false;
   let sharing = false;
   let deafened = false;
   let joining = false;
   let intentionalLeave = false;
   let micPublishing = false;
+  let camPublishing = false;
   const audioEls = new Map();
 
   const lkReady = loadLivekitScript().catch((e) => {
@@ -185,8 +188,23 @@
       : '<i data-lucide="mic-off"></i>';
     if (myStatus) {
       if (!inRoom()) myStatus.textContent = "Fora da sala";
-      else myStatus.textContent = micOn ? "Em voz" : "Em voz · mudo — clique no mic";
+      else {
+        const bits = [];
+        bits.push(micOn ? "Em voz" : "Em voz · mudo");
+        if (camOn) bits.push("câmera");
+        myStatus.textContent = bits.join(" · ");
+      }
     }
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  function setCamUi() {
+    if (!camBtn) return;
+    camBtn.disabled = !inRoom();
+    camBtn.classList.toggle("is-on", camOn);
+    camBtn.innerHTML = camOn
+      ? '<i data-lucide="video"></i>'
+      : '<i data-lucide="video-off"></i>';
     if (window.lucide) window.lucide.createIcons();
   }
 
@@ -195,6 +213,7 @@
     if (connEl) connEl.hidden = !on;
     if (leaveBtn) leaveBtn.disabled = !on;
     if (screenBtn) screenBtn.disabled = !on;
+    if (camBtn) camBtn.disabled = !on;
     if (deafenBtn) deafenBtn.disabled = !on;
     if (chatInput) chatInput.disabled = !on;
     if (chatSend) chatSend.disabled = !on;
@@ -204,6 +223,8 @@
     if (!on) {
       showMicBanner(false);
       collapseScreen();
+      camOn = false;
+      setCamUi();
     }
   }
 
@@ -212,6 +233,65 @@
     if (r?.localParticipant) people.push({ p: r.localParticipant, self: true });
     remoteList(r).forEach((p) => people.push({ p, self: false }));
     return people;
+  }
+
+  function isScreenSource(src) {
+    return String(src || "").toLowerCase().includes("screen");
+  }
+
+  function isCameraSource(src) {
+    const s = String(src || "").toLowerCase();
+    if (isScreenSource(s)) return false;
+    return s.includes("camera") || s === "2" || s === "";
+  }
+
+  function getCameraTrack(participant) {
+    if (!participant) return null;
+    let found = null;
+    const pubs = participant.videoTrackPublications || participant.trackPublications;
+    pubs?.forEach?.((pub) => {
+      if (found) return;
+      if (pub.kind && pub.kind !== "video") return;
+      if (isScreenSource(pub.source)) return;
+      if (pub.track && pub.isMuted !== true) found = pub.track;
+    });
+    return found;
+  }
+
+  function participantHasCam(p) {
+    try {
+      if (p === room?.localParticipant) return !!camOn || !!getCameraTrack(p);
+      if (typeof p.isCameraEnabled === "boolean" && p.isCameraEnabled) return true;
+      return !!getCameraTrack(p);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function attachCamsToTiles() {
+    if (!tilesEl || !room) return;
+    peopleList(room).forEach(({ p, self }) => {
+      const video = tilesEl.querySelector(`video[data-cam="${CSS.escape(String(p.identity))}"]`);
+      const tile = tilesEl.querySelector(`[data-pid="${CSS.escape(String(p.identity))}"]`);
+      const track = getCameraTrack(p);
+      if (!video) return;
+      if (track?.attach) {
+        track.attach(video);
+        video.muted = true;
+        video.playsInline = true;
+        video.play?.().catch(() => {});
+        video.classList.add("is-live");
+        tile?.classList.add("has-cam");
+      } else {
+        try { video.srcObject = null; } catch (_) {}
+        video.classList.remove("is-live");
+        tile?.classList.remove("has-cam");
+      }
+      if (self) {
+        // espelho local
+        video.style.transform = track ? "scaleX(-1)" : "";
+      }
+    });
   }
 
   function refreshUi() {
@@ -227,15 +307,20 @@
               const name = labelOf(p) + (self ? " (você)" : "");
               const speaking = !!p.isSpeaking;
               const muted = participantMicMuted(p);
-              return `<div class="dc-tile${speaking ? " is-speaking" : ""}">
+              const hasCam = participantHasCam(p);
+              const pid = escapeHtml(String(p.identity || ""));
+              return `<div class="dc-tile${speaking ? " is-speaking" : ""}${hasCam ? " has-cam" : ""}" data-pid="${pid}">
+                <video class="dc-tile-cam" data-cam="${pid}" autoplay playsinline muted></video>
                 <div class="dc-avatar" style="background:${colorFor(p.identity)}">${escapeHtml(initialFor(labelOf(p)))}</div>
                 <div class="dc-tile-name">
                   ${muted ? '<i data-lucide="mic-off"></i>' : ""}
+                  ${hasCam ? '<i data-lucide="video"></i>' : ""}
                   <span>${escapeHtml(name)}</span>
                 </div>
               </div>`;
             })
             .join("");
+      attachCamsToTiles();
     }
 
     if (voiceMembersEl) {
@@ -554,6 +639,10 @@
         publishDefaults: {
           dtx: true,
           red: true,
+          videoEncoding: {
+            maxBitrate: 1_700_000,
+            maxFramerate: 24,
+          },
           screenShareEncoding: {
             maxBitrate: 8_000_000,
             maxFramerate: 30,
@@ -573,15 +662,41 @@
       });
       r.on(ev("ActiveSpeakersChanged", "activeSpeakersChanged"), () => refreshUi());
       r.on(ev("TrackMuted", "trackMuted"), () => {
-        if (inRoom()) syncMicFromRoom();
-        else refreshUi();
+        if (inRoom()) {
+          syncMicFromRoom();
+          try {
+            camOn = !!room.localParticipant.isCameraEnabled || !!getCameraTrack(room.localParticipant);
+          } catch (_) {}
+          setCamUi();
+        }
+        refreshUi();
       });
       r.on(ev("TrackUnmuted", "trackUnmuted"), () => {
-        if (inRoom()) syncMicFromRoom();
-        else refreshUi();
+        if (inRoom()) {
+          syncMicFromRoom();
+          try {
+            camOn = !!room.localParticipant.isCameraEnabled || !!getCameraTrack(room.localParticipant);
+          } catch (_) {}
+          setCamUi();
+        }
+        refreshUi();
       });
-      r.on(ev("LocalTrackPublished", "localTrackPublished"), () => syncMicFromRoom());
-      r.on(ev("LocalTrackUnpublished", "localTrackUnpublished"), () => syncMicFromRoom());
+      r.on(ev("LocalTrackPublished", "localTrackPublished"), () => {
+        syncMicFromRoom();
+        try {
+          camOn = !!room.localParticipant.isCameraEnabled || !!getCameraTrack(room.localParticipant);
+        } catch (_) {}
+        setCamUi();
+        refreshUi();
+      });
+      r.on(ev("LocalTrackUnpublished", "localTrackUnpublished"), () => {
+        syncMicFromRoom();
+        try {
+          camOn = !!room.localParticipant.isCameraEnabled || !!getCameraTrack(room.localParticipant);
+        } catch (_) {}
+        setCamUi();
+        refreshUi();
+      });
 
       r.on(ev("Reconnecting", "reconnecting"), () => {
         setStatus("Reconectando…", "wait");
@@ -591,6 +706,7 @@
         setStatus("Na sala", "live");
         setHint("Reconectado.");
         syncMicFromRoom();
+        refreshUi();
       });
 
       r.on(ev("TrackSubscribed", "trackSubscribed"), (track, publication, participant) => {
@@ -598,19 +714,25 @@
           attachRemoteAudio(track, participant);
           return;
         }
-        if (track.kind === "video" && (publication?.source === screenSource || String(publication?.source).includes("screen"))) {
+        if (track.kind !== "video") return;
+        const src = publication?.source;
+        if (src === screenSource || isScreenSource(src)) {
           attachScreen(track, labelOf(participant), publication);
+          return;
         }
+        // Câmera remota → tile
+        refreshUi();
       });
       r.on(ev("TrackUnsubscribed", "trackUnsubscribed"), (track, publication, participant) => {
         if (track.kind === "audio" && participant?.identity) {
           detachRemoteAudio(participant.identity);
         }
-        if (publication?.source === screenSource || String(publication?.source || "").includes("screen")) {
+        if (publication?.source === screenSource || isScreenSource(publication?.source)) {
           clearScreen();
           sharing = false;
           screenBtn?.classList.remove("is-on");
         }
+        refreshUi();
       });
       r.on(ev("DataReceived", "dataReceived"), (payload, participant) => {
         try {
@@ -630,11 +752,13 @@
         room = null;
         sharing = false;
         micOn = false;
+        camOn = false;
         wipeAudio();
         clearScreen();
         showMicBanner(false);
         setConnectedUi(false);
         setMicUi();
+        setCamUi();
         refreshUi();
         if (intentionalLeave) {
           rememberJoin(false);
@@ -716,12 +840,14 @@
     room = null;
     sharing = false;
     micOn = false;
+    camOn = false;
     await safeDisconnect(r);
     wipeAudio();
     clearScreen();
     showMicBanner(false);
     setConnectedUi(false);
     setMicUi();
+    setCamUi();
     setStatus("Desconectado");
     setHint("");
     if (joinBtn) joinBtn.disabled = false;
@@ -736,6 +862,46 @@
     }
     if (micOn) await muteMic();
     else await enableMic();
+  }
+
+  async function toggleCamera() {
+    if (!inRoom()) {
+      setHint("Entre na sala primeiro.");
+      return;
+    }
+    if (camPublishing) return;
+    camPublishing = true;
+    try {
+      const next = !camOn;
+      // API oficial LiveKit (doc: setCameraEnabled)
+      await room.localParticipant.setCameraEnabled(next, {
+        resolution: { width: 1280, height: 720, frameRate: 24 },
+      });
+      camOn = !!room.localParticipant.isCameraEnabled || (next && !!getCameraTrack(room.localParticipant));
+      if (next && !camOn) camOn = true;
+      if (!next) camOn = false;
+      setCamUi();
+      setMicUi();
+      refreshUi();
+      setHint(camOn ? "Câmera ligada." : "Câmera desligada.");
+    } catch (err) {
+      console.error("toggleCamera", err);
+      camOn = false;
+      setCamUi();
+      const name = err?.name || "";
+      const msg = String(err?.message || err);
+      if (name === "NotAllowedError" || /Permission|NotAllowed/i.test(msg)) {
+        setHint("Chrome bloqueou a câmera. Clique de novo e escolha Permitir.");
+      } else if (name === "NotFoundError") {
+        setHint("Nenhuma câmera encontrada.");
+      } else if (name === "NotReadableError") {
+        setHint("Câmera em uso por outro app. Feche e tente de novo.");
+      } else {
+        setHint("Câmera falhou: " + msg);
+      }
+    } finally {
+      camPublishing = false;
+    }
   }
 
   function loadQualityPrefs() {
@@ -901,6 +1067,11 @@
     }
     if (t.closest("#call-screen-btn")) {
       onScreenBtnClick();
+      return;
+    }
+    if (t.closest("#call-cam-btn")) {
+      e.preventDefault();
+      toggleCamera().catch(console.error);
       return;
     }
     if (t.closest("#call-deafen-btn")) {

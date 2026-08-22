@@ -211,6 +211,7 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 | 2026-08-21 | fix | Call: mic banner só com `localParticipant`; botões com feedback (sem return silencioso); identity `u{id}-{device}` (PC+celular juntos); clique na tela → expandir stage. app-v **119**. Redeploy **web**. |
 | 2026-08-22 | fix | Call: mic via `setMicrophoneEnabled` + sync por track; screen share ~8Mbps/1080p30 (idéia LANcord); tela abre expandida. app-v **120**. Redeploy **web**. |
 | 2026-08-22 | feat | Call: modal **Qualidade da transmissão** (Fonte/1440/1080/720/480 + 5/15/30/60 fps) antes do share; bitrate por preset. app-v **121**. Redeploy **web**. |
+| 2026-08-22 | feat | Call: câmera via `setCameraEnabled` (doc LiveKit); preview no tile. app-v **122**. Redeploy **web**. |
 
 ### 3.4) Call / LiveKit — armadilhas
 
