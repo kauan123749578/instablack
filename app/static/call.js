@@ -51,6 +51,22 @@
   const qualityStop = document.getElementById("call-quality-stop");
   const qualityResBox = document.getElementById("call-quality-res");
   const qualityFpsBox = document.getElementById("call-quality-fps");
+  const roomModal = document.getElementById("call-room-modal");
+  const roomCreateBtn = document.getElementById("call-create-room-btn");
+  const roomCreateGo = document.getElementById("call-room-create-go");
+  const roomNameInput = document.getElementById("call-room-name");
+  const roomPassInput = document.getElementById("call-room-password");
+  const roomBlurInput = document.getElementById("call-room-blur");
+  const passModal = document.getElementById("call-pass-modal");
+  const passInput = document.getElementById("call-pass-input");
+  const passGo = document.getElementById("call-pass-go");
+
+  const roomSlug = (root.dataset.roomSlug || "").trim();
+  let roomPassword = "";
+  let blurNames = root.dataset.blurNames === "1";
+  const myUserId = Number(root.dataset.meId || 0);
+  const myAvatarUrl = (root.dataset.meAvatar || "").trim();
+  const roster = new Map();
 
   const QUALITY_KEY = "ib_call_screen_quality";
   const RES_MAP = {
@@ -145,7 +161,54 @@
   }
 
   function labelOf(p) {
-    return (p && (p.name || p.identity)) || "Alguém";
+    if (!p) return "Alguém";
+    const ident = p.identity || "";
+    const fromRoster = roster.get(ident);
+    if (fromRoster?.name) return fromRoster.name;
+    return (p.name || p.identity) || "Alguém";
+  }
+
+  function avatarForParticipant(p, presenceRow) {
+    const ident = p?.identity || presenceRow?.identity || "";
+    const fromRoster = roster.get(ident);
+    if (fromRoster?.avatar_url) return fromRoster.avatar_url;
+    if (presenceRow?.avatar_url) return presenceRow.avatar_url;
+    if (p === room?.localParticipant && myAvatarUrl) return myAvatarUrl;
+    return null;
+  }
+
+  function shouldBlurName(identity) {
+    if (!blurNames) return false;
+    if (!identity) return false;
+    return !String(identity).startsWith(`u${myUserId}-`);
+  }
+
+  function avatarBlock(p, name, sizeClass) {
+    const ident = p?.identity || "";
+    const url = avatarForParticipant(p);
+    const blur = shouldBlurName(ident);
+    if (url) {
+      return `<img class="${sizeClass || "dc-avatar-img"}" src="${escapeHtml(url)}" alt="" loading="lazy"${blur ? ' style="filter:blur(4px)"' : ""}>`;
+    }
+    return `<div class="dc-avatar" style="background:${colorFor(ident || name)}">${escapeHtml(initialFor(name))}</div>`;
+  }
+
+  async function fetchRoster(identities) {
+    const ids = [...new Set(identities.filter(Boolean))];
+    if (!ids.length) return;
+    const q = new URLSearchParams({
+      ids: ids.join(","),
+      blur: blurNames ? "1" : "0",
+    });
+    try {
+      const res = await fetch(`/call/roster?${q}`, { headers: { Accept: "application/json" } });
+      const data = await res.json().catch(() => ({}));
+      Object.entries(data.roster || {}).forEach(([k, v]) => roster.set(k, v));
+    } catch (_) {}
+  }
+
+  function applyBlurUi() {
+    document.querySelector(".dc-app")?.classList.toggle("dc-blur-names", blurNames);
   }
 
   function remoteList(r) {
@@ -664,9 +727,13 @@
       voiceMembersEl.innerHTML = presenceList.length
         ? presenceList.map((p) => {
             const name = p.name || p.identity || "Alguém";
+            const blur = shouldBlurName(p.identity);
+            const av = p.avatar_url
+              ? `<img class="av-img" src="${escapeHtml(p.avatar_url)}" alt="" loading="lazy"${blur ? ' style="filter:blur(4px)"' : ""}>`
+              : `<span class="av" style="background:${colorFor(p.identity)}">${escapeHtml(initialFor(name))}</span>`;
             return `<div class="dc-voice-member is-presence">
-              <span class="av" style="background:${colorFor(p.identity)}">${escapeHtml(initialFor(name))}</span>
-              <span>${escapeHtml(name)}</span>
+              ${av}
+              <span class="name-text">${escapeHtml(name)}</span>
             </div>`;
           }).join("")
         : '<div class="dc-voice-empty">Ninguém na sala</div>';
@@ -691,11 +758,17 @@
   async function fetchPresence() {
     if (inRoom()) return;
     try {
-      const res = await fetch("/call/presence", {
+      const q = roomSlug ? `?room=${encodeURIComponent(roomSlug)}` : "";
+      const res = await fetch(`/call/presence${q}`, {
         headers: { Accept: "application/json", "X-Requested-With": "fetch" },
       });
       const data = await res.json().catch(() => ({}));
       presenceList = Array.isArray(data.participants) ? data.participants : [];
+      blurNames = !!data.blur_names;
+      applyBlurUi();
+      presenceList.forEach((p) => {
+        if (p.identity) roster.set(p.identity, { name: p.name, avatar_url: p.avatar_url });
+      });
       refreshPresenceUi();
     } catch (_) {}
   }
@@ -723,20 +796,27 @@
         ? ""
         : people
             .map(({ p, self }) => {
+              const ident = String(p.identity || "");
               const name = labelOf(p) + (self ? " (você)" : "");
               const speaking = !!p.isSpeaking;
               const muted = participantMicMuted(p);
               const hasCam = participantHasCam(p);
               const onScreen = participantIsSharingScreen(p);
-              const pid = escapeHtml(String(p.identity || ""));
-              return `<div class="dc-tile${speaking ? " is-speaking" : ""}${hasCam ? " has-cam" : ""}${onScreen ? " is-sharing" : ""}" data-pid="${pid}">
+              const avUrl = avatarForParticipant(p);
+              const hasAv = !!avUrl;
+              const blur = shouldBlurName(ident);
+              const pid = escapeHtml(ident);
+              const avHtml = avUrl
+                ? `<img class="dc-avatar-img" src="${escapeHtml(avUrl)}" alt="" loading="lazy"${blur ? ' style="filter:blur(4px)"' : ""}>`
+                : `<div class="dc-avatar" style="background:${colorFor(ident)}">${escapeHtml(initialFor(labelOf(p)))}</div>`;
+              return `<div class="dc-tile${speaking ? " is-speaking" : ""}${hasCam ? " has-cam" : ""}${onScreen ? " is-sharing" : ""}${hasAv ? " has-avatar" : ""}" data-pid="${pid}">
                 <video class="dc-tile-cam" data-cam="${pid}" autoplay playsinline muted></video>
-                <div class="dc-avatar" style="background:${colorFor(p.identity)}">${escapeHtml(initialFor(labelOf(p)))}</div>
+                ${avHtml}
                 <div class="dc-tile-name">
                   ${muted ? '<i data-lucide="mic-off"></i>' : ""}
                   ${hasCam ? '<i data-lucide="video"></i>' : ""}
                   ${onScreen ? '<i data-lucide="monitor-up"></i>' : ""}
-                  <span>${escapeHtml(name)}</span>
+                  <span class="name-text">${escapeHtml(name)}</span>
                 </div>
               </div>`;
             })
@@ -744,18 +824,22 @@
       attachCamsToTiles();
     }
 
-    if (voiceMembersEl) {
-      voiceMembersEl.innerHTML = !r
-        ? ""
-        : people
+    if (voiceMembersEl && r) {
+      voiceMembersEl.innerHTML = people
             .map(({ p, self }) => {
+              const ident = String(p.identity || "");
               const name = labelOf(p) + (self ? " (você)" : "");
               const speaking = !!p.isSpeaking;
               const muted = participantMicMuted(p);
               const onScreen = participantIsSharingScreen(p);
+              const avUrl = avatarForParticipant(p);
+              const blur = shouldBlurName(ident);
+              const av = avUrl
+                ? `<img class="av-img" src="${escapeHtml(avUrl)}" alt="" loading="lazy"${blur ? ' style="filter:blur(4px)"' : ""}>`
+                : `<span class="av" style="background:${colorFor(ident)}">${escapeHtml(initialFor(labelOf(p)))}</span>`;
               return `<div class="dc-voice-member${speaking ? " is-speaking" : ""}${onScreen ? " is-sharing" : ""}">
-                <span class="av" style="background:${colorFor(p.identity)}">${escapeHtml(initialFor(labelOf(p)))}</span>
-                <span>${escapeHtml(name)}</span>
+                ${av}
+                <span class="name-text">${escapeHtml(name)}</span>
                 ${onScreen ? '<i data-lucide="monitor-up" class="share-icon"></i>' : ""}
                 ${muted ? '<i data-lucide="mic-off" class="mic-off"></i>' : ""}
               </div>`;
@@ -889,6 +973,8 @@
   }
 
   async function fetchToken() {
+    const body = { device_id: deviceId(), room_slug: roomSlug || "" };
+    if (roomPassword) body.password = roomPassword;
     const res = await fetch("/call/token", {
       method: "POST",
       headers: {
@@ -897,7 +983,7 @@
         "X-Requested-With": "fetch",
         Accept: "application/json",
       },
-      body: JSON.stringify({ device_id: deviceId() }),
+      body: JSON.stringify(body),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -905,9 +991,16 @@
       const msg = typeof detail === "string"
         ? detail
         : (Array.isArray(detail) ? detail.map((d) => d.msg || d).join("; ") : null);
-      throw new Error(msg || `Token HTTP ${res.status}`);
+      const err = new Error(msg || `Token HTTP ${res.status}`);
+      err.status = res.status;
+      throw err;
     }
     if (!data.url || !data.token) throw new Error("Servidor sem url/token LiveKit.");
+    if (data.blur_names) blurNames = true;
+    if (data.avatar_url && data.identity) {
+      roster.set(data.identity, { name: data.name, avatar_url: data.avatar_url });
+    }
+    applyBlurUi();
     return data;
   }
 
@@ -934,73 +1027,61 @@
       return;
     }
     if (Date.now() < micGraceUntil) return;
-    micOn = !!room.localParticipant.isMicrophoneEnabled || localMicLive();
+    micOn = localMicLive() || !!room.localParticipant.isMicrophoneEnabled;
     setMicUi();
     showMicBanner(!micOn);
     refreshUi();
   }
 
   /** LiveKit + fallback publish; primePromise = getUserMedia no gesto (mobile). */
-  async function toggleMic(primePromise) {
+  async function enableMicOnly(primePromise) {
     if (!inRoom()) {
       setHint("Entre na sala primeiro.");
       return;
     }
     if (micPublishing) return;
+    if (micOn && localMicLive()) {
+      showMicBanner(false);
+      setHint("Microfone já está ligado.");
+      return;
+    }
     micPublishing = true;
-
     const lp = room.localParticipant;
-    const currentlyLive = lp.isMicrophoneEnabled || localMicLive() || micOn;
-    const wantOn = !currentlyLive;
-
     setMicUiPending(true);
-    setHint(wantOn ? "Ativando microfone…" : "Mutando…");
-
+    setHint("Ativando microfone…");
     try {
-      if (wantOn) {
-        micGraceUntil = Date.now() + 3500;
-
-        if (primePromise) {
-          const stream = await primePromise;
-          stream.getTracks().forEach((t) => t.stop());
-        }
-
-        await lp.setMicrophoneEnabled(true, {
+      micGraceUntil = Date.now() + 3500;
+      if (primePromise) {
+        const stream = await primePromise;
+        stream.getTracks().forEach((t) => t.stop());
+      }
+      await lp.setMicrophoneEnabled(true, {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      });
+      micOn = lp.isMicrophoneEnabled || localMicLive();
+      if (!micOn && typeof LK?.createLocalAudioTrack === "function") {
+        const audioTrack = await LK.createLocalAudioTrack({
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
         });
-
-        micOn = lp.isMicrophoneEnabled || localMicLive();
-
-        if (!micOn && typeof LK?.createLocalAudioTrack === "function") {
-          const audioTrack = await LK.createLocalAudioTrack({
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          });
-          const src = LK.Track?.Source?.Microphone;
-          await lp.publishTrack(
-            audioTrack,
-            src ? { source: src, dtx: true, red: true } : { dtx: true, red: true }
-          );
-          await lp.setMicrophoneEnabled(true);
-          micOn = true;
-        }
-      } else {
-        await lp.setMicrophoneEnabled(false);
-        micOn = false;
+        const src = LK.Track?.Source?.Microphone;
+        await lp.publishTrack(
+          audioTrack,
+          src ? { source: src, dtx: true, red: true } : { dtx: true, red: true }
+        );
+        micOn = true;
       }
-
-      micOn = micOn || lp.isMicrophoneEnabled || localMicLive();
+      micOn = micOn || localMicLive();
       showMicBanner(!micOn);
-      setHint(micOn ? "Microfone ligado." : "Microfone mutado.");
+      setHint(micOn ? "Microfone ligado." : "Não foi possível ligar o microfone.");
       setMicUi();
       refreshUi();
     } catch (err) {
-      console.error("[call] mic", err);
-      micOn = lp.isMicrophoneEnabled || localMicLive();
-      syncMicFromRoom();
+      console.error("[call] enableMic", err);
+      micOn = localMicLive();
       showMicBanner(!micOn);
       setHint(mapMicError(err));
       setMicUi();
@@ -1010,7 +1091,32 @@
     }
   }
 
-  function onMicTap(e) {
+  async function muteMicOnly() {
+    if (!inRoom() || micPublishing) return;
+    micPublishing = true;
+    try {
+      await room.localParticipant.setMicrophoneEnabled(false);
+      micOn = false;
+      showMicBanner(true);
+      setHint("Microfone mutado.");
+      setMicUi();
+      refreshUi();
+    } catch (err) {
+      setHint(mapMicError(err));
+    } finally {
+      micPublishing = false;
+    }
+  }
+
+  async function toggleMic(primePromise) {
+    if (micOn || localMicLive()) {
+      await muteMicOnly();
+    } else {
+      await enableMicOnly(primePromise);
+    }
+  }
+
+  function onMicTap(e, forceEnable) {
     if (e) {
       e.preventDefault();
       e.stopPropagation();
@@ -1024,10 +1130,8 @@
       return;
     }
 
-    const lp = room.localParticipant;
-    const currentlyLive = lp.isMicrophoneEnabled || localMicLive() || micOn;
     let prime = null;
-    if (!currentlyLive && navigator.mediaDevices?.getUserMedia) {
+    if ((!micOn && !localMicLive()) && navigator.mediaDevices?.getUserMedia) {
       prime = navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -1036,21 +1140,20 @@
         },
       });
     }
-    toggleMic(prime).catch(console.error);
+    if (forceEnable) {
+      enableMicOnly(prime).catch(console.error);
+    } else {
+      toggleMic(prime).catch(console.error);
+    }
   }
 
   function bindMicButtons() {
-    const sel = "#call-mic-btn, #call-enable-mic-btn, [data-call-action=\"mic\"]";
-    root.addEventListener("click", (e) => {
-      const btn = e.target.closest(sel);
-      if (!btn || btn.disabled) return;
-      onMicTap(e);
-    }, true);
-    root.addEventListener("touchend", (e) => {
-      const btn = e.target.closest(sel);
-      if (!btn || btn.disabled) return;
-      onMicTap(e);
-    }, { capture: true, passive: false });
+    enableMicBtn?.addEventListener("click", (e) => onMicTap(e, true));
+    micBtn?.addEventListener("click", (e) => onMicTap(e, false));
+    root.querySelectorAll('[data-call-action="mic"]').forEach((btn) => {
+      btn.addEventListener("click", (e) => onMicTap(e, false));
+      btn.addEventListener("touchend", (e) => onMicTap(e, false), { passive: false });
+    });
   }
 
   async function join(opts) {
@@ -1101,7 +1204,10 @@
 
       const screenSource = LK.Track?.Source?.ScreenShare || "screen_share";
 
-      r.on(ev("ParticipantConnected", "participantConnected"), () => refreshUi());
+      r.on(ev("ParticipantConnected", "participantConnected"), (p) => {
+        fetchRoster([p?.identity].filter(Boolean)).then(() => refreshUi());
+        refreshUi();
+      });
       r.on(ev("ParticipantDisconnected", "participantDisconnected"), (p) => {
         if (p?.identity) detachRemoteAudio(p.identity);
         refreshUi();
@@ -1273,6 +1379,16 @@
       rememberJoin(true);
       stopPresencePoll();
       setConnectedUi(true);
+      blurNames = !!tokenData.blur_names;
+      applyBlurUi();
+      if (tokenData.identity) {
+        roster.set(tokenData.identity, {
+          name: tokenData.name,
+          avatar_url: tokenData.avatar_url,
+        });
+      }
+      const rosterIds = [r.localParticipant?.identity, ...remoteList(r).map((p) => p.identity)].filter(Boolean);
+      fetchRoster(rosterIds).then(() => refreshUi());
       setStatus("Na sala", "live");
       setHint("");
       refreshUi();
@@ -1306,6 +1422,12 @@
     } catch (err) {
       console.error(err);
       joining = false;
+      if (err?.status === 403 && /senha/i.test(String(err.message || ""))) {
+        if (passModal) passModal.hidden = false;
+        setHint("Digite a senha da sala.");
+        if (joinBtn) joinBtn.disabled = false;
+        return;
+      }
       if (room === r) room = null;
       await safeDisconnect(r);
       wipeAudio();
@@ -1485,7 +1607,7 @@
     if (qualityModal) qualityModal.hidden = true;
   }
 
-  /** Clique no monitor: mobile Android = share direto; iOS = aviso; desktop = modal. */
+  /** Clique no monitor: mobile = share direto; desktop = modal/host. */
   function onScreenBtnClick() {
     if (!inRoom()) return;
     if (sharing && isMobileUi()) {
@@ -1493,8 +1615,8 @@
       return;
     }
     if (isMobileUi()) {
-      if (!canDeviceScreenShare()) {
-        setHint("iPhone: compartilhar tela não funciona no Safari. Use Android ou PC.");
+      if (isIOS()) {
+        setHint("iPhone não compartilha tela no Safari. Use Android ou PC.");
         return;
       }
       startScreenShareMobile().catch(console.error);
@@ -1677,6 +1799,47 @@
   initMobileSidebar();
   initScreenHostBridge();
   bindMicButtons();
+  applyBlurUi();
+
+  roomCreateBtn?.addEventListener("click", () => {
+    if (roomModal) roomModal.hidden = false;
+  });
+  roomModal?.addEventListener("click", (e) => {
+    if (e.target.closest("[data-room-close]")) roomModal.hidden = true;
+  });
+  roomCreateGo?.addEventListener("click", async () => {
+    const name = (roomNameInput?.value || "").trim();
+    const password = (roomPassInput?.value || "").trim();
+    const blur = !!roomBlurInput?.checked;
+    if (!name) return;
+    roomCreateGo.disabled = true;
+    try {
+      const res = await fetch("/call/rooms", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": csrf(),
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ name, password, blur_names: blur }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || "Falha ao criar sala");
+      window.location.href = data.url || `/call?room=${data.slug}`;
+    } catch (err) {
+      setHint(String(err.message || err));
+    } finally {
+      roomCreateGo.disabled = false;
+    }
+  });
+  passModal?.addEventListener("click", (e) => {
+    if (e.target.closest("[data-pass-close]")) passModal.hidden = true;
+  });
+  passGo?.addEventListener("click", () => {
+    roomPassword = (passInput?.value || "").trim();
+    if (passModal) passModal.hidden = true;
+    join({ auto: false }).catch(console.error);
+  });
 
   window.addEventListener("resize", () => {
     syncMicBannerText();

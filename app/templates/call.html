@@ -1,14 +1,18 @@
 {% extends "base.html" %}
 {% block title %}Call — instablack{% endblock %}
 {% block head %}
-<link rel="stylesheet" href="/static/call.css?v=15" />
+<link rel="stylesheet" href="/static/call.css?v=16" />
 {% endblock %}
 {% block content %}
 <div class="dc-root" id="call-page"
      data-ready="{{ '1' if livekit_ready else '0' }}"
      data-room="{{ room_name }}"
+     data-room-slug="{{ room_slug or '' }}"
+     data-blur-names="{{ '1' if call_room and call_room.blur_names else '0' }}"
      data-me="{{ user.display_name or user.username }}"
-     data-me-user="{{ user.username }}">
+     data-me-user="{{ user.username }}"
+     data-me-id="{{ user.id }}"
+     data-me-avatar="{{ my_avatar_url }}">
 
   {% if not livekit_ready %}
   <div class="alert alert-error" style="margin:16px">
@@ -24,8 +28,21 @@
       <div class="dc-cat">Canais de voz</div>
       <button type="button" class="dc-channel is-voice is-active" id="call-channel-btn">
         <i data-lucide="volume-2"></i>
-        <span>Sala de voz</span>
+        <span>{% if call_room %}{{ call_room.name }}{% else %}Sala de voz{% endif %}</span>
       </button>
+      <button type="button" class="dc-channel is-create" id="call-create-room-btn" title="Criar sala privada">
+        <i data-lucide="plus"></i>
+        <span>Criar sala</span>
+      </button>
+      {% if my_rooms %}
+      <div class="dc-cat">Minhas salas</div>
+      {% for r in my_rooms %}
+      <a class="dc-channel is-link" href="/call?room={{ r.slug }}">
+        <i data-lucide="lock"></i>
+        <span>{{ r.name }}</span>
+      </a>
+      {% endfor %}
+      {% endif %}
       <div class="dc-voice-members" id="call-voice-members"></div>
 
       <div class="dc-conn" id="call-conn" hidden>
@@ -219,7 +236,47 @@
     </div>
   </div>
 
+  {# Modal criar sala privada #}
+  <div class="dc-modal" id="call-room-modal" hidden>
+    <div class="dc-modal-backdrop" data-room-close></div>
+    <div class="dc-modal-card" role="dialog">
+      <h3>Criar sala privada</h3>
+      <label class="dc-field">
+        <span>Nome</span>
+        <input type="text" id="call-room-name" maxlength="128" placeholder="Minha sala" autocomplete="off">
+      </label>
+      <label class="dc-field">
+        <span>Senha (opcional)</span>
+        <input type="password" id="call-room-password" maxlength="64" placeholder="Deixe vazio = aberta" autocomplete="new-password">
+      </label>
+      <label class="dc-check">
+        <input type="checkbox" id="call-room-blur">
+        <span>Embaçar nomes (só mostra que tem gente, não quem)</span>
+      </label>
+      <div class="dc-modal-actions">
+        <button type="button" class="dc-btn-ghost" data-room-close>Cancelar</button>
+        <button type="button" class="dc-btn-accent" id="call-room-create-go">Criar</button>
+      </div>
+    </div>
+  </div>
+
+  {# Senha ao entrar em sala privada #}
+  <div class="dc-modal" id="call-pass-modal" hidden>
+    <div class="dc-modal-backdrop" data-pass-close></div>
+    <div class="dc-modal-card" role="dialog">
+      <h3>Senha da sala</h3>
+      <label class="dc-field">
+        <span>Senha</span>
+        <input type="password" id="call-pass-input" maxlength="64" autocomplete="current-password">
+      </label>
+      <div class="dc-modal-actions">
+        <button type="button" class="dc-btn-ghost" data-pass-close>Cancelar</button>
+        <button type="button" class="dc-btn-accent" id="call-pass-go">Entrar</button>
+      </div>
+    </div>
+  </div>
+
   {% endif %}
 </div>
-<script src="/static/call.js?v=15"></script>
+<script src="/static/call.js?v=16"></script>
 {% endblock %}

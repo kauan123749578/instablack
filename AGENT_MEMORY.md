@@ -214,6 +214,7 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 | 2026-08-22 | feat | Call: câmera via `setCameraEnabled` (doc LiveKit); preview no tile. app-v **122**. Redeploy **web**. |
 | 2026-08-22 | fix | Call: mic = `setMicrophoneEnabled` direto; dock mobile Discord; quem entra vê tela (`scanAllRemoteMedia`); banner re-share após F5. app-v **123**. Redeploy **web**. |
 | 2026-08-22 | fix | Call: `/call/presence` (vê quem está antes de entrar); mic mobile com getUserMedia no toque + fallback publish; banner azul oculto no mobile. call v**15**, app-v **127**. |
+| 2026-08-22 | feat | Call: salas privadas (`CallRoom` + senha + blur nomes); avatares reais; mic fix (`isMicrophoneEnabled` mentia → só ligar); chat fixo embaixo. call v**16**, app-v **128**. |
 
 ### 3.4) Call / LiveKit — armadilhas
 

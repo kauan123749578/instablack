@@ -560,3 +560,22 @@ class AuthenticatorEntry(Base):
     )
 
     user: Mapped["User"] = relationship(back_populates="authenticator_entries")
+
+
+class CallRoom(Base):
+    """Sala de voz privada (LiveKit room dedicada + senha opcional)."""
+
+    __tablename__ = "call_rooms"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    slug: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(128))
+    password_hash: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    blur_names: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    livekit_room: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    owner: Mapped["User"] = relationship(foreign_keys=[owner_id])
