@@ -4,7 +4,9 @@
 <link rel="stylesheet" href="/static/call-screen-host.css?v=1" />
 {% endblock %}
 {% block content %}
-<div class="sh-root" id="screen-host-page" data-ready="{{ '1' if livekit_ready else '0' }}">
+<div class="sh-root" id="screen-host-page"
+     data-ready="{{ '1' if livekit_ready else '0' }}"
+     data-room-slug="{{ room_slug or '' }}">
   {% if not livekit_ready %}
   <p class="sh-error">LiveKit não configurado.</p>
   {% else %}
@@ -17,5 +19,5 @@
   </div>
   {% endif %}
 </div>
-<script src="/static/call-screen-host.js?v=1"></script>
+<script src="/static/call-screen-host.js?v=2"></script>
 {% endblock %}

@@ -25,6 +25,10 @@
   let LK = null;
   let sharing = false;
   let busy = false;
+  let connectedSlug = "";
+  let roomPassword = "";
+
+  const defaultRoomSlug = (root.dataset.roomSlug || "").trim();
 
   function csrf() {
     return document.querySelector('meta[name="csrf-token"]')?.content || "";
@@ -73,7 +77,9 @@
     });
   }
 
-  async function fetchToken() {
+  async function fetchToken(roomSlug, password) {
+    const body = { device_id: deviceId(), role: "screen", room_slug: roomSlug || "" };
+    if (password) body.password = password;
     const res = await fetch("/call/token", {
       method: "POST",
       headers: {
@@ -82,7 +88,7 @@
         "X-Requested-With": "fetch",
         Accept: "application/json",
       },
-      body: JSON.stringify({ device_id: deviceId(), role: "screen" }),
+      body: JSON.stringify(body),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.detail || `Token HTTP ${res.status}`);
@@ -112,10 +118,15 @@
     };
   }
 
-  async function ensureRoom() {
-    if (room?.localParticipant) return room;
+  async function ensureRoom(roomSlug, password) {
+    const slug = (roomSlug || defaultRoomSlug || "").trim();
+    if (room?.localParticipant && connectedSlug === slug) return room;
+    if (room) {
+      try { await room.disconnect(); } catch (_) {}
+      room = null;
+    }
     LK = await loadLivekitScript();
-    const tokenData = await fetchToken();
+    const tokenData = await fetchToken(slug, password);
     const r = new LK.Room({
       disconnectOnPageLeave: false,
       publishDefaults: {
@@ -127,16 +138,20 @@
       autoSubscribe: false,
     });
     room = r;
+    connectedSlug = slug;
     return r;
   }
 
-  async function startShare(resKey, fps) {
+  async function startShare(resKey, fps, roomSlug, password) {
     if (busy) return;
     busy = true;
     setStatus("Pedindo permissão da tela…");
     if (stopBtn) stopBtn.hidden = true;
+    const slug = (roomSlug || defaultRoomSlug || "").trim();
+    const pass = password || roomPassword || "";
+    if (pass) roomPassword = pass;
     try {
-      await ensureRoom();
+      await ensureRoom(slug, pass);
       if (sharing) {
         try { await room.localParticipant.setScreenShareEnabled(false); } catch (_) {}
         sharing = false;
@@ -148,7 +163,7 @@
       );
       sharing = true;
       if (titleEl) titleEl.textContent = "Transmitindo";
-      setStatus(`${resKey || "1080"}p @ ${fps || 30}fps — ativo`);
+      setStatus(`${resKey || "1080"}p @ ${fps || 30}fps — sala ${slug || "global"}`);
       if (stopBtn) stopBtn.hidden = false;
       broadcastState({ hint: "Transmissão ativa. Pode atualizar a página principal." });
     } catch (err) {
@@ -185,7 +200,7 @@
       return;
     }
     if (msg.type === "start") {
-      startShare(msg.res, msg.fps).catch(console.error);
+      startShare(msg.res, msg.fps, msg.room_slug, msg.password).catch(console.error);
       return;
     }
     if (msg.type === "stop") {

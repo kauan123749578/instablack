@@ -215,12 +215,18 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 | 2026-08-22 | fix | Call: mic = `setMicrophoneEnabled` direto; dock mobile Discord; quem entra vê tela (`scanAllRemoteMedia`); banner re-share após F5. app-v **123**. Redeploy **web**. |
 | 2026-08-22 | fix | Call: `/call/presence` (vê quem está antes de entrar); mic mobile com getUserMedia no toque + fallback publish; banner azul oculto no mobile. call v**15**, app-v **127**. |
 | 2026-08-22 | feat | Call: salas privadas (`CallRoom` + senha + blur nomes); avatares reais; mic fix (`isMicrophoneEnabled` mentia → só ligar); chat fixo embaixo. call v**16**, app-v **128**. |
+| 2026-08-22 | fix | Call: mic sem probe `getUserMedia` (Chrome já permitido mas app dizia negado); chat/criar sala com toast de erro + migração `call_rooms`/`call_chat_messages`. call v**18**, app-v **130**. |
+| 2026-08-22 | fix | Call: lista salas com poll na voz; screen-host na sala certa (`room_slug`); tela inline no PC; mic via `createLocalAudioTrack`. call v**19**, app-v **131**. |
 
 ### 3.4) Call / LiveKit — armadilhas
 
 - **Mesmo `identity` = kick**: token com só `u{user.id}` → segundo device (celular) **expulsa** o PC. Usar `u{id}-{device_id}` estável por `localStorage`.
 - **Banner “já está na sala” + DESCONECTADO**: `showMicBanner(true)` sem `room` → botão “Ligar microfone” parece morto (`enableMic` fazia `return` silencioso). Banner só se `inRoom() && !micOn`; se clicar fora da sala, hint pedindo Entrar.
-- **Mic mobile “não liga”**: `getUserMedia` no mesmo toque antes do `setMicrophoneEnabled`; fallback `createLocalAudioTrack` + `publishTrack`. Banner azul **oculto no mobile** (dock já tem botão).
+- **Mic “clico e nada”**: `isMicrophoneEnabled` pode ser `true` sem áudio publicado → botão **mutava** em vez de ligar. Usar `micOn`/`localMicLive()`; banner chama **`enableMicOnly`** sempre.
+- **Mic mobile “não liga”**: fallback `createLocalAudioTrack` + `publishTrack`. Banner azul **oculto no mobile** (dock já tem botão).
+- **Mic “permitido no Chrome mas app diz negado”**: **não** chamar `getUserMedia` no clique e parar tracks antes do LiveKit — o gesto expira e o 2º `getUserMedia` falha com `NotAllowedError`. Preferir `createLocalAudioTrack` + `publishTrack` no clique.
+- **Tela “Transmitindo” mas só avatar**: janela auxiliar entrava na **sala global** sem `room_slug` — passar `?room=` + `room_slug` no token do screen-host; no PC preferir share **inline** na mesma aba.
+- **Salas sumidas na sidebar**: `fetchPresence` fazia `return` quando `inRoom()` — poll de salas tem que continuar conectado.
 - **Canais em cima no mobile**: `@media 960px` não empilhar sidebar no topo — drawer `translateX(-100%)`, swipe da borda esquerda ou botão menu.
 - **Tela no iPhone**: Safari não tem `getDisplayMedia` útil — avisar; Android/PC ok.
 - **Quem está na sala só após entrar**: LiveKit não expõe participantes sem conectar. Usar **`GET /call/presence`** (LiveKit `list_participants`) + poll 3s enquanto desconectado; sidebar e contador atualizam antes do join.

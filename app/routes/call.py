@@ -307,14 +307,21 @@ def get_chat_messages(
     _require_call_user(user)
     room_slug = (request.query_params.get("room") or "").strip()
     since_id = int(request.query_params.get("since_id") or 0)
-    q = (
-        select(CallChatMessage)
-        .where(CallChatMessage.room_slug == room_slug)
-        .where(CallChatMessage.id > since_id)
-        .order_by(CallChatMessage.id.asc())
-        .limit(100)
-    )
-    rows = db.scalars(q).all()
+    try:
+        q = (
+            select(CallChatMessage)
+            .where(CallChatMessage.room_slug == room_slug)
+            .where(CallChatMessage.id > since_id)
+            .order_by(CallChatMessage.id.asc())
+            .limit(100)
+        )
+        rows = db.scalars(q).all()
+    except Exception as exc:
+        log.exception("call chat get failed")
+        raise HTTPException(
+            status_code=503,
+            detail="Chat indisponível — aguarde o servidor migrar e recarregue.",
+        ) from exc
     return JSONResponse({
         "messages": [
             {
@@ -349,15 +356,23 @@ async def post_chat_message(
     if room_slug:
         if not db.scalar(select(CallRoom.id).where(CallRoom.slug == room_slug)):
             raise HTTPException(status_code=404, detail="Sala não encontrada.")
-    msg = CallChatMessage(
-        room_slug=room_slug,
-        user_id=user.id,
-        author_name=_display_name(user),
-        text=text,
-    )
-    db.add(msg)
-    db.commit()
-    db.refresh(msg)
+    try:
+        msg = CallChatMessage(
+            room_slug=room_slug,
+            user_id=user.id,
+            author_name=_display_name(user),
+            text=text,
+        )
+        db.add(msg)
+        db.commit()
+        db.refresh(msg)
+    except Exception as exc:
+        log.exception("call chat post failed")
+        db.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail="Não foi possível salvar a mensagem — recarregue a página.",
+        ) from exc
     return JSONResponse({
         "id": msg.id,
         "author": msg.author_name,
@@ -402,9 +417,17 @@ async def create_call_room(
         blur_names=blur_names,
         livekit_room=livekit_room,
     )
-    db.add(room)
-    db.commit()
-    db.refresh(room)
+    try:
+        db.add(room)
+        db.commit()
+        db.refresh(room)
+    except Exception as exc:
+        log.exception("call room create failed")
+        db.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail="Não foi possível criar a sala — recarregue e tente de novo.",
+        ) from exc
     return JSONResponse({
         "slug": room.slug,
         "name": room.name,
@@ -511,11 +534,13 @@ def call_screen_host_page(
 ):
     """Janela auxiliar — mantém screen share ao atualizar a aba principal."""
     _require_call_user(user)
+    room_slug = (request.query_params.get("room") or "").strip()
     return templates.TemplateResponse(
         "call_screen_host.html",
         {
             "request": request,
             "user": user,
             "livekit_ready": _livekit_ready(),
+            "room_slug": room_slug,
         },
     )

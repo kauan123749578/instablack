@@ -789,6 +789,65 @@ def _postgres_migrate(bind=None) -> None:
                 ],
             )
 
+        def _create_table_if_missing(conn, name: str, ddl: str) -> None:
+            if _table_exists(conn, name):
+                return
+            conn.execute(text("SET LOCAL lock_timeout = '3000ms'"))
+            try:
+                conn.execute(text(ddl))
+                log.info("migrate: created table %s", name)
+            except Exception as exc:
+                log.warning("migrate: skip CREATE %s — %s", name, exc)
+
+        _create_table_if_missing(
+            conn,
+            "call_rooms",
+            """
+            CREATE TABLE call_rooms (
+                id SERIAL PRIMARY KEY,
+                slug VARCHAR(64) NOT NULL UNIQUE,
+                name VARCHAR(128) NOT NULL,
+                password_hash VARCHAR(255),
+                owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                blur_names BOOLEAN DEFAULT FALSE,
+                livekit_room VARCHAR(128) NOT NULL UNIQUE,
+                created_at TIMESTAMPTZ DEFAULT now()
+            )
+            """,
+        )
+        _create_table_if_missing(
+            conn,
+            "call_chat_messages",
+            """
+            CREATE TABLE call_chat_messages (
+                id SERIAL PRIMARY KEY,
+                room_slug VARCHAR(64) DEFAULT '' NOT NULL,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                author_name VARCHAR(255) NOT NULL,
+                text VARCHAR(500) NOT NULL,
+                created_at TIMESTAMPTZ DEFAULT now()
+            )
+            """,
+        )
+        if _table_exists(conn, "call_rooms"):
+            _create_indexes_safe(
+                conn,
+                [
+                    "CREATE INDEX IF NOT EXISTS ix_call_rooms_slug ON call_rooms (slug)",
+                    "CREATE INDEX IF NOT EXISTS ix_call_rooms_owner_id ON call_rooms (owner_id)",
+                ],
+            )
+        if _table_exists(conn, "call_chat_messages"):
+            _create_indexes_safe(
+                conn,
+                [
+                    "CREATE INDEX IF NOT EXISTS ix_call_chat_messages_room_slug "
+                    "ON call_chat_messages (room_slug)",
+                    "CREATE INDEX IF NOT EXISTS ix_call_chat_messages_created_at "
+                    "ON call_chat_messages (created_at)",
+                ],
+            )
+
 def init_db() -> None:
     """Cria todas as tabelas (uso simples, sem Alembic).
 
