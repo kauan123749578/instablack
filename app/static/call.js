@@ -10,6 +10,7 @@
   if (!root || root.dataset.ready !== "1") return;
 
   const REJOIN_KEY = "ib_call_rejoin";
+  const REJOIN_SHARE_KEY = "ib_call_rejoin_share";
   const DEVICE_KEY = "ib_call_device";
 
   const statusEl = document.getElementById("call-status");
@@ -39,6 +40,10 @@
   const deafenBtn = document.getElementById("call-deafen-btn");
   const leaveBtn = document.getElementById("call-leave-btn");
   const myStatus = document.getElementById("call-my-status");
+  const mobileDock = document.getElementById("call-mobile-dock");
+  const mobileStatus = document.getElementById("call-mobile-status");
+  const reshareBanner = document.getElementById("call-reshare-banner");
+  const reshareBtn = document.getElementById("call-reshare-btn");
   const qualityModal = document.getElementById("call-quality-modal");
   const qualityGo = document.getElementById("call-quality-go");
   const qualityStop = document.getElementById("call-quality-stop");
@@ -72,6 +77,8 @@
   let intentionalLeave = false;
   let micPublishing = false;
   let camPublishing = false;
+  let micGraceUntil = 0;
+  let activeScreenOwner = null;
   const audioEls = new Map();
 
   const lkReady = loadLivekitScript().catch((e) => {
@@ -165,6 +172,80 @@
     }
   }
 
+  function isMobileUi() {
+    return window.matchMedia("(max-width: 960px)").matches;
+  }
+
+  function rememberShare(on) {
+    try {
+      if (on) sessionStorage.setItem(REJOIN_SHARE_KEY, "1");
+      else sessionStorage.removeItem(REJOIN_SHARE_KEY);
+    } catch (_) {}
+  }
+
+  function showReshareBanner(show) {
+    if (reshareBanner) reshareBanner.hidden = !show;
+  }
+
+  function participantIsSharingScreen(p) {
+    if (!p) return false;
+    let sharingScreen = false;
+    const pubs = p.videoTrackPublications || p.trackPublications;
+    pubs?.forEach?.((pub) => {
+      if (pub.kind && pub.kind !== "video") return;
+      if (!isScreenSource(pub.source)) return;
+      if (pub.track && pub.isMuted !== true) sharingScreen = true;
+    });
+    if (p === room?.localParticipant && sharing) sharingScreen = true;
+    return sharingScreen;
+  }
+
+  function getScreenPublication(participant) {
+    if (!participant) return null;
+    let found = null;
+    const pubs = participant.videoTrackPublications || participant.trackPublications;
+    pubs?.forEach?.((pub) => {
+      if (found) return;
+      if (pub.kind && pub.kind !== "video") return;
+      if (!isScreenSource(pub.source)) return;
+      if (pub.track) found = pub;
+    });
+    return found;
+  }
+
+  /** Quem entra depois vê tela/câmera/áudio já publicados. */
+  function scanAllRemoteMedia() {
+    if (!room) return;
+    const r = room;
+    const screenSource = LK?.Track?.Source?.ScreenShare || "screen_share";
+
+    const handleParticipant = (p) => {
+      const pubs = p.videoTrackPublications || p.trackPublications;
+      pubs?.forEach?.((pub) => {
+        if (pub.kind === "audio" || (pub.track && pub.track.kind === "audio")) {
+          if (pub.isSubscribed !== false && pub.track) attachRemoteAudio(pub.track, p);
+          return;
+        }
+        if (pub.kind !== "video" && pub.track?.kind !== "video") return;
+        if (isScreenSource(pub.source) || pub.source === screenSource) {
+          if (pub.track) {
+            attachScreen(pub.track, labelOf(p), pub);
+            activeScreenOwner = p.identity;
+            if (p === r.localParticipant) {
+              sharing = true;
+              screenBtn?.classList.add("is-on");
+              syncMobileDock();
+            }
+          }
+        }
+      });
+    };
+
+    if (r.localParticipant) handleParticipant(r.localParticipant);
+    remoteList(r).forEach(handleParticipant);
+    refreshUi();
+  }
+
   function participantMicMuted(p) {
     try {
       if (p === room?.localParticipant) return !micOn;
@@ -180,22 +261,50 @@
   }
 
   function setMicUi() {
-    if (!micBtn) return;
-    micBtn.disabled = !inRoom();
-    micBtn.classList.toggle("is-muted", !micOn);
-    micBtn.innerHTML = micOn
-      ? '<i data-lucide="mic"></i>'
-      : '<i data-lucide="mic-off"></i>';
-    if (myStatus) {
-      if (!inRoom()) myStatus.textContent = "Fora da sala";
-      else {
-        const bits = [];
-        bits.push(micOn ? "Em voz" : "Em voz · mudo");
-        if (camOn) bits.push("câmera");
-        myStatus.textContent = bits.join(" · ");
-      }
-    }
+    const on = inRoom();
+    const statusText = !on
+      ? "Fora da sala"
+      : [micOn ? "Em voz" : "Em voz · mudo", camOn ? "câmera" : "", sharing ? "transmitindo" : ""]
+          .filter(Boolean)
+          .join(" · ");
+
+    [micBtn, ...document.querySelectorAll('[data-call-action="mic"]')].forEach((btn) => {
+      if (!btn) return;
+      btn.disabled = !on;
+      btn.classList.toggle("is-muted", !micOn);
+      btn.innerHTML = micOn
+        ? '<i data-lucide="mic"></i>'
+        : '<i data-lucide="mic-off"></i>';
+    });
+
+    if (myStatus) myStatus.textContent = statusText;
+    if (mobileStatus) mobileStatus.textContent = statusText;
+    syncMobileDock();
     if (window.lucide) window.lucide.createIcons();
+  }
+
+  function syncMobileDock() {
+    const on = inRoom();
+    const mobile = isMobileUi();
+    if (mobileDock) mobileDock.hidden = !(on && mobile);
+    if (connEl && mobile) connEl.hidden = true;
+
+    document.querySelectorAll('[data-call-action="cam"]').forEach((btn) => {
+      btn.disabled = !on;
+      btn.classList.toggle("is-on", camOn);
+      btn.innerHTML = camOn ? '<i data-lucide="video"></i>' : '<i data-lucide="video-off"></i>';
+    });
+    document.querySelectorAll('[data-call-action="screen"]').forEach((btn) => {
+      btn.disabled = !on;
+      btn.classList.toggle("is-on", sharing);
+    });
+    document.querySelectorAll('[data-call-action="deafen"]').forEach((btn) => {
+      btn.disabled = !on;
+      btn.classList.toggle("is-muted", deafened);
+    });
+    document.querySelectorAll('[data-call-action="chat"]').forEach((btn) => {
+      btn.disabled = !on;
+    });
   }
 
   function setCamUi() {
@@ -205,12 +314,13 @@
     camBtn.innerHTML = camOn
       ? '<i data-lucide="video"></i>'
       : '<i data-lucide="video-off"></i>';
+    syncMobileDock();
     if (window.lucide) window.lucide.createIcons();
   }
 
   function setConnectedUi(on) {
     if (lobbyEl) lobbyEl.hidden = on;
-    if (connEl) connEl.hidden = !on;
+    if (connEl) connEl.hidden = !on || isMobileUi();
     if (leaveBtn) leaveBtn.disabled = !on;
     if (screenBtn) screenBtn.disabled = !on;
     if (camBtn) camBtn.disabled = !on;
@@ -218,10 +328,12 @@
     if (chatInput) chatInput.disabled = !on;
     if (chatSend) chatSend.disabled = !on;
     if (micBtn) micBtn.disabled = !on;
-    const mobile = window.matchMedia("(max-width: 960px)").matches;
+    const mobile = isMobileUi();
     if (fabChat) fabChat.hidden = !(on && mobile);
+    syncMobileDock();
     if (!on) {
       showMicBanner(false);
+      showReshareBanner(false);
       collapseScreen();
       camOn = false;
       setCamUi();
@@ -308,13 +420,15 @@
               const speaking = !!p.isSpeaking;
               const muted = participantMicMuted(p);
               const hasCam = participantHasCam(p);
+              const onScreen = participantIsSharingScreen(p);
               const pid = escapeHtml(String(p.identity || ""));
-              return `<div class="dc-tile${speaking ? " is-speaking" : ""}${hasCam ? " has-cam" : ""}" data-pid="${pid}">
+              return `<div class="dc-tile${speaking ? " is-speaking" : ""}${hasCam ? " has-cam" : ""}${onScreen ? " is-sharing" : ""}" data-pid="${pid}">
                 <video class="dc-tile-cam" data-cam="${pid}" autoplay playsinline muted></video>
                 <div class="dc-avatar" style="background:${colorFor(p.identity)}">${escapeHtml(initialFor(labelOf(p)))}</div>
                 <div class="dc-tile-name">
                   ${muted ? '<i data-lucide="mic-off"></i>' : ""}
                   ${hasCam ? '<i data-lucide="video"></i>' : ""}
+                  ${onScreen ? '<i data-lucide="monitor-up"></i>' : ""}
                   <span>${escapeHtml(name)}</span>
                 </div>
               </div>`;
@@ -331,9 +445,11 @@
               const name = labelOf(p) + (self ? " (você)" : "");
               const speaking = !!p.isSpeaking;
               const muted = participantMicMuted(p);
-              return `<div class="dc-voice-member${speaking ? " is-speaking" : ""}">
+              const onScreen = participantIsSharingScreen(p);
+              return `<div class="dc-voice-member${speaking ? " is-speaking" : ""}${onScreen ? " is-sharing" : ""}">
                 <span class="av" style="background:${colorFor(p.identity)}">${escapeHtml(initialFor(labelOf(p)))}</span>
                 <span>${escapeHtml(name)}</span>
+                ${onScreen ? '<i data-lucide="monitor-up" class="share-icon"></i>' : ""}
                 ${muted ? '<i data-lucide="mic-off" class="mic-off"></i>' : ""}
               </div>`;
             })
@@ -510,82 +626,52 @@
       refreshUi();
       return;
     }
-    micOn = localMicLive();
+    if (Date.now() < micGraceUntil) return;
+    micOn = !!room.localParticipant.isMicrophoneEnabled || localMicLive();
     setMicUi();
     showMicBanner(!micOn);
     refreshUi();
   }
 
+  /** API LiveKit oficial — doc: setMicrophoneEnabled(true/false) */
   async function enableMic() {
-    if (micPublishing) return;
-
     if (!inRoom()) {
       showMicBanner(false);
-      setHint("Você não está na sala. Clique em «Entrar na sala» primeiro.");
-      setStatus("Desconectado");
+      setHint("Entre na sala primeiro.");
       return;
     }
-    if (!LK) {
-      setHint("SDK LiveKit ainda carregando — aguarde 2s e clique de novo.");
-      return;
-    }
-
+    if (micPublishing) return;
     micPublishing = true;
     if (enableMicBtn) enableMicBtn.disabled = true;
     setHint("Ativando microfone…");
-
     try {
-      // Caminho oficial LiveKit (gesto do clique → permission → publish).
-      await room.localParticipant.setMicrophoneEnabled(true, {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      });
-
-      micOn = localMicLive();
-      if (!micOn && typeof LK.createLocalAudioTrack === "function") {
-        const audioTrack = await LK.createLocalAudioTrack({
+      await room.localParticipant.setMicrophoneEnabled(true);
+      micOn = !!room.localParticipant.isMicrophoneEnabled;
+      if (!micOn) {
+        await room.localParticipant.setMicrophoneEnabled(true, {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
         });
-        const source = LK.Track?.Source?.Microphone;
-        await room.localParticipant.publishTrack(
-          audioTrack,
-          source ? { source, dtx: true, red: true } : { dtx: true, red: true }
-        );
-        try {
-          await room.localParticipant.setMicrophoneEnabled(true);
-        } catch (_) {}
-        micOn = localMicLive();
+        micOn = !!room.localParticipant.isMicrophoneEnabled;
       }
-
-      if (!micOn && !localMicLive()) {
-        throw new Error("Microfone não publicou — tente de novo");
-      }
-
-      micOn = true;
+      if (!micOn) throw new Error("Microfone não ligou — tente de novo");
+      micGraceUntil = Date.now() + 2000;
       showMicBanner(false);
-      setHint("Microfone ligado. Fale normalmente.");
+      setHint("Microfone ligado.");
       setMicUi();
       refreshUi();
-      setTimeout(syncMicFromRoom, 500);
     } catch (err) {
       console.error("enableMic", err);
       micOn = false;
-      if (inRoom()) showMicBanner(true);
-      else showMicBanner(false);
+      showMicBanner(true);
       setMicUi();
       const name = err?.name || "";
       const msg = String(err?.message || err);
       if (name === "NotAllowedError" || /Permission|NotAllowed/i.test(msg)) {
-        setHint("Chrome bloqueou o mic neste clique. Clique de novo em «Ligar microfone» e escolha Permitir.");
-      } else if (name === "NotFoundError") {
-        setHint("Nenhum microfone encontrado.");
-      } else if (name === "NotReadableError") {
-        setHint("Microfone em uso por outro app (Discord/Zoom). Feche e tente de novo.");
+        setHint("Permissão negada. Toque no microfone de novo e escolha Permitir.");
       } else {
-        setHint("Mic falhou: " + msg);
+        setHint("Mic: " + msg);
       }
     } finally {
       micPublishing = false;
@@ -712,15 +798,27 @@
       r.on(ev("TrackSubscribed", "trackSubscribed"), (track, publication, participant) => {
         if (track.kind === "audio") {
           attachRemoteAudio(track, participant);
+          refreshUi();
           return;
         }
         if (track.kind !== "video") return;
         const src = publication?.source;
         if (src === screenSource || isScreenSource(src)) {
           attachScreen(track, labelOf(participant), publication);
+          activeScreenOwner = participant?.identity || null;
+          refreshUi();
           return;
         }
-        // Câmera remota → tile
+        refreshUi();
+      });
+      r.on(ev("TrackPublished", "trackPublished"), (publication, participant) => {
+        if (publication?.kind === "audio" && publication.track) {
+          attachRemoteAudio(publication.track, participant);
+        }
+        if (publication?.kind === "video" && isScreenSource(publication.source) && publication.track) {
+          attachScreen(publication.track, labelOf(participant), publication);
+          activeScreenOwner = participant?.identity || null;
+        }
         refreshUi();
       });
       r.on(ev("TrackUnsubscribed", "trackUnsubscribed"), (track, publication, participant) => {
@@ -728,9 +826,16 @@
           detachRemoteAudio(participant.identity);
         }
         if (publication?.source === screenSource || isScreenSource(publication?.source)) {
-          clearScreen();
-          sharing = false;
-          screenBtn?.classList.remove("is-on");
+          if (!participant?.identity || participant.identity === activeScreenOwner) {
+            clearScreen();
+            activeScreenOwner = null;
+            if (participant === room?.localParticipant || participant?.identity === room?.localParticipant?.identity) {
+              sharing = false;
+              rememberShare(false);
+              screenBtn?.classList.remove("is-on");
+              syncMobileDock();
+            }
+          }
         }
         refreshUi();
       });
@@ -802,16 +907,20 @@
       );
       setMicUi();
 
-      remoteList(r).forEach((p) => {
-        p.trackPublications?.forEach((pub) => {
-          if (pub.isSubscribed && pub.track) {
-            if (pub.track.kind === "audio") attachRemoteAudio(pub.track, p);
-            if (pub.track.kind === "video" && (pub.source === screenSource || String(pub.source).includes("screen"))) {
-              attachScreen(pub.track, labelOf(p), pub);
-            }
-          }
-        });
-      });
+      scanAllRemoteMedia();
+      setTimeout(scanAllRemoteMedia, 600);
+      setTimeout(scanAllRemoteMedia, 1500);
+
+      let wantReshare = false;
+      try {
+        wantReshare = sessionStorage.getItem(REJOIN_SHARE_KEY) === "1";
+      } catch (_) {}
+      if (wantReshare && auto) {
+        showReshareBanner(true);
+        setHint("Você reentrou. Toque «Compartilhar tela» — o F5 exige novo clique.");
+      } else {
+        showReshareBanner(false);
+      }
 
       if (window.lucide) window.lucide.createIcons();
     } catch (err) {
@@ -836,6 +945,7 @@
   async function leave() {
     intentionalLeave = true;
     rememberJoin(false);
+    rememberShare(false);
     const r = room;
     room = null;
     sharing = false;
@@ -857,11 +967,37 @@
 
   async function toggleMic() {
     if (!inRoom()) {
-      setHint("Entre na sala primeiro (botão Entrar na sala).");
+      setHint("Entre na sala primeiro.");
       return;
     }
-    if (micOn) await muteMic();
+    const lp = room.localParticipant;
+    if (lp.isMicrophoneEnabled || micOn) await muteMic();
     else await enableMic();
+  }
+
+  function handleCallAction(action) {
+    switch (action) {
+      case "mic":
+        toggleMic().catch(console.error);
+        break;
+      case "cam":
+        toggleCamera().catch(console.error);
+        break;
+      case "screen":
+        onScreenBtnClick();
+        break;
+      case "deafen":
+        setDeafened(!deafened);
+        break;
+      case "leave":
+        leave().catch(console.error);
+        break;
+      case "chat":
+        chatPanel?.classList.add("is-open");
+        break;
+      default:
+        break;
+    }
   }
 
   async function toggleCamera() {
@@ -1008,10 +1144,14 @@
         screenPublishOpts()
       );
       sharing = true;
+      rememberShare(true);
+      showReshareBanner(false);
       screenBtn?.classList.add("is-on");
+      syncMobileDock();
       room.localParticipant.trackPublications?.forEach((pub) => {
         if (String(pub.source || "").includes("screen") && pub.track) {
           attachScreen(pub.track, "você", pub);
+          activeScreenOwner = room.localParticipant.identity;
         }
       });
       setHint(
@@ -1031,7 +1171,10 @@
       await room.localParticipant.setScreenShareEnabled(false);
     } catch (_) {}
     sharing = false;
+    rememberShare(false);
+    activeScreenOwner = null;
     screenBtn?.classList.remove("is-on");
+    syncMobileDock();
     clearScreen();
     setHint("Compartilhamento parado.");
   }
@@ -1040,16 +1183,30 @@
     deafened = on;
     audioEls.forEach((el) => { el.muted = on; });
     deafenBtn?.classList.toggle("is-muted", on);
+    syncMobileDock();
   }
 
-  // Delegação: funciona mesmo se lucide recriar ícones no botão.
+  // Delegação + botões diretos (mobile/desktop)
   root.addEventListener("click", (e) => {
     const t = e.target;
     if (!(t instanceof Element)) return;
 
+    const actionBtn = t.closest("[data-call-action]");
+    if (actionBtn) {
+      e.preventDefault();
+      handleCallAction(actionBtn.getAttribute("data-call-action"));
+      return;
+    }
+
     if (t.closest("#call-enable-mic-btn")) {
       e.preventDefault();
       enableMic().catch(console.error);
+      return;
+    }
+    if (t.closest("#call-reshare-btn")) {
+      e.preventDefault();
+      showReshareBanner(false);
+      openQualityModal();
       return;
     }
     if (t.closest("#call-mic-btn")) {
@@ -1081,6 +1238,24 @@
     if (t.closest("#call-screen-wrap")) {
       toggleScreenExpand();
     }
+  });
+
+  if (enableMicBtn) {
+    enableMicBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      enableMic().catch(console.error);
+    });
+  }
+  if (reshareBtn) {
+    reshareBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      showReshareBanner(false);
+      openQualityModal();
+    });
+  }
+
+  window.addEventListener("resize", () => {
+    if (inRoom()) setConnectedUi(true);
   });
 
   qualityResBox?.addEventListener("click", (e) => {
@@ -1121,7 +1296,10 @@
   });
 
   window.addEventListener("pagehide", () => {
-    if (room && !intentionalLeave) rememberJoin(true);
+    if (room && !intentionalLeave) {
+      rememberJoin(true);
+      if (sharing) rememberShare(true);
+    }
   });
 
   setMicUi();

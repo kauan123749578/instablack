@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Call — instablack{% endblock %}
 {% block head %}
-<link rel="stylesheet" href="/static/call.css?v=9" />
+<link rel="stylesheet" href="/static/call.css?v=10" />
 {% endblock %}
 {% block content %}
 <div class="dc-root" id="call-page"
@@ -94,10 +94,19 @@
       {# Banner mic (aparece DEPOIS de entrar, se precisar) #}
       <div class="dc-mic-banner" id="call-mic-banner" hidden>
         <div>
-          <strong>Microfone desligado</strong>
-          <span>Você já está na sala. Clique no botão para publicar o áudio (mesmo com permissão “Permitir” no Chrome).</span>
+          <strong id="call-mic-banner-title">Microfone desligado</strong>
+          <span id="call-mic-banner-text">Toque no microfone (barra inferior no celular) para falar.</span>
         </div>
-        <button type="button" class="dc-join dc-join-sm" id="call-enable-mic-btn">Ligar microfone</button>
+        <button type="button" class="dc-join dc-join-sm" id="call-enable-mic-btn" type="button">Ligar microfone</button>
+      </div>
+
+      {# Banner recompartilhar após F5 #}
+      <div class="dc-mic-banner dc-reshare-banner" id="call-reshare-banner" hidden>
+        <div>
+          <strong>Transmissão parou ao atualizar</strong>
+          <span>O navegador exige um clique para compartilhar de novo.</span>
+        </div>
+        <button type="button" class="dc-join dc-join-sm" id="call-reshare-btn" type="button">Compartilhar tela</button>
       </div>
     </section>
 
@@ -115,6 +124,46 @@
         <button type="submit" id="call-chat-send" disabled>Enviar</button>
       </form>
     </aside>
+  </div>
+
+  {# Mobile: dock estilo Discord (voz + controles grandes) #}
+  <div class="dc-mobile-dock" id="call-mobile-dock" hidden>
+    <div class="dc-mobile-dock-top">
+      <div class="dc-mobile-dock-status">
+        <i data-lucide="signal"></i>
+        <div>
+          <strong>Voz conectada</strong>
+          <span>Sala de voz / instablack</span>
+        </div>
+      </div>
+      <button type="button" class="dc-icon-btn dc-disconnect" data-call-action="leave" title="Desconectar">
+        <i data-lucide="phone-off"></i>
+      </button>
+    </div>
+    <div class="dc-mobile-dock-grid">
+      <button type="button" class="dc-dock-btn" data-call-action="cam" title="Câmera" disabled>
+        <i data-lucide="video-off"></i>
+      </button>
+      <button type="button" class="dc-dock-btn" data-call-action="screen" title="Compartilhar tela" disabled>
+        <i data-lucide="monitor-up"></i>
+      </button>
+      <button type="button" class="dc-dock-btn" data-call-action="deafen" title="Ensurdecer" disabled>
+        <i data-lucide="headphones"></i>
+      </button>
+      <button type="button" class="dc-dock-btn" data-call-action="chat" title="Chat" disabled>
+        <i data-lucide="message-circle"></i>
+      </button>
+    </div>
+    <div class="dc-mobile-dock-user">
+      <div class="dc-user-avatar">{{ (user.display_name or user.username)[0]|upper }}</div>
+      <div class="dc-user-meta">
+        <strong>{{ user.display_name or user.username }}</strong>
+        <span id="call-mobile-status">Offline</span>
+      </div>
+      <button type="button" class="dc-dock-mic is-muted" data-call-action="mic" title="Microfone" disabled>
+        <i data-lucide="mic-off"></i>
+      </button>
+    </div>
   </div>
 
   {# Mobile: botão abrir chat #}
@@ -165,5 +214,5 @@
 
   {% endif %}
 </div>
-<script src="/static/call.js?v=9"></script>
+<script src="/static/call.js?v=10"></script>
 {% endblock %}
