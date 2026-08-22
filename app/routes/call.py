@@ -18,7 +18,7 @@ from app.security import hash_password, verify_password
 from app.templating import templates
 from app.utils.avatars import user_avatar_url
 from app.utils.voice_room import can_access_voice_room
-from models.models import CallRoom, User
+from models.models import CallChatMessage, CallRoom, User
 
 router = APIRouter(prefix="/call", tags=["call"])
 log = logging.getLogger(__name__)
@@ -99,6 +99,33 @@ def _anonymize(name: str, blur: bool) -> str:
     return "Participante"
 
 
+async def _lk_participants(livekit_room: str, db: Session, blur: bool = False) -> list[dict]:
+    from livekit import api as lk_api
+
+    async with lk_api.LiveKitAPI(
+        url=_livekit_api_http_url(),
+        api_key=(settings.livekit_api_key or "").strip(),
+        api_secret=(settings.livekit_api_secret or "").strip(),
+    ) as lk:
+        resp = await lk.room.list_participants(
+            lk_api.ListParticipantsRequest(room=livekit_room)
+        )
+    out = []
+    for p in resp.participants:
+        ident = (p.identity or "").strip()
+        if ident.endswith("-screen"):
+            continue
+        uid = _user_id_from_identity(ident)
+        raw_name = (p.name or ident or "Alguém").strip()
+        out.append({
+            "identity": ident,
+            "name": _anonymize(raw_name, blur),
+            "avatar_url": _avatar_for_user_id(db, uid) if uid else None,
+            "user_id": uid,
+        })
+    return out
+
+
 @router.get("")
 def call_page(
     request: Request,
@@ -137,51 +164,68 @@ async def call_presence(
     user: User = Depends(get_auth_user),
     db: Session = Depends(get_db),
 ):
-    """Quem está na sala agora (via LiveKit API) — visível antes de entrar."""
+    """Quem está na sala — ou todas as salas se ?all=1."""
     _require_call_user(user)
     if not _livekit_ready():
-        return JSONResponse({"participants": [], "count": 0, "blur_names": False})
+        return JSONResponse({"participants": [], "count": 0, "blur_names": False, "rooms": []})
 
     room_slug = (request.query_params.get("room") or "").strip()
+    show_all = (request.query_params.get("all") or "") == "1" or not room_slug
+
+    if show_all:
+        rooms_out = []
+        try:
+            global_parts = await _lk_participants(_global_room_name(), db, False)
+            rooms_out.append({
+                "slug": "",
+                "name": "Sala global",
+                "count": len(global_parts),
+                "participants": global_parts,
+                "url": "/call",
+            })
+            for cr in db.scalars(select(CallRoom).order_by(CallRoom.name)).all():
+                blur = bool(cr.blur_names)
+                parts = await _lk_participants(cr.livekit_room, db, blur)
+                rooms_out.append({
+                    "slug": cr.slug,
+                    "name": cr.name,
+                    "count": len(parts),
+                    "participants": parts,
+                    "blur_names": blur,
+                    "url": f"/call?room={cr.slug}",
+                    "owner_id": cr.owner_id,
+                })
+        except Exception as exc:
+            log.warning("call presence all: %s", exc)
+            return JSONResponse({"participants": [], "count": 0, "rooms": [], "blur_names": False})
+
+        active = room_slug
+        current = next((r for r in rooms_out if r["slug"] == active), rooms_out[0] if rooms_out else None)
+        return JSONResponse({
+            "participants": current["participants"] if current else [],
+            "count": current["count"] if current else 0,
+            "blur_names": bool(current and current.get("blur_names")),
+            "rooms": rooms_out,
+            "active_slug": active,
+        })
+
     try:
         livekit_room, call_room = _resolve_call_room(db, room_slug or None)
     except HTTPException:
-        return JSONResponse({"participants": [], "count": 0, "blur_names": False})
+        return JSONResponse({"participants": [], "count": 0, "blur_names": False, "rooms": []})
 
     blur = bool(call_room and call_room.blur_names)
     try:
-        from livekit import api as lk_api
-
-        async with lk_api.LiveKitAPI(
-            url=_livekit_api_http_url(),
-            api_key=(settings.livekit_api_key or "").strip(),
-            api_secret=(settings.livekit_api_secret or "").strip(),
-        ) as lk:
-            resp = await lk.room.list_participants(
-                lk_api.ListParticipantsRequest(room=livekit_room)
-            )
-        participants = []
-        for p in resp.participants:
-            ident = (p.identity or "").strip()
-            if ident.endswith("-screen"):
-                continue
-            uid = _user_id_from_identity(ident)
-            raw_name = (p.name or ident or "Alguém").strip()
-            avatar = _avatar_for_user_id(db, uid) if uid else None
-            participants.append({
-                "identity": ident,
-                "name": _anonymize(raw_name, blur),
-                "avatar_url": avatar,
-                "user_id": uid,
-            })
+        participants = await _lk_participants(livekit_room, db, blur)
         return JSONResponse({
             "participants": participants,
             "count": len(participants),
             "blur_names": blur,
+            "rooms": [],
         })
     except Exception as exc:
         log.warning("call presence: %s", exc)
-        return JSONResponse({"participants": [], "count": 0, "blur_names": blur})
+        return JSONResponse({"participants": [], "count": 0, "blur_names": blur, "rooms": []})
 
 
 @router.get("/roster")
@@ -219,7 +263,7 @@ def call_roster(
 def list_my_rooms(user: User = Depends(get_auth_user), db: Session = Depends(get_db)):
     _require_call_user(user)
     rooms = db.scalars(
-        select(CallRoom).where(CallRoom.owner_id == user.id).order_by(CallRoom.created_at.desc())
+        select(CallRoom).order_by(CallRoom.name)
     ).all()
     return JSONResponse({
         "rooms": [
@@ -229,9 +273,96 @@ def list_my_rooms(user: User = Depends(get_auth_user), db: Session = Depends(get
                 "has_password": bool(r.password_hash),
                 "blur_names": r.blur_names,
                 "url": f"/call?room={r.slug}",
+                "owner_id": r.owner_id,
+                "is_mine": r.owner_id == user.id,
             }
             for r in rooms
         ]
+    })
+
+
+@router.delete("/rooms/{slug}")
+def delete_call_room(
+    slug: str,
+    user: User = Depends(get_auth_user),
+    db: Session = Depends(get_db),
+):
+    _require_call_user(user)
+    room = db.scalar(select(CallRoom).where(CallRoom.slug == slug))
+    if not room:
+        raise HTTPException(status_code=404, detail="Sala não encontrada.")
+    if room.owner_id != user.id and not getattr(user, "is_owner", False):
+        raise HTTPException(status_code=403, detail="Só o dono pode excluir esta sala.")
+    db.delete(room)
+    db.commit()
+    return JSONResponse({"ok": True})
+
+
+@router.get("/chat")
+def get_chat_messages(
+    request: Request,
+    user: User = Depends(get_auth_user),
+    db: Session = Depends(get_db),
+):
+    _require_call_user(user)
+    room_slug = (request.query_params.get("room") or "").strip()
+    since_id = int(request.query_params.get("since_id") or 0)
+    q = (
+        select(CallChatMessage)
+        .where(CallChatMessage.room_slug == room_slug)
+        .where(CallChatMessage.id > since_id)
+        .order_by(CallChatMessage.id.asc())
+        .limit(100)
+    )
+    rows = db.scalars(q).all()
+    return JSONResponse({
+        "messages": [
+            {
+                "id": m.id,
+                "author": m.author_name,
+                "text": m.text,
+                "user_id": m.user_id,
+                "at": m.created_at.isoformat() if m.created_at else None,
+            }
+            for m in rows
+        ],
+    })
+
+
+@router.post("/chat")
+async def post_chat_message(
+    request: Request,
+    user: User = Depends(get_auth_user),
+    db: Session = Depends(get_db),
+):
+    _require_call_user(user)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    room_slug = str(body.get("room_slug") or "").strip()
+    text = str(body.get("text") or "").strip()[:500]
+    if not text:
+        raise HTTPException(status_code=400, detail="Mensagem vazia.")
+    if room_slug:
+        if not db.scalar(select(CallRoom.id).where(CallRoom.slug == room_slug)):
+            raise HTTPException(status_code=404, detail="Sala não encontrada.")
+    msg = CallChatMessage(
+        room_slug=room_slug,
+        user_id=user.id,
+        author_name=_display_name(user),
+        text=text,
+    )
+    db.add(msg)
+    db.commit()
+    db.refresh(msg)
+    return JSONResponse({
+        "id": msg.id,
+        "author": msg.author_name,
+        "text": msg.text,
+        "user_id": msg.user_id,
     })
 
 
@@ -250,7 +381,7 @@ async def create_call_room(
         body = {}
     name = str(body.get("name") or "").strip()[:128]
     if not name:
-        raise HTTPException(400, detail="Nome da sala obrigatório.")
+        raise HTTPException(status_code=400, detail="Nome da sala obrigatório.")
     password = str(body.get("password") or "").strip()
     blur_names = bool(body.get("blur_names"))
     slug = _slugify(name)

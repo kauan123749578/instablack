@@ -111,6 +111,28 @@
   padding: 10px 12px; color: #dbdee1; font: inherit;
 }
 .dc-check { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: #b5bac1; margin: 12px 0; }
+.dc-room-list { padding: 0 8px 8px; display: flex; flex-direction: column; gap: 2px; }
+.dc-room-item {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 8px; border-radius: 4px; font-size: 13px;
+  color: #949ba4; text-decoration: none; background: transparent; border: none;
+  font: inherit; cursor: pointer; text-align: left; width: 100%;
+}
+.dc-room-item:hover { background: rgba(78,80,88,0.35); color: #dbdee1; }
+.dc-room-item.is-active { background: rgba(88,101,242,0.2); color: #fff; }
+.dc-room-item .cnt { margin-left: auto; font-size: 11px; opacity: 0.85; }
+.dc-room-del {
+  border: none; background: transparent; color: #ed4245; cursor: pointer;
+  padding: 2px 4px; opacity: 0.7; flex-shrink: 0;
+}
+.dc-room-del:hover { opacity: 1; }
+.dc-status-toast {
+  padding: 8px 16px; font-size: 13px; color: #fee75c;
+  background: rgba(254,231,92,0.08); border-bottom: 1px solid rgba(254,231,92,0.15);
+}
+.dc-status-toast[hidden] { display: none !important; }
+.dc-status-toast.is-ok { color: #57f287; background: rgba(87,242,135,0.08); border-color: rgba(87,242,135,0.15); }
+.dc-status-toast.is-err { color: #ed4245; background: rgba(237,66,69,0.08); border-color: rgba(237,66,69,0.15); }
 .dc-voice-members {
   padding: 0 8px 8px 28px;
   display: flex;

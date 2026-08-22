@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Call — instablack{% endblock %}
 {% block head %}
-<link rel="stylesheet" href="/static/call.css?v=16" />
+<link rel="stylesheet" href="/static/call.css?v=17" />
 {% endblock %}
 {% block content %}
 <div class="dc-root" id="call-page"
@@ -25,24 +25,13 @@
     {# Coluna canais (estilo Discord) #}
     <aside class="dc-channels">
       <div class="dc-server-name">instablack</div>
-      <div class="dc-cat">Canais de voz</div>
-      <button type="button" class="dc-channel is-voice is-active" id="call-channel-btn">
-        <i data-lucide="volume-2"></i>
-        <span>{% if call_room %}{{ call_room.name }}{% else %}Sala de voz{% endif %}</span>
-      </button>
+      <div class="dc-cat">Salas</div>
+      <div id="call-room-list" class="dc-room-list"></div>
       <button type="button" class="dc-channel is-create" id="call-create-room-btn" title="Criar sala privada">
         <i data-lucide="plus"></i>
         <span>Criar sala</span>
       </button>
-      {% if my_rooms %}
-      <div class="dc-cat">Minhas salas</div>
-      {% for r in my_rooms %}
-      <a class="dc-channel is-link" href="/call?room={{ r.slug }}">
-        <i data-lucide="lock"></i>
-        <span>{{ r.name }}</span>
-      </a>
-      {% endfor %}
-      {% endif %}
+      <div class="dc-cat">Na sala agora</div>
       <div class="dc-voice-members" id="call-voice-members"></div>
 
       <div class="dc-conn" id="call-conn" hidden>
@@ -95,6 +84,7 @@
           <span class="dc-badge" id="call-status">Desconectado</span>
         </div>
       </header>
+      <div class="dc-status-toast" id="call-status-toast" hidden></div>
 
       <div class="dc-stage" id="call-stage">
         <div class="dc-screen-wrap" id="call-screen-wrap" hidden>
@@ -140,8 +130,8 @@
       </div>
       <div class="dc-chat-log" id="call-chat-log"></div>
       <form class="dc-chat-form" id="call-chat-form">
-        <input type="text" id="call-chat-input" placeholder="Mensagem na sala…" maxlength="500" autocomplete="off" disabled>
-        <button type="submit" id="call-chat-send" disabled>Enviar</button>
+        <input type="text" id="call-chat-input" placeholder="Mensagem na sala…" maxlength="500" autocomplete="off">
+        <button type="submit" id="call-chat-send">Enviar</button>
       </form>
     </aside>
   </div>
@@ -278,5 +268,5 @@
 
   {% endif %}
 </div>
-<script src="/static/call.js?v=16"></script>
+<script src="/static/call.js?v=17"></script>
 {% endblock %}

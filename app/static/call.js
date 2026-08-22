@@ -60,6 +60,9 @@
   const passModal = document.getElementById("call-pass-modal");
   const passInput = document.getElementById("call-pass-input");
   const passGo = document.getElementById("call-pass-go");
+  const statusToast = document.getElementById("call-status-toast");
+  const roomListEl = document.getElementById("call-room-list");
+  const micBannerText = document.getElementById("call-mic-banner-text");
 
   const roomSlug = (root.dataset.roomSlug || "").trim();
   let roomPassword = "";
@@ -102,7 +105,11 @@
   let screenHostSharing = false;
   let screenHostWin = null;
   let presenceList = [];
+  let presenceRooms = [];
   let presenceTimer = null;
+  let chatLastId = 0;
+  let chatTimer = null;
+  const seenChatIds = new Set();
   const screenHostChannel = new BroadcastChannel(SCREEN_HOST_CHANNEL);
   const audioEls = new Map();
 
@@ -136,8 +143,30 @@
     statusEl.classList.toggle("is-wait", kind === "wait");
   }
 
+  function showToast(msg, kind) {
+    if (!statusToast) return;
+    if (!msg) {
+      statusToast.hidden = true;
+      statusToast.textContent = "";
+      statusToast.classList.remove("is-ok", "is-err");
+      return;
+    }
+    statusToast.hidden = false;
+    statusToast.textContent = msg;
+    statusToast.classList.toggle("is-ok", kind === "ok");
+    statusToast.classList.toggle("is-err", kind === "error");
+    if (kind === "ok" || kind === "error") {
+      clearTimeout(showToast._t);
+      showToast._t = setTimeout(() => showToast("", ""), 6000);
+    }
+  }
+
   function setHint(msg) {
     if (hintEl) hintEl.textContent = msg || "";
+    if (inRoom() && msg) {
+      showToast(msg, msg.includes("negad") || msg.includes("Falha") || msg.includes("Não foi") ? "error" : "");
+      if (micBannerText && !micOn) micBannerText.textContent = msg;
+    }
   }
 
   function escapeHtml(s) {
@@ -558,7 +587,11 @@
     [micBtn, enableMicBtn, ...document.querySelectorAll('[data-call-action="mic"]')].forEach((btn) => {
       if (!btn) return;
       btn.classList.toggle("is-pending", pending);
-      btn.disabled = pending || !inRoom();
+      if (btn === enableMicBtn || btn === micBtn) {
+        btn.disabled = pending || !inRoom();
+      } else {
+        btn.disabled = pending || !inRoom();
+      }
     });
   }
 
@@ -629,9 +662,8 @@
     if (screenBtn) screenBtn.disabled = !on;
     if (camBtn) camBtn.disabled = !on;
     if (deafenBtn) deafenBtn.disabled = !on;
-    if (chatInput) chatInput.disabled = !on;
-    if (chatSend) chatSend.disabled = !on;
     if (micBtn) micBtn.disabled = !on;
+    if (enableMicBtn) enableMicBtn.disabled = !on;
     const mobile = isMobileUi();
     if (fabChat) fabChat.hidden = !(on && mobile);
     syncMobileDock();
@@ -747,7 +779,9 @@
     const sub = lobbyEl.querySelector("p");
     if (!sub) return;
     if (presenceList.length === 0) {
-      sub.textContent = "Entre para falar. Quem já está aparece ao lado.";
+      sub.textContent = roomSlug
+        ? "Ninguém nesta sala ainda. Entre para falar — ou veja outras salas acima."
+        : "Entre para falar. Salas com gente aparecem acima com contagem.";
       return;
     }
     const names = presenceList.map((p) => p.name || p.identity).slice(0, 5).join(", ");
@@ -758,19 +792,39 @@
   async function fetchPresence() {
     if (inRoom()) return;
     try {
-      const q = roomSlug ? `?room=${encodeURIComponent(roomSlug)}` : "";
+      const q = roomSlug
+        ? `?room=${encodeURIComponent(roomSlug)}&all=1`
+        : "?all=1";
       const res = await fetch(`/call/presence${q}`, {
         headers: { Accept: "application/json", "X-Requested-With": "fetch" },
       });
       const data = await res.json().catch(() => ({}));
+      presenceRooms = Array.isArray(data.rooms) ? data.rooms : [];
       presenceList = Array.isArray(data.participants) ? data.participants : [];
       blurNames = !!data.blur_names;
       applyBlurUi();
       presenceList.forEach((p) => {
         if (p.identity) roster.set(p.identity, { name: p.name, avatar_url: p.avatar_url });
       });
+      renderRoomList(presenceRooms);
       refreshPresenceUi();
     } catch (_) {}
+  }
+
+  function renderRoomList(rooms) {
+    if (!roomListEl) return;
+    roomListEl.innerHTML = (rooms || []).map((r) => {
+      const slug = r.slug || "";
+      const active = slug === roomSlug ? " is-active" : "";
+      const canDel = r.owner_id === myUserId && slug;
+      return `<button type="button" class="dc-room-item${active}" data-room-go="${escapeHtml(slug)}">
+        <i data-lucide="${slug ? "lock" : "volume-2"}"></i>
+        <span>${escapeHtml(r.name || "Sala")}</span>
+        <span class="cnt">${Number(r.count) || 0}</span>
+        ${canDel ? `<span class="dc-room-del" data-del-room="${escapeHtml(slug)}" title="Excluir">×</span>` : ""}
+      </button>`;
+    }).join("");
+    if (window.lucide) window.lucide.createIcons();
   }
 
   function startPresencePoll() {
@@ -850,13 +904,38 @@
     if (window.lucide) window.lucide.createIcons();
   }
 
-  function appendChat(from, text) {
+  function appendChat(from, text, id) {
     if (!chatLog) return;
+    if (id && seenChatIds.has(id)) return;
+    if (id) seenChatIds.add(id);
     const line = document.createElement("div");
     line.className = "dc-chat-line";
     line.innerHTML = `<strong>${escapeHtml(from)}</strong>${escapeHtml(text)}`;
     chatLog.appendChild(line);
     chatLog.scrollTop = chatLog.scrollHeight;
+  }
+
+  async function fetchChat() {
+    try {
+      const q = new URLSearchParams({
+        room: roomSlug || "",
+        since_id: String(chatLastId),
+      });
+      const res = await fetch(`/call/chat?${q}`, {
+        headers: { Accept: "application/json", "X-Requested-With": "fetch" },
+      });
+      const data = await res.json().catch(() => ({}));
+      (data.messages || []).forEach((m) => {
+        if (m.id) chatLastId = Math.max(chatLastId, m.id);
+        appendChat(m.author || "?", m.text || "", m.id);
+      });
+    } catch (_) {}
+  }
+
+  function startChatPoll() {
+    fetchChat();
+    if (chatTimer) clearInterval(chatTimer);
+    chatTimer = setInterval(fetchChat, 2000);
   }
 
   function collapseScreen() {
@@ -1049,18 +1128,22 @@
     const lp = room.localParticipant;
     setMicUiPending(true);
     setHint("Ativando microfone…");
+    showToast("Ativando microfone…", "");
     try {
       micGraceUntil = Date.now() + 3500;
       if (primePromise) {
         const stream = await primePromise;
         stream.getTracks().forEach((t) => t.stop());
       }
+      try { await lp.setMicrophoneEnabled(false); } catch (_) {}
+      await new Promise((r) => setTimeout(r, 80));
       await lp.setMicrophoneEnabled(true, {
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
       });
-      micOn = lp.isMicrophoneEnabled || localMicLive();
+      await new Promise((r) => setTimeout(r, 200));
+      micOn = localMicLive() || lp.isMicrophoneEnabled;
       if (!micOn && typeof LK?.createLocalAudioTrack === "function") {
         const audioTrack = await LK.createLocalAudioTrack({
           echoCancellation: true,
@@ -1076,14 +1159,22 @@
       }
       micOn = micOn || localMicLive();
       showMicBanner(!micOn);
-      setHint(micOn ? "Microfone ligado." : "Não foi possível ligar o microfone.");
+      if (micOn) {
+        setHint("Microfone ligado.");
+        showToast("Microfone ligado — pode falar.", "ok");
+      } else {
+        setHint("Não foi possível ligar o microfone.");
+        showToast("Microfone não ligou. Clique de novo e permita no Chrome.", "error");
+      }
       setMicUi();
       refreshUi();
     } catch (err) {
       console.error("[call] enableMic", err);
       micOn = localMicLive();
       showMicBanner(!micOn);
-      setHint(mapMicError(err));
+      const errMsg = mapMicError(err);
+      setHint(errMsg);
+      showToast(errMsg, "error");
       setMicUi();
     } finally {
       micPublishing = false;
@@ -1769,7 +1860,7 @@
       else openQualityModal();
       return;
     }
-    if (t.closest("#call-join-btn") || t.closest("#call-channel-btn")) {
+    if (t.closest("#call-join-btn")) {
       closeSidebar();
       if (!room) join({ auto: false }).catch(console.error);
       return;
@@ -1875,13 +1966,58 @@
 
   chatForm?.addEventListener("submit", async (e) => {
     e.preventDefault();
-    if (!inRoom()) return;
     const text = (chatInput.value || "").trim();
     if (!text) return;
-    const payload = new TextEncoder().encode(JSON.stringify({ t: "chat", text }));
-    await room.localParticipant.publishData(payload, { reliable: true });
-    appendChat("você", text);
-    chatInput.value = "";
+    try {
+      const res = await fetch("/call/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": csrf(),
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ room_slug: roomSlug || "", text }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || "Falha ao enviar");
+      if (data.id) chatLastId = Math.max(chatLastId, data.id);
+      appendChat("você", text, data.id);
+      chatInput.value = "";
+      if (inRoom() && room?.localParticipant) {
+        try {
+          const payload = new TextEncoder().encode(JSON.stringify({ t: "chat", text }));
+          await room.localParticipant.publishData(payload, { reliable: true });
+        } catch (_) {}
+      }
+    } catch (err) {
+      showToast(String(err.message || err), "error");
+    }
+  });
+
+  roomListEl?.addEventListener("click", async (e) => {
+    const del = e.target.closest("[data-del-room]");
+    if (del) {
+      e.preventDefault();
+      e.stopPropagation();
+      const slug = del.getAttribute("data-del-room");
+      if (!slug || !confirm(`Excluir sala "${slug}"?`)) return;
+      try {
+        const res = await fetch(`/call/rooms/${encodeURIComponent(slug)}`, {
+          method: "DELETE",
+          headers: { "X-CSRF-Token": csrf(), Accept: "application/json" },
+        });
+        if (!res.ok) throw new Error("Não foi possível excluir");
+        if (roomSlug === slug) window.location.href = "/call";
+        else fetchPresence();
+      } catch (err) {
+        showToast(String(err.message || err), "error");
+      }
+      return;
+    }
+    const go = e.target.closest("[data-room-go]");
+    if (!go) return;
+    const slug = go.getAttribute("data-room-go") || "";
+    window.location.href = slug ? `/call?room=${encodeURIComponent(slug)}` : "/call";
   });
 
   window.addEventListener("pagehide", () => {
@@ -1903,6 +2039,7 @@
   setConnectedUi(false);
   showMicBanner(false);
   startPresencePoll();
+  startChatPoll();
   if (window.lucide) window.lucide.createIcons();
 
   try {

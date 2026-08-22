@@ -579,3 +579,20 @@ class CallRoom(Base):
     )
 
     owner: Mapped["User"] = relationship(foreign_keys=[owner_id])
+
+
+class CallChatMessage(Base):
+    """Chat da call (HTTP — funciona sem entrar na voz)."""
+
+    __tablename__ = "call_chat_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    room_slug: Mapped[str] = mapped_column(String(64), default="", index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    author_name: Mapped[str] = mapped_column(String(255))
+    text: Mapped[str] = mapped_column(String(500))
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+
+    user: Mapped["User"] = relationship()
