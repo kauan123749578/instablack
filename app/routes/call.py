@@ -36,6 +36,15 @@ def _livekit_ready() -> bool:
     )
 
 
+def _livekit_api_http_url() -> str:
+    url = (settings.livekit_url or "").strip()
+    if url.startswith("wss://"):
+        return "https://" + url[6:]
+    if url.startswith("ws://"):
+        return "http://" + url[5:]
+    return url
+
+
 def _display_name(user: User) -> str:
     name = (getattr(user, "display_name", None) or "").strip()
     return name or f"@{user.username}"
@@ -145,6 +154,40 @@ async def call_token(
             "name": name,
         }
     )
+
+
+@router.get("/presence")
+async def call_presence(user: User = Depends(get_auth_user)):
+    """Quem está na sala agora (via LiveKit API) — visível antes de entrar."""
+    _require_call_user(user)
+    if not _livekit_ready():
+        return JSONResponse({"participants": [], "count": 0})
+
+    room = (settings.livekit_room_name or "instablack-global").strip()
+    try:
+        from livekit import api as lk_api
+
+        async with lk_api.LiveKitAPI(
+            url=_livekit_api_http_url(),
+            api_key=(settings.livekit_api_key or "").strip(),
+            api_secret=(settings.livekit_api_secret or "").strip(),
+        ) as lk:
+            resp = await lk.room.list_participants(
+                lk_api.ListParticipantsRequest(room=room)
+            )
+        participants = []
+        for p in resp.participants:
+            ident = (p.identity or "").strip()
+            if ident.endswith("-screen"):
+                continue
+            participants.append({
+                "identity": ident,
+                "name": (p.name or ident or "Alguém").strip(),
+            })
+        return JSONResponse({"participants": participants, "count": len(participants)})
+    except Exception as exc:
+        log.warning("call presence: %s", exc)
+        return JSONResponse({"participants": [], "count": 0})
 
 
 @router.get("/screen-host")

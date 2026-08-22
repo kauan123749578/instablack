@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Call — instablack{% endblock %}
 {% block head %}
-<link rel="stylesheet" href="/static/call.css?v=14" />
+<link rel="stylesheet" href="/static/call.css?v=15" />
 {% endblock %}
 {% block content %}
 <div class="dc-root" id="call-page"
@@ -88,7 +88,7 @@
 
         <div class="dc-lobby" id="call-lobby">
           <h3>Sala de voz</h3>
-          <p>Entre primeiro. O navegador só pede microfone depois — igual o Discord.</p>
+          <p>Entre para falar. Quem já está na sala aparece na lista ao lado.</p>
           <button type="button" class="dc-join" id="call-join-btn">Entrar na sala</button>
           <p class="dc-hint" id="call-hint"></p>
         </div>
@@ -221,5 +221,5 @@
 
   {% endif %}
 </div>
-<script src="/static/call.js?v=14"></script>
+<script src="/static/call.js?v=15"></script>
 {% endblock %}

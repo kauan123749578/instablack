@@ -85,6 +85,8 @@
   let sidebarOpen = false;
   let screenHostSharing = false;
   let screenHostWin = null;
+  let presenceList = [];
+  let presenceTimer = null;
   const screenHostChannel = new BroadcastChannel(SCREEN_HOST_CHANNEL);
   const audioEls = new Map();
 
@@ -460,6 +462,11 @@
   }
 
   function showMicBanner(show) {
+    // Mobile: dock já tem botão grande — não mostrar banner azul.
+    if (isMobileUi()) {
+      if (micBanner) micBanner.hidden = true;
+      return;
+    }
     const should = !!(show && inRoom() && !micOn);
     if (micBanner) micBanner.hidden = !should;
     if (should) syncMicBannerText();
@@ -641,6 +648,69 @@
         video.style.transform = track ? "scaleX(-1)" : "";
       }
     });
+  }
+
+  function refreshPresenceUi() {
+    if (inRoom()) return;
+    if (countEl) countEl.textContent = String(presenceList.length);
+    if (statusEl && !inRoom()) {
+      if (presenceList.length > 0) {
+        setStatus(`${presenceList.length} na sala`, "live");
+      } else {
+        setStatus("Desconectado");
+      }
+    }
+    if (voiceMembersEl) {
+      voiceMembersEl.innerHTML = presenceList.length
+        ? presenceList.map((p) => {
+            const name = p.name || p.identity || "Alguém";
+            return `<div class="dc-voice-member is-presence">
+              <span class="av" style="background:${colorFor(p.identity)}">${escapeHtml(initialFor(name))}</span>
+              <span>${escapeHtml(name)}</span>
+            </div>`;
+          }).join("")
+        : '<div class="dc-voice-empty">Ninguém na sala</div>';
+    }
+    updateLobbyPresence();
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  function updateLobbyPresence() {
+    if (!lobbyEl || inRoom() || lobbyEl.hidden) return;
+    const sub = lobbyEl.querySelector("p");
+    if (!sub) return;
+    if (presenceList.length === 0) {
+      sub.textContent = "Entre para falar. Quem já está aparece ao lado.";
+      return;
+    }
+    const names = presenceList.map((p) => p.name || p.identity).slice(0, 5).join(", ");
+    const extra = presenceList.length > 5 ? ` +${presenceList.length - 5}` : "";
+    sub.textContent = `${presenceList.length} na sala agora: ${names}${extra}. Entre para falar.`;
+  }
+
+  async function fetchPresence() {
+    if (inRoom()) return;
+    try {
+      const res = await fetch("/call/presence", {
+        headers: { Accept: "application/json", "X-Requested-With": "fetch" },
+      });
+      const data = await res.json().catch(() => ({}));
+      presenceList = Array.isArray(data.participants) ? data.participants : [];
+      refreshPresenceUi();
+    } catch (_) {}
+  }
+
+  function startPresencePoll() {
+    fetchPresence();
+    if (presenceTimer) clearInterval(presenceTimer);
+    presenceTimer = setInterval(fetchPresence, 3000);
+  }
+
+  function stopPresencePoll() {
+    if (presenceTimer) {
+      clearInterval(presenceTimer);
+      presenceTimer = null;
+    }
   }
 
   function refreshUi() {
@@ -864,14 +934,14 @@
       return;
     }
     if (Date.now() < micGraceUntil) return;
-    micOn = !!room.localParticipant.isMicrophoneEnabled;
+    micOn = !!room.localParticipant.isMicrophoneEnabled || localMicLive();
     setMicUi();
     showMicBanner(!micOn);
     refreshUi();
   }
 
-  /** LiveKit oficial — equivalente ao useTrackToggle, mantendo botões customizados. */
-  async function toggleMic() {
+  /** LiveKit + fallback publish; primePromise = getUserMedia no gesto (mobile). */
+  async function toggleMic(primePromise) {
     if (!inRoom()) {
       setHint("Entre na sala primeiro.");
       return;
@@ -880,33 +950,60 @@
     micPublishing = true;
 
     const lp = room.localParticipant;
-    const wantOn = !lp.isMicrophoneEnabled;
+    const currentlyLive = lp.isMicrophoneEnabled || localMicLive() || micOn;
+    const wantOn = !currentlyLive;
 
     setMicUiPending(true);
     setHint(wantOn ? "Ativando microfone…" : "Mutando…");
 
     try {
-      if (wantOn) micGraceUntil = Date.now() + 2500;
-      await lp.setMicrophoneEnabled(
-        wantOn,
-        wantOn
-          ? {
-              echoCancellation: true,
-              noiseSuppression: true,
-              autoGainControl: true,
-            }
-          : undefined
-      );
-      micOn = !!lp.isMicrophoneEnabled;
+      if (wantOn) {
+        micGraceUntil = Date.now() + 3500;
+
+        if (primePromise) {
+          const stream = await primePromise;
+          stream.getTracks().forEach((t) => t.stop());
+        }
+
+        await lp.setMicrophoneEnabled(true, {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        });
+
+        micOn = lp.isMicrophoneEnabled || localMicLive();
+
+        if (!micOn && typeof LK?.createLocalAudioTrack === "function") {
+          const audioTrack = await LK.createLocalAudioTrack({
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          });
+          const src = LK.Track?.Source?.Microphone;
+          await lp.publishTrack(
+            audioTrack,
+            src ? { source: src, dtx: true, red: true } : { dtx: true, red: true }
+          );
+          await lp.setMicrophoneEnabled(true);
+          micOn = true;
+        }
+      } else {
+        await lp.setMicrophoneEnabled(false);
+        micOn = false;
+      }
+
+      micOn = micOn || lp.isMicrophoneEnabled || localMicLive();
       showMicBanner(!micOn);
       setHint(micOn ? "Microfone ligado." : "Microfone mutado.");
       setMicUi();
       refreshUi();
     } catch (err) {
-      console.error("[call] setMicrophoneEnabled", err);
+      console.error("[call] mic", err);
+      micOn = lp.isMicrophoneEnabled || localMicLive();
       syncMicFromRoom();
-      showMicBanner(true);
+      showMicBanner(!micOn);
       setHint(mapMicError(err));
+      setMicUi();
     } finally {
       micPublishing = false;
       setMicUiPending(false);
@@ -920,18 +1017,40 @@
     }
     if (micPublishing) return;
     const now = Date.now();
-    if (now - lastMicTapMs < 500) return;
+    if (now - lastMicTapMs < 450) return;
     lastMicTapMs = now;
-    toggleMic().catch(console.error);
+    if (!inRoom()) {
+      setHint("Entre na sala primeiro.");
+      return;
+    }
+
+    const lp = room.localParticipant;
+    const currentlyLive = lp.isMicrophoneEnabled || localMicLive() || micOn;
+    let prime = null;
+    if (!currentlyLive && navigator.mediaDevices?.getUserMedia) {
+      prime = navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+    }
+    toggleMic(prime).catch(console.error);
   }
 
   function bindMicButtons() {
-    root.addEventListener("pointerdown", (e) => {
-      const btn = e.target.closest("#call-mic-btn, #call-enable-mic-btn, [data-call-action=\"mic\"]");
+    const sel = "#call-mic-btn, #call-enable-mic-btn, [data-call-action=\"mic\"]";
+    root.addEventListener("click", (e) => {
+      const btn = e.target.closest(sel);
       if (!btn || btn.disabled) return;
-      if (e.pointerType === "mouse" && e.button !== 0) return;
       onMicTap(e);
     }, true);
+    root.addEventListener("touchend", (e) => {
+      const btn = e.target.closest(sel);
+      if (!btn || btn.disabled) return;
+      onMicTap(e);
+    }, { capture: true, passive: false });
   }
 
   async function join(opts) {
@@ -1152,6 +1271,7 @@
 
       joining = false;
       rememberJoin(true);
+      stopPresencePoll();
       setConnectedUi(true);
       setStatus("Na sala", "live");
       setHint("");
@@ -1223,6 +1343,7 @@
     if (joinBtn) joinBtn.disabled = false;
     if (lobbyEl) lobbyEl.hidden = false;
     refreshUi();
+    startPresencePoll();
   }
 
   function handleCallAction(action) {
@@ -1618,6 +1739,7 @@
   syncMicBannerText();
   setConnectedUi(false);
   showMicBanner(false);
+  startPresencePoll();
   if (window.lucide) window.lucide.createIcons();
 
   try {
