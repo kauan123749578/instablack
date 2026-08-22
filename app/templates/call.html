@@ -1,87 +1,128 @@
 {% extends "base.html" %}
 {% block title %}Call — instablack{% endblock %}
 {% block head %}
-<link rel="stylesheet" href="/static/call.css?v=3" />
+<link rel="stylesheet" href="/static/call.css?v=4" />
 {% endblock %}
 {% block content %}
-<div class="dc-call" id="call-page"
+<div class="dc-root" id="call-page"
      data-ready="{{ '1' if livekit_ready else '0' }}"
      data-room="{{ room_name }}"
-     data-me="{{ user.display_name or ('@' ~ user.username) }}">
+     data-me="{{ user.display_name or user.username }}"
+     data-me-user="{{ user.username }}">
 
   {% if not livekit_ready %}
-  <div class="page-header">
-    <h2><i data-lucide="headphones" class="inline-icon"></i> Call</h2>
-  </div>
-  <div class="alert alert-error">
-    <strong>LiveKit ainda não configurado</strong>
-    <p style="margin:8px 0 0;font-size:13px;line-height:1.45">
-      Em <a href="https://cloud.livekit.io" target="_blank" rel="noopener" style="color:#E8D48B">cloud.livekit.io</a>
-      pegue as keys e no Railway (web) defina
-      <code>LIVEKIT_URL</code>, <code>LIVEKIT_API_KEY</code>, <code>LIVEKIT_API_SECRET</code>.
-    </p>
+  <div class="alert alert-error" style="margin:16px">
+    <strong>LiveKit não configurado</strong>
+    <p style="margin:8px 0 0;font-size:13px">Defina <code>LIVEKIT_URL</code>, <code>LIVEKIT_API_KEY</code>, <code>LIVEKIT_API_SECRET</code> no Railway.</p>
   </div>
   {% else %}
 
-  <div class="dc-shell">
-    <header class="dc-top">
-      <div class="dc-top-left">
-        <i data-lucide="volume-2" class="dc-top-icon"></i>
-        <div>
-          <strong>Sala de voz</strong>
-          <span class="dc-top-sub" id="call-room-label">{{ room_name }}</span>
+  <div class="dc-app">
+    {# Coluna canais (estilo Discord) #}
+    <aside class="dc-channels">
+      <div class="dc-server-name">instablack</div>
+      <div class="dc-cat">Canais de voz</div>
+      <button type="button" class="dc-channel is-voice is-active" id="call-channel-btn">
+        <i data-lucide="volume-2"></i>
+        <span>Sala de voz</span>
+      </button>
+      <div class="dc-voice-members" id="call-voice-members"></div>
+
+      <div class="dc-conn" id="call-conn" hidden>
+        <div class="dc-conn-top">
+          <div>
+            <div class="dc-conn-title" id="call-conn-title">Voz conectada</div>
+            <div class="dc-conn-sub">Sala de voz / instablack</div>
+          </div>
+          <button type="button" class="dc-icon-btn dc-disconnect" id="call-leave-btn" title="Desconectar">
+            <i data-lucide="phone-off"></i>
+          </button>
+        </div>
+        <div class="dc-conn-actions">
+          <button type="button" class="dc-icon-btn" id="call-cam-btn" disabled title="Câmera (em breve)">
+            <i data-lucide="video-off"></i>
+          </button>
+          <button type="button" class="dc-icon-btn" id="call-screen-btn" title="Compartilhar tela">
+            <i data-lucide="monitor-up"></i>
+          </button>
+          <button type="button" class="dc-icon-btn" id="call-deafen-btn" title="Ensurdecer">
+            <i data-lucide="headphones"></i>
+          </button>
         </div>
       </div>
-      <div class="dc-top-right">
-        <span class="dc-pill" id="call-count">0 na sala</span>
-        <span class="dc-pill dc-pill-status" id="call-status">Desconectado</span>
-      </div>
-    </header>
 
-    <div class="dc-body">
-      <main class="dc-stage-wrap">
+      <div class="dc-userbar">
+        <div class="dc-user-avatar" id="call-my-avatar">{{ (user.display_name or user.username)[0]|upper }}</div>
+        <div class="dc-user-meta">
+          <strong id="call-my-name">{{ user.display_name or user.username }}</strong>
+          <span id="call-my-status">Offline</span>
+        </div>
+        <button type="button" class="dc-icon-btn is-muted" id="call-mic-btn" title="Microfone" disabled>
+          <i data-lucide="mic-off"></i>
+        </button>
+      </div>
+    </aside>
+
+    {# Palco principal #}
+    <section class="dc-main">
+      <header class="dc-main-head">
+        <div class="dc-main-title">
+          <i data-lucide="volume-2"></i>
+          <span>Sala de voz</span>
+        </div>
+        <div class="dc-main-meta">
+          <span class="dc-badge" id="call-count">0</span>
+          <span class="dc-badge" id="call-status">Desconectado</span>
+        </div>
+      </header>
+
+      <div class="dc-stage" id="call-stage">
         <div class="dc-screen-wrap" id="call-screen-wrap" hidden>
           <video id="call-screen" class="dc-screen" autoplay playsinline muted></video>
-          <span class="dc-screen-badge" id="call-screen-badge">Compartilhando tela</span>
+          <span class="dc-screen-badge" id="call-screen-badge">Tela</span>
         </div>
-        <div class="dc-tiles" id="call-tiles">
-          <div class="dc-empty" id="call-empty">
-            <p>Entre na sala para falar com a galera.</p>
-            <button type="button" class="dc-btn dc-btn-primary" id="call-join-btn">Entrar na sala</button>
-          </div>
+        <div class="dc-tiles" id="call-tiles"></div>
+
+        <div class="dc-lobby" id="call-lobby">
+          <h3>Sala de voz</h3>
+          <p>Entre primeiro. O navegador só pede microfone depois — igual o Discord.</p>
+          <button type="button" class="dc-join" id="call-join-btn">Entrar na sala</button>
+          <p class="dc-hint" id="call-hint"></p>
         </div>
-        <p class="dc-hint" id="call-hint"></p>
-      </main>
+      </div>
 
-      <aside class="dc-chat">
-        <div class="dc-chat-head">Chat</div>
-        <div class="dc-chat-log" id="call-chat-log"></div>
-        <form class="dc-chat-form" id="call-chat-form">
-          <input type="text" id="call-chat-input" placeholder="Mensagem…" maxlength="500" autocomplete="off" disabled>
-          <button type="submit" class="dc-btn dc-btn-sm" id="call-chat-send" disabled>Enviar</button>
-        </form>
-      </aside>
-    </div>
+      {# Banner mic (aparece DEPOIS de entrar, se precisar) #}
+      <div class="dc-mic-banner" id="call-mic-banner" hidden>
+        <div>
+          <strong>Ativar microfone</strong>
+          <span>Você já está na sala. Toque para o navegador pedir permissão do mic.</span>
+        </div>
+        <button type="button" class="dc-join dc-join-sm" id="call-enable-mic-btn">Permitir microfone</button>
+      </div>
+    </section>
 
-    <div class="dc-dock" id="call-dock">
-      <button type="button" class="dc-dock-btn" id="call-cam-btn" disabled title="Câmera (em breve)">
-        <i data-lucide="video-off"></i>
-      </button>
-      <button type="button" class="dc-dock-btn" id="call-screen-btn" disabled title="Compartilhar tela">
-        <i data-lucide="monitor-up"></i>
-      </button>
-      <button type="button" class="dc-dock-btn is-off" id="call-mic-btn" disabled title="Microfone — clique para ligar/pedir permissão">
-        <i data-lucide="mic-off"></i>
-      </button>
-      <button type="button" class="dc-dock-btn" id="call-deafen-btn" disabled title="Ensurdecer (mutar todos)">
-        <i data-lucide="headphones"></i>
-      </button>
-      <button type="button" class="dc-dock-btn dc-dock-leave" id="call-leave-btn" disabled title="Sair">
-        <i data-lucide="phone-off"></i>
-      </button>
-    </div>
+    {# Chat #}
+    <aside class="dc-chat" id="call-chat-panel">
+      <div class="dc-chat-head">
+        <span>Chat</span>
+        <button type="button" class="dc-icon-btn dc-chat-close" id="call-chat-toggle" title="Chat">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+      <div class="dc-chat-log" id="call-chat-log"></div>
+      <form class="dc-chat-form" id="call-chat-form">
+        <input type="text" id="call-chat-input" placeholder="Mensagem na sala…" maxlength="500" autocomplete="off" disabled>
+        <button type="submit" id="call-chat-send" disabled>Enviar</button>
+      </form>
+    </aside>
   </div>
+
+  {# Mobile: botão abrir chat #}
+  <button type="button" class="dc-fab-chat" id="call-fab-chat" hidden title="Chat">
+    <i data-lucide="message-circle"></i>
+  </button>
+
   {% endif %}
 </div>
-<script src="/static/call.js?v=3"></script>
+<script src="/static/call.js?v=4"></script>
 {% endblock %}
