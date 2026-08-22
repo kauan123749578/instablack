@@ -1,9 +1,9 @@
 /**
- * Call — LiveKit (mic sólido + multi-device + tela expandida).
+ * Call — LiveKit (mic sólido + multi-device + tela nítida).
  *
- * - Mic: createLocalAudioTrack + publish; nunca falha em silêncio.
+ * - Mic: setMicrophoneEnabled (gesto do user); sync por track real.
  * - PC + celular: identity = u{id}-{deviceId} (localStorage).
- * - Tela: clique no wrap → expandir no stage.
+ * - Tela: bitrate alto (~8Mbps / 1080p30), clique → expandir (estilo LANcord).
  */
 (function () {
   const root = document.getElementById("call-page");
@@ -120,6 +120,29 @@
 
   function inRoom() {
     return !!(room && room.localParticipant);
+  }
+
+  /** Mic realmente publicado e não mutado (isMicrophoneEnabled sozinho mente às vezes). */
+  function localMicLive() {
+    try {
+      const lp = room?.localParticipant;
+      if (!lp) return false;
+      if (lp.isMicrophoneEnabled === true) return true;
+      let live = false;
+      const pubs = lp.audioTrackPublications || lp.trackPublications;
+      pubs?.forEach?.((pub) => {
+        const src = String(pub.source || "");
+        const isMic =
+          src.includes("microphone") ||
+          src === "1" ||
+          (pub.kind === "audio" && !src.includes("screen"));
+        if (!isMic) return;
+        if (pub.track && pub.isMuted !== true) live = true;
+      });
+      return live;
+    } catch (_) {
+      return false;
+    }
   }
 
   function participantMicMuted(p) {
@@ -239,10 +262,29 @@
     stageEl?.classList.toggle("has-expanded-screen", on);
   }
 
-  function attachScreen(track, who) {
+  function attachScreen(track, who, publication) {
     if (!screenEl || !track?.attach) return;
+    try {
+      if (publication?.setVideoQuality && LK?.VideoQuality?.HIGH != null) {
+        publication.setVideoQuality(LK.VideoQuality.HIGH);
+      }
+    } catch (_) {}
+    try {
+      const mt = track.mediaStreamTrack;
+      if (mt && "contentHint" in mt) mt.contentHint = "detail";
+    } catch (_) {}
     track.attach(screenEl);
-    if (screenWrap) screenWrap.hidden = false;
+    screenEl.muted = true;
+    screenEl.playsInline = true;
+    screenEl.play?.().catch(() => {});
+    if (screenWrap) {
+      screenWrap.hidden = false;
+      // Ao começar a ver tela, já abre expandida (qualidade + espaço).
+      if (!screenWrap.classList.contains("is-expanded")) {
+        screenWrap.classList.add("is-expanded");
+        stageEl?.classList.add("has-expanded-screen");
+      }
+    }
     if (screenBadge) screenBadge.textContent = who || "Tela";
   }
 
@@ -366,9 +408,7 @@
       refreshUi();
       return;
     }
-    try {
-      micOn = !!room.localParticipant.isMicrophoneEnabled;
-    } catch (_) {}
+    micOn = localMicLive();
     setMicUi();
     showMicBanner(!micOn);
     refreshUi();
@@ -393,68 +433,41 @@
     setHint("Ativando microfone…");
 
     try {
-      const probe = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-        video: false,
+      // Caminho oficial LiveKit (gesto do clique → permission → publish).
+      await room.localParticipant.setMicrophoneEnabled(true, {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
       });
-      const inputDeviceId = probe.getAudioTracks()[0]?.getSettings?.().deviceId;
-      probe.getTracks().forEach((t) => t.stop());
 
-      if (!inRoom()) {
-        setHint("Conexão caiu enquanto pedia o mic. Entre de novo.");
-        showMicBanner(false);
-        return;
-      }
-
-      if (typeof LK.createLocalAudioTrack === "function") {
+      micOn = localMicLive();
+      if (!micOn && typeof LK.createLocalAudioTrack === "function") {
         const audioTrack = await LK.createLocalAudioTrack({
-          deviceId: inputDeviceId,
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
         });
-
-        try {
-          await room.localParticipant.setMicrophoneEnabled(false);
-        } catch (_) {}
-
         const source = LK.Track?.Source?.Microphone;
         await room.localParticipant.publishTrack(
           audioTrack,
-          source ? { source } : undefined
+          source ? { source, dtx: true, red: true } : { dtx: true, red: true }
         );
-
         try {
           await room.localParticipant.setMicrophoneEnabled(true);
         } catch (_) {}
-      } else {
-        await room.localParticipant.setMicrophoneEnabled(true);
+        micOn = localMicLive();
+      }
+
+      if (!micOn && !localMicLive()) {
+        throw new Error("Microfone não publicou — tente de novo");
       }
 
       micOn = true;
-      try {
-        if (room.localParticipant.isMicrophoneEnabled === false) {
-          micOn = false;
-        }
-      } catch (_) {}
-
-      if (!micOn) {
-        // Fallback final
-        await room.localParticipant.setMicrophoneEnabled(true);
-        micOn = !!room.localParticipant.isMicrophoneEnabled;
-      }
-
-      if (!micOn) throw new Error("Microfone não publicou — tente de novo");
-
       showMicBanner(false);
       setHint("Microfone ligado. Fale normalmente.");
       setMicUi();
       refreshUi();
-      setTimeout(syncMicFromRoom, 400);
+      setTimeout(syncMicFromRoom, 500);
     } catch (err) {
       console.error("enableMic", err);
       micOn = false;
@@ -520,6 +533,17 @@
           noiseSuppression: true,
           autoGainControl: true,
         },
+        // Qualidade tipo LANcord: tela com bitrate alto (default do WebRTC fica borrado).
+        publishDefaults: {
+          dtx: true,
+          red: true,
+          screenShareEncoding: {
+            maxBitrate: 8_000_000,
+            maxFramerate: 30,
+          },
+          // Uma camada só — evita simulcast “low” na tela.
+          screenShareSimulcastLayers: [],
+        },
       });
       room = r;
 
@@ -558,7 +582,7 @@
           return;
         }
         if (track.kind === "video" && (publication?.source === screenSource || String(publication?.source).includes("screen"))) {
-          attachScreen(track, labelOf(participant));
+          attachScreen(track, labelOf(participant), publication);
         }
       });
       r.on(ev("TrackUnsubscribed", "trackUnsubscribed"), (track, publication, participant) => {
@@ -642,7 +666,7 @@
           if (pub.isSubscribed && pub.track) {
             if (pub.track.kind === "audio") attachRemoteAudio(pub.track, p);
             if (pub.track.kind === "video" && (pub.source === screenSource || String(pub.source).includes("screen"))) {
-              attachScreen(pub.track, labelOf(p));
+              attachScreen(pub.track, labelOf(p), pub);
             }
           }
         });
@@ -701,15 +725,35 @@
     if (!inRoom()) return;
     try {
       const next = !sharing;
-      await room.localParticipant.setScreenShareEnabled(next, { audio: false });
+      if (next) {
+        await room.localParticipant.setScreenShareEnabled(
+          true,
+          {
+            audio: false,
+            // Captura 1080p30 + hint de detalhe (texto/UI nítida).
+            resolution: { width: 1920, height: 1080, frameRate: 30 },
+            contentHint: "detail",
+          },
+          {
+            screenShareEncoding: {
+              maxBitrate: 8_000_000,
+              maxFramerate: 30,
+            },
+            simulcast: false,
+          }
+        );
+      } else {
+        await room.localParticipant.setScreenShareEnabled(false);
+      }
       sharing = next;
       screenBtn?.classList.toggle("is-on", sharing);
       if (sharing) {
         room.localParticipant.trackPublications?.forEach((pub) => {
           if (String(pub.source || "").includes("screen") && pub.track) {
-            attachScreen(pub.track, "você");
+            attachScreen(pub.track, "você", pub);
           }
         });
+        setHint("Tela compartilhada — clique nela para expandir/recolher.");
       } else {
         clearScreen();
       }

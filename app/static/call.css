@@ -280,17 +280,18 @@
   overflow: hidden;
   border: 2px solid #23a559;
   background: #000;
-  max-height: 48%;
+  max-height: 62%;
   flex-shrink: 0;
   cursor: zoom-in;
 }
 .dc-screen {
   display: block;
   width: 100%;
-  max-height: 40vh;
+  max-height: 58vh;
   object-fit: contain;
   background: #000;
   pointer-events: none;
+  image-rendering: auto;
 }
 .dc-screen-badge {
   position: absolute;
