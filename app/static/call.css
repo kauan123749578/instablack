@@ -441,3 +441,109 @@ body:has(.dc-root) .bottom-tabs { display: none !important; }
   .dc-tiles { grid-template-columns: 1fr; }
   .dc-chat { inset: 0; }
 }
+
+/* Modal qualidade da transmissão */
+.dc-modal[hidden] { display: none !important; }
+.dc-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.dc-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+}
+.dc-modal-card {
+  position: relative;
+  z-index: 1;
+  width: min(420px, 100%);
+  background: #313338;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+  border: 1px solid #1e1f22;
+}
+.dc-modal-card h3 {
+  margin: 0 0 16px;
+  font-size: 18px;
+  color: #f2f3f5;
+}
+.dc-quality-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.dc-quality-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #949ba4;
+  margin-bottom: 8px;
+}
+.dc-quality-list,
+.dc-quality-fps {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.dc-quality-opt {
+  border: none;
+  border-radius: 6px;
+  padding: 10px 12px;
+  text-align: left;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  background: #2b2d31;
+  color: #dbdee1;
+  cursor: pointer;
+}
+.dc-quality-opt:hover { background: #3f4147; color: #fff; }
+.dc-quality-opt.is-on {
+  background: #f0b232;
+  color: #1e1f22;
+}
+.dc-quality-note {
+  margin: 14px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #949ba4;
+}
+.dc-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+.dc-btn-ghost {
+  border: none;
+  border-radius: 8px;
+  padding: 10px 14px;
+  background: transparent;
+  color: #dbdee1;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.dc-btn-ghost:hover { background: rgba(78, 80, 88, 0.4); }
+.dc-btn-accent {
+  border: none;
+  border-radius: 8px;
+  padding: 10px 16px;
+  background: #f0b232;
+  color: #1e1f22;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.dc-btn-accent:hover { filter: brightness(1.05); }
+
+@media (max-width: 520px) {
+  .dc-quality-cols { grid-template-columns: 1fr; }
+}

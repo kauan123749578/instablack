@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Call — instablack{% endblock %}
 {% block head %}
-<link rel="stylesheet" href="/static/call.css?v=7" />
+<link rel="stylesheet" href="/static/call.css?v=8" />
 {% endblock %}
 {% block content %}
 <div class="dc-root" id="call-page"
@@ -122,7 +122,48 @@
     <i data-lucide="message-circle"></i>
   </button>
 
+  {# Qualidade da transmissão (antes de compartilhar) #}
+  <div class="dc-modal" id="call-quality-modal" hidden>
+    <div class="dc-modal-backdrop" data-quality-close></div>
+    <div class="dc-modal-card" role="dialog" aria-labelledby="call-quality-title">
+      <h3 id="call-quality-title">Qualidade da transmissão</h3>
+
+      <div class="dc-quality-cols">
+        <div class="dc-quality-col">
+          <div class="dc-quality-label">Resolução</div>
+          <div class="dc-quality-list" id="call-quality-res" role="listbox">
+            <button type="button" class="dc-quality-opt" data-res="source">Fonte</button>
+            <button type="button" class="dc-quality-opt" data-res="1440">1440p</button>
+            <button type="button" class="dc-quality-opt is-on" data-res="1080">1080p</button>
+            <button type="button" class="dc-quality-opt" data-res="720">720p</button>
+            <button type="button" class="dc-quality-opt" data-res="480">480p</button>
+          </div>
+        </div>
+        <div class="dc-quality-col">
+          <div class="dc-quality-label">Taxa de quadros</div>
+          <div class="dc-quality-fps" id="call-quality-fps" role="listbox">
+            <button type="button" class="dc-quality-opt" data-fps="5">5 fps</button>
+            <button type="button" class="dc-quality-opt" data-fps="15">15 fps</button>
+            <button type="button" class="dc-quality-opt is-on" data-fps="30">30 fps</button>
+            <button type="button" class="dc-quality-opt" data-fps="60">60 fps</button>
+          </div>
+        </div>
+      </div>
+
+      <p class="dc-quality-note">
+        Depois de começar, clique de novo no ícone do monitor para mudar a qualidade.
+        1080p60 / 1440p pedem mais internet. Para parar, use o botão abaixo.
+      </p>
+
+      <div class="dc-modal-actions">
+        <button type="button" class="dc-btn-ghost" id="call-quality-stop" hidden>Parar tela</button>
+        <button type="button" class="dc-btn-ghost" data-quality-close>Cancelar</button>
+        <button type="button" class="dc-btn-accent" id="call-quality-go">Compartilhar tela</button>
+      </div>
+    </div>
+  </div>
+
   {% endif %}
 </div>
-<script src="/static/call.js?v=7"></script>
+<script src="/static/call.js?v=8"></script>
 {% endblock %}

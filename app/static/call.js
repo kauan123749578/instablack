@@ -38,6 +38,23 @@
   const deafenBtn = document.getElementById("call-deafen-btn");
   const leaveBtn = document.getElementById("call-leave-btn");
   const myStatus = document.getElementById("call-my-status");
+  const qualityModal = document.getElementById("call-quality-modal");
+  const qualityGo = document.getElementById("call-quality-go");
+  const qualityStop = document.getElementById("call-quality-stop");
+  const qualityResBox = document.getElementById("call-quality-res");
+  const qualityFpsBox = document.getElementById("call-quality-fps");
+
+  const QUALITY_KEY = "ib_call_screen_quality";
+  const RES_MAP = {
+    source: null,
+    "1440": { width: 2560, height: 1440 },
+    "1080": { width: 1920, height: 1080 },
+    "720": { width: 1280, height: 720 },
+    "480": { width: 854, height: 480 },
+  };
+
+  let screenRes = "1080";
+  let screenFps = 30;
 
   const COLORS = [
     "#5865f2", "#57f287", "#fee75c", "#eb459e", "#ed4245",
@@ -721,47 +738,146 @@
     else await enableMic();
   }
 
-  async function toggleScreen() {
-    if (!inRoom()) return;
+  function loadQualityPrefs() {
     try {
-      const next = !sharing;
-      if (next) {
-        await room.localParticipant.setScreenShareEnabled(
-          true,
-          {
-            audio: false,
-            // Captura 1080p30 + hint de detalhe (texto/UI nítida).
-            resolution: { width: 1920, height: 1080, frameRate: 30 },
-            contentHint: "detail",
-          },
-          {
-            screenShareEncoding: {
-              maxBitrate: 8_000_000,
-              maxFramerate: 30,
-            },
-            simulcast: false,
-          }
-        );
-      } else {
-        await room.localParticipant.setScreenShareEnabled(false);
-      }
-      sharing = next;
-      screenBtn?.classList.toggle("is-on", sharing);
+      const raw = JSON.parse(localStorage.getItem(QUALITY_KEY) || "{}");
+      if (raw.res && RES_MAP[raw.res] !== undefined) screenRes = String(raw.res);
+      if ([5, 15, 30, 60].includes(Number(raw.fps))) screenFps = Number(raw.fps);
+    } catch (_) {}
+  }
+
+  function saveQualityPrefs() {
+    try {
+      localStorage.setItem(QUALITY_KEY, JSON.stringify({ res: screenRes, fps: screenFps }));
+    } catch (_) {}
+  }
+
+  function syncQualityUi() {
+    qualityResBox?.querySelectorAll("[data-res]").forEach((btn) => {
+      btn.classList.toggle("is-on", btn.getAttribute("data-res") === screenRes);
+    });
+    qualityFpsBox?.querySelectorAll("[data-fps]").forEach((btn) => {
+      btn.classList.toggle("is-on", Number(btn.getAttribute("data-fps")) === screenFps);
+    });
+  }
+
+  function openQualityModal() {
+    loadQualityPrefs();
+    syncQualityUi();
+    if (qualityModal) qualityModal.hidden = false;
+  }
+
+  function closeQualityModal() {
+    if (qualityModal) qualityModal.hidden = true;
+  }
+
+  function bitrateFor(resKey, fps) {
+    const base = {
+      source: 8_000_000,
+      "1440": 10_000_000,
+      "1080": 6_000_000,
+      "720": 3_500_000,
+      "480": 1_500_000,
+    }[resKey] || 6_000_000;
+    if (fps >= 60) return Math.round(base * 1.35);
+    if (fps <= 15) return Math.round(base * 0.65);
+    return base;
+  }
+
+  function screenCaptureOpts() {
+    const res = RES_MAP[screenRes];
+    const opts = {
+      audio: false,
+      contentHint: "detail",
+    };
+    if (res) {
+      opts.resolution = {
+        width: res.width,
+        height: res.height,
+        frameRate: screenFps,
+      };
+    }
+    // "Fonte": sem resolution — browser captura nativo; FPS no publishEncoding.
+    return opts;
+  }
+
+  function screenPublishOpts() {
+    return {
+      screenShareEncoding: {
+        maxBitrate: bitrateFor(screenRes, screenFps),
+        maxFramerate: screenFps,
+      },
+      simulcast: false,
+    };
+  }
+
+  function openQualityModal() {
+    loadQualityPrefs();
+    syncQualityUi();
+    if (qualityGo) {
+      qualityGo.textContent = sharing ? "Aplicar qualidade" : "Compartilhar tela";
+    }
+    if (qualityStop) qualityStop.hidden = !sharing;
+    if (qualityModal) qualityModal.hidden = false;
+  }
+
+  function closeQualityModal() {
+    if (qualityModal) qualityModal.hidden = true;
+  }
+
+  /** Clique no monitor: sempre abre qualidade; se já compartilha, dá pra reaplicar ou parar no modal. */
+  function onScreenBtnClick() {
+    if (!inRoom()) return;
+    openQualityModal();
+  }
+
+  async function startScreenShare() {
+    if (!inRoom()) return;
+    saveQualityPrefs();
+    closeQualityModal();
+    setHint(`Pedindo tela (${screenRes === "source" ? "fonte" : screenRes + "p"} @ ${screenFps}fps)…`);
+    try {
+      // Já compartilhando: reinicia com a nova qualidade.
       if (sharing) {
-        room.localParticipant.trackPublications?.forEach((pub) => {
-          if (String(pub.source || "").includes("screen") && pub.track) {
-            attachScreen(pub.track, "você", pub);
-          }
-        });
-        setHint("Tela compartilhada — clique nela para expandir/recolher.");
-      } else {
+        try {
+          await room.localParticipant.setScreenShareEnabled(false);
+        } catch (_) {}
+        sharing = false;
         clearScreen();
       }
+
+      await room.localParticipant.setScreenShareEnabled(
+        true,
+        screenCaptureOpts(),
+        screenPublishOpts()
+      );
+      sharing = true;
+      screenBtn?.classList.add("is-on");
+      room.localParticipant.trackPublications?.forEach((pub) => {
+        if (String(pub.source || "").includes("screen") && pub.track) {
+          attachScreen(pub.track, "você", pub);
+        }
+      });
+      setHint(
+        `Tela em ${screenRes === "source" ? "fonte" : screenRes + "p"} / ${screenFps}fps — clique no monitor pra parar.`
+      );
     } catch (_) {
       sharing = false;
       screenBtn?.classList.remove("is-on");
+      clearScreen();
       setHint("Compartilhar tela cancelado — você continua na sala.");
     }
+  }
+
+  async function stopScreenShare() {
+    if (!inRoom()) return;
+    try {
+      await room.localParticipant.setScreenShareEnabled(false);
+    } catch (_) {}
+    sharing = false;
+    screenBtn?.classList.remove("is-on");
+    clearScreen();
+    setHint("Compartilhamento parado.");
   }
 
   function setDeafened(on) {
@@ -794,7 +910,7 @@
       return;
     }
     if (t.closest("#call-screen-btn")) {
-      toggleScreen().catch(console.error);
+      onScreenBtnClick();
       return;
     }
     if (t.closest("#call-deafen-btn")) {
@@ -805,6 +921,25 @@
       toggleScreenExpand();
     }
   });
+
+  qualityResBox?.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-res]");
+    if (!btn) return;
+    screenRes = btn.getAttribute("data-res") || "1080";
+    syncQualityUi();
+  });
+  qualityFpsBox?.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-fps]");
+    if (!btn) return;
+    screenFps = Number(btn.getAttribute("data-fps")) || 30;
+    syncQualityUi();
+  });
+  qualityGo?.addEventListener("click", () => startScreenShare().catch(console.error));
+  qualityModal?.addEventListener("click", (e) => {
+    if (e.target.closest("[data-quality-close]")) closeQualityModal();
+  });
+  loadQualityPrefs();
+  syncQualityUi();
 
   fabChat?.addEventListener("click", () => chatPanel?.classList.add("is-open"));
   chatToggle?.addEventListener("click", () => chatPanel?.classList.remove("is-open"));
