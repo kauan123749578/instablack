@@ -623,6 +623,7 @@ body:has(.dc-root) .bottom-tabs { display: none !important; }
     flex: 1;
     padding: 0 8px 8px 20px;
   }
+  .dc-conn[hidden] { display: none !important; }
   .dc-conn { display: block !important; margin: 8px; }
   .dc-userbar { display: flex; }
 

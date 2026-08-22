@@ -94,7 +94,9 @@
   let camOn = false;
   let sharing = false;
   let deafened = false;
+  let joinAttempts = 0;
   let joining = false;
+  const CONNECT_TIMEOUT_MS = 28000;
   let intentionalLeave = false;
   let micPublishing = false;
   let camPublishing = false;
@@ -839,7 +841,14 @@
           url: r.url,
         });
       });
-      presenceRooms = Array.from(merged.values());
+      presenceRooms = Array.from(merged.values()).map((r) => {
+        const slug = r.slug || "";
+        let count = Number(r.count) || 0;
+        if (inRoom() && slug === roomSlug) {
+          count = Math.max(count, peopleList(room).length);
+        }
+        return { ...r, count };
+      });
       renderRoomList(presenceRooms);
       if (!inRoom()) {
         presenceList = Array.isArray(data.participants) ? data.participants : [];
@@ -941,6 +950,15 @@
     }
 
     if (window.lucide) window.lucide.createIcons();
+
+    if (inRoom() && presenceRooms.length) {
+      const liveCount = peopleList(room).length;
+      presenceRooms = presenceRooms.map((r) => {
+        if ((r.slug || "") === roomSlug) return { ...r, count: liveCount };
+        return r;
+      });
+      renderRoomList(presenceRooms);
+    }
   }
 
   function appendChat(from, text, id) {
@@ -987,7 +1005,7 @@
   function startChatPoll() {
     fetchChat();
     if (chatTimer) clearInterval(chatTimer);
-    chatTimer = setInterval(fetchChat, 2000);
+    chatTimer = setInterval(fetchChat, 1000);
   }
 
   function collapseScreen() {
@@ -1139,6 +1157,36 @@
     return data;
   }
 
+  function connectWithTimeout(r, url, token, ms) {
+    return Promise.race([
+      r.connect(String(url).trim(), String(token).trim(), { autoSubscribe: true }),
+      new Promise((_, reject) => {
+        setTimeout(
+          () => reject(new Error("Conexão demorou demais — rede/firewall. Clique «Entrar na sala» de novo.")),
+          ms
+        );
+      }),
+    ]);
+  }
+
+  function resetJoinState() {
+    joining = false;
+    if (joinBtn) joinBtn.disabled = false;
+  }
+
+  async function unpublishLocalMic() {
+    if (!room?.localParticipant) return;
+    const lp = room.localParticipant;
+    try { await lp.setMicrophoneEnabled(false); } catch (_) {}
+    const tracks = [];
+    lp.audioTrackPublications?.forEach?.((pub) => {
+      if (pub?.track) tracks.push(pub.track);
+    });
+    for (const t of tracks) {
+      try { await lp.unpublishTrack(t); } catch (_) {}
+    }
+  }
+
   async function safeDisconnect(r) {
     if (!r) return;
     try { await r.disconnect(true); } catch (_) {
@@ -1168,7 +1216,7 @@
     refreshUi();
   }
 
-  /** LiveKit + fallback publish — sem getUserMedia extra (quebra gesto do clique). */
+  /** LiveKit + getUserMedia no clique (gesto do usuário). */
   async function enableMicOnly() {
     if (!inRoom()) {
       setHint("Entre na sala primeiro.");
@@ -1187,29 +1235,39 @@
     showToast("Ativando microfone…", "");
     try {
       micGraceUntil = Date.now() + 3500;
+      await unpublishLocalMic();
       const micSrc = LK?.Track?.Source?.Microphone;
       const micOpts = {
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
       };
-      if (typeof LK?.createLocalAudioTrack === "function") {
+      let published = false;
+      if (navigator.mediaDevices?.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: micOpts });
+        const mst = stream.getAudioTracks()[0];
+        if (mst && LK?.LocalAudioTrack) {
+          const audioTrack = new LK.LocalAudioTrack(mst, undefined, false);
+          await lp.publishTrack(
+            audioTrack,
+            micSrc ? { source: micSrc, dtx: true, red: true } : { dtx: true, red: true }
+          );
+          published = true;
+        }
+      }
+      if (!published && typeof LK?.createLocalAudioTrack === "function") {
         const audioTrack = await LK.createLocalAudioTrack(micOpts);
         await lp.publishTrack(
           audioTrack,
           micSrc ? { source: micSrc, dtx: true, red: true } : { dtx: true, red: true }
         );
-        micOn = true;
-      } else {
-        await lp.setMicrophoneEnabled(true, micOpts);
-        await new Promise((r) => setTimeout(r, 150));
-        micOn = localMicLive() || lp.isMicrophoneEnabled;
+        published = true;
       }
-      if (!micOn) {
+      if (!published) {
         await lp.setMicrophoneEnabled(true, micOpts);
-        await new Promise((r) => setTimeout(r, 150));
-        micOn = localMicLive() || lp.isMicrophoneEnabled;
       }
+      await new Promise((r) => setTimeout(r, 200));
+      micOn = localMicLive() || lp.isMicrophoneEnabled;
       micOn = micOn || localMicLive();
       showMicBanner(!micOn);
       if (micOn) {
@@ -1293,6 +1351,7 @@
     const auto = !!(opts && opts.auto);
     if (joining || room) return;
     joining = true;
+    joinAttempts += 1;
     intentionalLeave = false;
     setStatus("Conectando…", "wait");
     setHint(auto ? "Reentrando na sala…" : "Entrando na sala…");
@@ -1317,7 +1376,6 @@
           noiseSuppression: true,
           autoGainControl: true,
         },
-        // Qualidade tipo LANcord: tela com bitrate alto (default do WebRTC fica borrado).
         publishDefaults: {
           dtx: true,
           red: true,
@@ -1329,13 +1387,19 @@
             maxBitrate: 8_000_000,
             maxFramerate: 30,
           },
-          // Uma camada só — evita simulcast “low” na tela.
           screenShareSimulcastLayers: [],
         },
       });
-      room = r;
 
       const screenSource = LK.Track?.Source?.ScreenShare || "screen_share";
+
+      r.on(ev("ConnectionStateChanged", "connectionStateChanged"), (state) => {
+        if (state === "connected" && inRoom()) {
+          setStatus("Na sala", "live");
+        } else if (state === "connecting") {
+          setStatus("Conectando…", "wait");
+        }
+      });
 
       r.on(ev("ParticipantConnected", "participantConnected"), (p) => {
         fetchRoster([p?.identity].filter(Boolean)).then(() => refreshUi());
@@ -1506,17 +1570,16 @@
         if (lobbyEl) lobbyEl.hidden = false;
       });
 
-      await r.connect(String(tokenData.url).trim(), String(tokenData.token).trim(), {
-        autoSubscribe: true,
-      });
+      await connectWithTimeout(r, tokenData.url, tokenData.token, CONNECT_TIMEOUT_MS);
 
       if (!r.localParticipant) {
         throw new Error("Sem participante local — confira LIVEKIT_API_SECRET.");
       }
 
+      room = r;
       joining = false;
+      joinAttempts = 0;
       rememberJoin(true);
-      stopPresencePoll();
       setConnectedUi(true);
       blurNames = !!tokenData.blur_names;
       applyBlurUi();
@@ -1559,13 +1622,17 @@
 
       if (window.lucide) window.lucide.createIcons();
     } catch (err) {
-      console.error(err);
-      joining = false;
+      console.error("[call] join failed", err);
+      resetJoinState();
       if (err?.status === 403 && /senha/i.test(String(err.message || ""))) {
         if (passModal) passModal.hidden = false;
         setHint("Digite a senha da sala.");
-        if (joinBtn) joinBtn.disabled = false;
+        showToast("Sala privada — digite a senha.", "error");
         return;
+      }
+      if (joinAttempts >= 2) {
+        rememberJoin(false);
+        joinAttempts = 0;
       }
       if (room === r) room = null;
       await safeDisconnect(r);
@@ -1575,9 +1642,10 @@
       setConnectedUi(false);
       micOn = false;
       setMicUi();
+      const msg = String(err.message || err);
       setStatus("Falha", "error");
-      setHint(String(err.message || err));
-      if (joinBtn) joinBtn.disabled = false;
+      setHint(msg);
+      showToast(msg, "error");
       if (lobbyEl) lobbyEl.hidden = false;
       refreshUi();
     }

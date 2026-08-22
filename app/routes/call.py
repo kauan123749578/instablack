@@ -486,6 +486,10 @@ async def call_token(
     if role == "screen":
         identity = f"{identity}-screen"
     name = _display_name(user)
+    log.info(
+        "call token: user=%s identity=%s room=%s slug=%s role=%s",
+        user.id, identity, livekit_room, room_slug or "(global)", role or "voice",
+    )
     try:
         token = (
             AccessToken(
