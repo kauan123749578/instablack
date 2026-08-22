@@ -761,16 +761,6 @@
     });
   }
 
-  function openQualityModal() {
-    loadQualityPrefs();
-    syncQualityUi();
-    if (qualityModal) qualityModal.hidden = false;
-  }
-
-  function closeQualityModal() {
-    if (qualityModal) qualityModal.hidden = true;
-  }
-
   function bitrateFor(resKey, fps) {
     const base = {
       source: 8_000_000,
@@ -935,6 +925,10 @@
     syncQualityUi();
   });
   qualityGo?.addEventListener("click", () => startScreenShare().catch(console.error));
+  qualityStop?.addEventListener("click", () => {
+    closeQualityModal();
+    stopScreenShare().catch(console.error);
+  });
   qualityModal?.addEventListener("click", (e) => {
     if (e.target.closest("[data-quality-close]")) closeQualityModal();
   });
