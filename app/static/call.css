@@ -282,27 +282,65 @@
   background: #000;
   max-height: 48%;
   flex-shrink: 0;
+  cursor: zoom-in;
 }
 .dc-screen {
-  display: block; width: 100%; max-height: 40vh;
-  object-fit: contain; background: #000;
+  display: block;
+  width: 100%;
+  max-height: 40vh;
+  object-fit: contain;
+  background: #000;
+  pointer-events: none;
 }
 .dc-screen-badge {
-  position: absolute; left: 10px; top: 10px;
-  font-size: 11px; font-weight: 700;
-  padding: 4px 8px; border-radius: 4px;
-  background: rgba(0,0,0,0.7); color: #fff;
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  pointer-events: none;
 }
-
+.dc-screen-wrap.is-expanded {
+  position: absolute;
+  inset: 12px;
+  max-height: none;
+  z-index: 8;
+  cursor: zoom-out;
+  border-width: 3px;
+}
+.dc-screen-wrap.is-expanded .dc-screen {
+  max-height: none;
+  height: 100%;
+  object-fit: contain;
+}
+.dc-stage.has-expanded-screen .dc-tiles {
+  visibility: hidden;
+}
 .dc-mic-banner {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   padding: 12px 16px;
   background: #5865f2;
   color: #fff;
+  z-index: 20;
+  position: relative;
 }
+.dc-mic-banner[hidden] { display: none !important; }
 .dc-mic-banner strong { display: block; font-size: 14px; }
 .dc-mic-banner span { display: block; font-size: 12px; opacity: 0.9; margin-top: 2px; }
-.dc-mic-banner .dc-join { background: #fff; color: #5865f2; }
+.dc-mic-banner .dc-join {
+  background: #fff;
+  color: #5865f2;
+  pointer-events: auto;
+  position: relative;
+  z-index: 21;
+}
 
 /* —— Chat —— */
 .dc-chat {

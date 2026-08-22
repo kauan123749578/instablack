@@ -1,15 +1,16 @@
 /**
- * Call — LiveKit (mic sólido + reconnect + auto-reentrar).
+ * Call — LiveKit (mic sólido + multi-device + tela expandida).
  *
- * Mic: createLocalAudioTrack + publish (não confiar só em setMicrophoneEnabled).
- * Queda: reconnect UI; reload → auto-join via sessionStorage.
- * disconnectOnPageLeave: false (só sai no botão Sair).
+ * - Mic: createLocalAudioTrack + publish; nunca falha em silêncio.
+ * - PC + celular: identity = u{id}-{deviceId} (localStorage).
+ * - Tela: clique no wrap → expandir no stage.
  */
 (function () {
   const root = document.getElementById("call-page");
   if (!root || root.dataset.ready !== "1") return;
 
   const REJOIN_KEY = "ib_call_rejoin";
+  const DEVICE_KEY = "ib_call_device";
 
   const statusEl = document.getElementById("call-status");
   const countEl = document.getElementById("call-count");
@@ -24,6 +25,7 @@
   const screenWrap = document.getElementById("call-screen-wrap");
   const screenEl = document.getElementById("call-screen");
   const screenBadge = document.getElementById("call-screen-badge");
+  const stageEl = document.querySelector(".dc-stage");
   const chatLog = document.getElementById("call-chat-log");
   const chatForm = document.getElementById("call-chat-form");
   const chatInput = document.getElementById("call-chat-input");
@@ -59,6 +61,19 @@
 
   function csrf() {
     return document.querySelector('meta[name="csrf-token"]')?.content || "";
+  }
+
+  function deviceId() {
+    try {
+      let id = localStorage.getItem(DEVICE_KEY);
+      if (!id || !/^[a-zA-Z0-9_-]{4,24}$/.test(id)) {
+        id = "d" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+        localStorage.setItem(DEVICE_KEY, id);
+      }
+      return id;
+    } catch (_) {
+      return "d" + Math.random().toString(36).slice(2, 12);
+    }
   }
 
   function setStatus(text, kind) {
@@ -103,6 +118,10 @@
     return out;
   }
 
+  function inRoom() {
+    return !!(room && room.localParticipant);
+  }
+
   function participantMicMuted(p) {
     try {
       if (p === room?.localParticipant) return !micOn;
@@ -112,18 +131,21 @@
   }
 
   function showMicBanner(show) {
-    if (micBanner) micBanner.hidden = !show;
+    // Nunca mostra banner se não estiver realmente na sala (bug do "clico e nada").
+    const should = !!(show && inRoom() && !micOn);
+    if (micBanner) micBanner.hidden = !should;
   }
 
   function setMicUi() {
     if (!micBtn) return;
-    micBtn.disabled = !room;
+    micBtn.disabled = !inRoom();
     micBtn.classList.toggle("is-muted", !micOn);
     micBtn.innerHTML = micOn
       ? '<i data-lucide="mic"></i>'
       : '<i data-lucide="mic-off"></i>';
-    if (myStatus && room) {
-      myStatus.textContent = micOn ? "Em voz" : "Em voz · mudo — clique no mic";
+    if (myStatus) {
+      if (!inRoom()) myStatus.textContent = "Fora da sala";
+      else myStatus.textContent = micOn ? "Em voz" : "Em voz · mudo — clique no mic";
     }
     if (window.lucide) window.lucide.createIcons();
   }
@@ -139,6 +161,10 @@
     if (micBtn) micBtn.disabled = !on;
     const mobile = window.matchMedia("(max-width: 960px)").matches;
     if (fabChat) fabChat.hidden = !(on && mobile);
+    if (!on) {
+      showMicBanner(false);
+      collapseScreen();
+    }
   }
 
   function peopleList(r) {
@@ -201,6 +227,18 @@
     chatLog.scrollTop = chatLog.scrollHeight;
   }
 
+  function collapseScreen() {
+    screenWrap?.classList.remove("is-expanded");
+    stageEl?.classList.remove("has-expanded-screen");
+  }
+
+  function toggleScreenExpand() {
+    if (!screenWrap || screenWrap.hidden) return;
+    const on = !screenWrap.classList.contains("is-expanded");
+    screenWrap.classList.toggle("is-expanded", on);
+    stageEl?.classList.toggle("has-expanded-screen", on);
+  }
+
   function attachScreen(track, who) {
     if (!screenEl || !track?.attach) return;
     track.attach(screenEl);
@@ -213,6 +251,7 @@
       try { screenEl.srcObject = null; } catch (_) {}
     }
     if (screenWrap) screenWrap.hidden = true;
+    collapseScreen();
   }
 
   function attachRemoteAudio(track, participant) {
@@ -286,10 +325,12 @@
     const res = await fetch("/call/token", {
       method: "POST",
       headers: {
+        "Content-Type": "application/json",
         "X-CSRF-Token": csrf(),
         "X-Requested-With": "fetch",
         Accept: "application/json",
       },
+      body: JSON.stringify({ device_id: deviceId() }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -318,26 +359,40 @@
   }
 
   function syncMicFromRoom() {
+    if (!inRoom()) {
+      micOn = false;
+      showMicBanner(false);
+      setMicUi();
+      refreshUi();
+      return;
+    }
     try {
-      const enabled = !!room?.localParticipant?.isMicrophoneEnabled;
-      micOn = enabled;
+      micOn = !!room.localParticipant.isMicrophoneEnabled;
     } catch (_) {}
     setMicUi();
-    showMicBanner(!!room && !micOn);
+    showMicBanner(!micOn);
     refreshUi();
   }
 
-  /**
-   * Publica mic de forma explícita (createLocalAudioTrack).
-   * Deve ser chamado a partir de clique do usuário.
-   */
   async function enableMic() {
-    if (!room?.localParticipant || !LK) return;
     if (micPublishing) return;
+
+    if (!inRoom()) {
+      showMicBanner(false);
+      setHint("Você não está na sala. Clique em «Entrar na sala» primeiro.");
+      setStatus("Desconectado");
+      return;
+    }
+    if (!LK) {
+      setHint("SDK LiveKit ainda carregando — aguarde 2s e clique de novo.");
+      return;
+    }
+
     micPublishing = true;
+    if (enableMicBtn) enableMicBtn.disabled = true;
     setHint("Ativando microfone…");
+
     try {
-      // 1) Prova o device (erro claro se falhar)
       const probe = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -346,64 +401,72 @@
         },
         video: false,
       });
-      const deviceId = probe.getAudioTracks()[0]?.getSettings?.().deviceId;
+      const inputDeviceId = probe.getAudioTracks()[0]?.getSettings?.().deviceId;
       probe.getTracks().forEach((t) => t.stop());
 
-      // 2) Track do LiveKit
-      let audioTrack;
+      if (!inRoom()) {
+        setHint("Conexão caiu enquanto pedia o mic. Entre de novo.");
+        showMicBanner(false);
+        return;
+      }
+
       if (typeof LK.createLocalAudioTrack === "function") {
-        audioTrack = await LK.createLocalAudioTrack({
-          deviceId,
+        const audioTrack = await LK.createLocalAudioTrack({
+          deviceId: inputDeviceId,
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
         });
+
+        try {
+          await room.localParticipant.setMicrophoneEnabled(false);
+        } catch (_) {}
+
+        const source = LK.Track?.Source?.Microphone;
+        await room.localParticipant.publishTrack(
+          audioTrack,
+          source ? { source } : undefined
+        );
+
+        try {
+          await room.localParticipant.setMicrophoneEnabled(true);
+        } catch (_) {}
       } else {
         await room.localParticipant.setMicrophoneEnabled(true);
-        micOn = !!room.localParticipant.isMicrophoneEnabled;
-        if (!micOn) throw new Error("setMicrophoneEnabled não ligou o mic");
-        showMicBanner(false);
-        setHint("Microfone ligado.");
-        setMicUi();
-        refreshUi();
-        return;
       }
 
-      // 3) Se já tinha mic, desliga antes
-      try {
-        await room.localParticipant.setMicrophoneEnabled(false);
-      } catch (_) {}
-
-      const source = LK.Track?.Source?.Microphone;
-      await room.localParticipant.publishTrack(
-        audioTrack,
-        source ? { source } : undefined
-      );
-
-      // Garante unmuted
-      try {
-        await room.localParticipant.setMicrophoneEnabled(true);
-      } catch (_) {}
-
       micOn = true;
+      try {
+        if (room.localParticipant.isMicrophoneEnabled === false) {
+          micOn = false;
+        }
+      } catch (_) {}
+
+      if (!micOn) {
+        // Fallback final
+        await room.localParticipant.setMicrophoneEnabled(true);
+        micOn = !!room.localParticipant.isMicrophoneEnabled;
+      }
+
+      if (!micOn) throw new Error("Microfone não publicou — tente de novo");
+
       showMicBanner(false);
       setHint("Microfone ligado. Fale normalmente.");
       setMicUi();
       refreshUi();
-
-      // Confere 300ms depois (alguns browsers atrasam o estado)
       setTimeout(syncMicFromRoom, 400);
     } catch (err) {
       console.error("enableMic", err);
       micOn = false;
-      showMicBanner(true);
+      if (inRoom()) showMicBanner(true);
+      else showMicBanner(false);
       setMicUi();
       const name = err?.name || "";
       const msg = String(err?.message || err);
       if (name === "NotAllowedError" || /Permission|NotAllowed/i.test(msg)) {
-        setHint("Permissão negada neste clique. Clique de novo em «Permitir microfone».");
+        setHint("Chrome bloqueou o mic neste clique. Clique de novo em «Ligar microfone» e escolha Permitir.");
       } else if (name === "NotFoundError") {
-        setHint("Nenhum microfone encontrado no dispositivo.");
+        setHint("Nenhum microfone encontrado.");
       } else if (name === "NotReadableError") {
         setHint("Microfone em uso por outro app (Discord/Zoom). Feche e tente de novo.");
       } else {
@@ -411,11 +474,12 @@
       }
     } finally {
       micPublishing = false;
+      if (enableMicBtn) enableMicBtn.disabled = false;
     }
   }
 
   async function muteMic() {
-    if (!room?.localParticipant) return;
+    if (!inRoom()) return;
     try {
       await room.localParticipant.setMicrophoneEnabled(false);
       micOn = false;
@@ -436,6 +500,7 @@
     setStatus("Conectando…", "wait");
     setHint(auto ? "Reentrando na sala…" : "Entrando na sala…");
     if (joinBtn) joinBtn.disabled = true;
+    showMicBanner(false);
 
     let r = null;
     try {
@@ -449,8 +514,6 @@
       r = new LK.Room({
         adaptiveStream: true,
         dynacast: true,
-        // false: F5 não “mata” de propósito via API — ainda assim o WS cai;
-        // usamos auto-rejoin. Sair só pelo botão.
         disconnectOnPageLeave: false,
         audioCaptureDefaults: {
           echoCancellation: true,
@@ -469,11 +532,11 @@
       });
       r.on(ev("ActiveSpeakersChanged", "activeSpeakersChanged"), () => refreshUi());
       r.on(ev("TrackMuted", "trackMuted"), () => {
-        if (room?.localParticipant) syncMicFromRoom();
+        if (inRoom()) syncMicFromRoom();
         else refreshUi();
       });
       r.on(ev("TrackUnmuted", "trackUnmuted"), () => {
-        if (room?.localParticipant) syncMicFromRoom();
+        if (inRoom()) syncMicFromRoom();
         else refreshUi();
       });
       r.on(ev("LocalTrackPublished", "localTrackPublished"), () => syncMicFromRoom());
@@ -516,7 +579,6 @@
       });
       r.on(ev("Disconnected", "disconnected"), (reason) => {
         if (room !== r) return;
-        // Durante reconnect o client às vezes dispara estados — só limpa se for disconnect final
         const state = r.state || r.connectionState;
         const reconnecting =
           state === (LK.ConnectionState && LK.ConnectionState.Reconnecting) ||
@@ -529,20 +591,18 @@
         micOn = false;
         wipeAudio();
         clearScreen();
+        showMicBanner(false);
         setConnectedUi(false);
         setMicUi();
         refreshUi();
         if (intentionalLeave) {
           rememberJoin(false);
-          showMicBanner(false);
           setStatus("Desconectado");
           setHint("");
         } else {
           setStatus("Caiu", "error");
           setHint("Conexão caiu. Reentrando…");
           rememberJoin(true);
-          showMicBanner(false);
-          // Auto-rejoin após queda
           setTimeout(() => {
             if (!room && !joining && !intentionalLeave) {
               join({ auto: true }).catch(console.error);
@@ -568,16 +628,13 @@
       setHint("");
       refreshUi();
 
-      // Mic: NÃO força no auto-rejoin sem gesto (mobile). No clique manual tenta.
-      if (!auto) {
-        showMicBanner(true);
-        setHint("Na sala. Clique em «Permitir microfone» (ou no ícone do mic) para falar.");
-        // Tenta já — se o site já tem permissão, liga; senão o banner resolve.
-        enableMic().catch(() => {});
-      } else {
-        showMicBanner(true);
-        setHint("Reentrou. Clique no microfone para ligar de novo.");
-      }
+      // Mic só com gesto do usuário (banner). Auto-rejoin não tenta sozinho.
+      showMicBanner(true);
+      setHint(
+        auto
+          ? "Reentrou. Clique em «Ligar microfone» para falar."
+          : "Na sala. Clique em «Ligar microfone» para publicar o áudio."
+      );
       setMicUi();
 
       remoteList(r).forEach((p) => {
@@ -632,13 +689,16 @@
   }
 
   async function toggleMic() {
-    if (!room?.localParticipant) return;
+    if (!inRoom()) {
+      setHint("Entre na sala primeiro (botão Entrar na sala).");
+      return;
+    }
     if (micOn) await muteMic();
     else await enableMic();
   }
 
   async function toggleScreen() {
-    if (!room?.localParticipant) return;
+    if (!inRoom()) return;
     try {
       const next = !sharing;
       await room.localParticipant.setScreenShareEnabled(next, { audio: false });
@@ -666,21 +726,48 @@
     deafenBtn?.classList.toggle("is-muted", on);
   }
 
-  joinBtn?.addEventListener("click", () => join({ auto: false }).catch(console.error));
-  document.getElementById("call-channel-btn")?.addEventListener("click", () => {
-    if (!room) join({ auto: false }).catch(console.error);
+  // Delegação: funciona mesmo se lucide recriar ícones no botão.
+  root.addEventListener("click", (e) => {
+    const t = e.target;
+    if (!(t instanceof Element)) return;
+
+    if (t.closest("#call-enable-mic-btn")) {
+      e.preventDefault();
+      enableMic().catch(console.error);
+      return;
+    }
+    if (t.closest("#call-mic-btn")) {
+      e.preventDefault();
+      toggleMic().catch(console.error);
+      return;
+    }
+    if (t.closest("#call-join-btn") || t.closest("#call-channel-btn")) {
+      if (!room) join({ auto: false }).catch(console.error);
+      return;
+    }
+    if (t.closest("#call-leave-btn")) {
+      leave().catch(console.error);
+      return;
+    }
+    if (t.closest("#call-screen-btn")) {
+      toggleScreen().catch(console.error);
+      return;
+    }
+    if (t.closest("#call-deafen-btn")) {
+      setDeafened(!deafened);
+      return;
+    }
+    if (t.closest("#call-screen-wrap")) {
+      toggleScreenExpand();
+    }
   });
-  leaveBtn?.addEventListener("click", () => leave().catch(console.error));
-  micBtn?.addEventListener("click", () => toggleMic().catch(console.error));
-  enableMicBtn?.addEventListener("click", () => enableMic().catch(console.error));
-  screenBtn?.addEventListener("click", () => toggleScreen().catch(console.error));
-  deafenBtn?.addEventListener("click", () => setDeafened(!deafened));
+
   fabChat?.addEventListener("click", () => chatPanel?.classList.add("is-open"));
   chatToggle?.addEventListener("click", () => chatPanel?.classList.remove("is-open"));
 
   chatForm?.addEventListener("submit", async (e) => {
     e.preventDefault();
-    if (!room?.localParticipant) return;
+    if (!inRoom()) return;
     const text = (chatInput.value || "").trim();
     if (!text) return;
     const payload = new TextEncoder().encode(JSON.stringify({ t: "chat", text }));
@@ -689,16 +776,15 @@
     chatInput.value = "";
   });
 
-  // Não força disconnect no beforeunload — deixa o WS cair; auto-rejoin se REJOIN_KEY
   window.addEventListener("pagehide", () => {
     if (room && !intentionalLeave) rememberJoin(true);
   });
 
   setMicUi();
   setConnectedUi(false);
+  showMicBanner(false);
   if (window.lucide) window.lucide.createIcons();
 
-  // Auto-reentrar após F5
   try {
     if (sessionStorage.getItem(REJOIN_KEY) === "1") {
       setTimeout(() => join({ auto: true }).catch(console.error), 400);

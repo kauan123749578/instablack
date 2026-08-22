@@ -208,5 +208,12 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 | 2026-08-21 | feat | **Call** (LiveKit Cloud): sala global voz+tela+chat. Flag `allow_voice_room` (owner libera no Admin). Rotas `/call` + `/call/token`. Envs `LIVEKIT_*`. app-v **115**. Redeploy **web**. |
 | 2026-08-21 | ux | Call visual Discord (tiles + falando verde + dock). Mic pede permissão antes; parar tela não derruba sala; join mais rápido (SDK+token+mic em paralelo). app-v **116**. |
 | 2026-08-21 | ux | Call: layout Discord (canais + Voz conectada + userbar), tela cheia/mobile. **Entra na sala primeiro**, mic depois (banner). Join não falha se mic bloquear. app-v **117**. |
+| 2026-08-21 | fix | Call: mic banner só com `localParticipant`; botões com feedback (sem return silencioso); identity `u{id}-{device}` (PC+celular juntos); clique na tela → expandir stage. app-v **119**. Redeploy **web**. |
+
+### 3.4) Call / LiveKit — armadilhas
+
+- **Mesmo `identity` = kick**: token com só `u{user.id}` → segundo device (celular) **expulsa** o PC. Usar `u{id}-{device_id}` estável por `localStorage`.
+- **Banner “já está na sala” + DESCONECTADO**: `showMicBanner(true)` sem `room` → botão “Ligar microfone” parece morto (`enableMic` fazia `return` silencioso). Banner só se `inRoom() && !micOn`; se clicar fora da sala, hint pedindo Entrar.
+- Clique na tela compartilhada: toggle `.is-expanded` no `#call-screen-wrap` (não fullscreen nativo do browser).
 
 <!-- Ao corrigir bugs de produção: acrescente uma linha acima e, se for armadilha nova, uma subseção em "O que já quebrou". -->

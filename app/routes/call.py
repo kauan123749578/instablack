@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import logging
+import re
+import secrets
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -39,6 +41,11 @@ def _display_name(user: User) -> str:
     return name or f"@{user.username}"
 
 
+def _safe_device_id(raw: str) -> str:
+    cleaned = re.sub(r"[^a-zA-Z0-9_-]", "", (raw or "").strip())[:24]
+    return cleaned or secrets.token_hex(4)
+
+
 @router.get("")
 def call_page(
     request: Request,
@@ -60,7 +67,8 @@ def call_page(
 
 
 @router.post("/token")
-def call_token(
+async def call_token(
+    request: Request,
     user: User = Depends(get_auth_user),
 ):
     """JWT LiveKit para entrar na sala global."""
@@ -73,6 +81,15 @@ def call_token(
                 "LIVEKIT_API_KEY e LIVEKIT_API_SECRET (cloud.livekit.io)."
             ),
         )
+
+    device_raw = ""
+    try:
+        body = await request.json()
+        if isinstance(body, dict):
+            device_raw = str(body.get("device_id") or "")
+    except Exception:
+        device_raw = ""
+
     try:
         from livekit.api import AccessToken, VideoGrants
     except ImportError as exc:
@@ -83,7 +100,9 @@ def call_token(
         ) from exc
 
     room = (settings.livekit_room_name or "instablack-global").strip()
-    identity = f"u{user.id}"
+    device = _safe_device_id(device_raw)
+    # Identidade única por aparelho: PC e celular ficam na sala juntos.
+    identity = f"u{user.id}-{device}"
     name = _display_name(user)
     try:
         token = (
