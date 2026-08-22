@@ -411,6 +411,87 @@
 }
 .dc-fab-chat .lucide { width: 22px; height: 22px; }
 
+.dc-voice-member .share-icon {
+  margin-left: auto;
+  width: 14px; height: 14px; color: #23a559;
+}
+.dc-voice-member.is-sharing { background: rgba(35,165,89,0.08); }
+.dc-tile.is-sharing { border-color: rgba(35,165,89,0.45); }
+.dc-reshare-banner { background: #ed4245; }
+.dc-reshare-banner .dc-join { background: #fff; color: #ed4245; }
+
+.dc-mobile-dock {
+  display: none;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 60;
+  background: #232428;
+  border-top: 1px solid #1e1f22;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
+}
+.dc-mobile-dock-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.dc-mobile-dock-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.dc-mobile-dock-status .lucide { width: 18px; height: 18px; color: #23a559; flex-shrink: 0; }
+.dc-mobile-dock-status strong { display: block; font-size: 13px; color: #23a559; }
+.dc-mobile-dock-status span { display: block; font-size: 11px; color: #949ba4; }
+.dc-mobile-dock-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.dc-dock-btn {
+  border: none;
+  border-radius: 8px;
+  background: #2b2d31;
+  color: #dbdee1;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.dc-dock-btn .lucide { width: 22px; height: 22px; }
+.dc-dock-btn.is-on { color: #23a559; background: rgba(35,165,89,0.12); }
+.dc-dock-btn:disabled { opacity: 0.35; }
+.dc-mobile-dock-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 8px;
+  border-top: 1px solid #1e1f22;
+}
+.dc-dock-mic {
+  margin-left: auto;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: none;
+  background: #2b2d31;
+  color: #dbdee1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.dc-dock-mic .lucide { width: 24px; height: 24px; }
+.dc-dock-mic.is-muted { background: #ed4245; color: #fff; }
+
 /* Bottom tabs do painel somem na call (mobile) */
 body:has(.dc-root) .bottom-tabs { display: none !important; }
 
