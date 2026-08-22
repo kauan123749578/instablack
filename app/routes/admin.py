@@ -567,6 +567,31 @@ def toggle_user_multi_session(
     )
 
 
+@router.post("/users/{user_id}/toggle-voice-room")
+def toggle_user_voice_room(
+    user_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_owner_user),
+):
+    """Libera/revoga a sala Call (LiveKit). Só o dono. Owner sempre tem acesso."""
+    target = db.get(User, user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    if target.id == admin.id or _is_owner(target):
+        return RedirectResponse(
+            "/admin?error=voiceroom_self",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    if not _admin_can_see(admin, target):
+        raise HTTPException(status_code=404, detail="Usuário não encontrado")
+    target.allow_voice_room = not bool(getattr(target, "allow_voice_room", False))
+    db.commit()
+    return RedirectResponse(
+        "/admin?ok=voiceroom",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
 @router.post("/users/{user_id}/toggle-billing")
 def toggle_user_billing(
     user_id: int,

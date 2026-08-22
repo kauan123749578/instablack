@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Call — instablack{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="/static/call.css?v=1" />
+{% endblock %}
+{% block content %}
+<div class="call-page" id="call-page"
+     data-ready="{{ '1' if livekit_ready else '0' }}"
+     data-room="{{ room_name }}">
+  <div class="page-header call-header">
+    <div>
+      <h2><i data-lucide="headphones" class="inline-icon"></i> Call</h2>
+      <p class="muted page-header-sub">Sala global — voz, compartilhar tela e chat. Só quem o dono liberou.</p>
+    </div>
+    <div class="call-status" id="call-status">Desconectado</div>
+  </div>
+
+  {% if not livekit_ready %}
+  <div class="alert alert-error">
+    <strong>LiveKit ainda não configurado</strong>
+    <p style="margin:8px 0 0;font-size:13px;line-height:1.45">
+      Crie um projeto free em
+      <a href="https://cloud.livekit.io" target="_blank" rel="noopener" style="color:#E8D48B">cloud.livekit.io</a>
+      → Settings → Keys, e no Railway (serviço <strong>web</strong>) defina:
+    </p>
+    <ul style="margin:8px 0 0;padding-left:18px;font-size:13px;line-height:1.5">
+      <li><code>LIVEKIT_URL</code> — ex.: <code>wss://….livekit.cloud</code></li>
+      <li><code>LIVEKIT_API_KEY</code></li>
+      <li><code>LIVEKIT_API_SECRET</code></li>
+    </ul>
+    {% if is_owner %}
+    <p class="muted" style="margin:10px 0 0;font-size:12px">Você (dono) já vê esta página. Depois do redeploy, entre e chame a galera.</p>
+    {% endif %}
+  </div>
+  {% else %}
+
+  <div class="call-layout">
+    <section class="call-main">
+      <div class="call-stage" id="call-stage">
+        <div class="call-stage-empty" id="call-stage-empty">
+          Ninguém compartilhando tela. Clique em <strong>Compartilhar tela</strong> abaixo.
+        </div>
+        <video id="call-screen" class="call-screen" autoplay playsinline muted></video>
+      </div>
+
+      <div class="call-controls">
+        <button type="button" class="btn btn-primary" id="call-join-btn">Entrar na sala</button>
+        <button type="button" class="btn" id="call-mic-btn" disabled title="Microfone">
+          <i data-lucide="mic"></i> Mic
+        </button>
+        <button type="button" class="btn" id="call-screen-btn" disabled title="Compartilhar tela">
+          <i data-lucide="monitor-up"></i> Tela
+        </button>
+        <button type="button" class="btn btn-danger" id="call-leave-btn" disabled>Sair</button>
+      </div>
+      <p class="muted call-hint" id="call-hint">Ao entrar, o navegador vai pedir microfone (e tela se você compartilhar).</p>
+    </section>
+
+    <aside class="call-side">
+      <div class="call-panel">
+        <h3>Na sala</h3>
+        <ul class="call-people" id="call-people">
+          <li class="muted">Ninguém ainda</li>
+        </ul>
+      </div>
+      <div class="call-panel call-chat-panel">
+        <h3>Chat</h3>
+        <div class="call-chat-log" id="call-chat-log"></div>
+        <form class="call-chat-form" id="call-chat-form">
+          <input type="text" id="call-chat-input" placeholder="Mensagem…" maxlength="500" autocomplete="off" disabled>
+          <button type="submit" class="btn btn-sm btn-primary" id="call-chat-send" disabled>Enviar</button>
+        </form>
+      </div>
+    </aside>
+  </div>
+  {% endif %}
+</div>
+<script src="/static/call.js?v=1"></script>
+{% endblock %}

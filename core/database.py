@@ -360,6 +360,8 @@ def _sqlite_migrate(bind=None) -> None:
                 conn.execute(text("ALTER TABLE users ADD COLUMN billing_blocked BOOLEAN DEFAULT 0"))
             if "allow_multi_session" not in ucols:
                 conn.execute(text("ALTER TABLE users ADD COLUMN allow_multi_session BOOLEAN DEFAULT 0"))
+            if "allow_voice_room" not in ucols:
+                conn.execute(text("ALTER TABLE users ADD COLUMN allow_voice_room BOOLEAN DEFAULT 0"))
             conn.execute(text("UPDATE users SET is_admin = 1 WHERE username = 'admin'"))
         if "instagram_accounts" in insp.get_table_names():
             acols = {c["name"] for c in insp.get_columns("instagram_accounts")}
@@ -649,6 +651,7 @@ def _postgres_migrate(bind=None) -> None:
                 ("allow_instagrapi", "BOOLEAN DEFAULT FALSE"),
                 ("billing_blocked", "BOOLEAN DEFAULT FALSE"),
                 ("allow_multi_session", "BOOLEAN DEFAULT FALSE"),
+                ("allow_voice_room", "BOOLEAN DEFAULT FALSE"),
             ],
         )
         if _table_exists(conn, "users"):

@@ -46,6 +46,8 @@ class User(Base):
     owner_private: Mapped[bool] = mapped_column(Boolean, default=False)
     # Libera conectar via Instagrapi (senha / sessionid / session.json). Owner sempre pode.
     allow_instagrapi: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Sala Call (LiveKit): voz + tela. Owner sempre pode; demais só com flag.
+    allow_voice_room: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     # Cobrança: trava o painel (popup) até o suporte liberar. Não é ban (ainda entra).
     billing_blocked: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)

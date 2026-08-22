@@ -204,5 +204,7 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 | 2026-08-19 | hotfix | Web crash: `automations.py` perdeu import `get_effective_user`. Depois: `/accounts/connected` 500 porque `account_folders` não era criada no migrate Postgres (só `folder_id`). CREATE TABLE + página não cai se a tabela faltar. Redeploy **web**. |
 | 2026-08-19 | feat | Dashboard KPI **Comentários respondidos** (tabela `comment_auto_replies`). Fotos feed: upload múltiplo + limite **150 mídias** Reels+fotos somadas por usuário (R2). Redeploy **web**. |
 | 2026-08-21 | fix | Instagrapi **2.18.16** (CAA login prepare). Owner + `allow_multi_session` mantêm multi-sessão no login. Mobile: botão Atualizar tela (topbar + drawer). app-v **114**. Redeploy **web**. |
+| 2026-08-21 | tool | `login_instagram.py`: login **local** (IP residencial) + Phantom + dump `sessions/@_session.json` pra importar no painel (bypass 429 senha no Railway). Import aceita `account.json` com `instagrapi_settings`. |
+| 2026-08-21 | feat | **Call** (LiveKit Cloud): sala global voz+tela+chat. Flag `allow_voice_room` (owner libera no Admin). Rotas `/call` + `/call/token`. Envs `LIVEKIT_*`. app-v **115**. Redeploy **web**. |
 
 <!-- Ao corrigir bugs de produção: acrescente uma linha acima e, se for armadilha nova, uma subseção em "O que já quebrou". -->

@@ -10,14 +10,14 @@
   <link rel="manifest" href="/manifest.webmanifest" />
   <meta name="theme-color" content="#C9A227" />
   <meta name="csrf-token" content="{{ request.session.get('csrf_token', '') }}" />
-  <meta name="ib-app-v" content="114" />
+  <meta name="ib-app-v" content="115" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="mobile-web-app-capable" content="yes" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Bricolage+Grotesque:wght@600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css?v=67" />
+  <link rel="stylesheet" href="/static/style.css?v=68" />
   <link rel="stylesheet" href="/static/dashboard.css?v=56" />
   {% block head %}{% endblock %}
 </head>
@@ -146,6 +146,12 @@
             <i data-lucide="shield" class="nav-icon"></i>
             <span class="nav-text">Camuflagem</span>
           </a>
+          {% if nav_auth.is_owner or nav_auth.allow_voice_room %}
+          <a href="/call" class="nav-link">
+            <i data-lucide="headphones" class="nav-icon"></i>
+            <span class="nav-text">Call</span>
+          </a>
+          {% endif %}
 
           <div class="nav-section-label">Relatórios</div>
           <a href="/analytics" class="nav-link" data-nav="/analytics">
@@ -306,6 +312,9 @@
         <a href="/aquecimento" data-nav="/aquecimento"><i data-lucide="flame"></i><span>Aquecimento Meta</span></a>
         <a href="/warmup" data-nav="/warmup"><i data-lucide="users"></i><span>Aquecer contas (instagrapi)</span></a>
         <a href="/camuflagem" data-nav="/camuflagem"><i data-lucide="shield"></i><span>Camuflagem</span></a>
+        {% if nav_auth.is_owner or nav_auth.allow_voice_room %}
+        <a href="/call"><i data-lucide="headphones"></i><span>Call</span></a>
+        {% endif %}
 
         <div class="drawer-section-label">Relatórios</div>
         <a href="/analytics" data-nav="/analytics"><i data-lucide="chart-no-axes-combined"></i><span>Analytics</span></a>

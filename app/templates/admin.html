@@ -28,6 +28,9 @@
 {% if ok == 'instagrapi' %}
 <div class="alert alert-ok">Acesso Instagrapi (API não oficial) atualizado.</div>
 {% endif %}
+{% if ok == 'voiceroom' %}
+<div class="alert alert-ok">Acesso à Call (voz + tela) atualizado.</div>
+{% endif %}
 {% if ok == 'billing_on' %}
 <div class="alert alert-ok">Painel bloqueado — o usuário verá o aviso de mensalidade até o suporte liberar.</div>
 {% endif %}
@@ -69,6 +72,9 @@
 {% endif %}
 {% if error == 'instagrapi_self' %}
 <div class="alert alert-error">O dono já tem Instagrapi liberado. Não precisa marcar nessa conta.</div>
+{% endif %}
+{% if error == 'voiceroom_self' %}
+<div class="alert alert-error">O dono já tem Call liberada. Não precisa marcar nessa conta.</div>
 {% endif %}
 {% if error == 'billing_self' %}
 <div class="alert alert-error">Não é possível bloquear o painel do dono da plataforma.</div>
@@ -314,6 +320,9 @@
               <span class="og-badge {% if u.allow_instagrapi %}badge-green{% else %}badge-red{% endif %}" title="API não oficial Instagrapi">
                 {% if u.allow_instagrapi %}Instagrapi ON{% else %}Instagrapi OFF{% endif %}
               </span>
+              <span class="og-badge {% if u.allow_voice_room %}badge-green{% else %}badge-red{% endif %}" title="Sala Call (voz + tela)">
+                {% if u.allow_voice_room %}Call ON{% else %}Call OFF{% endif %}
+              </span>
               {% if u.billing_blocked %}
               <span class="og-badge badge-red" title="Painel bloqueado até pagar a mensalidade">Mensalidade</span>
               {% endif %}
@@ -380,6 +389,12 @@
                         onsubmit="return confirm('{% if u.allow_instagrapi %}Bloquear Instagrapi para @{{ u.username }}?{% else %}Liberar Instagrapi para @{{ u.username }}?{% endif %}');">
                     <button type="submit" class="admin-more-item {% if not u.allow_instagrapi %}admin-more-item--accent{% endif %}">
                       {% if u.allow_instagrapi %}Bloquear Instagrapi{% else %}Liberar Instagrapi{% endif %}
+                    </button>
+                  </form>
+                  <form method="post" action="/admin/users/{{ u.id }}/toggle-voice-room" class="admin-more-form"
+                        onsubmit="return confirm('{% if u.allow_voice_room %}Revogar Call de @{{ u.username }}?{% else %}Liberar Call (voz+tela) para @{{ u.username }}?{% endif %}');">
+                    <button type="submit" class="admin-more-item {% if not u.allow_voice_room %}admin-more-item--accent{% endif %}">
+                      {% if u.allow_voice_room %}Revogar Call{% else %}Liberar Call{% endif %}
                     </button>
                   </form>
                   <form method="post" action="/admin/users/{{ u.id }}/toggle-multi-session" class="admin-more-form"
