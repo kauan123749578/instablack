@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse
@@ -92,6 +93,7 @@ def call_token(
             )
             .with_identity(identity)
             .with_name(name)
+            .with_ttl(timedelta(hours=6))
             .with_grants(
                 VideoGrants(
                     room_join=True,
