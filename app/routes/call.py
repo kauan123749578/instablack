@@ -83,10 +83,12 @@ async def call_token(
         )
 
     device_raw = ""
+    role = ""
     try:
         body = await request.json()
         if isinstance(body, dict):
             device_raw = str(body.get("device_id") or "")
+            role = str(body.get("role") or "").strip().lower()
     except Exception:
         device_raw = ""
 
@@ -102,7 +104,10 @@ async def call_token(
     room = (settings.livekit_room_name or "instablack-global").strip()
     device = _safe_device_id(device_raw)
     # Identidade única por aparelho: PC e celular ficam na sala juntos.
+    # Janela auxiliar de tela usa sufixo -screen (sobrevive F5 na aba principal).
     identity = f"u{user.id}-{device}"
+    if role == "screen":
+        identity = f"{identity}-screen"
     name = _display_name(user)
     try:
         token = (
@@ -139,4 +144,21 @@ async def call_token(
             "identity": identity,
             "name": name,
         }
+    )
+
+
+@router.get("/screen-host")
+def call_screen_host_page(
+    request: Request,
+    user: User = Depends(get_auth_user),
+):
+    """Janela auxiliar — mantém screen share ao atualizar a aba principal."""
+    _require_call_user(user)
+    return templates.TemplateResponse(
+        "call_screen_host.html",
+        {
+            "request": request,
+            "user": user,
+            "livekit_ready": _livekit_ready(),
+        },
     )

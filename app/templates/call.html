@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Call — instablack{% endblock %}
 {% block head %}
-<link rel="stylesheet" href="/static/call.css?v=10" />
+<link rel="stylesheet" href="/static/call.css?v=14" />
 {% endblock %}
 {% block content %}
 <div class="dc-root" id="call-page"
@@ -66,6 +66,9 @@
     {# Palco principal #}
     <section class="dc-main">
       <header class="dc-main-head">
+        <button type="button" class="dc-icon-btn dc-mobile-menu-btn" id="call-sidebar-toggle" title="Canais" aria-label="Abrir canais">
+          <i data-lucide="menu"></i>
+        </button>
         <div class="dc-main-title">
           <i data-lucide="volume-2"></i>
           <span>Sala de voz</span>
@@ -95,9 +98,9 @@
       <div class="dc-mic-banner" id="call-mic-banner" hidden>
         <div>
           <strong id="call-mic-banner-title">Microfone desligado</strong>
-          <span id="call-mic-banner-text">Toque no microfone (barra inferior no celular) para falar.</span>
+          <span id="call-mic-banner-text">Clique em «Ligar microfone» ou no ícone do microfone para falar.</span>
         </div>
-        <button type="button" class="dc-join dc-join-sm" id="call-enable-mic-btn" type="button">Ligar microfone</button>
+        <button type="button" class="dc-join dc-join-sm" id="call-enable-mic-btn">Ligar microfone</button>
       </div>
 
       {# Banner recompartilhar após F5 #}
@@ -125,6 +128,9 @@
       </form>
     </aside>
   </div>
+
+  <div class="dc-sidebar-backdrop" id="call-sidebar-backdrop" hidden aria-hidden="true"></div>
+  <div class="dc-edge-swipe" id="call-edge-swipe" aria-hidden="true"></div>
 
   {# Mobile: dock estilo Discord (voz + controles grandes) #}
   <div class="dc-mobile-dock" id="call-mobile-dock" hidden>
@@ -200,8 +206,9 @@
       </div>
 
       <p class="dc-quality-note">
+        No PC abre uma <strong>janela auxiliar</strong> — a transmissão continua mesmo se você der F5 nesta página.
         Depois de começar, clique de novo no ícone do monitor para mudar a qualidade.
-        1080p60 / 1440p pedem mais internet. Para parar, use o botão abaixo.
+        1080p60 / 1440p pedem mais internet.
       </p>
 
       <div class="dc-modal-actions">
@@ -214,5 +221,5 @@
 
   {% endif %}
 </div>
-<script src="/static/call.js?v=10"></script>
+<script src="/static/call.js?v=14"></script>
 {% endblock %}

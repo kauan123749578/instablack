@@ -213,11 +213,15 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 | 2026-08-22 | feat | Call: modal **Qualidade da transmissão** (Fonte/1440/1080/720/480 + 5/15/30/60 fps) antes do share; bitrate por preset. app-v **121**. Redeploy **web**. |
 | 2026-08-22 | feat | Call: câmera via `setCameraEnabled` (doc LiveKit); preview no tile. app-v **122**. Redeploy **web**. |
 | 2026-08-22 | fix | Call: mic = `setMicrophoneEnabled` direto; dock mobile Discord; quem entra vê tela (`scanAllRemoteMedia`); banner re-share após F5. app-v **123**. Redeploy **web**. |
+| 2026-08-22 | fix | Call mobile: sidebar; mic `setMicrophoneEnabled`; **janela auxiliar `/call/screen-host`** — transmissão sobrevive F5 na aba principal (identity `-screen`). call v**14**, app-v **126**. |
 
 ### 3.4) Call / LiveKit — armadilhas
 
 - **Mesmo `identity` = kick**: token com só `u{user.id}` → segundo device (celular) **expulsa** o PC. Usar `u{id}-{device_id}` estável por `localStorage`.
 - **Banner “já está na sala” + DESCONECTADO**: `showMicBanner(true)` sem `room` → botão “Ligar microfone” parece morto (`enableMic` fazia `return` silencioso). Banner só se `inRoom() && !micOn`; se clicar fora da sala, hint pedindo Entrar.
-- Clique na tela compartilhada: toggle `.is-expanded` no `#call-screen-wrap` (não fullscreen nativo do browser).
+- **Mic mobile “não liga”**: evitar `touchend`+`click` duplicados (só `pointerdown` + debounce). Preferir **`setMicrophoneEnabled` puro** (LiveKit pede permissão); não duplicar com `getUserMedia` manual salvo bug documentado do Safari.
+- **Canais em cima no mobile**: `@media 960px` não empilhar sidebar no topo — drawer `translateX(-100%)`, swipe da borda esquerda ou botão menu.
+- **Tela no iPhone**: Safari não tem `getDisplayMedia` útil — avisar; Android/PC ok.
+- **F5 para screen share na mesma aba**: browser mata `getDisplayMedia`. No **PC**, share abre janela `/call/screen-host` (identity `u{id}-{device}-screen`); F5 na call principal não para. Mobile ainda inline (F5 para).
 - **Tela borrada**: default WebRTC/LiveKit usa bitrate baixo. Publicar com `screenShareEncoding` ~8Mbps + `resolution` 1080p30 + `contentHint: detail` (LANcord faz o mesmo no P2P). Qualidade LAN do LANcord ainda ganha (sem nuvem); na internet depende da banda.
 <!-- Ao corrigir bugs de produção: acrescente uma linha acima e, se for armadilha nova, uma subseção em "O que já quebrou". -->

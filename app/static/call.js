@@ -1,9 +1,6 @@
 /**
- * Call — LiveKit (mic sólido + multi-device + tela nítida).
- *
- * - Mic: setMicrophoneEnabled (gesto do user); sync por track real.
- * - PC + celular: identity = u{id}-{deviceId} (localStorage).
- * - Tela: bitrate alto (~8Mbps / 1080p30), clique → expandir (estilo LANcord).
+ * Call — LiveKit (setMicrophoneEnabled / setCameraEnabled / setScreenShareEnabled).
+ * Mic = API oficial LiveKit (equivalente ao useTrackToggle, UI custom sem React).
  */
 (function () {
   const root = document.getElementById("call-page");
@@ -12,6 +9,8 @@
   const REJOIN_KEY = "ib_call_rejoin";
   const REJOIN_SHARE_KEY = "ib_call_rejoin_share";
   const DEVICE_KEY = "ib_call_device";
+  const SCREEN_HOST_CHANNEL = "ib_call_screen_host";
+  const SCREEN_HOST_SUFFIX = "-screen";
 
   const statusEl = document.getElementById("call-status");
   const countEl = document.getElementById("call-count");
@@ -44,6 +43,9 @@
   const mobileStatus = document.getElementById("call-mobile-status");
   const reshareBanner = document.getElementById("call-reshare-banner");
   const reshareBtn = document.getElementById("call-reshare-btn");
+  const sidebarToggle = document.getElementById("call-sidebar-toggle");
+  const sidebarBackdrop = document.getElementById("call-sidebar-backdrop");
+  const channelsPanel = document.querySelector(".dc-channels");
   const qualityModal = document.getElementById("call-quality-modal");
   const qualityGo = document.getElementById("call-quality-go");
   const qualityStop = document.getElementById("call-quality-stop");
@@ -79,6 +81,11 @@
   let camPublishing = false;
   let micGraceUntil = 0;
   let activeScreenOwner = null;
+  let lastMicTapMs = 0;
+  let sidebarOpen = false;
+  let screenHostSharing = false;
+  let screenHostWin = null;
+  const screenHostChannel = new BroadcastChannel(SCREEN_HOST_CHANNEL);
   const audioEls = new Map();
 
   const lkReady = loadLivekitScript().catch((e) => {
@@ -176,6 +183,201 @@
     return window.matchMedia("(max-width: 960px)").matches;
   }
 
+  function isIOS() {
+    return /iPad|iPhone|iPod/i.test(navigator.userAgent)
+      || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  }
+
+  function isAndroid() {
+    return /Android/i.test(navigator.userAgent);
+  }
+
+  function canDeviceScreenShare() {
+    return typeof navigator.mediaDevices?.getDisplayMedia === "function" && !isIOS();
+  }
+
+  function openSidebar() {
+    if (!isMobileUi()) return;
+    sidebarOpen = true;
+    channelsPanel?.classList.add("is-open");
+    if (sidebarBackdrop) {
+      sidebarBackdrop.hidden = false;
+      sidebarBackdrop.classList.add("is-open");
+    }
+  }
+
+  function closeSidebar() {
+    sidebarOpen = false;
+    channelsPanel?.classList.remove("is-open");
+    if (sidebarBackdrop) {
+      sidebarBackdrop.hidden = true;
+      sidebarBackdrop.classList.remove("is-open");
+    }
+  }
+
+  function initMobileSidebar() {
+    sidebarToggle?.addEventListener("click", (e) => {
+      e.preventDefault();
+      if (sidebarOpen) closeSidebar();
+      else openSidebar();
+    });
+    sidebarBackdrop?.addEventListener("click", () => closeSidebar());
+
+    let touchStartX = 0;
+    let touchStartY = 0;
+    document.addEventListener("touchstart", (e) => {
+      if (!isMobileUi()) return;
+      touchStartX = e.touches[0]?.clientX ?? 0;
+      touchStartY = e.touches[0]?.clientY ?? 0;
+    }, { passive: true });
+    document.addEventListener("touchend", (e) => {
+      if (!isMobileUi()) return;
+      const x = e.changedTouches[0]?.clientX ?? 0;
+      const y = e.changedTouches[0]?.clientY ?? 0;
+      const dx = x - touchStartX;
+      const dy = Math.abs(y - touchStartY);
+      if (dy > 80) return;
+      if (!sidebarOpen && touchStartX < 28 && dx > 55) openSidebar();
+      if (sidebarOpen && dx < -55) closeSidebar();
+    }, { passive: true });
+  }
+
+  function isScreenHostIdentity(id) {
+    return String(id || "").endsWith(SCREEN_HOST_SUFFIX);
+  }
+
+  function myScreenHostIdentity() {
+    if (!inRoom()) return null;
+    return String(room.localParticipant.identity || "") + SCREEN_HOST_SUFFIX;
+  }
+
+  function isMyScreenHostParticipant(p) {
+    const hostId = myScreenHostIdentity();
+    return !!(hostId && p?.identity === hostId);
+  }
+
+  function openScreenHostWindow() {
+    const features = "width=400,height=260,popup=yes";
+    if (screenHostWin && !screenHostWin.closed) {
+      try { screenHostWin.focus(); } catch (_) {}
+      return screenHostWin;
+    }
+    screenHostWin = window.open("/call/screen-host", "ib_call_screen_host", features);
+    return screenHostWin;
+  }
+
+  function pingScreenHost(timeoutMs) {
+    const ms = timeoutMs ?? 900;
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = (data) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        screenHostChannel.removeEventListener("message", onMsg);
+        resolve(data);
+      };
+      const onMsg = (e) => {
+        const msg = e.data || {};
+        if (msg.type === "pong" || msg.type === "ready") finish(msg);
+      };
+      const timer = setTimeout(() => finish(null), ms);
+      screenHostChannel.addEventListener("message", onMsg);
+      screenHostChannel.postMessage({ type: "ping" });
+    });
+  }
+
+  function applyScreenHostState(msg) {
+    if (!msg) return;
+    if (msg.sharing) {
+      sharing = true;
+      screenHostSharing = true;
+      rememberShare(true);
+      showReshareBanner(false);
+      screenBtn?.classList.add("is-on");
+      setHint(msg.hint || "Transmissão ativa na janela auxiliar — F5 não para a tela.");
+    } else if (screenHostSharing) {
+      sharing = false;
+      screenHostSharing = false;
+      rememberShare(false);
+      screenBtn?.classList.remove("is-on");
+      clearScreen();
+      setHint(msg.hint || "Transmissão parada.");
+    }
+    syncMobileDock();
+    refreshUi();
+  }
+
+  function initScreenHostBridge() {
+    screenHostChannel.onmessage = (e) => {
+      const msg = e.data || {};
+      if (msg.type === "state") {
+        applyScreenHostState(msg);
+        return;
+      }
+      if (msg.type === "closed" && msg.sharing) {
+        sharing = false;
+        screenHostSharing = false;
+        rememberShare(false);
+        screenBtn?.classList.remove("is-on");
+        clearScreen();
+        syncMobileDock();
+        setHint("Janela de transmissão fechou — compartilhe de novo se precisar.");
+        refreshUi();
+      }
+    };
+  }
+
+  async function syncScreenHostAfterJoin() {
+    const host = await pingScreenHost(1200);
+    if (host?.sharing) {
+      applyScreenHostState({
+        sharing: true,
+        hint: "Transmissão continua (janela auxiliar). Pode usar F5 à vontade.",
+      });
+      scanAllRemoteMedia();
+      setTimeout(scanAllRemoteMedia, 500);
+    }
+  }
+
+  async function startScreenShareViaHost() {
+    if (!inRoom()) return;
+    saveQualityPrefs();
+    closeQualityModal();
+
+    const win = openScreenHostWindow();
+    if (!win) {
+      setHint("Pop-up bloqueado. Permita pop-ups para a transmissão sobreviver ao F5.");
+      return startScreenShareInline();
+    }
+
+    setHint("Abrindo janela de transmissão…");
+    await pingScreenHost(4000);
+
+    screenHostChannel.postMessage({
+      type: "start",
+      res: screenRes,
+      fps: screenFps,
+    });
+
+    const deadline = Date.now() + 120000;
+    while (Date.now() < deadline) {
+      const state = await pingScreenHost(1500);
+      if (state?.sharing) {
+        applyScreenHostState({
+          sharing: true,
+          hint: "Transmitindo. Mantenha a janela auxiliar aberta — F5 aqui não para.",
+        });
+        scanAllRemoteMedia();
+        setTimeout(scanAllRemoteMedia, 600);
+        return;
+      }
+      if (!screenHostWin || screenHostWin.closed) break;
+      await new Promise((r) => setTimeout(r, 400));
+    }
+    setHint("Transmissão não iniciou — tente de novo ou permita pop-ups.");
+  }
+
   function rememberShare(on) {
     try {
       if (on) sessionStorage.setItem(REJOIN_SHARE_KEY, "1");
@@ -197,6 +399,7 @@
       if (pub.track && pub.isMuted !== true) sharingScreen = true;
     });
     if (p === room?.localParticipant && sharing) sharingScreen = true;
+    if (screenHostSharing && isMyScreenHostParticipant(p)) sharingScreen = true;
     return sharingScreen;
   }
 
@@ -229,10 +432,12 @@
         if (pub.kind !== "video" && pub.track?.kind !== "video") return;
         if (isScreenSource(pub.source) || pub.source === screenSource) {
           if (pub.track) {
-            attachScreen(pub.track, labelOf(p), pub);
+            const selfScreen = isMyScreenHostParticipant(p);
+            attachScreen(pub.track, selfScreen ? "você (tela)" : labelOf(p), pub);
             activeScreenOwner = p.identity;
-            if (p === r.localParticipant) {
+            if (p === r.localParticipant || selfScreen) {
               sharing = true;
+              if (selfScreen) screenHostSharing = true;
               screenBtn?.classList.add("is-on");
               syncMobileDock();
             }
@@ -255,9 +460,36 @@
   }
 
   function showMicBanner(show) {
-    // Nunca mostra banner se não estiver realmente na sala (bug do "clico e nada").
     const should = !!(show && inRoom() && !micOn);
     if (micBanner) micBanner.hidden = !should;
+    if (should) syncMicBannerText();
+  }
+
+  function syncMicBannerText() {
+    const textEl = document.getElementById("call-mic-banner-text");
+    if (!textEl) return;
+    textEl.textContent = isMobileUi()
+      ? "Toque no microfone na barra inferior para falar."
+      : "Clique no microfone na barra lateral (ou no botão abaixo) para falar.";
+  }
+
+  function mapMicError(err) {
+    const name = err?.name || "";
+    const msg = String(err?.message || err);
+    if (name === "NotAllowedError" || /Permission|NotAllowed/i.test(msg)) {
+      return "Permissão negada — permita o microfone no navegador.";
+    }
+    if (name === "NotFoundError") return "Nenhum microfone encontrado.";
+    if (name === "NotReadableError") return "Microfone em uso por outro app.";
+    return "Microfone: " + msg;
+  }
+
+  function setMicUiPending(pending) {
+    [micBtn, enableMicBtn, ...document.querySelectorAll('[data-call-action="mic"]')].forEach((btn) => {
+      if (!btn) return;
+      btn.classList.toggle("is-pending", pending);
+      btn.disabled = pending || !inRoom();
+    });
   }
 
   function setMicUi() {
@@ -297,6 +529,8 @@
     document.querySelectorAll('[data-call-action="screen"]').forEach((btn) => {
       btn.disabled = !on;
       btn.classList.toggle("is-on", sharing);
+      if (isIOS()) btn.title = "Tela: use Android ou PC";
+      else if (isMobileUi()) btn.title = sharing ? "Parar tela" : "Compartilhar tela";
     });
     document.querySelectorAll('[data-call-action="deafen"]').forEach((btn) => {
       btn.disabled = !on;
@@ -343,7 +577,10 @@
   function peopleList(r) {
     const people = [];
     if (r?.localParticipant) people.push({ p: r.localParticipant, self: true });
-    remoteList(r).forEach((p) => people.push({ p, self: false }));
+    remoteList(r).forEach((p) => {
+      if (isScreenHostIdentity(p.identity)) return;
+      people.push({ p, self: false });
+    });
     return people;
   }
 
@@ -627,70 +864,74 @@
       return;
     }
     if (Date.now() < micGraceUntil) return;
-    micOn = !!room.localParticipant.isMicrophoneEnabled || localMicLive();
+    micOn = !!room.localParticipant.isMicrophoneEnabled;
     setMicUi();
     showMicBanner(!micOn);
     refreshUi();
   }
 
-  /** API LiveKit oficial — doc: setMicrophoneEnabled(true/false) */
-  async function enableMic() {
+  /** LiveKit oficial — equivalente ao useTrackToggle, mantendo botões customizados. */
+  async function toggleMic() {
     if (!inRoom()) {
-      showMicBanner(false);
       setHint("Entre na sala primeiro.");
       return;
     }
     if (micPublishing) return;
     micPublishing = true;
-    if (enableMicBtn) enableMicBtn.disabled = true;
-    setHint("Ativando microfone…");
+
+    const lp = room.localParticipant;
+    const wantOn = !lp.isMicrophoneEnabled;
+
+    setMicUiPending(true);
+    setHint(wantOn ? "Ativando microfone…" : "Mutando…");
+
     try {
-      await room.localParticipant.setMicrophoneEnabled(true);
-      micOn = !!room.localParticipant.isMicrophoneEnabled;
-      if (!micOn) {
-        await room.localParticipant.setMicrophoneEnabled(true, {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        });
-        micOn = !!room.localParticipant.isMicrophoneEnabled;
-      }
-      if (!micOn) throw new Error("Microfone não ligou — tente de novo");
-      micGraceUntil = Date.now() + 2000;
-      showMicBanner(false);
-      setHint("Microfone ligado.");
+      if (wantOn) micGraceUntil = Date.now() + 2500;
+      await lp.setMicrophoneEnabled(
+        wantOn,
+        wantOn
+          ? {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            }
+          : undefined
+      );
+      micOn = !!lp.isMicrophoneEnabled;
+      showMicBanner(!micOn);
+      setHint(micOn ? "Microfone ligado." : "Microfone mutado.");
       setMicUi();
       refreshUi();
     } catch (err) {
-      console.error("enableMic", err);
-      micOn = false;
+      console.error("[call] setMicrophoneEnabled", err);
+      syncMicFromRoom();
       showMicBanner(true);
-      setMicUi();
-      const name = err?.name || "";
-      const msg = String(err?.message || err);
-      if (name === "NotAllowedError" || /Permission|NotAllowed/i.test(msg)) {
-        setHint("Permissão negada. Toque no microfone de novo e escolha Permitir.");
-      } else {
-        setHint("Mic: " + msg);
-      }
+      setHint(mapMicError(err));
     } finally {
       micPublishing = false;
-      if (enableMicBtn) enableMicBtn.disabled = false;
+      setMicUiPending(false);
     }
   }
 
-  async function muteMic() {
-    if (!inRoom()) return;
-    try {
-      await room.localParticipant.setMicrophoneEnabled(false);
-      micOn = false;
-      showMicBanner(true);
-      setMicUi();
-      refreshUi();
-      setHint("Microfone mutado.");
-    } catch (err) {
-      setHint(String(err.message || err));
+  function onMicTap(e) {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
     }
+    if (micPublishing) return;
+    const now = Date.now();
+    if (now - lastMicTapMs < 500) return;
+    lastMicTapMs = now;
+    toggleMic().catch(console.error);
+  }
+
+  function bindMicButtons() {
+    root.addEventListener("pointerdown", (e) => {
+      const btn = e.target.closest("#call-mic-btn, #call-enable-mic-btn, [data-call-action=\"mic\"]");
+      if (!btn || btn.disabled) return;
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      onMicTap(e);
+    }, true);
   }
 
   async function join(opts) {
@@ -804,8 +1045,15 @@
         if (track.kind !== "video") return;
         const src = publication?.source;
         if (src === screenSource || isScreenSource(src)) {
-          attachScreen(track, labelOf(participant), publication);
+          const selfScreen = isMyScreenHostParticipant(participant);
+          attachScreen(track, selfScreen ? "você (tela)" : labelOf(participant), publication);
           activeScreenOwner = participant?.identity || null;
+          if (selfScreen) {
+            sharing = true;
+            screenHostSharing = true;
+            screenBtn?.classList.add("is-on");
+            syncMobileDock();
+          }
           refreshUi();
           return;
         }
@@ -816,8 +1064,19 @@
           attachRemoteAudio(publication.track, participant);
         }
         if (publication?.kind === "video" && isScreenSource(publication.source) && publication.track) {
-          attachScreen(publication.track, labelOf(participant), publication);
+          const selfScreen = isMyScreenHostParticipant(participant);
+          attachScreen(
+            publication.track,
+            selfScreen ? "você (tela)" : labelOf(participant),
+            publication
+          );
           activeScreenOwner = participant?.identity || null;
+          if (selfScreen) {
+            sharing = true;
+            screenHostSharing = true;
+            screenBtn?.classList.add("is-on");
+            syncMobileDock();
+          }
         }
         refreshUi();
       });
@@ -915,10 +1174,11 @@
       try {
         wantReshare = sessionStorage.getItem(REJOIN_SHARE_KEY) === "1";
       } catch (_) {}
-      if (wantReshare && auto) {
+      await syncScreenHostAfterJoin();
+      if (wantReshare && auto && !screenHostSharing) {
         showReshareBanner(true);
-        setHint("Você reentrou. Toque «Compartilhar tela» — o F5 exige novo clique.");
-      } else {
+        setHint("Você reentrou. Clique «Compartilhar tela» — ou use a janela auxiliar.");
+      } else if (!screenHostSharing) {
         showReshareBanner(false);
       }
 
@@ -965,21 +1225,8 @@
     refreshUi();
   }
 
-  async function toggleMic() {
-    if (!inRoom()) {
-      setHint("Entre na sala primeiro.");
-      return;
-    }
-    const lp = room.localParticipant;
-    if (lp.isMicrophoneEnabled || micOn) await muteMic();
-    else await enableMic();
-  }
-
   function handleCallAction(action) {
     switch (action) {
-      case "mic":
-        toggleMic().catch(console.error);
-        break;
       case "cam":
         toggleCamera().catch(console.error);
         break;
@@ -1117,24 +1364,84 @@
     if (qualityModal) qualityModal.hidden = true;
   }
 
-  /** Clique no monitor: sempre abre qualidade; se já compartilha, dá pra reaplicar ou parar no modal. */
+  /** Clique no monitor: mobile Android = share direto; iOS = aviso; desktop = modal. */
   function onScreenBtnClick() {
     if (!inRoom()) return;
+    if (sharing && isMobileUi()) {
+      stopScreenShare().catch(console.error);
+      return;
+    }
+    if (isMobileUi()) {
+      if (!canDeviceScreenShare()) {
+        setHint("iPhone: compartilhar tela não funciona no Safari. Use Android ou PC.");
+        return;
+      }
+      startScreenShareMobile().catch(console.error);
+      return;
+    }
     openQualityModal();
   }
 
-  async function startScreenShare() {
+  async function startScreenShareMobile() {
+    if (!inRoom()) return;
+    if (!canDeviceScreenShare()) {
+      setHint("Seu celular não suporta compartilhar tela neste navegador.");
+      return;
+    }
+    closeQualityModal();
+    setHint("Escolha a tela ou app para compartilhar…");
+    try {
+      if (sharing) {
+        try { await room.localParticipant.setScreenShareEnabled(false); } catch (_) {}
+        sharing = false;
+        clearScreen();
+      }
+      // Mobile: sem resolution fixa (Android rejeita 1080p às vezes)
+      await room.localParticipant.setScreenShareEnabled(
+        true,
+        { audio: false, contentHint: "detail" },
+        {
+          simulcast: false,
+          screenShareEncoding: {
+            maxBitrate: 2_500_000,
+            maxFramerate: 24,
+          },
+        }
+      );
+      sharing = true;
+      rememberShare(true);
+      showReshareBanner(false);
+      screenBtn?.classList.add("is-on");
+      syncMobileDock();
+      room.localParticipant.trackPublications?.forEach((pub) => {
+        if (String(pub.source || "").includes("screen") && pub.track) {
+          attachScreen(pub.track, "você", pub);
+          activeScreenOwner = room.localParticipant.identity;
+        }
+      });
+      setHint("Tela compartilhada. Toque no monitor de novo para parar.");
+      refreshUi();
+    } catch (err) {
+      console.error("startScreenShareMobile", err);
+      sharing = false;
+      screenBtn?.classList.remove("is-on");
+      syncMobileDock();
+      setHint("Tela cancelada ou negada: " + String(err?.message || err));
+    }
+  }
+
+  async function startScreenShareInline() {
     if (!inRoom()) return;
     saveQualityPrefs();
     closeQualityModal();
     setHint(`Pedindo tela (${screenRes === "source" ? "fonte" : screenRes + "p"} @ ${screenFps}fps)…`);
     try {
-      // Já compartilhando: reinicia com a nova qualidade.
       if (sharing) {
         try {
           await room.localParticipant.setScreenShareEnabled(false);
         } catch (_) {}
         sharing = false;
+        screenHostSharing = false;
         clearScreen();
       }
 
@@ -1155,7 +1462,7 @@
         }
       });
       setHint(
-        `Tela em ${screenRes === "source" ? "fonte" : screenRes + "p"} / ${screenFps}fps — clique no monitor pra parar.`
+        `Tela na mesma aba (${screenRes === "source" ? "fonte" : screenRes + "p"}). F5 para a transmissão — use janela auxiliar.`
       );
     } catch (_) {
       sharing = false;
@@ -1165,12 +1472,23 @@
     }
   }
 
+  async function startScreenShare() {
+    if (!inRoom()) return;
+    if (isMobileUi()) return startScreenShareMobile();
+    return startScreenShareViaHost();
+  }
+
   async function stopScreenShare() {
+    if (screenHostSharing) {
+      screenHostChannel.postMessage({ type: "stop" });
+      return;
+    }
     if (!inRoom()) return;
     try {
       await room.localParticipant.setScreenShareEnabled(false);
     } catch (_) {}
     sharing = false;
+    screenHostSharing = false;
     rememberShare(false);
     activeScreenOwner = null;
     screenBtn?.classList.remove("is-on");
@@ -1193,28 +1511,23 @@
 
     const actionBtn = t.closest("[data-call-action]");
     if (actionBtn) {
+      const action = actionBtn.getAttribute("data-call-action");
+      if (action === "mic") return;
       e.preventDefault();
-      handleCallAction(actionBtn.getAttribute("data-call-action"));
+      handleCallAction(action);
       return;
     }
 
-    if (t.closest("#call-enable-mic-btn")) {
-      e.preventDefault();
-      enableMic().catch(console.error);
-      return;
-    }
+    if (t.closest("#call-enable-mic-btn") || t.closest("#call-mic-btn")) return;
     if (t.closest("#call-reshare-btn")) {
       e.preventDefault();
       showReshareBanner(false);
-      openQualityModal();
-      return;
-    }
-    if (t.closest("#call-mic-btn")) {
-      e.preventDefault();
-      toggleMic().catch(console.error);
+      if (isMobileUi()) startScreenShareMobile().catch(console.error);
+      else openQualityModal();
       return;
     }
     if (t.closest("#call-join-btn") || t.closest("#call-channel-btn")) {
+      closeSidebar();
       if (!room) join({ auto: false }).catch(console.error);
       return;
     }
@@ -1240,21 +1553,13 @@
     }
   });
 
-  if (enableMicBtn) {
-    enableMicBtn.addEventListener("click", (e) => {
-      e.preventDefault();
-      enableMic().catch(console.error);
-    });
-  }
-  if (reshareBtn) {
-    reshareBtn.addEventListener("click", (e) => {
-      e.preventDefault();
-      showReshareBanner(false);
-      openQualityModal();
-    });
-  }
+  initMobileSidebar();
+  initScreenHostBridge();
+  bindMicButtons();
 
   window.addEventListener("resize", () => {
+    syncMicBannerText();
+    if (!isMobileUi()) closeSidebar();
     if (inRoom()) setConnectedUi(true);
   });
 
@@ -1298,11 +1603,19 @@
   window.addEventListener("pagehide", () => {
     if (room && !intentionalLeave) {
       rememberJoin(true);
-      if (sharing) rememberShare(true);
+      if (sharing && !screenHostSharing) rememberShare(true);
+    }
+  });
+
+  window.addEventListener("beforeunload", (e) => {
+    if (sharing && !screenHostSharing && inRoom()) {
+      e.preventDefault();
+      e.returnValue = "";
     }
   });
 
   setMicUi();
+  syncMicBannerText();
   setConnectedUi(false);
   showMicBanner(false);
   if (window.lucide) window.lucide.createIcons();
