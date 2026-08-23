@@ -1202,25 +1202,28 @@
       if (result) {
         result.textContent = "Testando proxy…";
         result.className = "proxy-test-result muted";
+        result.hidden = false;
+        result.style.display = "block";
+        result.style.minHeight = "1.2em";
       }
       const fd = new FormData();
       fd.set("proxy", normalizeProxyValue(input.value.trim()));
       try {
         const resp = await fetch("/accounts/test-proxy", { method: "POST", body: fd });
-        const data = await resp.json();
+        const data = await resp.json().catch(() => ({}));
         if (result) {
           if (data.ok) {
             const geo = data.geo ? " · " + data.geo : "";
             result.textContent = "OK — IP: " + data.ip + geo + " (só rede; login Instagram é outro passo)";
             result.className = "proxy-test-result ok";
           } else {
-            result.textContent = data.error || "Proxy inválido";
+            result.textContent = data.error || data.detail || ("Proxy inválido (HTTP " + resp.status + ")");
             result.className = "proxy-test-result fail";
           }
         }
-      } catch {
+      } catch (err) {
         if (result) {
-          result.textContent = "Falha ao testar proxy.";
+          result.textContent = "Falha ao testar proxy: " + (err?.message || err);
           result.className = "proxy-test-result fail";
         }
       } finally {
@@ -1229,7 +1232,36 @@
       }
     }
 
-    testBtn.addEventListener("click", runTest);
+    testBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      runTest();
+    });
+  }
+
+  // Delegação: funciona após navegação SPA mesmo se initPage atrasar
+  if (!window.__ibProxyTestDelegated) {
+    window.__ibProxyTestDelegated = true;
+    document.addEventListener("click", (e) => {
+      const btn = e.target.closest(".proxy-test-btn, #account-proxy-test-btn");
+      if (!btn) return;
+      if (btn.dataset.bound === "1") return; // já tem listener próprio
+      const wrap = btn.closest(".proxy-update-form, #account-proxy-test-wrap, #account-add-form, form");
+      const input =
+        wrap?.querySelector(".proxy-update-input, #account-proxy-input, input[name='proxy']") ||
+        document.getElementById("account-proxy-input");
+      const result =
+        wrap?.querySelector(".proxy-test-result, #account-proxy-test-result") ||
+        document.getElementById("account-proxy-test-result");
+      if (!input) return;
+      e.preventDefault();
+      e.stopPropagation();
+      bindProxyTestControls(input, btn, result, {
+        testLabel: btn.id === "account-proxy-test-btn" ? "Testar proxy" : "Testar",
+        testingLabel: "Testando…",
+      });
+      btn.click();
+    });
   }
 
   function initAccountProxyUpdate() {
