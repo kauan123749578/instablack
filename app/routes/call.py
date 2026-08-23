@@ -7,7 +7,7 @@ import secrets
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -127,7 +127,14 @@ async def _lk_participants(livekit_room: str, db: Session, blur: bool = False) -
 
 
 @router.get("")
-def call_page(
+def call_page_redirect(request: Request, user: User = Depends(get_auth_user)):
+    """Call legado → Backspace (/chat). APIs /call/* mantidas por compatibilidade."""
+    _require_call_user(user)
+    return RedirectResponse("/chat", status_code=302)
+
+
+@router.get("/legacy")
+def call_page_legacy(
     request: Request,
     user: User = Depends(get_auth_user),
     db: Session = Depends(get_db),

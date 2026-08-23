@@ -1185,51 +1185,74 @@
     });
   }
 
+  function bindProxyTestControls(input, testBtn, result, { testLabel = "Testar", testingLabel = "Testando…" } = {}) {
+    if (!input || !testBtn || testBtn.dataset.bound === "1") return;
+    testBtn.dataset.bound = "1";
+
+    async function runTest() {
+      if (!input.value.trim()) {
+        if (result) {
+          result.textContent = "Informe o proxy antes de testar.";
+          result.className = "proxy-test-result fail";
+        }
+        return;
+      }
+      testBtn.disabled = true;
+      testBtn.textContent = testingLabel;
+      if (result) {
+        result.textContent = "Testando proxy…";
+        result.className = "proxy-test-result muted";
+      }
+      const fd = new FormData();
+      fd.set("proxy", normalizeProxyValue(input.value.trim()));
+      try {
+        const resp = await fetch("/accounts/test-proxy", { method: "POST", body: fd });
+        const data = await resp.json();
+        if (result) {
+          if (data.ok) {
+            const geo = data.geo ? " · " + data.geo : "";
+            result.textContent = "OK — IP: " + data.ip + geo + " (só rede; login Instagram é outro passo)";
+            result.className = "proxy-test-result ok";
+          } else {
+            result.textContent = data.error || "Proxy inválido";
+            result.className = "proxy-test-result fail";
+          }
+        }
+      } catch {
+        if (result) {
+          result.textContent = "Falha ao testar proxy.";
+          result.className = "proxy-test-result fail";
+        }
+      } finally {
+        testBtn.disabled = false;
+        testBtn.textContent = testLabel;
+      }
+    }
+
+    testBtn.addEventListener("click", runTest);
+  }
+
   function initAccountProxyUpdate() {
     document.querySelectorAll(".proxy-update-form").forEach((form) => {
       const input = form.querySelector(".proxy-update-input");
       const testBtn = form.querySelector(".proxy-test-btn");
       const result = form.querySelector(".proxy-test-result");
-
-      async function runTest() {
-        if (!input?.value.trim()) {
-          if (result) {
-            result.textContent = "Informe o proxy antes de testar.";
-            result.className = "proxy-test-result fail";
-          }
-          return;
-        }
-        if (testBtn) { testBtn.disabled = true; testBtn.textContent = "Testando…"; }
-        if (result) { result.textContent = "Testando proxy…"; result.className = "proxy-test-result muted"; }
-        const fd = new FormData();
-        fd.set("proxy", normalizeProxyValue(input.value.trim()));
-        try {
-          const resp = await fetch("/accounts/test-proxy", { method: "POST", body: fd });
-          const data = await resp.json();
-          if (result) {
-            if (data.ok) {
-              const geo = data.geo ? " · " + data.geo : "";
-              result.textContent = "OK — IP: " + data.ip + geo;
-              result.className = "proxy-test-result ok";
-            } else {
-              result.textContent = data.error || "Proxy inválido";
-              result.className = "proxy-test-result fail";
-            }
-          }
-        } catch {
-          if (result) {
-            result.textContent = "Falha ao testar proxy.";
-            result.className = "proxy-test-result fail";
-          }
-        } finally {
-          if (testBtn) { testBtn.disabled = false; testBtn.textContent = "Testar"; }
-        }
-      }
-
-      testBtn?.addEventListener("click", runTest);
-      form.addEventListener("submit", (e) => {
+      bindProxyTestControls(input, testBtn, result);
+      form.addEventListener("submit", () => {
         if (input) input.value = normalizeProxyValue(input.value.trim());
       });
+    });
+
+    // Tela Adicionar conta — mesmo testador das contas conectadas
+    bindProxyTestControls(
+      document.getElementById("account-proxy-input"),
+      document.getElementById("account-proxy-test-btn"),
+      document.getElementById("account-proxy-test-result"),
+      { testLabel: "Testar proxy", testingLabel: "Testando…" }
+    );
+    document.getElementById("account-add-form")?.addEventListener("submit", () => {
+      const input = document.getElementById("account-proxy-input");
+      if (input) input.value = normalizeProxyValue(input.value.trim());
     });
   }
 

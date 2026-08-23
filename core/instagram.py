@@ -454,7 +454,7 @@ def _build_postagemig_login_client(
     proxy: str,
     settings_dict: dict | None,
 ) -> Client:
-    """Connect: Phantom (TLS/headers) + login oficial instagrapi; sem locale BR forçado."""
+    """Connect: Phantom (TLS/headers) + login oficial instagrapi; device Samsung."""
     cl = _new_instagrapi_client(allow_phantom=True)
     # Connect: pausa curta (2–5s por request deixava o 2FA em ~1 min).
     cl.delay_range = [1, 2]
@@ -463,6 +463,18 @@ def _build_postagemig_login_client(
             cl.set_settings(settings_dict)
         except Exception:
             log.warning("Não foi possível carregar settings de sessão (login)")
+    # Sem settings (1º login): força Samsung SM-E045F (headers Phantom).
+    # Com settings: só corrige se ainda estiver no Pixel default do instagrapi.
+    try:
+        from phantom.device import apply_samsung_device, settings_has_device
+
+        ds = getattr(cl, "device_settings", None) or {}
+        model = str((ds or {}).get("model") or "")
+        need_samsung = (not settings_dict) or (not settings_has_device(settings_dict))
+        if need_samsung or "Pixel" in model or "Google" in str((ds or {}).get("manufacturer") or ""):
+            apply_samsung_device(cl)
+    except Exception as exc:
+        log.warning("Samsung device skip: %s", exc)
     normalized = normalize_proxy(proxy)
     try:
         cl.set_proxy(normalized)

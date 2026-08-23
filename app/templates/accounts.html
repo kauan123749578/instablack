@@ -88,11 +88,19 @@
 
     <div id="non-meta-fields">
       <label>Proxy <strong style="color:var(--red)">*</strong>
-        <input type="text" name="proxy" id="account-proxy-input" required
+        <input type="text" name="proxy" id="account-proxy-input" class="proxy-update-input" required
                value="{{ form.get('proxy') or default_proxy }}"
                placeholder="ip:porta:usuario:senha">
       </label>
-      <p class="muted" style="margin:0;font-size:12px">Mesma proxy do perfil no Multilogin. Aceita http, socks5 e <code>ip:porta:user:senha</code>.</p>
+      <div class="proxy-update-actions" id="account-proxy-test-wrap" style="margin-top:8px">
+        <button type="button" class="btn btn-sm proxy-test-btn" id="account-proxy-test-btn">Testar proxy</button>
+        <p class="proxy-test-result muted" id="account-proxy-test-result" aria-live="polite" style="margin:6px 0 0"></p>
+      </div>
+      <p class="muted" style="margin:8px 0 0;font-size:12px">
+        Aceita http, socks5 e <code>ip:porta:user:senha</code>.
+        <strong>Testar proxy</strong> só confere se a proxy responde e qual IP sai (não é login no Instagram).
+        Login pode falhar mesmo com proxy OK (challenge / fingerprint / e-mail).
+      </p>
 
       <div id="cookies-wrap" class="auth-method-panel">
         <label>Cookies do Instagram (Cookie-Editor ou header)

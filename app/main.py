@@ -32,6 +32,7 @@ from app.routes import (
     authenticator,
     automations,
     call,
+    chat,
     camuflagem,
     dashboard,
     extension_api,
@@ -305,6 +306,7 @@ def create_app() -> FastAPI:
     app.include_router(aquecimento.router)
     app.include_router(camuflagem.router)
     app.include_router(call.router)
+    app.include_router(chat.router)
     app.include_router(reels_editor.router)
     app.include_router(profile.router)
     app.include_router(admin.router)

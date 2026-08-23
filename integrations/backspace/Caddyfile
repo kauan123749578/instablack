@@ -1,0 +1,11 @@
+# Substitua chat.seudominio.com pelo seu domínio (DNS → IP deste VPS)
+{$DOMAIN:chat.example.com} {
+	encode gzip
+	reverse_proxy backspace:3000
+}
+
+# LiveKit signaling (quando COMPOSE_PROFILES=voice)
+# Descomente se usar perfil voice + livekit.yaml configurado:
+# handle_path /livekit/* {
+# 	reverse_proxy livekit:7880
+# }

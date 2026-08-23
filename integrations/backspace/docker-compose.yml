@@ -1,0 +1,58 @@
+# Backspace — chat/voz Discord-style para o Instablack
+#
+# Upstream: https://github.com/TheZwiss/backspace
+# Instablack embute via /chat quando BACKSPACE_URL aponta para este serviço.
+#
+# Uso rápido (VPS Linux):
+#   cp .env.example .env
+#   ./install.sh          # ou: docker compose --profile voice up -d
+#
+# Depois no Railway (Instablack web):
+#   BACKSPACE_ENABLED=true
+#   BACKSPACE_URL=https://chat.seudominio.com
+
+services:
+  backspace:
+    image: ghcr.io/thezwiss/backspace:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: "3000"
+      HOST: "0.0.0.0"
+    volumes:
+      - backspace_data:/data
+    networks: [backspace_net]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [backspace]
+    networks: [backspace_net]
+
+  livekit:
+    profiles: [voice]
+    image: livekit/livekit-server:latest
+    restart: unless-stopped
+    command: --config /etc/livekit.yaml
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+    ports:
+      - "3478:3478/udp"
+      - "7881:7881/tcp"
+      - "50000-50100:50000-50100/udp"
+    networks: [backspace_net]
+
+volumes:
+  backspace_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  backspace_net:

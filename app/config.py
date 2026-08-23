@@ -104,6 +104,11 @@ class Settings(BaseSettings):
     livekit_api_secret: str = ""
     livekit_room_name: str = "instablack-global"
 
+    # Backspace — chat/voz Discord-style (https://github.com/TheZwiss/backspace)
+    # Rode Backspace num VPS com Docker; Instablack embute via /chat.
+    backspace_enabled: bool = False
+    backspace_url: str = ""  # ex.: https://chat.seudominio.com
+
     # Web Push (VAPID) — gere em https://vapidkeys.com/
     vapid_public_key: str = ""
     vapid_private_key: str = ""

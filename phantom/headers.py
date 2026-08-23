@@ -126,7 +126,7 @@ class HeaderBuilder:
 
         # ── Device languages ───────────────────────────────────────────
         headers["x-ig-device-languages"] = json.dumps(
-            {"system_languages": "en-IN", "keyboard_language": "en-IN"},
+            {"system_languages": "pt-BR", "keyboard_language": "pt-BR"},
             separators=(",", ":"),
         )
 
@@ -221,13 +221,13 @@ class HeaderBuilder:
             "x-fb-server-cluster": "True",
             "x-ig-android-id": self.android_id,
             "x-ig-app-id": product_id,
-            "x-ig-app-locale": "en_IN",
+            "x-ig-app-locale": "pt_BR",
             "x-ig-capabilities": "3brTv10=",
             "x-ig-device-id": self.device_id,
-            "x-ig-device-locale": "en_IN",
+            "x-ig-device-locale": "pt_BR",
             "x-ig-is-foldable": "false",
-            "x-ig-mapped-locale": "en_US",
-            "x-ig-timezone-offset": "19800",
+            "x-ig-mapped-locale": "pt_BR",
+            "x-ig-timezone-offset": "-10800",
             "x-ig-validate-null-in-legacy-dict": "true",
             "x-mid": self.mid,
             "x-pigeon-rawclienttime": f"{now:.3f}",
@@ -249,12 +249,12 @@ class HeaderBuilder:
         if self.username:
             headers["user-agent"] = (
                 f"Instagram 434.0.0.44.74 Android (33/13; 300dpi; 720x1600; "
-                f"samsung; SM-E045F; m04; mt6765; en_IN; 996255552)"
+                f"samsung; SM-E045F; m04; mt6765; pt_BR; 996255552)"
             )
         else:
             headers["user-agent"] = (
                 "Instagram 434.0.0.44.74 Android (33/13; 300dpi; 720x1600; "
-                "samsung; SM-E045F; m04; mt6765; en_IN; 996255552)"
+                "samsung; SM-E045F; m04; mt6765; pt_BR; 996255552)"
             )
 
         # Add ig-u-rur from session if available

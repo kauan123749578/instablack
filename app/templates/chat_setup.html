@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Chat — configurar Backspace{% endblock %}
+{% block content %}
+<div class="card" style="max-width:720px;margin:24px auto;padding:24px">
+  <h1 style="margin:0 0 12px">Backspace não configurado</h1>
+  <p style="color:var(--text-muted);line-height:1.5">
+    O chat/voz do Instablack usa
+    <a href="https://github.com/TheZwiss/backspace" target="_blank" rel="noopener">Backspace</a>
+    (Discord self-hosted com LiveKit, tela 4K, federation).
+  </p>
+  <h2 style="margin:24px 0 8px;font-size:16px">Passo a passo</h2>
+  <ol style="line-height:1.6;padding-left:20px">
+    <li>Suba o Backspace num VPS (Docker). Veja <code>integrations/backspace/README.md</code> neste repo.</li>
+    <li>Aponte um subdomínio, ex.: <code>chat.seudominio.com</code></li>
+    <li>No Railway (Instablack), defina:
+      <pre style="background:var(--bg-elevated);padding:12px;border-radius:8px;overflow:auto">BACKSPACE_ENABLED=true
+BACKSPACE_URL=https://chat.seudominio.com</pre>
+    </li>
+    <li>Redeploy web e recarregue esta página.</li>
+  </ol>
+  <p style="margin-top:16px;font-size:13px;color:var(--text-muted)">
+    <strong>Nota:</strong> voz/WebRTC no Backspace precisa de portas UDP no VPS (3478, 50000–60000).
+    O Railway sozinho não suporta isso — Backspace roda no VPS, Instablack continua no Railway.
+  </p>
+  <a href="/" class="btn btn-secondary" style="margin-top:16px">Voltar ao painel</a>
+</div>
+{% endblock %}

@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Chat — instablack{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="/static/chat.css?v=1" />
+{% endblock %}
+{% block content %}
+<div class="bs-shell" id="chat-page" data-backspace-url="{{ backspace_url }}">
+  <header class="bs-shell-head">
+    <div>
+      <h1>Chat &amp; Voz</h1>
+      <p class="bs-shell-sub">Powered by <a href="https://github.com/TheZwiss/backspace" target="_blank" rel="noopener">Backspace</a></p>
+    </div>
+    <div class="bs-shell-actions">
+      <a class="btn btn-secondary btn-sm" href="/chat/open" target="_blank" rel="noopener">Abrir em nova aba</a>
+      {% if backspace_created %}
+      <span class="bs-badge">Conta criada agora</span>
+      {% endif %}
+    </div>
+  </header>
+
+  {% if session_error %}
+  <div class="alert alert-error" style="margin:12px 16px">
+    <strong>Backspace indisponível</strong>
+    <p style="margin:6px 0 0;font-size:13px">{{ session_error }}</p>
+    <p style="margin:8px 0 0;font-size:12px;color:var(--text-muted)">
+      Confira se o serviço Backspace está no ar e se <code>BACKSPACE_URL</code> aponta para ele.
+    </p>
+  </div>
+  {% endif %}
+
+  <div class="bs-frame-wrap">
+    <iframe
+      id="backspace-frame"
+      class="bs-frame"
+      src="{{ backspace_url }}/"
+      title="Backspace"
+      allow="microphone; camera; display-capture; autoplay; clipboard-write"
+      referrerpolicy="no-referrer-when-downgrade"
+    ></iframe>
+    <div class="bs-frame-overlay" id="bs-login-overlay" hidden>
+      <div class="bs-frame-card">
+        <h2>Entrar no Backspace</h2>
+        <p>Sua conta Instablack já foi vinculada. Clique abaixo para abrir o login automático.</p>
+        <p class="bs-creds"><strong>Usuário:</strong> <code id="bs-user">{{ backspace_username }}</code></p>
+        <button type="button" class="btn btn-primary" id="bs-auto-login">Entrar automaticamente</button>
+        <p class="bs-hint">Se não funcionar, use <a href="/chat/open" target="_blank">Abrir em nova aba</a> e faça login manualmente.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if backspace_token %}
+<script>
+(function () {
+  const token = {{ backspace_token|tojson }};
+  const bsUrl = {{ backspace_url|tojson }};
+  const overlay = document.getElementById("bs-login-overlay");
+  const frame = document.getElementById("backspace-frame");
+
+  /** Backspace guarda JWT em localStorage['backspace_token'] — só mesma origem.
+   *  Abre popup na origem do Backspace, injeta token, recarrega iframe. */
+  function injectToken() {
+    const w = window.open(bsUrl + "/", "bs_login", "width=480,height=640");
+    if (!w) {
+      if (overlay) overlay.hidden = false;
+      return;
+    }
+    const t = setInterval(function () {
+      try {
+        if (w.closed) { clearInterval(t); frame?.contentWindow?.location?.reload(); return; }
+        w.localStorage.setItem("backspace_token", token);
+        w.location.reload();
+        setTimeout(function () { try { w.close(); } catch (_) {} clearInterval(t); frame?.contentWindow?.location?.reload(); }, 800);
+      } catch (_) {}
+    }, 300);
+    setTimeout(function () { clearInterval(t); if (overlay) overlay.hidden = false; }, 12000);
+  }
+
+  document.getElementById("bs-auto-login")?.addEventListener("click", injectToken);
+  setTimeout(injectToken, 400);
+})();
+</script>
+{% endif %}
+{% endblock %}

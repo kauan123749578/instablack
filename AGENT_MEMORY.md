@@ -77,9 +77,10 @@ A pasta `melhorias/` **não é importada**. O runtime é `phantom/` + `core/inst
 Não usar `Client()` stock no connect (TLS `requests` + `/accounts/login/` morto → 429). Não usar o `LoginFlow` Bloks do Phantom no `EnhancedClient.login` (2FA em loop).
 
 - Connect: `EnhancedClient` (curl_cffi + headers) e `super().login()` do **instagrapi 2.18.16** (CAA prepare / `bloks_caa_login_prepare` restaurado).
+- Device: **Samsung SM-E045F** (`phantom/device.py`) — alinhado ao User-Agent Phantom. Sem isso o body ficava Pixel 8 Pro e o header Samsung → challenge.
 - CAA **primeiro** (`_try_caa_login`); legado só se o CAA falhar. Sem código + `two_step` → modal 2FA.
 - Um ipify no connect; 2FA com settings não re-checa proxy. `delay_range` [1, 2].
-- Teto 85s + gunicorn 180s. Sem locale BR forçado no connect.
+- Teto 85s + gunicorn 180s.
 
 ### 4) Contas Meta `code=190`
 
@@ -216,7 +217,8 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 | 2026-08-22 | fix | Call: `/call/presence` (vê quem está antes de entrar); mic mobile com getUserMedia no toque + fallback publish; banner azul oculto no mobile. call v**15**, app-v **127**. |
 | 2026-08-22 | feat | Call: salas privadas (`CallRoom` + senha + blur nomes); avatares reais; mic fix (`isMicrophoneEnabled` mentia → só ligar); chat fixo embaixo. call v**16**, app-v **128**. |
 | 2026-08-22 | fix | Call: mic sem probe `getUserMedia` (Chrome já permitido mas app dizia negado); chat/criar sala com toast de erro + migração `call_rooms`/`call_chat_messages`. call v**18**, app-v **130**. |
-| 2026-08-22 | fix | Call: lista salas com poll na voz; screen-host na sala certa (`room_slug`); tela inline no PC; mic via `createLocalAudioTrack`. call v**19**, app-v **131**. |
+| 2026-08-22 | fix | Call: lista salas com poll na voz; screen-host na sala certa; tela inline no PC; mic via `createLocalAudioTrack`. call v**19**, app-v **131**. |
+| 2026-08-22 | fix | Call: join timeout 28s, `room` só após connect, mic getUserMedia→LocalAudioTrack, CSS conn `[hidden]`, contagem live. call v**20**, app-v **132**. |
 
 ### 3.4) Call / LiveKit — armadilhas
 
@@ -227,6 +229,7 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 - **Mic “permitido no Chrome mas app diz negado”**: **não** chamar `getUserMedia` no clique e parar tracks antes do LiveKit — o gesto expira e o 2º `getUserMedia` falha com `NotAllowedError`. Preferir `createLocalAudioTrack` + `publishTrack` no clique.
 - **Tela “Transmitindo” mas só avatar**: janela auxiliar entrava na **sala global** sem `room_slug` — passar `?room=` + `room_slug` no token do screen-host; no PC preferir share **inline** na mesma aba.
 - **Salas sumidas na sidebar**: `fetchPresence` fazia `return` quando `inRoom()` — poll de salas tem que continuar conectado.
+- **Amigo preso em “Conectando…”**: `room = r` antes do `connect()` + sem timeout; UI mente “Voz conectada” no mobile (`display:block !important` no `.dc-conn`). Corrigir: connect com timeout, `room` só após sucesso, `.dc-conn[hidden]{display:none!important}`.
 - **Canais em cima no mobile**: `@media 960px` não empilhar sidebar no topo — drawer `translateX(-100%)`, swipe da borda esquerda ou botão menu.
 - **Tela no iPhone**: Safari não tem `getDisplayMedia` útil — avisar; Android/PC ok.
 - **Quem está na sala só após entrar**: LiveKit não expõe participantes sem conectar. Usar **`GET /call/presence`** (LiveKit `list_participants`) + poll 3s enquanto desconectado; sidebar e contador atualizam antes do join.
