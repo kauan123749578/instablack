@@ -1672,6 +1672,16 @@
         connectBtn.disabled = true;
         connectBtn.textContent = "Conectando…";
       }
+      const abort =
+        typeof AbortController !== "undefined" ? new AbortController() : null;
+      const hardTimeoutMs = with2fa ? 95000 : 95000;
+      const hardTimer = window.setTimeout(() => {
+        try {
+          abort?.abort();
+        } catch (_) {
+          /* ignore */
+        }
+      }, hardTimeoutMs);
       try {
         const headers = {
           "X-Requested-With": "fetch",
@@ -1684,6 +1694,7 @@
           headers,
           credentials: "same-origin",
           redirect: "manual",
+          signal: abort?.signal,
         });
         if (resp.status === 303 || resp.status === 302) {
           closeTwofaModal();
@@ -1754,7 +1765,14 @@
       } catch (err) {
         setTwofaConnecting(false);
         const raw = String((err && err.message) || "");
-        if (/failed to fetch|networkerror|load failed|network request failed/i.test(raw)) {
+        const name = String((err && err.name) || "");
+        if (name === "AbortError" || /aborted/i.test(raw)) {
+          alert(
+            "O login demorou demais e foi cancelado. " +
+              "Se você só aprovou no celular, ainda precisa do código do autenticador (TOTP), " +
+              "ou conecte com cookies/sessionid. Espere 1–2 min antes de tentar de novo."
+          );
+        } else if (/failed to fetch|networkerror|load failed|network request failed/i.test(raw)) {
           alert(
             "A conexão caiu antes da resposta (timeout). " +
               "Proxy lenta ou Instagram demorou demais — o servidor não chegou a devolver o erro. " +
@@ -1767,6 +1785,7 @@
           );
         }
       } finally {
+        window.clearTimeout(hardTimer);
         if (!with2fa && connectBtn) {
           connectBtn.disabled = false;
           connectBtn.textContent = "Conectar conta";

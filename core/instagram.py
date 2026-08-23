@@ -402,11 +402,80 @@ def check_proxy(proxy: str) -> bool:
     return ok
 
 
-def _pending_settings(cl: Client, fallback: dict | None) -> dict | None:
+_PENDING_2FA_CTX_KEY = "_two_step_verification_context"
+_PENDING_2FA_JSON_KEY = "_two_factor_login_json"
+
+
+def _extract_two_step_context(cl: Client) -> str:
+    """Puxa two_step_verification_context do último login CAA/Bloks."""
+    last = getattr(cl, "last_json", None)
+    if not isinstance(last, dict):
+        last = {}
+    ctx = ""
     try:
-        return cl.get_settings()
+        if hasattr(cl, "bloks_extract_two_step_verification_context"):
+            ctx = cl.bloks_extract_two_step_verification_context(last) or ""
     except Exception:
-        return fallback
+        ctx = ""
+    if not ctx:
+        try:
+            if hasattr(cl, "_extract_two_step_verification_context"):
+                ctx = cl._extract_two_step_verification_context(last) or ""
+        except Exception:
+            ctx = ""
+    return str(ctx or "").strip()
+
+
+def _pending_settings(cl: Client, fallback: dict | None) -> dict | None:
+    """Settings do device + contexto 2FA (Redis) pra retomar sem novo login senha."""
+    try:
+        base = cl.get_settings()
+    except Exception:
+        base = fallback
+    if not isinstance(base, dict):
+        base = dict(fallback) if isinstance(fallback, dict) else {}
+    else:
+        base = dict(base)
+    ctx = _extract_two_step_context(cl)
+    if ctx:
+        base[_PENDING_2FA_CTX_KEY] = ctx
+    last = getattr(cl, "last_json", None)
+    if isinstance(last, dict) and last:
+        # Só o necessário pra inferir totp/sms; evita dump Bloks enorme no Redis.
+        slim: dict = {}
+        for key in (
+            "two_step_verification_context",
+            "two_factor_info",
+            "error_type",
+            "message",
+        ):
+            if key in last:
+                slim[key] = last[key]
+        if ctx:
+            slim["two_step_verification_context"] = ctx
+        if slim:
+            base[_PENDING_2FA_JSON_KEY] = slim
+    return base or None
+
+
+def _strip_pending_2fa_meta(settings_dict: dict | None) -> tuple[dict | None, str, dict]:
+    """Separa settings limpos (set_settings) do contexto 2FA guardado no Redis."""
+    if not isinstance(settings_dict, dict):
+        return None, "", {}
+    clean = {
+        k: v
+        for k, v in settings_dict.items()
+        if k not in (_PENDING_2FA_CTX_KEY, _PENDING_2FA_JSON_KEY)
+    }
+    ctx = str(settings_dict.get(_PENDING_2FA_CTX_KEY) or "").strip()
+    login_json = settings_dict.get(_PENDING_2FA_JSON_KEY)
+    if not isinstance(login_json, dict):
+        login_json = {}
+    else:
+        login_json = dict(login_json)
+    if ctx and not login_json.get("two_step_verification_context"):
+        login_json["two_step_verification_context"] = ctx
+    return (clean or None), ctx, login_json
 
 
 def _finish_login_session(cl: Client, proxy: str | None, *, proxy_ip: str | None = None) -> dict:
@@ -458,9 +527,10 @@ def _build_postagemig_login_client(
     cl = _new_instagrapi_client(allow_phantom=True)
     # Connect: pausa curta (2–5s por request deixava o 2FA em ~1 min).
     cl.delay_range = [1, 2]
-    if settings_dict:
+    clean_settings, _, _ = _strip_pending_2fa_meta(settings_dict)
+    if clean_settings:
         try:
-            cl.set_settings(settings_dict)
+            cl.set_settings(clean_settings)
         except Exception:
             log.warning("Não foi possível carregar settings de sessão (login)")
     # Sem settings (1º login): força Samsung SM-E045F (headers Phantom).
@@ -470,7 +540,7 @@ def _build_postagemig_login_client(
 
         ds = getattr(cl, "device_settings", None) or {}
         model = str((ds or {}).get("model") or "")
-        need_samsung = (not settings_dict) or (not settings_has_device(settings_dict))
+        need_samsung = (not clean_settings) or (not settings_has_device(clean_settings))
         if need_samsung or "Pixel" in model or "Google" in str((ds or {}).get("manufacturer") or ""):
             apply_samsung_device(cl)
     except Exception as exc:
@@ -492,6 +562,64 @@ def _build_postagemig_login_client(
 
 
 LOGIN_HARD_TIMEOUT_SEC = 85
+
+
+def _resume_bloks_two_factor(
+    cl: Client,
+    *,
+    verification_code: str,
+    login_json: dict,
+    proxy: str,
+    proxy_ip: str | None,
+) -> dict | None:
+    """Retoma 2FA Bloks com o context da 1ª tentativa (sem novo CAA senha)."""
+    if not verification_code.strip():
+        return None
+    if not hasattr(cl, "_login_with_bloks_two_factor"):
+        return None
+
+    payload = dict(login_json or {})
+    ctx = str(payload.get("two_step_verification_context") or "").strip()
+    if not ctx:
+        last = getattr(cl, "last_json", None)
+        if isinstance(last, dict):
+            ctx = str(last.get("two_step_verification_context") or "").strip()
+    if not ctx:
+        return None
+    payload["two_step_verification_context"] = ctx
+
+    log.info("2FA resume Bloks @%s (context=%s…)", cl.username or "?", ctx[:16])
+    try:
+        ok = cl._login_with_bloks_two_factor(
+            verification_code,
+            payload,
+            TwoFactorRequired("2fa-resume"),
+        )
+    except TwoFactorRequired as exc:
+        raise InstagramAuthError(
+            _friendly_auth_error(
+                "Código 2FA recusado ou expirado. Gere um código novo no autenticador "
+                "(não use o mesmo) e tente de novo. Se você só aprovou no celular, "
+                "ainda precisa do código TOTP aqui — ou conecte com cookies/sessionid.",
+                proxy=proxy,
+                proxy_ip=proxy_ip,
+            )
+        ) from exc
+    except ChallengeRequired as exc:
+        raise InstagramAuthError(
+            _friendly_auth_error(str(exc), proxy=proxy, proxy_ip=proxy_ip)
+        ) from exc
+    except Exception as exc:
+        hint = _ig_last_error_hint(cl)
+        msg = str(exc) if not hint else f"{exc} [{hint}]"
+        log.warning("2FA resume falhou @%s: %s", cl.username or "?", msg)
+        raise InstagramAuthError(
+            _friendly_auth_error(msg, proxy=proxy, proxy_ip=proxy_ip)
+        ) from exc
+
+    if ok:
+        return _finish_login_session(cl, proxy, proxy_ip=proxy_ip)
+    return None
 
 
 def _caa_after_legacy_throttle(
@@ -577,10 +705,17 @@ def _login_credentials_body(
     proxy_ip: str | None,
 ) -> dict:
     """Corpo do login (roda sob teto de tempo)."""
+    _, pending_ctx, pending_login_json = _strip_pending_2fa_meta(settings_dict)
     cl = _build_postagemig_login_client(proxy, settings_dict)
     code = (verification_code or "").strip()
     code_sent = bool(code)
-    log.info("Login instagrapi @%s (2fa=%s proxy_ip=%s)", username, code_sent, proxy_ip or "?")
+    log.info(
+        "Login instagrapi @%s (2fa=%s resume_ctx=%s proxy_ip=%s)",
+        username,
+        code_sent,
+        bool(pending_ctx),
+        proxy_ip or "?",
+    )
 
     def _raise(msg: str, exc: BaseException | None = None) -> None:
         text = _friendly_auth_error(msg, proxy=proxy, proxy_ip=proxy_ip)
@@ -588,8 +723,44 @@ def _login_credentials_body(
             raise InstagramAuthError(text) from exc
         raise InstagramAuthError(text)
 
-    # CAA primeiro: /accounts/login/ no Railway quase sempre 429 antes do 2FA.
-    if hasattr(cl, "_try_caa_login"):
+    # 2ª volta (código 2FA): retoma o challenge da 1ª tentativa.
+    # NÃO reinicia CAA senha (isso gerava novo push no celular + modal preso ~85s).
+    if code_sent and (pending_ctx or pending_login_json):
+        resumed = _resume_bloks_two_factor(
+            cl,
+            verification_code=code,
+            login_json=pending_login_json
+            or ({"two_step_verification_context": pending_ctx} if pending_ctx else {}),
+            proxy=proxy,
+            proxy_ip=proxy_ip,
+        )
+        if resumed is not None:
+            return resumed
+        # Context velho/ausente: um único login() com código (sem CAA-first + legado).
+        try:
+            cl.login(username, password, verification_code=code)
+            return _finish_login_session(cl, proxy, proxy_ip=proxy_ip)
+        except TwoFactorRequired as exc:
+            _raise(
+                "Código 2FA inválido ou o challenge expirou. Feche o modal, "
+                "comece o login de novo e use um código fresco do autenticador.",
+                exc,
+            )
+        except ChallengeRequired as exc:
+            _raise(str(exc), exc)
+        except PleaseWaitFewMinutes as exc:
+            _raise(str(exc), exc)
+        except BadPassword as exc:
+            hint = _ig_last_error_hint(cl)
+            msg = str(exc) if not hint else f"{exc} [{hint}]"
+            _raise(msg, exc)
+        except Exception as exc:
+            hint = _ig_last_error_hint(cl)
+            msg = str(exc) if not hint else f"{exc} [{hint}]"
+            _raise(msg, exc)
+
+    # 1ª volta (sem código): CAA primeiro → pede 2FA com context salvo no Redis.
+    if not code_sent and hasattr(cl, "_try_caa_login"):
         try:
             return _caa_after_legacy_throttle(
                 cl,
@@ -623,6 +794,9 @@ def _login_credentials_body(
         _raise(str(exc), exc)
     except PleaseWaitFewMinutes as exc:
         # AGENT_MEMORY 3.3: legado rate-limit → CAA (é o que pede 2FA no web).
+        # Com código já enviado: fail-fast (não reinicia CAA+legado e estoura 85s).
+        if code_sent:
+            _raise(str(exc), exc)
         return _caa_after_legacy_throttle(
             cl,
             username=username,
@@ -648,6 +822,10 @@ def _login_credentials_body(
                 "Autenticação de dois fatores necessária. Informe o código do autenticador.",
                 settings=_pending_settings(cl, settings_dict),
             ) from exc
+        if code_sent:
+            hint = _ig_last_error_hint(cl)
+            msg = str(exc) if not hint else f"{exc} [{hint}]"
+            _raise(msg, exc)
         if "429" in low or "throttl" in low or "too many" in low or isinstance(
             exc, ClientThrottledError
         ):
