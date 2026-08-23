@@ -78,9 +78,10 @@ Não usar `Client()` stock no connect (TLS `requests` + `/accounts/login/` morto
 
 - Connect: `EnhancedClient` (curl_cffi + headers) e `super().login()` do **instagrapi 2.18.16** (CAA prepare / `bloks_caa_login_prepare` restaurado).
 - Device: **Samsung SM-E045F** (`phantom/device.py`) — alinhado ao User-Agent Phantom. Sem isso o body ficava Pixel 8 Pro e o header Samsung → challenge.
+- **Armadilha:** `set_device` com app Samsung **sem** `bloks_versioning_id` zera o hash (CAA: `Client.bloks_versioning_id is empty`). Sempre incluir o hash instagrapi (`7189b949…`) no dict Samsung.
 - CAA **primeiro** (`_try_caa_login`); legado só se o CAA falhar. Sem código + `two_step` → modal 2FA.
 - Um ipify no connect; 2FA com settings não re-checa proxy. `delay_range` [1, 2].
-- Teto 85s + gunicorn 180s.
+- Teto 85s + gunicorn 180s. Erro de auth no fetch → JSON (modal 2FA não fica “Conectando…” pra sempre).
 
 ### 4) Contas Meta `code=190`
 
@@ -218,6 +219,7 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 | 2026-08-22 | feat | Call: salas privadas (`CallRoom` + senha + blur nomes); avatares reais; mic fix (`isMicrophoneEnabled` mentia → só ligar); chat fixo embaixo. call v**16**, app-v **128**. |
 | 2026-08-22 | fix | Call: mic sem probe `getUserMedia` (Chrome já permitido mas app dizia negado); chat/criar sala com toast de erro + migração `call_rooms`/`call_chat_messages`. call v**18**, app-v **130**. |
 | 2026-08-22 | fix | Call: lista salas com poll na voz; screen-host na sala certa; tela inline no PC; mic via `createLocalAudioTrack`. call v**19**, app-v **131**. |
+| 2026-08-23 | fix | Samsung `set_device` sem `bloks_versioning_id` → CAA empty hash + modal 2FA preso. Incluir hash + JSON no fetch auth error. app-v **134**. Redeploy **web**. |
 | 2026-08-22 | fix | Call: join timeout 28s, `room` só após connect, mic getUserMedia→LocalAudioTrack, CSS conn `[hidden]`, contagem live. call v**20**, app-v **132**. |
 
 ### 3.4) Call / LiveKit — armadilhas

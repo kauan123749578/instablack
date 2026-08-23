@@ -1722,6 +1722,11 @@
             });
             return;
           }
+          if (data.message || data.error) {
+            setTwofaConnecting(false);
+            alert(data.message || data.detail || "Falha ao conectar a conta.");
+            return;
+          }
         }
         if (resp.status === 403) {
           setTwofaConnecting(false);

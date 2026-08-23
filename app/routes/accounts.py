@@ -1050,6 +1050,16 @@ def add_account(
                 raise InstagramAuthError("JSON inválido. Cole o session.json completo do instagrapi.") from exc
             if not isinstance(imported, dict):
                 raise InstagramAuthError("session.json deve ser um objeto JSON.")
+            # Aceita dump puro OU account.json do mobile_signup (instagrapi_settings/settings).
+            if "uuids" not in imported:
+                nested = imported.get("instagrapi_settings") or imported.get("settings")
+                if isinstance(nested, dict) and "uuids" in nested:
+                    imported = nested
+            if "uuids" not in imported:
+                raise InstagramAuthError(
+                    "JSON sem sessão instagrapi. Use o session.json gerado por "
+                    "login_instagram.py (ou o bloco instagrapi_settings)."
+                )
             settings_dict = login_with_imported_settings(
                 imported,
                 proxy=proxy,
@@ -1111,6 +1121,15 @@ def add_account(
             status_code=status.HTTP_403_FORBIDDEN,
         )
     except InstagramAuthError as exc:
+        if request.headers.get("X-Requested-With") == "fetch":
+            return JSONResponse(
+                {
+                    "ok": False,
+                    "error": "auth_failed",
+                    "message": f"Falha no login: {exc}",
+                },
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
         accounts = _load_user_accounts(db, user)
         return templates.TemplateResponse(
             "accounts.html",
