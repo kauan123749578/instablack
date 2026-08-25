@@ -163,6 +163,12 @@ async def login(
             _auth_page_ctx(request, error="Usuário ou senha inválidos."),
             status_code=status.HTTP_400_BAD_REQUEST,
         )
+    if getattr(user, "is_demo", False):
+        return templates.TemplateResponse(
+            "login.html",
+            _auth_page_ctx(request, error="Conta demo — só aparece no ranking (marketing)."),
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
     clear_login_rate_limit(request, username_norm)
     _issue_exclusive_session(request, db, user)
     return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)

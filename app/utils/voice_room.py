@@ -1,4 +1,4 @@
-"""Acesso à sala Call (LiveKit) — só owner ou allow_voice_room."""
+"""Acesso ao Chat (Backspace) — só owner ou allow_voice_room."""
 from __future__ import annotations
 
 from models.models import User

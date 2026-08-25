@@ -97,14 +97,7 @@ class Settings(BaseSettings):
     # false → Client padrão do instagrapi (útil se curl_cffi falhar no deploy).
     phantom_enabled: bool = True
 
-    # LiveKit Cloud — sala Call (voz + screen share). Plano Build free.
-    # Dashboard: https://cloud.livekit.io → Project → Settings → Keys
-    livekit_url: str = ""  # wss://xxxx.livekit.cloud
-    livekit_api_key: str = ""
-    livekit_api_secret: str = ""
-    livekit_room_name: str = "instablack-global"
-
-    # Backspace — chat/voz Discord-style (https://github.com/TheZwiss/backspace)
+    # Backspace — chat Discord-style (https://github.com/TheZwiss/backspace)
     # Rode Backspace num VPS com Docker; Instablack embute via /chat.
     backspace_enabled: bool = False
     backspace_url: str = ""  # ex.: https://chat.seudominio.com

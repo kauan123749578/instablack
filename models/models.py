@@ -46,8 +46,10 @@ class User(Base):
     owner_private: Mapped[bool] = mapped_column(Boolean, default=False)
     # Libera conectar via Instagrapi (senha / sessionid / session.json). Owner sempre pode.
     allow_instagrapi: Mapped[bool] = mapped_column(Boolean, default=False)
-    # Sala Call / Backspace chat: voz + tela. Owner sempre pode; demais só com flag.
+    # Backspace chat (/chat). Owner sempre pode; demais só com flag.
     allow_voice_room: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    # Conta demo de marketing (Top do Dia / prints) — só o owner cria/apaga.
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     # Senha Backspace (cifrada) — provisionada automaticamente em /chat.
     backspace_password_enc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     # Cobrança: trava o painel (popup) até o suporte liberar. Não é ban (ainda entra).
@@ -563,38 +565,3 @@ class AuthenticatorEntry(Base):
 
     user: Mapped["User"] = relationship(back_populates="authenticator_entries")
 
-
-class CallRoom(Base):
-    """Sala de voz privada (LiveKit room dedicada + senha opcional)."""
-
-    __tablename__ = "call_rooms"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    slug: Mapped[str] = mapped_column(String(64), unique=True, index=True)
-    name: Mapped[str] = mapped_column(String(128))
-    password_hash: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    blur_names: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
-    livekit_room: Mapped[str] = mapped_column(String(128), unique=True, index=True)
-    created_at: Mapped[dt.datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
-
-    owner: Mapped["User"] = relationship(foreign_keys=[owner_id])
-
-
-class CallChatMessage(Base):
-    """Chat da call (HTTP — funciona sem entrar na voz)."""
-
-    __tablename__ = "call_chat_messages"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    room_slug: Mapped[str] = mapped_column(String(64), default="", index=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    author_name: Mapped[str] = mapped_column(String(255))
-    text: Mapped[str] = mapped_column(String(500))
-    created_at: Mapped[dt.datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), index=True
-    )
-
-    user: Mapped["User"] = relationship()

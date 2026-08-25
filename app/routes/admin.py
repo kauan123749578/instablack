@@ -25,6 +25,15 @@ from app.utils.platform_settings import (
 )
 from core.database import get_db
 from models.models import Automation, InstagramAccount, InviteCode, User, UserMetaApp, automation_accounts
+from app.utils.demo_users import (
+    boost_demo_posts,
+    clear_rank_cache,
+    delete_all_demo_users,
+    delete_demo_user,
+    list_demo_users_with_posts,
+    make_demo_user,
+    set_demo_posts_today,
+)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -84,6 +93,9 @@ def admin_dashboard(
     for u in users:
         if not _admin_can_see(admin, u):
             continue
+        # Demos ficam na seção Marketing (owner), não poluem a lista principal
+        if is_owner and getattr(u, "is_demo", False):
+            continue
         ig_count = db.scalar(
             select(func.count(InstagramAccount.id)).where(
                 InstagramAccount.user_id == u.id,
@@ -107,6 +119,8 @@ def admin_dashboard(
             "limit_label": account_limit_label(u.account_limit),
         })
 
+    demo_rows = list_demo_users_with_posts(db) if is_owner else []
+
     return templates.TemplateResponse(
         "admin.html",
         {
@@ -114,6 +128,7 @@ def admin_dashboard(
             "user": admin,
             "is_owner": is_owner,
             "rows": rows,
+            "demo_rows": demo_rows,
             "users_total": users_total,
             "users_active": users_active,
             "users_banned": users_banned,
@@ -573,7 +588,7 @@ def toggle_user_voice_room(
     db: Session = Depends(get_db),
     admin: User = Depends(get_owner_user),
 ):
-    """Libera/revoga a sala Call (LiveKit). Só o dono. Owner sempre tem acesso."""
+    """Libera/revoga Chat (Backspace). Só o dono. Owner sempre tem acesso."""
     target = db.get(User, user_id)
     if not target:
         raise HTTPException(status_code=404, detail="Usuário não encontrado")
@@ -588,6 +603,113 @@ def toggle_user_voice_room(
     db.commit()
     return RedirectResponse(
         "/admin?ok=voiceroom",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post("/demo/create")
+def admin_demo_create(
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_owner_user),
+    display_name: str = Form(""),
+    username: str = Form(""),
+    posts_today: int = Form(18),
+    count: int = Form(1),
+):
+    """Cria 1..N usuários demo com publicações no Top do Dia (hoje BRT)."""
+    n = max(1, min(int(count or 1), 30))
+    posts = max(0, min(int(posts_today or 0), 200))
+    created = 0
+    for i in range(n):
+        # Só aplica nome/username custom no primeiro; demais aleatórios
+        make_demo_user(
+            db,
+            display_name=(display_name if i == 0 else "") or None,
+            username=(username if i == 0 else "") or None,
+            posts_today=posts,
+        )
+        created += 1
+    db.commit()
+    clear_rank_cache()
+    return RedirectResponse(
+        f"/admin?ok=demo_created&n={created}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post("/demo/{user_id}/boost")
+def admin_demo_boost(
+    user_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_owner_user),
+    add_posts: int = Form(10),
+):
+    try:
+        boost_demo_posts(db, user_id, add_posts)
+        db.commit()
+        clear_rank_cache()
+    except ValueError:
+        return RedirectResponse(
+            "/admin?error=demo_missing",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    return RedirectResponse(
+        "/admin?ok=demo_boost",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post("/demo/{user_id}/set-posts")
+def admin_demo_set_posts(
+    user_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_owner_user),
+    posts_today: int = Form(25),
+):
+    try:
+        set_demo_posts_today(db, user_id, posts_today)
+        db.commit()
+        clear_rank_cache()
+    except ValueError:
+        return RedirectResponse(
+            "/admin?error=demo_missing",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    return RedirectResponse(
+        "/admin?ok=demo_set",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post("/demo/{user_id}/delete")
+def admin_demo_delete(
+    user_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_owner_user),
+):
+    if not delete_demo_user(db, user_id):
+        return RedirectResponse(
+            "/admin?error=demo_missing",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    db.commit()
+    clear_rank_cache()
+    return RedirectResponse(
+        "/admin?ok=demo_deleted",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post("/demo/wipe")
+def admin_demo_wipe(
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_owner_user),
+):
+    n = delete_all_demo_users(db)
+    db.commit()
+    clear_rank_cache()
+    return RedirectResponse(
+        f"/admin?ok=demo_wipe&n={n}",
         status_code=status.HTTP_303_SEE_OTHER,
     )
 

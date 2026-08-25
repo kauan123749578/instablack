@@ -29,7 +29,22 @@
 <div class="alert alert-ok">Acesso Instagrapi (API não oficial) atualizado.</div>
 {% endif %}
 {% if ok == 'voiceroom' %}
-<div class="alert alert-ok">Acesso à Call (voz + tela) atualizado.</div>
+<div class="alert alert-ok">Acesso ao Chat atualizado.</div>
+{% endif %}
+{% if ok == 'demo_created' %}
+<div class="alert alert-ok">{{ request.query_params.get('n') or 0 }} usuário(s) demo criado(s) no Top do Dia.</div>
+{% endif %}
+{% if ok == 'demo_boost' %}
+<div class="alert alert-ok">Publicações demo adicionadas ao rank de hoje.</div>
+{% endif %}
+{% if ok == 'demo_set' %}
+<div class="alert alert-ok">Posts de hoje do demo atualizados.</div>
+{% endif %}
+{% if ok == 'demo_deleted' %}
+<div class="alert alert-ok">Usuário demo removido.</div>
+{% endif %}
+{% if ok == 'demo_wipe' %}
+<div class="alert alert-ok">{{ request.query_params.get('n') or 0 }} usuário(s) demo apagado(s).</div>
 {% endif %}
 {% if ok == 'billing_on' %}
 <div class="alert alert-ok">Painel bloqueado — o usuário verá o aviso de mensalidade até o suporte liberar.</div>
@@ -74,7 +89,10 @@
 <div class="alert alert-error">O dono já tem Instagrapi liberado. Não precisa marcar nessa conta.</div>
 {% endif %}
 {% if error == 'voiceroom_self' %}
-<div class="alert alert-error">O dono já tem Call liberada. Não precisa marcar nessa conta.</div>
+<div class="alert alert-error">O dono já tem Chat liberado. Não precisa marcar nessa conta.</div>
+{% endif %}
+{% if error == 'demo_missing' %}
+<div class="alert alert-error">Usuário demo não encontrado.</div>
 {% endif %}
 {% if error == 'billing_self' %}
 <div class="alert alert-error">Não é possível bloquear o painel do dono da plataforma.</div>
@@ -137,6 +155,95 @@
 {% endif %}
 {% if ok == 'limit' %}
 <div class="alert alert-ok">Limite de contas atualizado.</div>
+{% endif %}
+
+{% if is_owner %}
+<div class="og-glass-card" style="margin-bottom:16px;padding:18px" id="admin-demo-marketing">
+  <h3 style="margin:0 0 4px;font-size:15px">
+    <i data-lucide="sparkles" class="inline-icon"></i> Marketing — usuários demo no Top do Dia
+  </h3>
+  <p class="muted" style="margin:0 0 14px;font-size:12px;line-height:1.5">
+    Cria contas fictícias com publicações de sucesso <strong>hoje (BRT)</strong> para aparecerem no ranking.
+    Use só para prints/vendas. Não conseguem logar de verdade (senha aleatória).
+  </p>
+  <form method="post" action="/admin/demo/create" class="form-grid"
+        style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:16px">
+    <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
+    <label>Quantidade
+      <input type="number" name="count" min="1" max="30" value="5" style="width:90px">
+    </label>
+    <label>Posts hoje (cada um)
+      <input type="number" name="posts_today" min="0" max="200" value="22" style="width:100px">
+    </label>
+    <label style="flex:1;min-width:140px">Nome (opcional, 1º só)
+      <input type="text" name="display_name" maxlength="80" placeholder="Ex.: Marina Costa">
+    </label>
+    <label style="min-width:120px">@ (opcional)
+      <input type="text" name="username" maxlength="30" placeholder="marina">
+    </label>
+    <button type="submit" class="btn btn-primary">
+      <i data-lucide="user-plus"></i> Gerar demos
+    </button>
+  </form>
+
+  {% if demo_rows %}
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+    <strong style="font-size:13px">{{ demo_rows|length }} demo(s) ativo(s)</strong>
+    <form method="post" action="/admin/demo/wipe"
+          onsubmit="return confirm('Apagar TODOS os usuários demo e posts fictícios?');">
+      <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
+      <button type="submit" class="btn btn-sm btn-danger">
+        <i data-lucide="trash-2"></i> Limpar todos
+      </button>
+    </form>
+  </div>
+  <div class="og-table-wrap" style="margin:0">
+    <table class="og-table" style="margin:0">
+      <thead>
+        <tr>
+          <th>Usuário</th>
+          <th>Nome</th>
+          <th>Posts hoje</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in demo_rows %}
+        {% set d = row.user %}
+        <tr>
+          <td><strong>@{{ d.username }}</strong> <span class="og-badge badge-yellow">Demo</span></td>
+          <td class="og-muted">{{ d.display_name or '—' }}</td>
+          <td>{{ row.posts_today }}</td>
+          <td>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end">
+              <form method="post" action="/admin/demo/{{ d.id }}/set-posts" style="display:flex;gap:4px;align-items:center">
+                <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
+                <input type="number" name="posts_today" min="0" max="200" value="{{ row.posts_today }}" style="width:72px">
+                <button type="submit" class="btn btn-sm">Definir</button>
+              </form>
+              <form method="post" action="/admin/demo/{{ d.id }}/boost" style="display:flex;gap:4px;align-items:center">
+                <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
+                <input type="hidden" name="add_posts" value="10">
+                <button type="submit" class="btn btn-sm btn-primary">+10</button>
+              </form>
+              <form method="post" action="/admin/demo/{{ d.id }}/delete"
+                    onsubmit="return confirm('Apagar demo @{{ d.username }}?');">
+                <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
+                <button type="submit" class="btn btn-sm btn-danger">
+                  <i data-lucide="trash-2"></i>
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted" style="margin:0;font-size:12px">Nenhum demo ainda — gere alguns acima e abra o Dashboard → Top do Dia.</p>
+  {% endif %}
+</div>
 {% endif %}
 
 <div class="og-glass-card" style="margin-bottom:16px;padding:18px">
@@ -320,8 +427,8 @@
               <span class="og-badge {% if u.allow_instagrapi %}badge-green{% else %}badge-red{% endif %}" title="API não oficial Instagrapi">
                 {% if u.allow_instagrapi %}Instagrapi ON{% else %}Instagrapi OFF{% endif %}
               </span>
-              <span class="og-badge {% if u.allow_voice_room %}badge-green{% else %}badge-red{% endif %}" title="Sala Call (voz + tela)">
-                {% if u.allow_voice_room %}Call ON{% else %}Call OFF{% endif %}
+              <span class="og-badge {% if u.allow_voice_room %}badge-green{% else %}badge-red{% endif %}" title="Chat Backspace">
+                {% if u.allow_voice_room %}Chat ON{% else %}Chat OFF{% endif %}
               </span>
               {% if u.billing_blocked %}
               <span class="og-badge badge-red" title="Painel bloqueado até pagar a mensalidade">Mensalidade</span>
@@ -392,9 +499,9 @@
                     </button>
                   </form>
                   <form method="post" action="/admin/users/{{ u.id }}/toggle-voice-room" class="admin-more-form"
-                        onsubmit="return confirm('{% if u.allow_voice_room %}Revogar Call de @{{ u.username }}?{% else %}Liberar Call (voz+tela) para @{{ u.username }}?{% endif %}');">
+                        onsubmit="return confirm('{% if u.allow_voice_room %}Revogar Chat de @{{ u.username }}?{% else %}Liberar Chat para @{{ u.username }}?{% endif %}');">
                     <button type="submit" class="admin-more-item {% if not u.allow_voice_room %}admin-more-item--accent{% endif %}">
-                      {% if u.allow_voice_room %}Revogar Call{% else %}Liberar Call{% endif %}
+                      {% if u.allow_voice_room %}Revogar Chat{% else %}Liberar Chat{% endif %}
                     </button>
                   </form>
                   <form method="post" action="/admin/users/{{ u.id }}/toggle-multi-session" class="admin-more-form"

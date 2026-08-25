@@ -221,23 +221,11 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 | 2026-08-22 | feat | Call: salas privadas (`CallRoom` + senha + blur nomes); avatares reais; mic fix (`isMicrophoneEnabled` mentia → só ligar); chat fixo embaixo. call v**16**, app-v **128**. |
 | 2026-08-22 | fix | Call: mic sem probe `getUserMedia` (Chrome já permitido mas app dizia negado); chat/criar sala com toast de erro + migração `call_rooms`/`call_chat_messages`. call v**18**, app-v **130**. |
 | 2026-08-22 | fix | Call: lista salas com poll na voz; screen-host na sala certa; tela inline no PC; mic via `createLocalAudioTrack`. call v**19**, app-v **131**. |
+| 2026-08-24 | chore | Remove Call/LiveKit do app (`/call`, livekit-api, CallRoom). Chat Backspace permanece. Admin: usuários demo para Top do Dia (marketing). Redeploy **web**. |
 | 2026-08-23 | fix | 2FA: retomar Bloks com context Redis (sem CAA restart) + abort UI 95s. Aprovar no celular ≠ sessão no painel. app-v **135**. Redeploy **web**. |
 | 2026-08-23 | fix | Samsung `set_device` sem `bloks_versioning_id` → CAA empty hash + modal 2FA preso. Incluir hash + JSON no fetch auth error. app-v **134**. Redeploy **web**. |
 | 2026-08-22 | fix | Call: join timeout 28s, `room` só após connect, mic getUserMedia→LocalAudioTrack, CSS conn `[hidden]`, contagem live. call v**20**, app-v **132**. |
 
-### 3.4) Call / LiveKit — armadilhas
+### 3.4) Call / LiveKit — removido (2026-08-24)
 
-- **Mesmo `identity` = kick**: token com só `u{user.id}` → segundo device (celular) **expulsa** o PC. Usar `u{id}-{device_id}` estável por `localStorage`.
-- **Banner “já está na sala” + DESCONECTADO**: `showMicBanner(true)` sem `room` → botão “Ligar microfone” parece morto (`enableMic` fazia `return` silencioso). Banner só se `inRoom() && !micOn`; se clicar fora da sala, hint pedindo Entrar.
-- **Mic “clico e nada”**: `isMicrophoneEnabled` pode ser `true` sem áudio publicado → botão **mutava** em vez de ligar. Usar `micOn`/`localMicLive()`; banner chama **`enableMicOnly`** sempre.
-- **Mic mobile “não liga”**: fallback `createLocalAudioTrack` + `publishTrack`. Banner azul **oculto no mobile** (dock já tem botão).
-- **Mic “permitido no Chrome mas app diz negado”**: **não** chamar `getUserMedia` no clique e parar tracks antes do LiveKit — o gesto expira e o 2º `getUserMedia` falha com `NotAllowedError`. Preferir `createLocalAudioTrack` + `publishTrack` no clique.
-- **Tela “Transmitindo” mas só avatar**: janela auxiliar entrava na **sala global** sem `room_slug` — passar `?room=` + `room_slug` no token do screen-host; no PC preferir share **inline** na mesma aba.
-- **Salas sumidas na sidebar**: `fetchPresence` fazia `return` quando `inRoom()` — poll de salas tem que continuar conectado.
-- **Amigo preso em “Conectando…”**: `room = r` antes do `connect()` + sem timeout; UI mente “Voz conectada” no mobile (`display:block !important` no `.dc-conn`). Corrigir: connect com timeout, `room` só após sucesso, `.dc-conn[hidden]{display:none!important}`.
-- **Canais em cima no mobile**: `@media 960px` não empilhar sidebar no topo — drawer `translateX(-100%)`, swipe da borda esquerda ou botão menu.
-- **Tela no iPhone**: Safari não tem `getDisplayMedia` útil — avisar; Android/PC ok.
-- **Quem está na sala só após entrar**: LiveKit não expõe participantes sem conectar. Usar **`GET /call/presence`** (LiveKit `list_participants`) + poll 3s enquanto desconectado; sidebar e contador atualizam antes do join.
-- **F5 para screen share na mesma aba**: browser mata `getDisplayMedia`. No **PC**, share abre janela `/call/screen-host` (identity `u{id}-{device}-screen`); F5 na call principal não para. Mobile ainda inline (F5 para).
-- **Tela borrada**: default WebRTC/LiveKit usa bitrate baixo. Publicar com `screenShareEncoding` ~8Mbps + `resolution` 1080p30 + `contentHint: detail` (LANcord faz o mesmo no P2P). Qualidade LAN do LANcord ainda ganha (sem nuvem); na internet depende da banda.
-<!-- Ao corrigir bugs de produção: acrescente uma linha acima e, se for armadilha nova, uma subseção em "O que já quebrou". -->
+O módulo `/call` (LiveKit Cloud in-app) foi **removido**. Chat fica em `/chat` (Backspace no VPS). Flag `allow_voice_room` no admin libera **Chat**, não Call. Envs `LIVEKIT_*` do Instablack não são mais usados.

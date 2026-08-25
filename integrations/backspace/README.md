@@ -1,6 +1,6 @@
-# Backspace no Instablack
+﻿# Backspace no Instablack
 
-O Instablack usa [Backspace](https://github.com/TheZwiss/backspace) para **chat, voz, vídeo e tela** — substituindo o módulo `/call` improvisado.
+O Instablack usa [Backspace](https://github.com/TheZwiss/backspace) para **chat, voz, vídeo e tela** via `/chat`.
 
 ## Arquitetura
 
@@ -68,13 +68,7 @@ Redeploy. O menu **Chat** aparece para quem tem `allow_voice_room` (ou owner).
 
 Se o popup for bloqueado: **Abrir em nova aba** ou login manual (mesmo `@username`).
 
-## 4. Call legado
-
-- `/call` → redireciona para `/chat`
-- `/call/legacy` → UI LiveKit antiga (deprecada)
-- APIs `/call/token`, `/call/rooms` mantidas por compatibilidade
-
-## 5. Limitações
+## 4. Limitações
 
 | Cenário | Funciona? |
 |---------|-----------|
