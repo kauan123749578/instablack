@@ -92,12 +92,16 @@
                {% if automation.comment_auto_reply_enabled %}checked{% endif %}>
         Responder comentários automaticamente (API Meta)
       </label>
-      <label>Mensagens <span class="muted">(uma por linha)</span>
+      <label>Mensagens <span class="muted">(uma por linha — escolhe aleatório)</span>
         <textarea name="comment_auto_reply_message" rows="5">{{ automation | comment_reply_messages }}</textarea>
       </label>
       <label>Esperar (segundos)
         <input type="number" name="comment_auto_reply_delay_seconds" min="3" max="120"
                value="{{ automation.comment_auto_reply_delay_seconds or 5 }}">
+        <span class="muted" style="display:block;margin-top:4px;font-size:12px">
+          Continua respondendo mesmo se a automação estiver pausada ou concluída.
+          Só contas Meta (API oficial) com permissão de comentários.
+        </span>
       </label>
     </fieldset>
     {% endif %}

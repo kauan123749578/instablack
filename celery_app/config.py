@@ -19,6 +19,7 @@ celery_app = Celery(
         "celery_app.tasks.insights",
         "celery_app.tasks.warmup",
         "celery_app.tasks.comments",
+        "celery_app.tasks.demo_rank",
         "celery_app.beat",
     ],
 )
@@ -29,6 +30,7 @@ from celery_app.tasks import insights as _insights  # noqa: E402,F401
 from celery_app.tasks import publish as _publish  # noqa: E402,F401
 from celery_app.tasks import warmup as _warmup  # noqa: E402,F401
 from celery_app.tasks import comments as _comments  # noqa: E402,F401
+from celery_app.tasks import demo_rank as _demo_rank  # noqa: E402,F401
 import celery_app.beat as _beat  # noqa: E402,F401
 
 celery_conf: dict = {
@@ -50,6 +52,7 @@ celery_conf: dict = {
         "celery_app.tasks.insights.refresh_missing_profile_pics": {"queue": "default"},
         "celery_app.tasks.warmup.run_warmup_job": {"queue": "default"},
         "celery_app.tasks.comments.poll_auto_replies": {"queue": "default"},
+        "celery_app.tasks.demo_rank.grow_demo_posts": {"queue": "default"},
     },
     "broker_connection_retry_on_startup": True,
     "result_expires": 60 * 60,
@@ -202,5 +205,10 @@ celery_app.conf.beat_schedule = {
     "comment-auto-reply-every-20s": {
         "task": "celery_app.tasks.comments.poll_auto_replies",
         "schedule": schedule(run_every=20),
+    },
+    # Demos no Top do Dia: sobem posts ao longo do dia (marketing / parece real)
+    "demo-rank-grow-every-5-min": {
+        "task": "celery_app.tasks.demo_rank.grow_demo_posts",
+        "schedule": schedule(run_every=300),
     },
 }

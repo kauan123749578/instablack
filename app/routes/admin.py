@@ -26,6 +26,7 @@ from app.utils.platform_settings import (
 from core.database import get_db
 from models.models import Automation, InstagramAccount, InviteCode, User, UserMetaApp, automation_accounts
 from app.utils.demo_users import (
+    MAX_DEMO_POSTS_TODAY,
     boost_demo_posts,
     clear_rank_cache,
     delete_all_demo_users,
@@ -130,6 +131,7 @@ def admin_dashboard(
             "is_owner": is_owner,
             "rows": rows,
             "demo_rows": demo_rows,
+            "demo_posts_max": MAX_DEMO_POSTS_TODAY,
             "users_total": users_total,
             "users_active": users_active,
             "users_banned": users_banned,
@@ -620,7 +622,7 @@ async def admin_demo_create(
 ):
     """Cria 1..N usuários demo com publicações no Top do Dia (hoje BRT)."""
     n = max(1, min(int(count or 1), 30))
-    posts = max(0, min(int(posts_today or 0), 200))
+    posts = max(0, min(int(posts_today or 0), MAX_DEMO_POSTS_TODAY))
     created = 0
     first_user = None
     for i in range(n):

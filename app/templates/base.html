@@ -146,12 +146,6 @@
             <i data-lucide="shield" class="nav-icon"></i>
             <span class="nav-text">Camuflagem</span>
           </a>
-          {% if nav_auth.is_owner or nav_auth.allow_voice_room %}
-          <a href="/chat" class="nav-link" data-nav="/chat">
-            <i data-lucide="messages-square" class="nav-icon"></i>
-            <span class="nav-text">Chat</span>
-          </a>
-          {% endif %}
 
           <div class="nav-section-label">Relatórios</div>
           <a href="/analytics" class="nav-link" data-nav="/analytics">
@@ -312,9 +306,6 @@
         <a href="/aquecimento" data-nav="/aquecimento"><i data-lucide="flame"></i><span>Aquecimento Meta</span></a>
         <a href="/warmup" data-nav="/warmup"><i data-lucide="users"></i><span>Aquecer contas (instagrapi)</span></a>
         <a href="/camuflagem" data-nav="/camuflagem"><i data-lucide="shield"></i><span>Camuflagem</span></a>
-        {% if nav_auth.is_owner or nav_auth.allow_voice_room %}
-        <a href="/chat"><i data-lucide="messages-square"></i><span>Chat</span></a>
-        {% endif %}
 
         <div class="drawer-section-label">Relatórios</div>
         <a href="/analytics" data-nav="/analytics"><i data-lucide="chart-no-axes-combined"></i><span>Analytics</span></a>

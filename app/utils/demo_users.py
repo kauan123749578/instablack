@@ -31,6 +31,11 @@ _AVATAR_CT = {
 
 BRT = ZoneInfo("America/Sao_Paulo")
 
+# Teto de posts fictícios por demo no dia BRT (Top do Dia).
+MAX_DEMO_POSTS_TODAY = 5000
+# Tick de crescimento: a cada ~5 min (ver beat), demos “postam” de novo.
+DEMO_GROWTH_MAX_ADD_PER_TICK = 18
+
 _FIRST = (
     "Ana", "Bruno", "Camila", "Diego", "Elena", "Felipe", "Gabriela", "Henrique",
     "Isabela", "João", "Karina", "Lucas", "Marina", "Nicolas", "Olivia", "Pedro",
@@ -93,7 +98,7 @@ def make_demo_user(
     posts_today: int = 12,
 ) -> User:
     """Cria usuário demo + conta IG fantasma + N PublishLog success (hoje BRT)."""
-    posts_today = max(0, min(int(posts_today or 0), 500))
+    posts_today = max(0, min(int(posts_today or 0), MAX_DEMO_POSTS_TODAY))
     if display_name and display_name.strip():
         name = display_name.strip()[:80]
     else:
@@ -149,18 +154,34 @@ def _today_bounds_utc_naive() -> tuple[dt.datetime, dt.datetime]:
     return _naive_utc(start), _naive_utc(end)
 
 
-def _inject_posts(db: Session, account_id: int, count: int) -> int:
-    """Insere PublishLog success com created_at espalhado no dia BRT atual."""
-    count = max(0, min(int(count), 500))
+def _inject_posts(
+    db: Session,
+    account_id: int,
+    count: int,
+    *,
+    near_now: bool = False,
+) -> int:
+    """Insere PublishLog success com created_at no dia BRT atual.
+
+    ``near_now=True`` concentra timestamps nos últimos minutos (crescimento ao vivo).
+    """
+    count = max(0, min(int(count), MAX_DEMO_POSTS_TODAY))
     if count <= 0:
         return 0
     start_n, end_n = _today_bounds_utc_naive()
-    span = max(1, int((end_n - start_n).total_seconds()) - 60)
     now_n = dt.datetime.utcnow()
     # Não passa do "agora" (rank é até o fim do dia, mas timestamps futuros confundem)
-    max_offset = max(1, int((min(now_n, end_n - dt.timedelta(seconds=1)) - start_n).total_seconds()))
+    latest = min(now_n, end_n - dt.timedelta(seconds=1))
+    max_offset = max(1, int((latest - start_n).total_seconds()))
     for i in range(count):
-        offset = random.randint(0, max_offset) if count > 1 else max(0, max_offset // 2)
+        if near_now:
+            # Últimos ~12 min — parece postagem recente no rank
+            window = min(720, max_offset)
+            offset = max(0, max_offset - random.randint(0, window))
+        elif count > 1:
+            offset = random.randint(0, max_offset)
+        else:
+            offset = max(0, max_offset // 2)
         created = start_n + dt.timedelta(seconds=offset)
         db.add(
             PublishLog(
@@ -176,54 +197,35 @@ def _inject_posts(db: Session, account_id: int, count: int) -> int:
     return count
 
 
-def boost_demo_posts(db: Session, user_id: int, add_posts: int) -> int:
-    add_posts = max(0, min(int(add_posts or 0), 500))
-    user = db.get(User, user_id)
-    if not user or not getattr(user, "is_demo", False):
-        raise ValueError("Usuário demo não encontrado")
+def _demo_account(db: Session, user: User) -> InstagramAccount:
     acc = db.scalar(
         select(InstagramAccount).where(
             InstagramAccount.user_id == user.id,
             InstagramAccount.status == "active",
         )
     )
-    if not acc:
-        acc = InstagramAccount(
-            user_id=user.id,
-            username=f"{user.username}_ig"[:40],
-            provider="instagrapi",
-            status="active",
-        )
-        db.add(acc)
-        db.flush()
-    return _inject_posts(db, acc.id, add_posts)
-
-
-def set_demo_posts_today(db: Session, user_id: int, target: int) -> int:
-    """Ajusta posts de sucesso de hoje BRT para exatamente ``target``."""
-    target = max(0, min(int(target or 0), 500))
-    user = db.get(User, user_id)
-    if not user or not getattr(user, "is_demo", False):
-        raise ValueError("Usuário demo não encontrado")
-    acc = db.scalar(
-        select(InstagramAccount).where(InstagramAccount.user_id == user.id)
+    if acc:
+        return acc
+    acc = db.scalar(select(InstagramAccount).where(InstagramAccount.user_id == user.id))
+    if acc:
+        return acc
+    acc = InstagramAccount(
+        user_id=user.id,
+        username=f"{user.username}_ig"[:40],
+        provider="instagrapi",
+        status="active",
     )
-    if not acc:
-        acc = InstagramAccount(
-            user_id=user.id,
-            username=f"{user.username}_ig"[:40],
-            provider="instagrapi",
-            status="active",
-        )
-        db.add(acc)
-        db.flush()
+    db.add(acc)
+    db.flush()
+    return acc
 
+
+def _posts_today_for_account(db: Session, account_id: int) -> int:
     start_n, end_n = _today_bounds_utc_naive()
-
-    current = (
+    return (
         db.scalar(
             select(func.count(PublishLog.id)).where(
-                PublishLog.account_id == acc.id,
+                PublishLog.account_id == account_id,
                 PublishLog.status == "success",
                 PublishLog.created_at >= start_n,
                 PublishLog.created_at < end_n,
@@ -231,6 +233,29 @@ def set_demo_posts_today(db: Session, user_id: int, target: int) -> int:
         )
         or 0
     )
+
+
+def boost_demo_posts(db: Session, user_id: int, add_posts: int) -> int:
+    add_posts = max(0, min(int(add_posts or 0), MAX_DEMO_POSTS_TODAY))
+    user = db.get(User, user_id)
+    if not user or not getattr(user, "is_demo", False):
+        raise ValueError("Usuário demo não encontrado")
+    acc = _demo_account(db, user)
+    current = _posts_today_for_account(db, acc.id)
+    room = max(0, MAX_DEMO_POSTS_TODAY - current)
+    return _inject_posts(db, acc.id, min(add_posts, room), near_now=True)
+
+
+def set_demo_posts_today(db: Session, user_id: int, target: int) -> int:
+    """Ajusta posts de sucesso de hoje BRT para exatamente ``target``."""
+    target = max(0, min(int(target or 0), MAX_DEMO_POSTS_TODAY))
+    user = db.get(User, user_id)
+    if not user or not getattr(user, "is_demo", False):
+        raise ValueError("Usuário demo não encontrado")
+    acc = _demo_account(db, user)
+
+    start_n, end_n = _today_bounds_utc_naive()
+    current = _posts_today_for_account(db, acc.id)
     if current > target:
         ids = db.scalars(
             select(PublishLog.id)
@@ -247,8 +272,63 @@ def set_demo_posts_today(db: Session, user_id: int, target: int) -> int:
             db.execute(delete(PublishLog).where(PublishLog.id.in_(ids)))
         return target
     if current < target:
-        _inject_posts(db, acc.id, target - current)
+        _inject_posts(db, acc.id, target - current, near_now=False)
     return target
+
+
+def grow_demo_posts_tick(db: Session) -> dict:
+    """Faz demos 'postarem' ao longo do dia — rank muda de hora em hora.
+
+    Ritmo diferente por demo (e um pouco de aleatório) para o Top do Dia
+    parecer gente real, estilo marketing.
+    """
+    demos = db.scalars(select(User).where(User.is_demo.is_(True))).all()
+    if not demos:
+        return {"demos": 0, "added": 0, "seeded": 0}
+
+    now = brt_now()
+    hour = now.hour
+    added_total = 0
+    seeded = 0
+
+    for user in demos:
+        acc = _demo_account(db, user)
+        current = _posts_today_for_account(db, acc.id)
+
+        # Meia-noite BRT zera o dia — se ainda não postou hoje, dá um boost inicial
+        if current <= 0:
+            morning = 8 + ((user.id * 13) % 40)  # 8–47
+            morning = min(morning, MAX_DEMO_POSTS_TODAY)
+            added_total += _inject_posts(db, acc.id, morning, near_now=False)
+            seeded += 1
+            continue
+
+        if current >= MAX_DEMO_POSTS_TODAY:
+            continue
+
+        # ~25% dos ticks um demo “fica quieto” — ranking não sobe todo mundo junto
+        skip_chance = 0.22 + ((user.id + hour) % 5) * 0.03
+        if random.random() < skip_chance:
+            continue
+
+        # Ritmo base por demo (1–DEMO_GROWTH_MAX) + variação por hora
+        pace = 1 + ((user.id * 17 + hour * 3) % DEMO_GROWTH_MAX_ADD_PER_TICK)
+        # De madrugada postam menos; pico tarde/noite
+        if hour < 7:
+            pace = max(1, pace // 3)
+        elif 11 <= hour <= 14 or 18 <= hour <= 22:
+            pace = min(DEMO_GROWTH_MAX_ADD_PER_TICK, pace + random.randint(1, 4))
+
+        add = random.randint(1, max(1, pace))
+        room = MAX_DEMO_POSTS_TODAY - current
+        add = min(add, room)
+        if add <= 0:
+            continue
+        added_total += _inject_posts(db, acc.id, add, near_now=True)
+
+    if added_total or seeded:
+        clear_rank_cache()
+    return {"demos": len(demos), "added": added_total, "seeded": seeded}
 
 
 def set_demo_avatar(db: Session, user_id: int, file_obj, *, filename: str) -> str:

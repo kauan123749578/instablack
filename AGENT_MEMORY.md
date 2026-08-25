@@ -221,7 +221,9 @@ Confirmar no deploy ativo a linha/commit — já houve caso de worker ainda no b
 | 2026-08-22 | feat | Call: salas privadas (`CallRoom` + senha + blur nomes); avatares reais; mic fix (`isMicrophoneEnabled` mentia → só ligar); chat fixo embaixo. call v**16**, app-v **128**. |
 | 2026-08-22 | fix | Call: mic sem probe `getUserMedia` (Chrome já permitido mas app dizia negado); chat/criar sala com toast de erro + migração `call_rooms`/`call_chat_messages`. call v**18**, app-v **130**. |
 | 2026-08-22 | fix | Call: lista salas com poll na voz; screen-host na sala certa; tela inline no PC; mic via `createLocalAudioTrack`. call v**19**, app-v **131**. |
-| 2026-08-24 | chore | Remove Call/LiveKit do app (`/call`, livekit-api, CallRoom). Chat Backspace permanece. Admin: usuários demo para Top do Dia (marketing). Redeploy **web**. |
+| 2026-08-25 | fix | Auto-reply de comentários ignorava automações `completed`/`paused` (só `active`) — playlist terminava e parava de responder. Poll com round-robin + logs. Redeploy **beat + worker-misc**. |
+| 2026-08-25 | feat | Demo: upload de foto de perfil (Top do Dia). Edit automação: save sem reexigir vídeos ao add contas. Redeploy **web**. |
+| 2026-08-25 | feat | Demo: teto **5000** posts/dia; crescimento automático a cada 5 min (rank muda). Remove Chat da sidebar. Redeploy **web + beat + worker-misc**. |
 | 2026-08-23 | fix | 2FA: retomar Bloks com context Redis (sem CAA restart) + abort UI 95s. Aprovar no celular ≠ sessão no painel. app-v **135**. Redeploy **web**. |
 | 2026-08-23 | fix | Samsung `set_device` sem `bloks_versioning_id` → CAA empty hash + modal 2FA preso. Incluir hash + JSON no fetch auth error. app-v **134**. Redeploy **web**. |
 | 2026-08-22 | fix | Call: join timeout 28s, `room` só após connect, mic getUserMedia→LocalAudioTrack, CSS conn `[hidden]`, contagem live. call v**20**, app-v **132**. |
