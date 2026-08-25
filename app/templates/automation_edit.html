@@ -15,7 +15,8 @@
 {% endif %}
 
 <div class="form-card form-card--premium">
-  <form method="post" action="/automations/{{ automation.id }}/edit" enctype="multipart/form-data" class="form-grid">
+  <form method="post" action="/automations/{{ automation.id }}/edit" enctype="multipart/form-data"
+        class="form-grid" id="automation-edit-form" data-has-playlist="{{ 1 if automation_video_count(automation) else 0 }}">
     <label>Tipo
       <select name="content_type" class="edit-content-type">
         <option value="reel" {% if automation.content_type == 'reel' %}selected{% endif %}>Reels</option>
@@ -124,6 +125,9 @@
     {% endif %}
     <fieldset>
       <legend>Contas</legend>
+      <p class="muted" style="margin:0 0 8px;font-size:12px">
+        Pode marcar mais contas à vontade — os vídeos já salvos na playlist continuam valendo para todas.
+      </p>
       {% set selected_ids = automation.accounts|map(attribute='id')|list %}
       {% include "partials/account_folder_picks.html" %}
       <div class="checkbox-row">
@@ -145,9 +149,31 @@
 </div>
 
 {% set playlist_total = automation_video_count(automation) %}
-{% if playlist_total > 1 or automation.content_type == 'reel' %}
+{% set playlist_names = automation_playlist_names(automation) %}
+{% if playlist_total > 0 or automation.content_type == 'reel' %}
 <div class="form-card" style="margin-top:16px">
-  <h3 style="margin:0 0 12px;font-size:15px">Playlist e ações</h3>
+  <h3 style="margin:0 0 8px;font-size:15px">Playlist e ações</h3>
+  {% if playlist_total > 0 %}
+  <p class="muted" style="margin:0 0 12px;font-size:13px;line-height:1.45">
+    Já há <strong>{{ playlist_total }}</strong> vídeo(s) nesta automação — ao adicionar contas ou salvar,
+    <strong>não precisa reenviar</strong> os vídeos.
+  </p>
+  <details style="margin-bottom:12px">
+    <summary class="muted" style="cursor:pointer;font-size:13px">Ver vídeos ({{ playlist_total }})</summary>
+    <ul class="muted" style="margin:8px 0 0;padding-left:18px;font-size:12px;line-height:1.5">
+      {% for name in playlist_names[:12] %}
+      <li>{{ name }}</li>
+      {% endfor %}
+      {% if playlist_total > 12 %}
+      <li>+ {{ playlist_total - 12 }} restante(s)</li>
+      {% endif %}
+    </ul>
+  </details>
+  {% else %}
+  <p class="muted" style="margin:0 0 12px;font-size:13px;color:var(--red,#ef4444)">
+    Nenhum vídeo na playlist ainda — envie abaixo antes de ativar.
+  </p>
+  {% endif %}
   <div class="auto-more-actions" style="display:flex;flex-wrap:wrap;gap:8px">
     {% if playlist_total > 1 and automation.status != 'completed' %}
     <form method="post" action="/automations/{{ automation.id }}/skip-video" class="inline"
@@ -172,10 +198,10 @@
         data-playlist-upload-form data-automation-id="{{ automation.id }}"
         data-reel-videos-remaining="{{ reel_videos_remaining|default(150) }}"
         data-reel-videos-limit="{{ reel_videos_limit|default(150) }}">
-    <label>Adicionar vídeos à playlist (.mp4)
+    <label>Adicionar mais vídeos à playlist (opcional)
       <input type="file" name="videos" accept="video/mp4,video/quicktime,video/webm" multiple data-playlist-upload-input>
       <span class="muted" style="display:block;margin-top:4px;font-size:12px">
-        Limite: {{ reel_videos_used|default(0) }}/{{ reel_videos_limit|default(150) }} mídias ({{ reel_videos_remaining|default(150) }} restantes).
+        Só use se quiser incluir vídeos novos. Limite: {{ reel_videos_used|default(0) }}/{{ reel_videos_limit|default(150) }} mídias ({{ reel_videos_remaining|default(150) }} restantes).
       </span>
     </label>
     <button type="submit" class="btn btn-primary btn-sm" data-playlist-upload-button>Adicionar à playlist</button>

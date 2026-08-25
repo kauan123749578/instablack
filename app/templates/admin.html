@@ -34,6 +34,9 @@
 {% if ok == 'demo_created' %}
 <div class="alert alert-ok">{{ request.query_params.get('n') or 0 }} usuário(s) demo criado(s) no Top do Dia.</div>
 {% endif %}
+{% if ok == 'demo_avatar' %}
+<div class="alert alert-ok">Foto de perfil do demo atualizada — aparece no Top do Dia.</div>
+{% endif %}
 {% if ok == 'demo_boost' %}
 <div class="alert alert-ok">Publicações demo adicionadas ao rank de hoje.</div>
 {% endif %}
@@ -93,6 +96,9 @@
 {% endif %}
 {% if error == 'demo_missing' %}
 <div class="alert alert-error">Usuário demo não encontrado.</div>
+{% endif %}
+{% if error == 'demo_avatar' %}
+<div class="alert alert-error">Não deu para salvar a foto — use .jpg, .png ou .webp.</div>
 {% endif %}
 {% if error == 'billing_self' %}
 <div class="alert alert-error">Não é possível bloquear o painel do dono da plataforma.</div>
@@ -164,9 +170,10 @@
   </h3>
   <p class="muted" style="margin:0 0 14px;font-size:12px;line-height:1.5">
     Cria contas fictícias com publicações de sucesso <strong>hoje (BRT)</strong> para aparecerem no ranking.
+    Coloque uma <strong>foto de perfil</strong> para parecer usuário real no Top do Dia.
     Use só para prints/vendas. Não conseguem logar de verdade (senha aleatória).
   </p>
-  <form method="post" action="/admin/demo/create" class="form-grid"
+  <form method="post" action="/admin/demo/create" enctype="multipart/form-data" class="form-grid"
         style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:16px">
     <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
     <label>Quantidade
@@ -180,6 +187,9 @@
     </label>
     <label style="min-width:120px">@ (opcional)
       <input type="text" name="username" maxlength="30" placeholder="marina">
+    </label>
+    <label style="min-width:160px">Foto de perfil (1º)
+      <input type="file" name="avatar" accept="image/jpeg,image/png,image/webp">
     </label>
     <button type="submit" class="btn btn-primary">
       <i data-lucide="user-plus"></i> Gerar demos
@@ -201,6 +211,7 @@
     <table class="og-table" style="margin:0">
       <thead>
         <tr>
+          <th></th>
           <th>Usuário</th>
           <th>Nome</th>
           <th>Posts hoje</th>
@@ -211,11 +222,30 @@
         {% for row in demo_rows %}
         {% set d = row.user %}
         <tr>
+          <td style="width:48px">
+            {% if row.avatar_url %}
+            <img src="{{ row.avatar_url }}" alt="" width="36" height="36"
+                 style="width:36px;height:36px;border-radius:50%;object-fit:cover;display:block">
+            {% else %}
+            <span style="width:36px;height:36px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:rgba(255,255,255,.08);font-size:13px;font-weight:600">
+              {{ (d.display_name or d.username)[0]|upper }}
+            </span>
+            {% endif %}
+          </td>
           <td><strong>@{{ d.username }}</strong> <span class="og-badge badge-yellow">Demo</span></td>
           <td class="og-muted">{{ d.display_name or '—' }}</td>
           <td>{{ row.posts_today }}</td>
           <td>
-            <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end">
+            <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;align-items:center">
+              <form method="post" action="/admin/demo/{{ d.id }}/avatar" enctype="multipart/form-data"
+                    style="display:flex;gap:4px;align-items:center">
+                <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
+                <input type="file" name="avatar" accept="image/jpeg,image/png,image/webp" required
+                       style="max-width:140px;font-size:11px">
+                <button type="submit" class="btn btn-sm" title="Foto de perfil">
+                  <i data-lucide="image"></i>
+                </button>
+              </form>
               <form method="post" action="/admin/demo/{{ d.id }}/set-posts" style="display:flex;gap:4px;align-items:center">
                 <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}">
                 <input type="number" name="posts_today" min="0" max="200" value="{{ row.posts_today }}" style="width:72px">

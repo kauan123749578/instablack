@@ -2213,32 +2213,62 @@ def edit_automation_page(
 @router.post("/{automation_id}/edit")
 async def edit_automation(
     automation_id: int,
-    caption: str = Form(""),
-    captions_alt: list[str] = Form(default=[]),
-    content_type: str = Form("reel"),
-    interval_minutes: int = Form(...),
-    account_ids: list[int] = Form(default=[]),
-    jitter_enabled: str = Form(""),
-    jitter_minutes: int = Form(10),
-    posts_per_batch: int = Form(0),
-    rest_minutes: int = Form(0),
-    stagger_enabled: str = Form(""),
-    stagger_min_minutes: int = Form(DEFAULT_STAGGER_MIN),
-    stagger_max_minutes: int = Form(DEFAULT_STAGGER_MAX),
-    caption_rotate_by_account: str = Form(""),
-    caption_rotate_by_reel: str = Form(""),
-    thumb: UploadFile | None = File(None),
-    remove_thumb: bool = Form(False),
-    camouflage_enabled: str = Form(""),
-    camouflage_cover: UploadFile | None = File(None),
-    remove_camouflage: bool = Form(False),
-    camouflage_opacity_pct: str = Form(""),
-    comment_auto_reply_enabled: str = Form(""),
-    comment_auto_reply_message: str = Form(""),
-    comment_auto_reply_delay_seconds: int = Form(5),
+    request: Request,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    """Atualiza metadados/contas. NÃO exige reenvio de vídeos — a playlist permanece."""
+    # Mesmo padrão de create_automation: lê multipart uma vez (Form()+File()
+    # perde account_ids / checkboxes e o save falha de forma confusa).
+    form = await request.form()
+
+    def _form_str(key: str, default: str = "") -> str:
+        raw = form.get(key)
+        if raw is None:
+            return default
+        return str(raw).strip() if not hasattr(raw, "filename") else default
+
+    def _form_int(key: str, default: int = 0) -> int:
+        try:
+            return int(str(form.get(key) or default).strip() or default)
+        except (TypeError, ValueError):
+            return default
+
+    def _form_file(key: str):
+        raw = form.get(key)
+        if raw is None or not hasattr(raw, "filename") or not raw.filename:
+            return None
+        return raw
+
+    content_type = _form_str("content_type", "reel") or "reel"
+    caption = _form_str("caption")
+    interval_minutes = _form_int("interval_minutes", 60)
+    jitter_enabled = _form_str("jitter_enabled")
+    jitter_minutes = _form_int("jitter_minutes", 10)
+    posts_per_batch = _form_int("posts_per_batch", 0)
+    rest_minutes = _form_int("rest_minutes", 0)
+    stagger_enabled = _form_str("stagger_enabled")
+    stagger_min_minutes = _form_int("stagger_min_minutes", DEFAULT_STAGGER_MIN)
+    stagger_max_minutes = _form_int("stagger_max_minutes", DEFAULT_STAGGER_MAX)
+    caption_rotate_by_account = _form_str("caption_rotate_by_account")
+    caption_rotate_by_reel = _form_str("caption_rotate_by_reel")
+    remove_thumb = _form_str("remove_thumb").lower() in ("1", "true", "on", "yes")
+    camouflage_enabled = _form_str("camouflage_enabled")
+    remove_camouflage = _form_str("remove_camouflage").lower() in ("1", "true", "on", "yes")
+    camouflage_opacity_pct = _form_str("camouflage_opacity_pct")
+    comment_auto_reply_enabled = _form_str("comment_auto_reply_enabled")
+    comment_auto_reply_message = _form_str("comment_auto_reply_message")
+    comment_auto_reply_delay_seconds = _form_int("comment_auto_reply_delay_seconds", 5)
+    thumb = _form_file("thumb")
+    camouflage_cover = _form_file("camouflage_cover")
+
+    account_ids: list[int] = []
+    for raw in form.getlist("account_ids"):
+        try:
+            account_ids.append(int(str(raw)))
+        except (TypeError, ValueError):
+            continue
+
     a = _get_owned(db, automation_id, user)
     if content_type not in CONTENT_TYPES:
         raise HTTPException(status_code=400, detail="Tipo inválido")
@@ -2321,6 +2351,7 @@ async def edit_automation(
                     storage.delete(old_camu)
                 except Exception:
                     pass
+        # Já tem capa salva → não pede upload de novo ao só mudar contas/legenda
         if want_camu and not a.camouflage_cover_key:
             raise HTTPException(
                 status_code=400,
@@ -2378,6 +2409,7 @@ async def edit_automation(
     a.comment_auto_reply_message = comment_auto_reply.get("comment_auto_reply_message")
     a.comment_auto_reply_messages = comment_auto_reply.get("comment_auto_reply_messages")
     a.comment_auto_reply_delay_seconds = int(comment_auto_reply["comment_auto_reply_delay_seconds"])  # type: ignore[arg-type]
+    # Contas novas/removidas — playlist de vídeos NÃO é tocada
     a.accounts = list(accounts)
     if not accounts:
         a.status = "paused"

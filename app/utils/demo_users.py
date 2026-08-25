@@ -10,13 +10,24 @@ import re
 import secrets
 import string
 import datetime as dt
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
+from app.media_access import signed_media_path
 from app.security import hash_password
+from core.storage import get_storage
 from models.models import InstagramAccount, PublishLog, User
+
+_AVATAR_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
+_AVATAR_CT = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+}
 
 BRT = ZoneInfo("America/Sao_Paulo")
 
@@ -240,10 +251,53 @@ def set_demo_posts_today(db: Session, user_id: int, target: int) -> int:
     return target
 
 
+def set_demo_avatar(db: Session, user_id: int, file_obj, *, filename: str) -> str:
+    """Salva foto de perfil do demo (mesma chave estável de /perfil)."""
+    user = db.get(User, user_id)
+    if not user or not getattr(user, "is_demo", False):
+        raise ValueError("Usuário demo não encontrado")
+    ext = Path(filename or "").suffix.lower() or ".jpg"
+    if ext not in _AVATAR_EXTS:
+        raise ValueError("Use foto .jpg, .png ou .webp.")
+    try:
+        file_obj.seek(0)
+    except Exception:
+        pass
+    storage = get_storage()
+    key = f"avatars/user/{user.id}{ext}"
+    if hasattr(storage, "save_at_key"):
+        new_key = storage.save_at_key(
+            key,
+            file_obj,
+            content_type=_AVATAR_CT.get(ext, "image/jpeg"),
+        )
+    else:
+        new_key = storage.save(file_obj, suggested_ext=ext)
+    old_key = user.avatar_key
+    user.avatar_key = new_key
+    if old_key and old_key != new_key:
+        try:
+            storage.delete(old_key)
+        except Exception:
+            pass
+    return new_key
+
+
+def _delete_avatar_file(user: User) -> None:
+    key = getattr(user, "avatar_key", None)
+    if not key:
+        return
+    try:
+        get_storage().delete(key)
+    except Exception:
+        pass
+
+
 def delete_demo_user(db: Session, user_id: int) -> bool:
     user = db.get(User, user_id)
     if not user or not getattr(user, "is_demo", False):
         return False
+    _delete_avatar_file(user)
     db.delete(user)
     return True
 
@@ -252,6 +306,7 @@ def delete_all_demo_users(db: Session) -> int:
     demos = db.scalars(select(User).where(User.is_demo.is_(True))).all()
     n = 0
     for u in demos:
+        _delete_avatar_file(u)
         db.delete(u)
         n += 1
     return n
@@ -278,5 +333,9 @@ def list_demo_users_with_posts(db: Session) -> list[dict]:
             )
             or 0
         )
-        out.append({"user": u, "posts_today": int(posts)})
+        out.append({
+            "user": u,
+            "posts_today": int(posts),
+            "avatar_url": signed_media_path(u.avatar_key) if u.avatar_key else None,
+        })
     return out

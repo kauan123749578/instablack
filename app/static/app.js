@@ -70,8 +70,10 @@
       // some no endpoint. Converte pra fetch (header injetado no wrapper).
       // #automation-form: Reels/Story/Foto tratam no initAutomationForm.
       // #profile-edit-form: tratado em initProfileEditForm (loading + HTML).
+      // [data-playlist-upload-form]: tratado em initAutomationPlaylistUploads.
       if (form.id === "automation-form") return;
       if (form.id === "profile-edit-form") return;
+      if (form.hasAttribute("data-playlist-upload-form")) return;
       if (form.dataset.nativeSubmit === "1") return;
       if (ev.defaultPrevented) return;
       const method = (form.getAttribute("method") || "get").toLowerCase();
@@ -102,10 +104,19 @@
             window.location.href = res.url;
             return;
           }
-          throw new Error("Falha no envio.");
+          let msg = "Falha no envio.";
+          try {
+            const payload = await res.json();
+            if (typeof payload.detail === "string" && payload.detail) msg = payload.detail;
+            else if (typeof payload.error === "string" && payload.error) msg = payload.error;
+            else if (Array.isArray(payload.detail) && payload.detail[0]?.msg) {
+              msg = payload.detail[0].msg;
+            }
+          } catch (_) {}
+          throw new Error(msg);
         })
-        .catch(() => {
-          alert("Falha no envio. Recarregue a página e tente de novo.");
+        .catch((err) => {
+          alert(err?.message || "Falha no envio. Recarregue a página e tente de novo.");
           if (btn) btn.disabled = false;
         });
     },
@@ -3123,7 +3134,7 @@
         e.preventDefault();
         const files = input?.files ? Array.from(input.files) : [];
         if (!files.length) {
-          alert("Selecione um ou mais vídeos para adicionar.");
+          alert("Selecione um ou mais vídeos novos para adicionar à playlist (os que já existem continuam salvos).");
           return;
         }
         const remaining = Math.max(

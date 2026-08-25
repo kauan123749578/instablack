@@ -1,7 +1,7 @@
 """Painel administrativo — lista de usuários com privacidade do owner."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
@@ -32,6 +32,7 @@ from app.utils.demo_users import (
     delete_demo_user,
     list_demo_users_with_posts,
     make_demo_user,
+    set_demo_avatar,
     set_demo_posts_today,
 )
 
@@ -608,31 +609,72 @@ def toggle_user_voice_room(
 
 
 @router.post("/demo/create")
-def admin_demo_create(
+async def admin_demo_create(
     db: Session = Depends(get_db),
     admin: User = Depends(get_owner_user),
     display_name: str = Form(""),
     username: str = Form(""),
     posts_today: int = Form(18),
     count: int = Form(1),
+    avatar: UploadFile | None = File(None),
 ):
     """Cria 1..N usuários demo com publicações no Top do Dia (hoje BRT)."""
     n = max(1, min(int(count or 1), 30))
     posts = max(0, min(int(posts_today or 0), 200))
     created = 0
+    first_user = None
     for i in range(n):
         # Só aplica nome/username custom no primeiro; demais aleatórios
-        make_demo_user(
+        user = make_demo_user(
             db,
             display_name=(display_name if i == 0 else "") or None,
             username=(username if i == 0 else "") or None,
             posts_today=posts,
         )
+        if i == 0:
+            first_user = user
         created += 1
+    if first_user and avatar and avatar.filename:
+        try:
+            set_demo_avatar(db, first_user.id, avatar.file, filename=avatar.filename)
+        except ValueError:
+            db.commit()
+            clear_rank_cache()
+            return RedirectResponse(
+                f"/admin?ok=demo_created&n={created}&error=demo_avatar",
+                status_code=status.HTTP_303_SEE_OTHER,
+            )
     db.commit()
     clear_rank_cache()
     return RedirectResponse(
         f"/admin?ok=demo_created&n={created}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+@router.post("/demo/{user_id}/avatar")
+async def admin_demo_avatar(
+    user_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_owner_user),
+    avatar: UploadFile | None = File(None),
+):
+    if not avatar or not avatar.filename:
+        return RedirectResponse(
+            "/admin?error=demo_avatar",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    try:
+        set_demo_avatar(db, user_id, avatar.file, filename=avatar.filename)
+        db.commit()
+        clear_rank_cache()
+    except ValueError:
+        return RedirectResponse(
+            "/admin?error=demo_avatar",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    return RedirectResponse(
+        "/admin?ok=demo_avatar",
         status_code=status.HTTP_303_SEE_OTHER,
     )
 
